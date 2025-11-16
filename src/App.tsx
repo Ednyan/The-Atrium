@@ -18,6 +18,14 @@ function App() {
       return
     }
 
+    // Clean up old pre-auth user data
+    const oldUserId = localStorage.getItem('userId')
+    if (oldUserId && !oldUserId.startsWith('00000000-')) {
+      // Remove old non-UUID user IDs from before auth was implemented
+      localStorage.removeItem('userId')
+      localStorage.removeItem('username')
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user && supabase) {
         // Get user profile
