@@ -154,6 +154,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (updates.lightOffsetY !== undefined) updateData.light_offset_y = updates.lightOffsetY
     if (updates.lightPulse !== undefined) updateData.light_pulse = updates.lightPulse
     if (updates.lightPulseSpeed !== undefined) updateData.light_pulse_speed = updates.lightPulseSpeed
+    if (updates.enableInteraction !== undefined) updateData.enable_interaction = updates.enableInteraction
     
     await (supabase.from('traces') as any).update(updateData).eq('id', traceId)
   }
@@ -555,12 +556,28 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Debug logging for image dimensions
         // Selected trace rendering
 
-        // Check if trace is visible on screen
-        const isVisible = 
-          screenX > -borderWidth && screenX < lobbyWidth + borderWidth &&
-          screenY > -borderHeight && screenY < lobbyHeight + borderHeight
-
-        if (!isVisible) {
+        // Calculate distance from viewport center for fade effect
+        const viewportCenterX = lobbyWidth / 2
+        const viewportCenterY = lobbyHeight / 2
+        const distanceFromCenter = Math.sqrt(
+          Math.pow(screenX - viewportCenterX, 2) + 
+          Math.pow(screenY - viewportCenterY, 2)
+        )
+        
+        // Define fade zones
+        const viewportRadius = Math.sqrt(Math.pow(lobbyWidth / 2, 2) + Math.pow(lobbyHeight / 2, 2))
+        const fadeStartRadius = viewportRadius * 0.6 // Start fading at 60% of viewport radius
+        const fadeEndRadius = viewportRadius * 1.2 // Fully transparent at 120% of viewport radius
+        
+        // Calculate opacity based on distance
+        let traceOpacity = 1.0
+        if (distanceFromCenter > fadeStartRadius) {
+          const fadeProgress = (distanceFromCenter - fadeStartRadius) / (fadeEndRadius - fadeStartRadius)
+          traceOpacity = Math.max(0, 1 - fadeProgress)
+        }
+        
+        // Don't render if completely transparent or far outside viewport
+        if (traceOpacity <= 0 || distanceFromCenter > fadeEndRadius) {
           return null
         }
 
@@ -577,20 +594,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
                   borderRadius: '50%',
                   background: trace.lightColor ?? '#ffffff',
-                  opacity: (trace.lightIntensity ?? 1.0) * 0.8,
+                  opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
                   mixBlendMode: 'screen',
                   filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
                   animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
                   transformOrigin: 'center center',
                   marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
                   marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                  ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8,
+                  ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
                 }}
               />
             )}
             
             {/* The trace itself */}
-            <div>
+            <div style={{ opacity: traceOpacity }}>
             {/* Container for positioning - doesn't scale */}
             <div
               data-trace-element="true"
@@ -729,14 +746,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {trace.type === 'embed' && trace.mediaUrl && (
                 <iframe
                   src={convertYouTubeUrl(trace.mediaUrl)}
-                  className="w-full h-full pointer-events-none select-none"
+                  className="w-full h-full select-none"
                   style={{ 
+                    pointerEvents: trace.enableInteraction ? 'auto' : 'none',
                     clipPath: trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
                       : undefined,
                   }}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
+                  onClick={(e) => {
+                    if (trace.enableInteraction) {
+                      e.stopPropagation() // Prevent trace selection when interacting
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    if (trace.enableInteraction) {
+                      e.stopPropagation() // Prevent modal from opening
+                    }
+                  }}
                   onLoad={() => {
                     // Set standard 16:9 dimensions for embeds
                     if (!imageDimensions[trace.id]) {
@@ -1324,6 +1352,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       maxLength={200}
                     />
                   </div>
+
+                  <label className="flex items-center gap-2 text-white cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={editingTrace.enableInteraction ?? false}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, enableInteraction: e.target.checked }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
+                      }}
+                      className="w-4 h-4"
+                    />
+                    Enable Interaction (click to play/interact)
+                  </label>
                 </>
               )}
 

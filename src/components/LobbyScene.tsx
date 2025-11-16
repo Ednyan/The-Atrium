@@ -6,6 +6,7 @@ import { useTraces } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
 import LayerPanel from './LayerPanel'
+import { ThemeManager } from '../lib/themeManager'
 
 const AVATAR_SIZE = 20
 const MOVE_SPEED = 5
@@ -16,7 +17,12 @@ const MIN_ZOOM = 0.1
 const MAX_ZOOM = 3.0
 const ZOOM_SPEED = 0.1
 
-export default function LobbyScene() {
+interface LobbySceneProps {
+  lobbyId: string
+  onLeaveLobby: () => void
+}
+
+export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const worldContainerRef = useRef<Container | null>(null)
@@ -37,6 +43,7 @@ export default function LobbyScene() {
   const worldOffsetRef = useRef({ x: 0, y: 0 })
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const lightingLayerRef = useRef<Graphics | null>(null)
+  const themeManagerRef = useRef<ThemeManager | null>(null)
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
@@ -73,9 +80,9 @@ export default function LobbyScene() {
     }
   }, [position])
   
-  // Initialize presence and traces
-  usePresence()
-  useTraces()
+  // Initialize presence and traces for this lobby
+  usePresence(lobbyId)
+  useTraces(lobbyId)
 
   // Smooth keyboard controls with acceleration
   useEffect(() => {
@@ -174,6 +181,19 @@ export default function LobbyScene() {
       
       const wheelListener = handleWheel
       window.addEventListener('wheel', wheelListener, { passive: false })
+
+      // Initialize theme manager
+      const themeManager = new ThemeManager(worldContainer, {
+        particleCount: 100,
+        groundDensity: 0.5,
+      })
+      themeManagerRef.current = themeManager
+      
+      // Load theme assets asynchronously
+      themeManager.loadTheme().then(() => {
+        console.log('🎨 Theme loaded')
+        themeManager.createParticles(viewportWidth, viewportHeight)
+      })
 
       // Player avatar now rendered in DOM (TraceOverlay) for z-index support
       // Keep reference but make invisible
@@ -312,6 +332,37 @@ export default function LobbyScene() {
         
         // Update grid based on camera position
         updateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
+        
+        // Update theme (ground elements and particles)
+        const themeManager = themeManagerRef.current
+        if (themeManager) {
+          const camX = cameraPositionRef.current.x
+          const camY = cameraPositionRef.current.y
+          
+          // Generate ground elements only near player and traces
+          const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
+          const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
+          
+          // Only generate in camera viewport (don't expand to include all traces)
+          const margin = 500
+          const minX = camX - viewportWidth / zoomRef.current - margin
+          const minY = camY - viewportHeight / zoomRef.current - margin
+          const maxX = camX + viewportWidth / zoomRef.current + margin
+          const maxY = camY + viewportHeight / zoomRef.current + margin
+          
+          themeManager.generateGroundElements(
+            minX, minY, maxX, maxY,
+            playerPos.x,
+            playerPos.y,
+            tracePositions
+          )
+          
+          // Update floating particles
+          themeManager.updateParticles(camX, camY, viewportWidth, viewportHeight)
+          
+          // Cull distant ground elements for performance (also check if near player/traces)
+          themeManager.cullGroundElements(camX, camY, viewportWidth, viewportHeight, playerPos.x, playerPos.y, tracePositions, zoomRef.current)
+        }
         
         // NOTE: Lighting is now handled in TraceOverlay.tsx using DOM elements with blur
         // The Pixi.js lighting layer is kept for potential future use but not actively rendering
@@ -570,6 +621,12 @@ export default function LobbyScene() {
     }
 
     return () => {
+      // Cleanup theme manager
+      if (themeManagerRef.current) {
+        themeManagerRef.current.destroy()
+        themeManagerRef.current = null
+      }
+      
       // Event listeners will be cleaned up automatically when window is unloaded
       if (appRef.current) {
         appRef.current.destroy(true, { children: true })
@@ -654,6 +711,12 @@ export default function LobbyScene() {
         <p className="text-lobby-light/70 text-xs">
           Zoom: {zoomRef.current.toFixed(2)}x
         </p>
+        <button
+          onClick={onLeaveLobby}
+          className="mt-2 w-full bg-red-600/80 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+        >
+          Leave Lobby
+        </button>
       </div>
 
       {/* Trace Button */}
@@ -678,7 +741,7 @@ export default function LobbyScene() {
 
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} />
+        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} />
       )}
 
       {/* Layer Panel */}

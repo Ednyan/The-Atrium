@@ -3,16 +3,16 @@ import { useGameStore } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
-export function useTraces() {
+export function useTraces(lobbyId: string | null) {
   const { setTraces, addTrace, removeTrace } = useGameStore()
 
   useEffect(() => {
-    if (!supabase) {
-      console.log('⚠️ Traces hook: Supabase not available')
+    if (!supabase || !lobbyId) {
+      console.log('⚠️ Traces hook: Supabase or lobbyId not available')
       return
     }
 
-    console.log('📦 Loading traces from database...')
+    console.log('📦 Loading traces from database for lobby:', lobbyId)
 
     // Load existing traces
     const loadTraces = async () => {
@@ -27,6 +27,7 @@ export function useTraces() {
         const { data, error } = await supabase
           .from('traces')
           .select('*')
+          .eq('lobby_id', lobbyId)
           .order('created_at', { ascending: false })
           .limit(100)
 
@@ -74,8 +75,10 @@ export function useTraces() {
             lightOffsetY: row.light_offset_y ?? 0,
             lightPulse: row.light_pulse ?? false,
             lightPulseSpeed: row.light_pulse_speed ?? 2.0,
+            enableInteraction: row.enable_interaction ?? false,
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
+            lobbyId: row.lobby_id,
           }))
           console.log('🎯 Calling setTraces with', traces.length, 'traces')
           setTraces(traces)
@@ -90,17 +93,18 @@ export function useTraces() {
 
     loadTraces()
 
-    console.log('📡 Subscribing to trace updates...')
+    console.log('📡 Subscribing to trace updates for lobby:', lobbyId)
 
-    // Subscribe to new traces
+    // Subscribe to new traces in this lobby
     const channel = supabase
-      .channel('traces-channel')
+      .channel(`lobby-${lobbyId}-traces`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'traces',
+          filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload) => {
           console.log('✨ New trace received:', payload.new)
@@ -139,8 +143,10 @@ export function useTraces() {
             lightOffsetY: row.light_offset_y ?? 0,
             lightPulse: row.light_pulse ?? false,
             lightPulseSpeed: row.light_pulse_speed ?? 2.0,
+            enableInteraction: row.enable_interaction ?? false,
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
+            lobbyId: row.lobby_id,
           }
           addTrace(trace)
         }
@@ -151,6 +157,7 @@ export function useTraces() {
           event: 'UPDATE',
           schema: 'public',
           table: 'traces',
+          filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload) => {
           console.log('🔄 Trace updated:', payload.new)
@@ -189,8 +196,10 @@ export function useTraces() {
             lightOffsetY: row.light_offset_y ?? 0,
             lightPulse: row.light_pulse ?? false,
             lightPulseSpeed: row.light_pulse_speed ?? 2.0,
+            enableInteraction: row.enable_interaction ?? false,
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
+            lobbyId: row.lobby_id,
           }
           // Update the trace in the store
           addTrace(trace)
@@ -202,6 +211,7 @@ export function useTraces() {
           event: 'DELETE',
           schema: 'public',
           table: 'traces',
+          filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload) => {
           console.log('🗑️ Trace deleted:', payload.old)
@@ -225,5 +235,5 @@ export function useTraces() {
       console.log('🔌 Unsubscribing from trace updates')
       channel.unsubscribe()
     }
-  }, [])
+  }, [lobbyId])
 }

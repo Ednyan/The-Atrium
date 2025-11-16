@@ -96,9 +96,13 @@ export interface Trace {
   lightOffsetY?: number
   lightPulse?: boolean
   lightPulseSpeed?: number // 0.1 to 5.0, seconds per pulse cycle
+  // Embed interaction
+  enableInteraction?: boolean // Allow iframe to be interacted with (for embeds)
   // Layer system
   layerId?: string | null
   zIndex?: number
+  // Lobby association
+  lobbyId?: string
 }
 
 export interface Layer {
@@ -120,4 +124,25 @@ export interface Profile {
   createdAt: string
   updatedAt: string
   playerColor?: string
+  activeLobbyId?: string | null
+}
+
+export interface Lobby {
+  id: string
+  name: string
+  ownerUserId: string
+  passwordHash?: string | null
+  maxPlayers: number
+  isPublic: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LobbyAccessList {
+  id: string
+  lobbyId: string
+  userId: string
+  listType: 'whitelist' | 'blacklist'
+  addedAt: string
+  addedBy?: string | null
 }

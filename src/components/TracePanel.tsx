@@ -6,9 +6,10 @@ import type { Trace } from '../types/database'
 interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
+  lobbyId: string
 }
 
-export default function TracePanel({ onClose, tracePosition }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePanelProps) {
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed'>('text')
   const [mediaUrl, setMediaUrl] = useState('')
@@ -101,6 +102,7 @@ export default function TracePanel({ onClose, tracePosition }: TracePanelProps) 
           media_url: uploadedUrl || null,
           scale: 1.0,
           rotation: 0.0,
+          lobby_id: lobbyId,
         } as any).select() // Get the generated trace back
         
         if (error) {

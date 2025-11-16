@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { supabase, REALTIME_CHANNEL } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
-export function usePresence() {
+export function usePresence(lobbyId: string | null) {
   const { userId, username, position, playerColor, updateOtherUser, removeOtherUser } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
@@ -31,15 +31,16 @@ export function usePresence() {
   }, [playerColor, userId, username])
 
   useEffect(() => {
-    if (!supabase || !userId || !username) {
-      console.log('⚠️ Presence hook: Missing requirements', { supabase: !!supabase, userId, username })
+    if (!supabase || !userId || !username || !lobbyId) {
+      console.log('⚠️ Presence hook: Missing requirements', { supabase: !!supabase, userId, username, lobbyId })
       return
     }
 
-    console.log('🔌 Connecting to presence channel...', { userId, username })
+    console.log('🔌 Connecting to lobby presence channel...', { userId, username, lobbyId })
 
-    // Create presence channel
-    const channel = supabase.channel(REALTIME_CHANNEL, {
+    // Create lobby-specific presence channel
+    const channelName = `lobby-${lobbyId}-presence`
+    const channel = supabase.channel(channelName, {
       config: {
         presence: {
           key: userId,
@@ -126,5 +127,5 @@ export function usePresence() {
       clearInterval(updateInterval)
       channel.unsubscribe()
     }
-  }, [userId, username])
+  }, [userId, username, lobbyId])
 }
