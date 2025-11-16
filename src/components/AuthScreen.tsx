@@ -41,11 +41,13 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
 
     try {
       // Check if username is already taken
-      const { data: existingUser } = await supabase
-        .from('profiles')
+      const { data: existingUser, error: lookupError } = await (supabase
+        .from('profiles') as any)
         .select('username')
         .eq('username', username)
-        .single()
+        .maybeSingle()
+
+      console.log('Username check:', { existingUser, lookupError })
 
       if (existingUser) {
         setError('Username already taken')
@@ -61,15 +63,39 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           data: {
             username: username,
           },
+          emailRedirectTo: window.location.origin,
         },
       })
 
-      if (signupError) throw signupError
+      console.log('Signup response:', { data, signupError })
 
-      if (data.user) {
-        setCheckEmail(true)
+      if (signupError) {
+        // Check for specific error messages
+        if (signupError.message.includes('already registered')) {
+          setError('This email is already registered. Please log in instead.')
+        } else {
+          throw signupError
+        }
+      } else if (data.user) {
+        // Check if email confirmation is required
+        if (data.session) {
+          // User is auto-confirmed (disabled email confirmation)
+          const { data: profile } = await (supabase
+            .from('profiles') as any)
+            .select('username, display_name')
+            .eq('id', data.user.id)
+            .maybeSingle()
+
+          if (profile) {
+            onAuthSuccess(data.user.id, profile.display_name || profile.username)
+          }
+        } else {
+          // Email confirmation required
+          setCheckEmail(true)
+        }
       }
     } catch (err: any) {
+      console.error('Signup error:', err)
       setError(err.message || 'Failed to sign up')
     } finally {
       setLoading(false)
@@ -93,11 +119,16 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       // Check if input is a username (not an email)
       if (!emailOrUsername.includes('@')) {
         // Look up email by username
-        const { data: profile } = await (supabase
+        const { data: profile, error: profileError } = await (supabase
           .from('profiles') as any)
           .select('email')
           .eq('username', emailOrUsername)
-          .single()
+          .maybeSingle()
+
+        if (profileError) {
+          console.error('Profile lookup error:', profileError)
+          throw new Error('Failed to look up username')
+        }
 
         if (!profile) {
           throw new Error('Username not found')
