@@ -6,7 +6,7 @@ import { useGameStore } from './store/gameStore'
 import { supabase } from './lib/supabase'
 
 function App() {
-  const { username, setUsername, setUserId } = useGameStore()
+  const { username, setUsername, setUserId, setPlayerColor } = useGameStore()
   const [hasEntered, setHasEntered] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -31,13 +31,14 @@ function App() {
         // Get user profile
         (supabase
           .from('profiles') as any)
-          .select('username, display_name')
+          .select('username, display_name, player_color')
           .eq('id', session.user.id)
           .single()
           .then(({ data }: any) => {
             if (data) {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
+              setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
             }
           })
@@ -52,13 +53,14 @@ function App() {
       if (session?.user && supabase) {
         (supabase
           .from('profiles') as any)
-          .select('username, display_name')
+          .select('username, display_name, player_color')
           .eq('id', session.user.id)
           .single()
           .then(({ data }: any) => {
             if (data) {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
+              setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
             }
           })

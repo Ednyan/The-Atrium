@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { Trace } from '../types/database'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
+import ProfileCustomization from './ProfileCustomization'
 
 interface TraceOverlayProps {
   traces: Trace[]
@@ -14,8 +15,10 @@ interface TraceOverlayProps {
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop'
 
 export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset }: TraceOverlayProps) {
-  const { position, username, playerZIndex } = useGameStore()
+  const { position, username, playerZIndex, playerColor, otherUsers } = useGameStore()
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  const [showPlayerMenu, setShowPlayerMenu] = useState(false)
+  const [playerMenuPosition, setPlayerMenuPosition] = useState({ x: 0, y: 0 })
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
   const [localTraceTransforms, setLocalTraceTransforms] = useState<Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number }>>({})
@@ -430,9 +433,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       <div 
         className="absolute inset-0"
         onClick={() => {
-          setSelectedTraceId(null)
-          setTransformMode('none')
-          setContextMenu(null)
+          if (!showPlayerMenu) {
+            setSelectedTraceId(null)
+            setTransformMode('none')
+            setContextMenu(null)
+          }
         }}
       >
         {/* Render traces AND player in z-index order */}
@@ -447,11 +452,29 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               // Render player circle
               const playerScreenX = position.x * zoom + worldOffset.x
               const playerScreenY = position.y * zoom + worldOffset.y
-              const playerSize = 20 * zoom
+              const baseSize = 20 // Same as AVATAR_SIZE in LobbyScene
+              const playerSize = baseSize * zoom
+
+              // Convert hex color to RGB for shadows
+              const hexToRgb = (hex: string) => {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+                return result ? {
+                  r: parseInt(result[1], 16),
+                  g: parseInt(result[2], 16),
+                  b: parseInt(result[3], 16)
+                } : { r: 255, g: 255, b: 255 }
+              }
+              const rgb = hexToRgb(playerColor)
 
               return (
                 <div
                   key="player-circle"
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setPlayerMenuPosition({ x: e.clientX, y: e.clientY })
+                    setShowPlayerMenu(true)
+                  }}
                   style={{
                     position: 'absolute',
                     left: playerScreenX - playerSize / 2,
@@ -459,24 +482,39 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     width: playerSize,
                     height: playerSize,
                     borderRadius: '50%',
-                    backgroundColor: '#e94560',
-                    pointerEvents: 'none',
-                    transition: 'left 0.1s, top 0.1s'
+                    backgroundColor: playerColor,
+                    boxShadow: `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6), 0 0 40px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3), inset 0 0 10px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`,
+                    border: `2px solid ${playerColor}`,
+                    pointerEvents: 'auto',
+                    cursor: 'context-menu',
+                    transition: 'left 0.05s ease-out, top 0.05s ease-out',
+                    filter: 'blur(0.3px)',
                   }}
                 >
+                  {/* Inner glow */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: '20%',
+                      borderRadius: '50%',
+                      background: `radial-gradient(circle, rgba(${rgb.r},${rgb.g},${rgb.b},0.9) 0%, rgba(${rgb.r},${rgb.g},${rgb.b},0) 70%)`,
+                      pointerEvents: 'none',
+                    }}
+                  />
                   {/* Player label */}
                   <div
                     style={{
                       position: 'absolute',
-                      top: -15 * zoom,
+                      top: -18 * zoom,
                       left: '50%',
                       transform: 'translateX(-50%)',
-                      color: 'white',
-                      fontSize: `${12 * zoom}px`,
+                      color: playerColor,
+                      fontSize: `${11 * zoom}px`,
                       fontWeight: 600,
                       whiteSpace: 'nowrap',
                       pointerEvents: 'none',
-                      textShadow: '0 0 4px rgba(0,0,0,0.8)'
+                      textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                      letterSpacing: '0.5px'
                     }}
                   >
                     {username}
@@ -918,6 +956,75 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           </div>
         </div>
         )
+        })}
+
+        {/* Render other users in DOM with same styling as active player */}
+        {Object.entries(otherUsers).map(([userId, user]) => {
+          const userScreenX = user.x * zoom + worldOffset.x
+          const userScreenY = user.y * zoom + worldOffset.y
+          const baseSize = 20
+          const userSize = baseSize * zoom
+          const userColor = user.playerColor || '#ffffff'
+
+          // Convert hex color to RGB for shadows
+          const hexToRgb = (hex: string) => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+            return result ? {
+              r: parseInt(result[1], 16),
+              g: parseInt(result[2], 16),
+              b: parseInt(result[3], 16)
+            } : { r: 255, g: 255, b: 255 }
+          }
+          const rgb = hexToRgb(userColor)
+
+          return (
+            <div
+              key={`other-user-${userId}`}
+              style={{
+                position: 'absolute',
+                left: userScreenX - userSize / 2,
+                top: userScreenY - userSize / 2,
+                width: userSize,
+                height: userSize,
+                borderRadius: '50%',
+                backgroundColor: userColor,
+                boxShadow: `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6), 0 0 40px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3), inset 0 0 10px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`,
+                border: `2px solid ${userColor}`,
+                pointerEvents: 'none',
+                transition: 'left 0.1s ease-out, top 0.1s ease-out',
+                filter: 'blur(0.3px)',
+              }}
+            >
+              {/* Inner glow */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: '20%',
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle, rgba(${rgb.r},${rgb.g},${rgb.b},0.9) 0%, rgba(${rgb.r},${rgb.g},${rgb.b},0) 70%)`,
+                  pointerEvents: 'none',
+                }}
+              />
+              {/* User label */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -18 * zoom,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  color: userColor,
+                  fontSize: `${11 * zoom}px`,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                  textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                  letterSpacing: '0.5px'
+                }}
+              >
+                {user.username}
+              </div>
+            </div>
+          )
         })}
       </div>
 
@@ -1504,6 +1611,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
           </div>
         </div>
+      )}
+
+      {/* Player Customization Menu */}
+      {showPlayerMenu && (
+        <ProfileCustomization
+          onClose={() => setShowPlayerMenu(false)}
+          position={playerMenuPosition}
+        />
       )}
     </>
   )

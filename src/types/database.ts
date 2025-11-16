@@ -55,6 +55,7 @@ export interface UserPresence {
   x: number
   y: number
   timestamp: number
+  playerColor?: string
 }
 
 export interface Trace {
@@ -118,4 +119,5 @@ export interface Profile {
   displayNameLastChanged: string
   createdAt: string
   updatedAt: string
+  playerColor?: string
 }

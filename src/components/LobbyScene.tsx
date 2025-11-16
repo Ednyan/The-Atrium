@@ -118,7 +118,7 @@ export default function LobbyScene() {
     const app = new Application({
       width: viewportWidth,
       height: viewportHeight,
-      backgroundColor: 0x16213e,
+      backgroundColor: 0x0a0a0a,
       antialias: true,
       resizeTo: window,
     })
@@ -144,7 +144,7 @@ export default function LobbyScene() {
       // Function to redraw grid based on camera position
       const updateGrid = (cameraX: number, cameraY: number) => {
         grid.clear()
-        grid.lineStyle(1, 0x1a1a2e, 0.5)
+        grid.lineStyle(1, 0x1a1a1a, 0.3)
         
         const gridSize = 50
         const startX = Math.floor((cameraX - viewportWidth) / gridSize) * gridSize
@@ -445,9 +445,29 @@ export default function LobbyScene() {
           if (!avatar) {
             console.log('🎨 Creating avatar for user:', user.username, 'at', user.x, user.y)
             const newAvatar = new Graphics()
-            newAvatar.beginFill(0x4ecdc4)
+            
+            // Convert hex color to integer (e.g., '#ff0000' -> 0xff0000)
+            const hexToInt = (hex: string) => {
+              const cleanHex = hex.replace('#', '')
+              return parseInt(cleanHex, 16)
+            }
+            const userColor = hexToInt(user.playerColor || '#ffffff')
+            
+            // Outer glow
+            newAvatar.beginFill(userColor, 0.1)
+            newAvatar.drawCircle(0, 0, AVATAR_SIZE + 8)
+            newAvatar.endFill()
+            
+            // Middle glow
+            newAvatar.beginFill(userColor, 0.3)
+            newAvatar.drawCircle(0, 0, AVATAR_SIZE + 4)
+            newAvatar.endFill()
+            
+            // Main circle
+            newAvatar.beginFill(userColor)
             newAvatar.drawCircle(0, 0, AVATAR_SIZE)
             newAvatar.endFill()
+            
             newAvatar.x = user.x
             newAvatar.y = user.y
             worldContainer.addChild(newAvatar)
@@ -455,7 +475,7 @@ export default function LobbyScene() {
 
             const otherLabel = new Text(user.username, {
               fontSize: 12,
-              fill: 0xffffff,
+              fill: userColor,
             })
             otherLabel.x = user.x
             otherLabel.y = user.y - AVATAR_SIZE - 10
@@ -463,6 +483,40 @@ export default function LobbyScene() {
             worldContainer.addChild(otherLabel)
             avatar = newAvatar
             ;(avatar as any).label = otherLabel
+            ;(avatar as any).playerColor = user.playerColor
+          }
+
+          // Update avatar color if it changed
+          const currentColor = (avatar as any)?.playerColor
+          if (currentColor !== user.playerColor) {
+            // Redraw avatar with new color
+            const hexToInt = (hex: string) => {
+              const cleanHex = hex.replace('#', '')
+              return parseInt(cleanHex, 16)
+            }
+            const userColor = hexToInt(user.playerColor || '#ffffff')
+            
+            avatar.clear()
+            // Outer glow
+            avatar.beginFill(userColor, 0.1)
+            avatar.drawCircle(0, 0, AVATAR_SIZE + 8)
+            avatar.endFill()
+            // Middle glow
+            avatar.beginFill(userColor, 0.3)
+            avatar.drawCircle(0, 0, AVATAR_SIZE + 4)
+            avatar.endFill()
+            // Main circle
+            avatar.beginFill(userColor)
+            avatar.drawCircle(0, 0, AVATAR_SIZE)
+            avatar.endFill()
+            
+            ;(avatar as any).playerColor = user.playerColor
+            
+            // Update label color too
+            const otherLabel = (avatar as any)?.label
+            if (otherLabel) {
+              otherLabel.style.fill = userColor
+            }
           }
 
           // Smooth interpolation
@@ -502,20 +556,14 @@ export default function LobbyScene() {
           }
         })
 
-        // Remove disconnected users
-        const otherUserIds = new Set(Object.keys(currentOtherUsers))
-        avatarsRef.current.forEach((avatar, id) => {
-          if (!otherUserIds.has(id)) {
-            console.log('🗑️ Removing avatar for disconnected user:', id)
-            if (avatar && avatar.parent) {
-              worldContainer.removeChild(avatar)
-            }
+        // Other users are now rendered in TraceOverlay DOM, so hide all Pixi avatars
+        avatarsRef.current.forEach((avatar) => {
+          if (avatar) {
+            avatar.visible = false
             const label = (avatar as any)?.label
-            if (label && label.parent) {
-              worldContainer.removeChild(label)
+            if (label) {
+              label.visible = false
             }
-            avatar.destroy({ children: true })
-            avatarsRef.current.delete(id)
           }
         })
       })

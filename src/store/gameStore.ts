@@ -6,6 +6,7 @@ interface GameState {
   userId: string
   position: { x: number; y: number }
   playerZIndex: number
+  playerColor: string
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
   
@@ -13,6 +14,7 @@ interface GameState {
   setUserId: (userId: string) => void
   setPosition: (x: number, y: number) => void
   setPlayerZIndex: (zIndex: number) => void
+  setPlayerColor: (color: string) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   removeOtherUser: (userId: string) => void
   addTrace: (trace: Trace) => void
@@ -28,6 +30,10 @@ export const useGameStore = create<GameState>((set) => ({
     const stored = localStorage.getItem('playerZIndex')
     return stored ? parseInt(stored, 10) : 1000
   })(),
+  playerColor: (() => {
+    const stored = localStorage.getItem('playerColor')
+    return stored || '#ffffff'
+  })(),
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
 
@@ -37,6 +43,10 @@ export const useGameStore = create<GameState>((set) => ({
   setPlayerZIndex: (zIndex) => {
     localStorage.setItem('playerZIndex', zIndex.toString())
     set({ playerZIndex: zIndex })
+  },
+  setPlayerColor: (color) => {
+    localStorage.setItem('playerColor', color)
+    set({ playerColor: color })
   },
   
   updateOtherUser: (userId, presence) =>

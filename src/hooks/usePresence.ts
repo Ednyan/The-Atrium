@@ -4,8 +4,31 @@ import { supabase, REALTIME_CHANNEL } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 export function usePresence() {
-  const { userId, username, position, updateOtherUser, removeOtherUser } = useGameStore()
+  const { userId, username, position, playerColor, updateOtherUser, removeOtherUser } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const positionRef = useRef(position)
+  const playerColorRef = useRef(playerColor)
+
+  // Keep position ref up to date
+  useEffect(() => {
+    positionRef.current = position
+  }, [position])
+
+  // Keep player color ref up to date
+  useEffect(() => {
+    playerColorRef.current = playerColor
+    
+    // Immediately broadcast color change to other users
+    if (channelRef.current && userId && username) {
+      channelRef.current.track({
+        username,
+        x: positionRef.current.x,
+        y: positionRef.current.y,
+        playerColor: playerColor,
+        online_at: new Date().toISOString(),
+      })
+    }
+  }, [playerColor, userId, username])
 
   useEffect(() => {
     if (!supabase || !userId || !username) {
@@ -41,6 +64,7 @@ export function usePresence() {
                 username: presence.username,
                 x: presence.x,
                 y: presence.y,
+                playerColor: presence.playerColor || '#ffffff',
                 timestamp: Date.now(),
               })
             }
@@ -57,6 +81,7 @@ export function usePresence() {
             username: presence.username,
             x: presence.x,
             y: presence.y,
+            playerColor: presence.playerColor || '#ffffff',
             timestamp: Date.now(),
           })
         }
@@ -74,6 +99,7 @@ export function usePresence() {
             username,
             x: position.x,
             y: position.y,
+            playerColor: playerColorRef.current,
             online_at: new Date().toISOString(),
           })
           console.log('📍 Tracking position:', username, 'at', position.x, position.y)
@@ -82,25 +108,23 @@ export function usePresence() {
 
     channelRef.current = channel
 
+    // Send position updates at regular intervals (20 times per second)
+    const updateInterval = setInterval(async () => {
+      if (channelRef.current) {
+        await channelRef.current.track({
+          username,
+          x: positionRef.current.x,
+          y: positionRef.current.y,
+          playerColor: playerColorRef.current,
+          online_at: new Date().toISOString(),
+        })
+      }
+    }, 50) // 50ms = 20 updates per second
+
     return () => {
       console.log('🔌 Disconnecting from presence channel')
+      clearInterval(updateInterval)
       channel.unsubscribe()
     }
   }, [userId, username])
-
-  // Update position in real-time
-  useEffect(() => {
-    if (!channelRef.current) return
-
-    const updatePresence = async () => {
-      await channelRef.current?.track({
-        username,
-        x: position.x,
-        y: position.y,
-        online_at: new Date().toISOString(),
-      })
-    }
-
-    updatePresence()
-  }, [position, username])
 }
