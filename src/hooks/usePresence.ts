@@ -30,20 +30,27 @@ export function usePresence() {
         const state = channel.presenceState()
         
         Object.entries(state).forEach(([key, presences]) => {
+          // Skip current user and filter out non-UUID keys (old pre-auth users)
           if (key !== userId && presences && presences.length > 0) {
-            const presence = presences[0] as any
-            updateOtherUser(key, {
-              userId: key,
-              username: presence.username,
-              x: presence.x,
-              y: presence.y,
-              timestamp: Date.now(),
-            })
+            // Only show authenticated users (UUIDs start with hex characters and have dashes)
+            const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+            if (isValidUUID) {
+              const presence = presences[0] as any
+              updateOtherUser(key, {
+                userId: key,
+                username: presence.username,
+                x: presence.x,
+                y: presence.y,
+                timestamp: Date.now(),
+              })
+            }
           }
         })
       })
       .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        if (key !== userId && newPresences && newPresences.length > 0) {
+        // Only track authenticated users (valid UUIDs)
+        const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+        if (key !== userId && newPresences && newPresences.length > 0 && isValidUUID) {
           const presence = newPresences[0] as any
           updateOtherUser(key, {
             userId: key,
