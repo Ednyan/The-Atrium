@@ -109,3 +109,13 @@ export interface Layer {
   parentId?: string | null
   userId: string
 }
+
+export interface Profile {
+  id: string
+  username: string
+  email: string
+  displayName: string
+  displayNameLastChanged: string
+  createdAt: string
+  updatedAt: string
+}
