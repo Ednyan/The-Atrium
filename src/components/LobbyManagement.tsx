@@ -110,10 +110,10 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
         updates.password_hash = password // In production, hash this properly
       }
 
-      const { error } = await (supabase
-        .from('lobbies')
+      const { error } = await (supabase!
+        .from('lobbies') as any)
         .update(updates)
-        .eq('id', lobby.id) as any)
+        .eq('id', lobby.id)
 
       if (error) throw error
 
@@ -133,14 +133,14 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      const { error } = await (supabase
-        .from('lobby_access_lists')
+      const { error } = await (supabase!
+        .from('lobby_access_lists') as any)
         .insert({
           lobby_id: lobby.id,
           user_id: userId,
           list_type: listType,
           added_by: user.id,
-        }) as any)
+        })
 
       if (error) throw error
 

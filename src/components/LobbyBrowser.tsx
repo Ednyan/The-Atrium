@@ -17,6 +17,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [userLobbies, setUserLobbies] = useState<LobbyWithOwner[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateLobby, setShowCreateLobby] = useState(false)
+  const [showJoinById, setShowJoinById] = useState(false)
+  const [lobbyIdInput, setLobbyIdInput] = useState('')
   const [newLobbyName, setNewLobbyName] = useState('')
   const [newLobbyPassword, setNewLobbyPassword] = useState('')
   const [newLobbyIsPublic, setNewLobbyIsPublic] = useState(true)
@@ -35,6 +37,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     
     setLoading(true)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
+      }
+
       // Load public lobbies
       const { data: publicLobbies, error: publicError } = await supabase
         .from('lobbies')
@@ -44,23 +52,48 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       
       if (publicError) throw publicError
 
-      // Load user's own lobbies
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: ownedLobbies, error: ownedError } = await supabase
+      // Load private lobbies where user is whitelisted
+      const { data: whitelistEntries, error: whitelistError } = await (supabase
+        .from('lobby_access_lists')
+        .select('lobby_id')
+        .eq('user_id', user.id)
+        .eq('list_type', 'whitelist') as any)
+      
+      if (whitelistError) throw whitelistError
+
+      const whitelistedLobbyIds = whitelistEntries?.map((entry: any) => entry.lobby_id) || []
+      
+      let privateLobbies: any[] = []
+      if (whitelistedLobbyIds.length > 0) {
+        const { data: privateLobbyData, error: privateError } = await (supabase
           .from('lobbies')
           .select('*')
-          .eq('owner_user_id', user.id)
-          .order('created_at', { ascending: false })
+          .in('id', whitelistedLobbyIds)
+          .eq('is_public', false) as any)
         
-        if (ownedError) throw ownedError
-        
-        // Get usernames and player counts
-        const enrichedOwned = await enrichLobbiesWithData(ownedLobbies || [])
-        setUserLobbies(enrichedOwned)
+        if (!privateError) {
+          privateLobbies = privateLobbyData || []
+        }
       }
 
-      const enrichedPublic = await enrichLobbiesWithData(publicLobbies || [])
+      // Load user's own lobbies
+      const { data: ownedLobbies, error: ownedError } = await supabase
+        .from('lobbies')
+        .select('*')
+        .eq('owner_user_id', user.id)
+        .order('created_at', { ascending: false })
+      
+      if (ownedError) throw ownedError
+      
+      // Get usernames and player counts
+      const enrichedOwned = await enrichLobbiesWithData(ownedLobbies || [])
+      setUserLobbies(enrichedOwned)
+
+      // Combine public and whitelisted private lobbies, remove duplicates
+      const allLobbies = [...(publicLobbies || []), ...privateLobbies]
+      const uniqueLobbies = Array.from(new Map(allLobbies.map(lobby => [lobby.id, lobby])).values())
+      const enrichedPublic = await enrichLobbiesWithData(uniqueLobbies)
+      setLobbies(enrichedPublic)
       setLobbies(enrichedPublic)
     } catch (err) {
       console.error('Error loading lobbies:', err)
@@ -140,8 +173,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return
       }
 
-      const { data, error } = await (supabase
-        .from('lobbies')
+      const { data, error } = await (supabase!
+        .from('lobbies') as any)
         .insert({
           name: newLobbyName,
           owner_user_id: user.id,
@@ -150,7 +183,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           max_players: 50,
         })
         .select()
-        .single() as any)
+        .single()
 
       if (error) throw error
 
@@ -333,20 +366,31 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
           {/* Public Lobbies */}
           <section>
-            <h3 className="text-lg font-semibold text-lobby-accent mb-3">Public Lobbies ({lobbies.length})</h3>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-semibold text-lobby-accent">Available Lobbies ({lobbies.length})</h3>
+              <button
+                onClick={() => setShowJoinById(true)}
+                className="px-3 py-1 bg-lobby-accent/20 text-lobby-accent border border-lobby-accent/30 rounded hover:bg-lobby-accent/30 text-sm font-semibold"
+              >
+                🔗 Join by ID
+              </button>
+            </div>
             <div className="grid gap-3">
               {lobbies.length === 0 ? (
-                <div className="text-white/60 text-center py-8">No public lobbies available</div>
+                <div className="text-white/60 text-center py-8">No lobbies available</div>
               ) : (
                 lobbies.map(lobby => (
                   <div key={lobby.id} className="bg-lobby-darker border border-lobby-accent/30 rounded-lg p-4">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h4 className="text-white font-semibold text-lg">{lobby.name}</h4>
+                        <h4 className="text-white font-semibold text-lg">
+                          {lobby.name} {!lobby.isPublic && '🔒'}
+                        </h4>
                         <div className="flex gap-4 mt-2 text-sm text-white/60">
                           <span>👤 {lobby.ownerUsername}</span>
                           <span>👥 {lobby.playerCount}/{lobby.maxPlayers}</span>
                           {lobby.passwordHash && <span>🔑 Password</span>}
+                          {!lobby.isPublic && <span>✅ Whitelisted</span>}
                         </div>
                       </div>
                       <button
@@ -389,6 +433,51 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 onClick={() => {
                   setSelectedLobbyId(null)
                   setPasswordInput('')
+                }}
+                className="px-4 py-2 bg-white/10 text-white rounded hover:bg-white/20"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join by ID Modal */}
+      {showJoinById && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+          <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold text-lobby-accent mb-4">🔗 Join Lobby by ID</h3>
+            <p className="text-white/60 text-sm mb-4">
+              Enter the lobby ID shared with you by the lobby owner.
+            </p>
+            <input
+              type="text"
+              value={lobbyIdInput}
+              onChange={(e) => setLobbyIdInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && lobbyIdInput && onJoinLobby(lobbyIdInput)}
+              placeholder="Lobby ID (UUID)..."
+              className="w-full bg-lobby-darker text-white border border-lobby-accent/30 rounded px-3 py-2 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (lobbyIdInput) {
+                    onJoinLobby(lobbyIdInput)
+                    setShowJoinById(false)
+                    setLobbyIdInput('')
+                  }
+                }}
+                disabled={!lobbyIdInput}
+                className="flex-1 px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Join
+              </button>
+              <button
+                onClick={() => {
+                  setShowJoinById(false)
+                  setLobbyIdInput('')
                 }}
                 className="px-4 py-2 bg-white/10 text-white rounded hover:bg-white/20"
               >

@@ -245,18 +245,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           {traceType === 'embed' && (
             <div>
               <label className="block text-lobby-light text-sm mb-2">
-                Embed URL
+                Embed URL or HTML Code
               </label>
-              <input
-                type="url"
+              <textarea
                 value={mediaUrl}
                 onChange={(e) => setMediaUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=... or any embeddable URL"
-                className="w-full px-4 py-3 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                placeholder={`Direct URL:\nhttps://youtube.com/watch?v=...\n\nOr full embed code:\n<iframe src="https://..."></iframe>`}
+                className="w-full px-4 py-3 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono text-sm"
+                rows={5}
                 autoFocus
               />
               <p className="text-lobby-light/40 text-xs mt-1">
-                YouTube, Vimeo, Spotify, SoundCloud, etc.
+                📺 Direct URL (YouTube, Vimeo, etc.) or 📋 Paste full embed code from SoundCloud, Spotify, etc.
               </p>
               <input
                 type="text"

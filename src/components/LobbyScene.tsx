@@ -6,7 +6,11 @@ import { useTraces } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
 import LayerPanel from './LayerPanel'
+import { LobbyManagement } from './LobbyManagement'
+import { ThemeCustomization } from './ThemeCustomization'
 import { ThemeManager } from '../lib/themeManager'
+import { supabase } from '../lib/supabase'
+import type { Lobby } from '../types/database'
 
 const AVATAR_SIZE = 20
 const MOVE_SPEED = 5
@@ -44,14 +48,51 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
+  const gridRef = useRef<Graphics | null>(null)
+  const updateGridRef = useRef<((cameraX: number, cameraY: number) => void) | null>(null)
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   
-  const { username, position, setPosition, otherUsers, traces } = useGameStore()
+  const { username, position, setPosition, otherUsers, traces, userId } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
+  const [showLobbyManagement, setShowLobbyManagement] = useState(false)
+  const [showThemeCustomization, setShowThemeCustomization] = useState(false)
+  const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
+  const [isLobbyOwner, setIsLobbyOwner] = useState(false)
+
+  // Load lobby info
+  useEffect(() => {
+    if (!supabase || !lobbyId) return
+
+    const loadLobby = async () => {
+      const { data, error } = await (supabase!
+        .from('lobbies')
+        .select('*')
+        .eq('id', lobbyId)
+        .single() as any)
+
+      if (!error && data) {
+        const lobby: Lobby = {
+          id: data.id,
+          name: data.name,
+          ownerUserId: data.owner_user_id,
+          passwordHash: data.password_hash,
+          maxPlayers: data.max_players,
+          isPublic: data.is_public,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+          themeSettings: data.theme_settings,
+        }
+        setCurrentLobby(lobby)
+        setIsLobbyOwner(data.owner_user_id === userId)
+      }
+    }
+
+    loadLobby()
+  }, [lobbyId, userId])
   
   // Keep traces ref in sync
   useEffect(() => {
@@ -122,10 +163,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
 
+    // Get theme settings from current lobby
+    const gridColor = currentLobby?.themeSettings?.gridColor ? 
+      parseInt(currentLobby.themeSettings.gridColor.replace('#', ''), 16) : 0x3b82f6
+    const gridOpacity = currentLobby?.themeSettings?.gridOpacity ?? 0.2
+    const bgColor = currentLobby?.themeSettings?.backgroundColor ? 
+      parseInt(currentLobby.themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
+
     const app = new Application({
       width: viewportWidth,
       height: viewportHeight,
-      backgroundColor: 0x0a0a0a,
+      backgroundColor: bgColor,
       antialias: true,
       resizeTo: window,
     })
@@ -142,6 +190,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Create infinite grid (will be repositioned dynamically)
       const grid = new Graphics()
       worldContainer.addChild(grid)
+      gridRef.current = grid
       
       // Create lighting layer (drawn above grid but below entities)
       const lightingLayer = new Graphics()
@@ -151,7 +200,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Function to redraw grid based on camera position
       const updateGrid = (cameraX: number, cameraY: number) => {
         grid.clear()
-        grid.lineStyle(1, 0x1a1a1a, 0.3)
+        grid.lineStyle(1, gridColor, gridOpacity)
         
         const gridSize = 50
         const startX = Math.floor((cameraX - viewportWidth) / gridSize) * gridSize
@@ -168,6 +217,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           grid.lineTo(endX, y)
         }
       }
+      updateGridRef.current = updateGrid
 
       // Mouse wheel zoom handler
       const handleWheel = (e: WheelEvent) => {
@@ -633,7 +683,85 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         appRef.current = null
       }
     }
-  }, [username, setPosition]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [username, setPosition, currentLobby]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update theme when lobby theme settings change
+  useEffect(() => {
+    if (!appRef.current || !gridRef.current || !updateGridRef.current || !currentLobby) return
+
+    // Update background color
+    const bgColor = currentLobby.themeSettings?.backgroundColor ? 
+      parseInt(currentLobby.themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
+    appRef.current.renderer.background.color = bgColor
+
+    // Update grid (will use new colors on next redraw)
+    const gridColor = currentLobby.themeSettings?.gridColor ? 
+      parseInt(currentLobby.themeSettings.gridColor.replace('#', ''), 16) : 0x3b82f6
+    const gridOpacity = currentLobby.themeSettings?.gridOpacity ?? 0.2
+    
+    // Recreate updateGrid function with new colors
+    const grid = gridRef.current
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    
+    const newUpdateGrid = (cameraX: number, cameraY: number) => {
+      grid.clear()
+      grid.lineStyle(1, gridColor, gridOpacity)
+      
+      const gridSize = 50
+      const startX = Math.floor((cameraX - viewportWidth) / gridSize) * gridSize
+      const endX = Math.ceil((cameraX + viewportWidth * 2) / gridSize) * gridSize
+      const startY = Math.floor((cameraY - viewportHeight) / gridSize) * gridSize
+      const endY = Math.ceil((cameraY + viewportHeight * 2) / gridSize) * gridSize
+      
+      for (let x = startX; x <= endX; x += gridSize) {
+        grid.moveTo(x, startY)
+        grid.lineTo(x, endY)
+      }
+      for (let y = startY; y <= endY; y += gridSize) {
+        grid.moveTo(startX, y)
+        grid.lineTo(endX, y)
+      }
+    }
+    
+    updateGridRef.current = newUpdateGrid
+    
+    // Trigger immediate grid update
+    newUpdateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
+
+    // Update ThemeManager settings
+    if (themeManagerRef.current) {
+      const themeSettings = currentLobby.themeSettings
+      const particleColor = themeSettings?.particleColor ? 
+        parseInt(themeSettings.particleColor.replace('#', ''), 16) : 0xffffff
+      
+      themeManagerRef.current.updateConfig({
+        particleColor,
+        particlesEnabled: themeSettings?.particlesEnabled ?? true,
+        groundEnabled: themeSettings?.groundParticlesEnabled ?? true,
+        groundDensity: themeSettings?.groundElementDensity ?? 0.5,
+        groundElementScale: themeSettings?.groundElementScale ?? 0.0625,
+        groundElementScaleRange: themeSettings?.groundElementScaleRange ?? 0.025,
+      })
+
+      // Recreate particles with new settings
+      themeManagerRef.current.createParticles(viewportWidth, viewportHeight)
+
+      // Handle ground elements
+      if (themeSettings?.groundParticlesEnabled === false) {
+        // Clear ground elements if disabled
+        themeManagerRef.current.clearGroundElements()
+      } else if (themeSettings?.groundParticleUrls && themeSettings.groundParticleUrls.length > 0) {
+        // Use custom ground elements - this completely replaces the default ones
+        themeManagerRef.current.clearGroundElements() // Clear existing first
+        themeManagerRef.current.loadCustomGroundElements(themeSettings.groundParticleUrls)
+      } else {
+        // No custom URLs provided - reload default ground elements
+        themeManagerRef.current.clearGroundElements()
+        themeManagerRef.current.loadTheme() // This will load default ground elements
+      }
+    }
+  }, [currentLobby?.themeSettings])
 
   // Update traces visualization with fade effect
   useEffect(() => {
@@ -693,6 +821,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             lobbyHeight={window.innerHeight}
             zoom={zoom}
             worldOffset={worldOffset}
+            lobbyId={lobbyId}
           />
         </div>
       </div>
@@ -702,6 +831,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <p className="text-lobby-light text-sm">
           <span className="text-lobby-accent font-bold">{username}</span>
         </p>
+        {currentLobby && (
+          <p className="text-lobby-light/80 text-xs">
+            📍 {currentLobby.name} {isLobbyOwner && '(Owner)'}
+          </p>
+        )}
         <p className="text-lobby-light/60 text-xs">
           {Object.keys(otherUsers).length} other{Object.keys(otherUsers).length !== 1 ? 's' : ''} online
         </p>
@@ -712,11 +846,43 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           Zoom: {zoomRef.current.toFixed(2)}x
         </p>
         <button
-          onClick={onLeaveLobby}
-          className="mt-2 w-full bg-red-600/80 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+          onClick={() => {
+            // Reset camera to center of map
+            cameraPositionRef.current = { x: 0, y: 0 }
+            worldOffsetRef.current = { x: 0, y: 0 }
+            setWorldOffset({ x: 0, y: 0 })
+          }}
+          className="w-full mt-2 bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
         >
-          Leave Lobby
+          🎯 Recenter Camera
         </button>
+        <div className="flex gap-1 mt-1">
+          <button
+            onClick={onLeaveLobby}
+            className="flex-1 bg-red-600/80 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+          >
+            Leave
+          </button>
+          {isLobbyOwner && currentLobby && (
+            <button
+              onClick={() => setShowLobbyManagement(true)}
+              className="flex-1 bg-lobby-accent/80 hover:bg-lobby-accent text-lobby-dark px-3 py-1 rounded text-xs font-semibold transition-all"
+            >
+              Manage
+            </button>
+          )}
+        </div>
+        {currentLobby && (
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(currentLobby.id)
+              alert('Lobby ID copied! Share this with others to invite them.')
+            }}
+            className="w-full mt-1 bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+          >
+            📋 Copy Lobby ID
+          </button>
+        )}
       </div>
 
       {/* Trace Button */}
@@ -810,9 +976,86 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 <span>📍</span>
                 <span>Leave trace here</span>
               </button>
+              {isLobbyOwner && (
+                <button
+                  onClick={() => {
+                    setShowThemeCustomization(true)
+                    setContextMenu(null)
+                  }}
+                  className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2 border-t border-lobby-accent/20"
+                >
+                  <span>🎨</span>
+                  <span>Customize theme</span>
+                </button>
+              )}
             </div>
           </div>
         </>
+      )}
+
+      {/* Theme Customization Modal */}
+      {showThemeCustomization && currentLobby && (
+        <ThemeCustomization
+          lobby={currentLobby}
+          onClose={() => setShowThemeCustomization(false)}
+          onUpdate={() => {
+            // Reload lobby info to get updated theme
+            if (supabase) {
+              (supabase
+                .from('lobbies')
+                .select('*')
+                .eq('id', lobbyId)
+                .single() as any)
+                .then(({ data, error }: any) => {
+                  if (!error && data) {
+                    const lobby: Lobby = {
+                      id: data.id,
+                      name: data.name,
+                      ownerUserId: data.owner_user_id,
+                      passwordHash: data.password_hash,
+                      maxPlayers: data.max_players,
+                      isPublic: data.is_public,
+                      createdAt: data.created_at,
+                      updatedAt: data.updated_at,
+                      themeSettings: data.theme_settings,
+                    }
+                    setCurrentLobby(lobby)
+                  }
+                })
+            }
+          }}
+        />
+      )}
+
+      {/* Lobby Management Modal */}
+      {showLobbyManagement && currentLobby && (
+        <LobbyManagement
+          lobby={currentLobby}
+          onClose={() => setShowLobbyManagement(false)}
+          onUpdate={() => {
+            // Reload lobby info
+            if (supabase) {
+              (supabase!
+                .from('lobbies')
+                .select('*')
+                .eq('id', lobbyId)
+                .single() as any).then(({ data }: any) => {
+                  if (data) {
+                    setCurrentLobby({
+                      id: data.id,
+                      name: data.name,
+                      ownerUserId: data.owner_user_id,
+                      passwordHash: data.password_hash,
+                      maxPlayers: data.max_players,
+                      isPublic: data.is_public,
+                      createdAt: data.created_at,
+                      updatedAt: data.updated_at,
+                    })
+                  }
+                })
+            }
+          }}
+        />
       )}
     </div>
   )

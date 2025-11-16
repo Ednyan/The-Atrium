@@ -10,12 +10,13 @@ interface TraceOverlayProps {
   lobbyHeight: number
   zoom: number
   worldOffset: { x: number; y: number }
+  lobbyId?: string
 }
 
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop'
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset }: TraceOverlayProps) {
-  const { position, username, playerZIndex, playerColor, otherUsers } = useGameStore()
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId }: TraceOverlayProps) {
+  const { position, username, playerZIndex, playerColor, otherUsers, removeTrace, userId } = useGameStore()
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [playerMenuPosition, setPlayerMenuPosition] = useState({ x: 0, y: 0 })
@@ -123,10 +124,68 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const deleteTrace = async (traceId: string) => {
     if (!confirm('Are you sure you want to delete this trace?')) return
     
-    if (supabase) {
-      await supabase.from('traces').delete().eq('id', traceId)
-    }
+    // Immediately remove from local state for instant UI update
+    removeTrace(traceId)
     setContextMenu(null)
+    
+    // Then delete from database
+    if (supabase) {
+      await (supabase.from('traces') as any).delete().eq('id', traceId)
+    }
+  }
+
+  const duplicateTrace = async (traceId: string) => {
+    const trace = traces.find(t => t.id === traceId)
+    if (!trace || !supabase || !userId) return
+
+    setContextMenu(null)
+
+    // Create duplicate with slight offset
+    const offset = 50
+    const newTrace: any = {
+      user_id: userId,
+      username: username,
+      type: trace.type,
+      content: trace.content,
+      position_x: trace.x + offset,
+      position_y: trace.y + offset,
+      scale: trace.scale ?? 1.0,
+      rotation: trace.rotation ?? 0,
+      show_border: trace.showBorder ?? true,
+      show_background: trace.showBackground ?? true,
+      show_description: trace.showDescription ?? true,
+      show_filename: trace.showFilename ?? true,
+      font_size: trace.fontSize ?? 'medium',
+      font_family: trace.fontFamily ?? 'sans',
+      is_locked: false, // Never duplicate as locked
+      crop_x: trace.cropX ?? 0,
+      crop_y: trace.cropY ?? 0,
+      crop_width: trace.cropWidth ?? 1,
+      crop_height: trace.cropHeight ?? 1,
+      illuminate: trace.illuminate ?? false,
+      light_color: trace.lightColor ?? '#ffffff',
+      light_intensity: trace.lightIntensity ?? 1.0,
+      light_radius: trace.lightRadius ?? 200,
+      light_offset_x: trace.lightOffsetX ?? 0,
+      light_offset_y: trace.lightOffsetY ?? 0,
+      z_index: trace.zIndex ?? 0,
+    }
+
+    // Only add optional fields if they exist
+    if (trace.imageUrl) newTrace.image_url = trace.imageUrl
+    if (trace.mediaUrl) newTrace.media_url = trace.mediaUrl
+    if (trace.lightPulse !== undefined) newTrace.light_pulse = trace.lightPulse
+    if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
+    if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
+    if (trace.layerId) newTrace.layer_id = trace.layerId
+    if (lobbyId) newTrace.lobby_id = lobbyId
+
+    const { error } = await (supabase.from('traces') as any).insert(newTrace)
+    
+    if (error) {
+      console.error('Failed to duplicate trace:', error)
+      alert('Failed to duplicate trace: ' + error.message)
+    }
   }
 
   const updateTraceCustomization = async (traceId: string, updates: Partial<Trace>) => {
@@ -427,6 +486,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       return `https://www.youtube.com/embed/${match[1]}`
     }
     return url
+  }
+
+  // Extract iframe src from HTML embed code or return URL as-is
+  const extractEmbedUrl = (content: string): string | null => {
+    // Check if it's HTML embed code (contains <iframe)
+    if (content.includes('<iframe')) {
+      const srcMatch = content.match(/src=["']([^"']+)["']/)
+      if (srcMatch) {
+        return srcMatch[1]
+      }
+      return null
+    }
+    // It's a regular URL
+    return convertYouTubeUrl(content)
   }
 
   return (
@@ -743,40 +816,52 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               )}
 
               {/* Embed Content */}
-              {trace.type === 'embed' && trace.mediaUrl && (
-                <iframe
-                  src={convertYouTubeUrl(trace.mediaUrl)}
-                  className="w-full h-full select-none"
-                  style={{ 
-                    pointerEvents: trace.enableInteraction ? 'auto' : 'none',
-                    clipPath: trace.cropWidth && trace.cropWidth < 1 
-                      ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                      : undefined,
-                  }}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  onClick={(e) => {
-                    if (trace.enableInteraction) {
-                      e.stopPropagation() // Prevent trace selection when interacting
-                    }
-                  }}
-                  onDoubleClick={(e) => {
-                    if (trace.enableInteraction) {
-                      e.stopPropagation() // Prevent modal from opening
-                    }
-                  }}
-                  onLoad={() => {
-                    // Set standard 16:9 dimensions for embeds
-                    if (!imageDimensions[trace.id]) {
-                      console.log(`📐 Embed loaded for trace ${trace.id}: setting to 16:9 (1920x1080)`)
-                      setImageDimensions(prev => ({
-                        ...prev,
-                        [trace.id]: { width: 1920, height: 1080 }
-                      }))
-                    }
-                  }}
-                />
-              )}
+              {trace.type === 'embed' && trace.mediaUrl && (() => {
+                const embedUrl = extractEmbedUrl(trace.mediaUrl)
+                if (!embedUrl) {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center bg-black/50">
+                      <p className="text-white/60 text-sm">Invalid embed code</p>
+                    </div>
+                  )
+                }
+                return (
+                  <iframe
+                    src={embedUrl}
+                    width="3840"
+                    height="2160"
+                    className="w-full h-full select-none"
+                    style={{ 
+                      pointerEvents: trace.enableInteraction ? 'auto' : 'none',
+                      clipPath: trace.cropWidth && trace.cropWidth < 1 
+                        ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+                        : undefined,
+                    }}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    onClick={(e) => {
+                      if (trace.enableInteraction) {
+                        e.stopPropagation() // Prevent trace selection when interacting
+                      }
+                    }}
+                    onDoubleClick={(e) => {
+                      if (trace.enableInteraction) {
+                        e.stopPropagation() // Prevent modal from opening
+                      }
+                    }}
+                    onLoad={() => {
+                      // Set high-resolution 16:9 dimensions for embeds to prevent pixelation when scaled
+                      if (!imageDimensions[trace.id]) {
+                        console.log(`📐 Embed loaded for trace ${trace.id}: setting to 16:9 (3840x2160)`)
+                        setImageDimensions(prev => ({
+                          ...prev,
+                          [trace.id]: { width: 3840, height: 2160 }
+                        }))
+                      }
+                    }}
+                  />
+                )
+              })()}
 
               {/* Text Content */}
               {trace.type === 'text' && (
@@ -1141,6 +1226,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </button>
             <div className="h-px bg-lobby-accent/30 my-1" />
             <button
+              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              onClick={() => {
+                console.log('Duplicate clicked')
+                duplicateTrace(contextMenu.traceId)
+              }}
+            >
+              📋 Duplicate
+            </button>
+            <button
               className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-500/20 transition-colors flex items-center gap-2"
               onClick={() => {
                 console.log('Delete clicked')
@@ -1319,9 +1413,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'embed' && (
                 <>
                   <div>
-                    <label className="block text-white mb-2">Embed URL</label>
-                    <input
-                      type="text"
+                    <label className="block text-white mb-2">Embed URL or HTML Code</label>
+                    <textarea
                       value={editingTrace.mediaUrl ?? ''}
                       onChange={(e) => {
                         const updated = { ...editingTrace, mediaUrl: e.target.value }
@@ -1330,9 +1423,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
                       }}
-                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
-                      placeholder="https://youtube.com/watch?v=..."
+                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2 font-mono text-sm"
+                      placeholder="URL or <iframe src='...'></iframe>"
+                      rows={4}
                     />
+                    <p className="text-white/40 text-xs mt-1">
+                      Direct URL or full embed code
+                    </p>
                   </div>
 
                   <div>
@@ -1616,14 +1713,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
-              {modalTrace.type === 'embed' && modalTrace.mediaUrl && (
-                <iframe
-                  src={convertYouTubeUrl(modalTrace.mediaUrl)}
-                  className="w-full h-96 rounded-lg"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              )}
+              {modalTrace.type === 'embed' && modalTrace.mediaUrl && (() => {
+                const embedUrl = extractEmbedUrl(modalTrace.mediaUrl)
+                if (!embedUrl) {
+                  return (
+                    <div className="w-full h-96 flex items-center justify-center bg-black/50 rounded-lg">
+                      <p className="text-white/60">Invalid embed code</p>
+                    </div>
+                  )
+                }
+                return (
+                  <iframe
+                    src={embedUrl}
+                    className="w-full h-96 rounded-lg"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                )
+              })()}
 
               {modalTrace.type === 'text' && (
                 <div className="bg-black/40 p-6 rounded-lg">

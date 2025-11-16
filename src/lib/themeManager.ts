@@ -5,6 +5,11 @@ export interface ThemeConfig {
   particles: string[] // Paths to particle images
   particleCount: number // Number of floating particles
   groundDensity: number // Elements per 1000x1000 area
+  particleColor?: number // Hex color for particles
+  particlesEnabled?: boolean // Toggle particles
+  groundEnabled?: boolean // Toggle ground elements
+  groundElementScale?: number // Base scale for ground elements
+  groundElementScaleRange?: number // Random scale variation range
 }
 
 export interface GroundElement {
@@ -28,6 +33,11 @@ const DEFAULT_THEME: ThemeConfig = {
   particles: [],
   particleCount: 50,
   groundDensity: 0.5, // 0.5 elements per 1000x1000 pixels
+  particleColor: 0xffffff,
+  particlesEnabled: true,
+  groundEnabled: true,
+  groundElementScale: 0.0625,
+  groundElementScaleRange: 0.025,
 }
 
 export class ThemeManager {
@@ -47,6 +57,12 @@ export class ThemeManager {
     this.groundContainer = new PIXI.Container()
     this.particleContainer = new PIXI.Container()
     
+    // Disable mouse interaction on ground and particle containers
+    this.groundContainer.eventMode = 'none'
+    this.groundContainer.interactiveChildren = false
+    this.particleContainer.eventMode = 'none'
+    this.particleContainer.interactiveChildren = false
+    
     // Add at specific indices for proper layering:
     // 0: Grid
     // 1: Ground elements (below lighting)
@@ -63,10 +79,15 @@ export class ThemeManager {
     // Try to load ground elements
     const groundPaths = await this.discoverAssets('/themes/ground')
     
-    this.config.groundElements = groundPaths
+    // Only set default ground elements if not already set by custom URLs
+    if (this.config.groundElements.length === 0) {
+      this.config.groundElements = groundPaths
+    }
 
     // Load textures for ground elements only
-    for (const path of groundPaths) {
+    for (const path of this.config.groundElements) {
+      if (this.loadedTextures.has(path)) continue
+      
       try {
         const texture = await PIXI.Texture.from(path)
         this.loadedTextures.set(path, texture)
@@ -75,7 +96,7 @@ export class ThemeManager {
       }
     }
     
-    console.log(`🎨 Theme loaded: ${groundPaths.length} ground elements`)
+    console.log(`🎨 Theme loaded: ${this.config.groundElements.length} ground elements`)
   }
 
   private async discoverAssets(basePath: string): Promise<string[]> {
@@ -116,6 +137,10 @@ export class ThemeManager {
   }
 
   generateGroundElements(minX: number, minY: number, maxX: number, maxY: number, playerX: number, playerY: number, traces: Array<{x: number, y: number}>) {
+    if (!this.config.groundEnabled) {
+      return
+    }
+    
     if (this.config.groundElements.length === 0) {
       console.log('⚠️ No ground elements loaded')
       return
@@ -195,8 +220,10 @@ export class ThemeManager {
     sprite.x = worldX + offsetX
     sprite.y = worldY + offsetY
     
-    // Random scale (much smaller: 0.15 to 0.25)
-    const scale = 0.05 + this.seededRandom(worldX * 0.3, worldY * 0.6) * 0.025
+    // Random scale using config values (always positive)
+    const baseScale = this.config.groundElementScale ?? 0.0625
+    const scaleRange = this.config.groundElementScaleRange ?? 0.025
+    const scale = baseScale + this.seededRandom(worldX * 0.3, worldY * 0.6) * scaleRange
     sprite.scale.set(scale)
     
     // Start invisible for fade in
@@ -213,6 +240,20 @@ export class ThemeManager {
   }
 
   createParticles(viewportWidth: number, viewportHeight: number) {
+    // Clear existing particles
+    this.particles.forEach(p => {
+      this.particleContainer.removeChild(p.sprite)
+      p.sprite.destroy()
+    })
+    this.particles = []
+
+    if (!this.config.particlesEnabled) {
+      console.log('✨ Particles disabled')
+      return
+    }
+
+    const particleColor = this.config.particleColor ?? 0xffffff
+
     // Create simple circle particles (dust-like)
     for (let i = 0; i < this.config.particleCount; i++) {
       const graphics = new PIXI.Graphics()
@@ -221,12 +262,12 @@ export class ThemeManager {
       const size = 2 + Math.random() * 4
       
       // Draw glowing circle
-      graphics.beginFill(0xffffff, 0.3 + Math.random() * 0.3)
+      graphics.beginFill(particleColor, 0.3 + Math.random() * 0.3)
       graphics.drawCircle(0, 0, size)
       graphics.endFill()
       
       // Add glow effect with outer circle
-      graphics.lineStyle(1, 0xffffff, 0.1)
+      graphics.lineStyle(1, particleColor, 0.1)
       graphics.drawCircle(0, 0, size + 2)
       
       // Random position in viewport
@@ -412,5 +453,88 @@ export class ThemeManager {
     this.groundContainer.destroy({ children: true })
     this.particleContainer.destroy({ children: true })
     this.loadedTextures.clear()
+  }
+
+  // Update theme configuration
+  updateConfig(config: Partial<ThemeConfig>) {
+    this.config = { ...this.config, ...config }
+  }
+
+  // Load custom ground element URLs
+  async loadCustomGroundElements(urls: string[]) {
+    if (!urls || urls.length === 0) {
+      console.log('⚠️ No custom ground URLs provided')
+      return
+    }
+
+    console.log(`🎨 Loading ${urls.length} custom ground element(s)...`)
+
+    // Replace ground elements with custom URLs (completely replace, don't merge)
+    this.config.groundElements = []
+
+    // Clear ALL old textures
+    this.loadedTextures.clear()
+
+    // Load textures for custom URLs with CORS support
+    const successCount = { count: 0 }
+    const failedUrls: string[] = []
+
+    for (const url of urls) {
+      try {
+        // Create image element with crossOrigin to handle CORS
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 5000)
+          img.onload = () => {
+            clearTimeout(timeout)
+            resolve(null)
+          }
+          img.onerror = () => {
+            clearTimeout(timeout)
+            reject(new Error('Failed to load image'))
+          }
+          img.src = url
+        })
+
+        const texture = await PIXI.Texture.from(img)
+        
+        // Verify texture is valid before adding
+        if (texture && texture.valid) {
+          this.loadedTextures.set(url, texture)
+          this.config.groundElements.push(url)
+          successCount.count++
+          console.log(`✅ Loaded custom ground element: ${url}`)
+        } else {
+          throw new Error('Invalid texture')
+        }
+      } catch (e) {
+        failedUrls.push(url)
+        console.error(`❌ Failed to load ground element: ${url}`, e)
+      }
+    }
+
+    if (successCount.count > 0) {
+      console.log(`✅ Successfully loaded ${successCount.count}/${urls.length} ground elements`)
+    }
+    
+    if (failedUrls.length > 0) {
+      console.warn(`⚠️ Failed to load ${failedUrls.length} ground element(s):`, failedUrls)
+      const failedList = failedUrls.map(url => {
+        const shortUrl = url.length > 50 ? url.substring(0, 50) + '...' : url
+        return `• ${shortUrl}`
+      }).join('\n')
+      alert(`Failed to load ${failedUrls.length} ground image(s):\n\n${failedList}\n\nCORS Issue: Some sites (Pinterest, Instagram) block cross-origin image loading.\n\nSolutions:\n• Use imgur.com (upload your image there)\n• Use i.imgur.com direct links\n• Use your own server\n• Use local files in /public/themes/ground/`)
+    }
+  }
+
+  // Clear all ground elements (useful when disabling ground)
+  clearGroundElements() {
+    this.groundElements.forEach(element => {
+      this.groundContainer.removeChild(element.sprite)
+      element.sprite.destroy()
+    })
+    this.groundElements = []
   }
 }

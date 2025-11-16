@@ -127,6 +127,19 @@ export interface Profile {
   activeLobbyId?: string | null
 }
 
+export interface ThemeSettings {
+  gridColor?: string
+  gridOpacity?: number
+  backgroundColor?: string
+  particlesEnabled?: boolean
+  particleColor?: string
+  groundParticlesEnabled?: boolean
+  groundParticleUrls?: string[]
+  groundElementScale?: number
+  groundElementScaleRange?: number
+  groundElementDensity?: number
+}
+
 export interface Lobby {
   id: string
   name: string
@@ -136,6 +149,7 @@ export interface Lobby {
   isPublic: boolean
   createdAt: string
   updatedAt: string
+  themeSettings?: ThemeSettings | null
 }
 
 export interface LobbyAccessList {

@@ -113,10 +113,10 @@ function App() {
       }
 
       // Update user's active lobby
-      await (supabase
-        .from('profiles')
+      await (supabase!
+        .from('profiles') as any)
         .update({ active_lobby_id: lobbyId })
-        .eq('id', user.id) as any)
+        .eq('id', user.id)
 
       setCurrentLobbyId(lobbyId)
       setShowLobbyBrowser(false)
