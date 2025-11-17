@@ -235,12 +235,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   <label className="block text-sm text-lobby-light">
                     Ground Element URLs (images that will appear on the ground)
                   </label>
-                  <div className="bg-yellow-900/20 border border-yellow-600/30 rounded p-2 mb-2">
-                    <p className="text-yellow-200 text-xs">
-                      ⚠️ <strong>CORS Limitation:</strong> Pinterest/Instagram images don't work for ground particles (they DO work as trace embeds though!)
+                  <div className="bg-blue-900/20 border border-blue-600/30 rounded p-2 mb-2">
+                    <p className="text-blue-200 text-xs">
+                      ✨ <strong>Image Proxy:</strong> Most image URLs now work, including Pinterest, Google Images, and Reddit!
                     </p>
-                    <p className="text-yellow-200/80 text-xs mt-1">
-                      ✅ <strong>Works great:</strong> imgur.com, i.imgur.com, your own server, or local files
+                    <p className="text-blue-200/80 text-xs mt-1">
+                      🚀 The system automatically retries failed images through a proxy to bypass CORS restrictions.
                     </p>
                   </div>
                   <div className="flex gap-2">

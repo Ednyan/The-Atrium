@@ -481,7 +481,7 @@ export class ThemeManager {
 
     for (const url of urls) {
       try {
-        // Create image element with crossOrigin to handle CORS
+        // Try method 1: Direct loading with CORS
         const img = new Image()
         img.crossOrigin = 'anonymous'
         
@@ -493,7 +493,7 @@ export class ThemeManager {
           }
           img.onerror = () => {
             clearTimeout(timeout)
-            reject(new Error('Failed to load image'))
+            reject(new Error('CORS blocked'))
           }
           img.src = url
         })
@@ -509,9 +509,43 @@ export class ThemeManager {
         } else {
           throw new Error('Invalid texture')
         }
-      } catch (e) {
-        failedUrls.push(url)
-        console.error(`❌ Failed to load ground element: ${url}`, e)
+      } catch (firstError) {
+        // Method 2: Try using proxy for CORS-blocked images
+        try {
+          console.log(`🔄 Retrying with proxy for: ${url}`)
+          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+          
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timeout')), 10000)
+            img.onload = () => {
+              clearTimeout(timeout)
+              resolve(null)
+            }
+            img.onerror = () => {
+              clearTimeout(timeout)
+              reject(new Error('Proxy failed'))
+            }
+            img.src = proxyUrl
+          })
+
+          const texture = await PIXI.Texture.from(img)
+          
+          if (texture && texture.valid) {
+            // Store with original URL as key
+            this.loadedTextures.set(url, texture)
+            this.config.groundElements.push(url)
+            successCount.count++
+            console.log(`✅ Loaded via proxy: ${url}`)
+          } else {
+            throw new Error('Invalid texture from proxy')
+          }
+        } catch (proxyError) {
+          failedUrls.push(url)
+          console.error(`❌ Failed to load ground element (both methods): ${url}`, proxyError)
+        }
       }
     }
 
@@ -525,7 +559,7 @@ export class ThemeManager {
         const shortUrl = url.length > 50 ? url.substring(0, 50) + '...' : url
         return `• ${shortUrl}`
       }).join('\n')
-      alert(`Failed to load ${failedUrls.length} ground image(s):\n\n${failedList}\n\nCORS Issue: Some sites (Pinterest, Instagram) block cross-origin image loading.\n\nSolutions:\n• Use imgur.com (upload your image there)\n• Use i.imgur.com direct links\n• Use your own server\n• Use local files in /public/themes/ground/`)
+      alert(`Failed to load ${failedUrls.length} ground image(s):\n\n${failedList}\n\nThe images may be completely inaccessible or the proxy failed.`)
     }
   }
 
