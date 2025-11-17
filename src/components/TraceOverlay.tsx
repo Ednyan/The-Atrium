@@ -29,6 +29,33 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   
+  // Helper to check if URL needs proxy (Reddit, Pinterest, etc.)
+  const needsProxy = (url: string | null | undefined): boolean => {
+    if (!url) return false
+    const lowerUrl = url.toLowerCase()
+    return lowerUrl.includes('reddit.com') || 
+           lowerUrl.includes('redd.it') || 
+           lowerUrl.includes('pinterest.com') ||
+           lowerUrl.includes('pinimg.com')
+  }
+  
+  // Helper to get image source (with proxy if needed)
+  const getImageSrc = (trace: Trace): string => {
+    const originalUrl = trace.mediaUrl || trace.imageUrl || ''
+    
+    // If already using proxy for this trace, return proxy URL
+    if (imageProxySources[trace.id]) {
+      return imageProxySources[trace.id]
+    }
+    
+    // If URL needs proxy, return proxy URL immediately
+    if (needsProxy(originalUrl)) {
+      return `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
+    }
+    
+    return originalUrl
+  }
+  
   const startPosRef = useRef({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
   const startCropRef = useRef({ cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 })
@@ -738,7 +765,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Image Content */}
               {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && (
                 <img
-                  src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
+                  src={getImageSrc(trace)}
                   alt={trace.content || 'Trace image'}
                   className="w-full h-full object-contain pointer-events-none select-none"
                   style={{ 
@@ -1706,7 +1733,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <div className="mb-4">
               {modalTrace.type === 'image' && (modalTrace.mediaUrl || modalTrace.imageUrl) && (
                 <img
-                  src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl || modalTrace.imageUrl}
+                  src={getImageSrc(modalTrace)}
                   alt={modalTrace.content || 'Trace image'}
                   className="w-full max-h-96 object-contain rounded-lg"
                   onError={() => {
