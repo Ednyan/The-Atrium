@@ -741,6 +741,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
                   alt={trace.content || 'Trace image'}
                   className="w-full h-full object-contain pointer-events-none select-none"
+                  crossOrigin="anonymous"
                   style={{ 
                     clipPath: trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
@@ -753,20 +754,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ...prev,
                         [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
                       }))
+                      console.log(`✅ Trace image loaded: ${trace.id}`)
                     }
                   }}
                   onError={(e) => {
                     const originalUrl = trace.mediaUrl || trace.imageUrl
+                    console.log(`❌ Image load error for trace ${trace.id}`, originalUrl)
+                    console.log(`Already using proxy?`, !!imageProxySources[trace.id])
                     // If not already using proxy, try with proxy
                     if (!imageProxySources[trace.id] && originalUrl) {
-                      console.log(`Retrying with proxy for trace image: ${originalUrl}`)
+                      console.log(`🔄 Retrying with proxy for trace image: ${originalUrl}`)
                       const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
                       setImageProxySources(prev => ({
                         ...prev,
                         [trace.id]: proxyUrl
                       }))
                     } else {
-                      console.error('Failed to load image (proxy also failed):', originalUrl)
+                      console.error('❌ Failed to load image (proxy also failed):', originalUrl)
                       e.currentTarget.style.display = 'none'
                     }
                   }}
