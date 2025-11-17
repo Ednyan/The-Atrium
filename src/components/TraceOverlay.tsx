@@ -27,6 +27,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [modalTrace, setModalTrace] = useState<Trace | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
+  const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   
   const startPosRef = useRef({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
@@ -737,7 +738,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Image Content */}
               {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && (
                 <img
-                  src={trace.mediaUrl || trace.imageUrl}
+                  src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
                   alt={trace.content || 'Trace image'}
                   className="w-full h-full object-contain pointer-events-none select-none"
                   style={{ 
@@ -755,8 +756,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     }
                   }}
                   onError={(e) => {
-                    console.error('Failed to load image:', trace.mediaUrl || trace.imageUrl)
-                    e.currentTarget.style.display = 'none'
+                    const originalUrl = trace.mediaUrl || trace.imageUrl
+                    // If not already using proxy, try with proxy
+                    if (!imageProxySources[trace.id] && originalUrl) {
+                      console.log(`Retrying with proxy for trace image: ${originalUrl}`)
+                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
+                      setImageProxySources(prev => ({
+                        ...prev,
+                        [trace.id]: proxyUrl
+                      }))
+                    } else {
+                      console.error('Failed to load image (proxy also failed):', originalUrl)
+                      e.currentTarget.style.display = 'none'
+                    }
                   }}
                 />
               )}
@@ -1691,9 +1703,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <div className="mb-4">
               {modalTrace.type === 'image' && modalTrace.mediaUrl && (
                 <img
-                  src={modalTrace.mediaUrl}
+                  src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
                   alt={modalTrace.content || 'Trace image'}
                   className="w-full max-h-96 object-contain rounded-lg"
+                  onError={() => {
+                    const originalUrl = modalTrace.mediaUrl
+                    if (!imageProxySources[modalTrace.id] && originalUrl) {
+                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
+                      setImageProxySources(prev => ({
+                        ...prev,
+                        [modalTrace.id]: proxyUrl
+                      }))
+                    } else {
+                      console.error('Failed to load modal image:', originalUrl)
+                    }
+                  }}
                 />
               )}
 
