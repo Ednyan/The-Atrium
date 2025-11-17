@@ -1701,14 +1701,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
             {/* Full content */}
             <div className="mb-4">
-              {modalTrace.type === 'image' && modalTrace.mediaUrl && (
+              {modalTrace.type === 'image' && (modalTrace.mediaUrl || modalTrace.imageUrl) && (
                 <img
-                  src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
+                  src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl || modalTrace.imageUrl}
                   alt={modalTrace.content || 'Trace image'}
                   className="w-full max-h-96 object-contain rounded-lg"
                   onError={() => {
-                    const originalUrl = modalTrace.mediaUrl
+                    const originalUrl = modalTrace.mediaUrl || modalTrace.imageUrl
                     if (!imageProxySources[modalTrace.id] && originalUrl) {
+                      console.log(`Retrying modal image with proxy: ${originalUrl}`)
                       const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
                       setImageProxySources(prev => ({
                         ...prev,
