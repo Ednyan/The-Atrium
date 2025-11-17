@@ -103,7 +103,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // Keep otherUsers ref in sync
   useEffect(() => {
     otherUsersRef.current = otherUsers
-    console.log('📊 otherUsers updated in state:', Object.keys(otherUsers).length, 'users')
   }, [otherUsers])
   
   // Handle closing trace panel

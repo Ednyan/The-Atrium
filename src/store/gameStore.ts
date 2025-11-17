@@ -51,7 +51,6 @@ export const useGameStore = create<GameState>((set) => ({
   
   updateOtherUser: (userId, presence) =>
     set((state) => {
-      console.log('🔄 Store: Updated other user', userId, presence)
       return { 
         otherUsers: { 
           ...state.otherUsers, 
@@ -75,23 +74,19 @@ export const useGameStore = create<GameState>((set) => ({
         // Update existing trace
         const newTraces = [...state.traces]
         newTraces[existingIndex] = trace
-        console.log('🔄 Store: Updated trace', trace.id)
         return { traces: newTraces }
       } else {
         // Add new trace
-        console.log('✨ Store: Added new trace', trace.id)
         return { traces: [...state.traces, trace] }
       }
     }),
   
   removeTrace: (traceId) =>
     set((state) => {
-      console.log('🗑️ Store: Removing trace', traceId)
       return { traces: state.traces.filter(t => t.id !== traceId) }
     }),
   
   setTraces: (traces) => {
-    console.log('📦 Store: Set traces', traces.length, 'total')
     set({ traces })
   },
 }))
