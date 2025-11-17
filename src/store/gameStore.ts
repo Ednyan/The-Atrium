@@ -63,7 +63,6 @@ export const useGameStore = create<GameState>((set) => ({
   removeOtherUser: (userId) =>
     set((state) => {
       const { [userId]: removed, ...rest } = state.otherUsers
-      console.log('❌ Store: Removed other user', userId)
       return { otherUsers: rest }
     }),
   

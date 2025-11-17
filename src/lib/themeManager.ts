@@ -119,14 +119,13 @@ export class ThemeManager {
         const response = await fetch(path, { method: 'HEAD' })
         if (response.ok) {
           discovered.push(path)
-          console.log(`✅ Found ground element: ${filename}`)
         }
       } catch (e) {
         // File doesn't exist, skip
       }
     }
 
-    console.log(`🎨 Discovered ${discovered.length} ground elements`)
+    // Discovered ${discovered.length} ground elements
     return discovered
   }
 
@@ -142,7 +141,6 @@ export class ThemeManager {
     }
     
     if (this.config.groundElements.length === 0) {
-      console.log('⚠️ No ground elements loaded')
       return
     }
 
@@ -194,9 +192,7 @@ export class ThemeManager {
       }
     }
     
-    if (created > 0 || checked > 0) {
-      console.log(`🌱 Generation: checked ${checked} cells, skipped ${skippedFar} (too far), created ${created} new elements. Total traces: ${traces.length}`)
-    }
+    // Silent generation - only log if there are issues
   }
 
   private createGroundElement(worldX: number, worldY: number) {
@@ -463,11 +459,8 @@ export class ThemeManager {
   // Load custom ground element URLs
   async loadCustomGroundElements(urls: string[]) {
     if (!urls || urls.length === 0) {
-      console.log('⚠️ No custom ground URLs provided')
       return
     }
-
-    console.log(`🎨 Loading ${urls.length} custom ground element(s)...`)
 
     // Replace ground elements with custom URLs (completely replace, don't merge)
     this.config.groundElements = []
@@ -505,14 +498,12 @@ export class ThemeManager {
           this.loadedTextures.set(url, texture)
           this.config.groundElements.push(url)
           successCount.count++
-          console.log(`✅ Loaded custom ground element: ${url}`)
         } else {
           throw new Error('Invalid texture')
         }
       } catch (firstError) {
         // Method 2: Try using proxy for CORS-blocked images
         try {
-          console.log(`🔄 Retrying with proxy for: ${url}`)
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           
           const img = new Image()
@@ -538,20 +529,19 @@ export class ThemeManager {
             this.loadedTextures.set(url, texture)
             this.config.groundElements.push(url)
             successCount.count++
-            console.log(`✅ Loaded via proxy: ${url}`)
           } else {
             throw new Error('Invalid texture from proxy')
           }
         } catch (proxyError) {
           failedUrls.push(url)
-          console.error(`❌ Failed to load ground element (both methods): ${url}`, proxyError)
+          const directMsg = firstError instanceof Error ? firstError.message : String(firstError)
+          const proxyMsg = proxyError instanceof Error ? proxyError.message : String(proxyError)
+          console.error(`Failed to load: ${url}`, { direct: directMsg, proxy: proxyMsg })
         }
       }
     }
 
-    if (successCount.count > 0) {
-      console.log(`✅ Successfully loaded ${successCount.count}/${urls.length} ground elements`)
-    }
+    // Loaded ${successCount.count}/${urls.length} ground elements
     
     if (failedUrls.length > 0) {
       console.warn(`⚠️ Failed to load ${failedUrls.length} ground element(s):`, failedUrls)
