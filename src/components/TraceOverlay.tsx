@@ -741,7 +741,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
                   alt={trace.content || 'Trace image'}
                   className="w-full h-full object-contain pointer-events-none select-none"
-                  crossOrigin="anonymous"
                   style={{ 
                     clipPath: trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
