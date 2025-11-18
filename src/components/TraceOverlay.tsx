@@ -34,6 +34,54 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const startCropRef = useRef({ cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 })
   const centerRef = useRef({ x: 0, y: 0 })
 
+  // Proactively test image URLs and use proxy for blocked ones
+  useEffect(() => {
+    traces.forEach(trace => {
+      if (trace.type === 'image' && (trace.mediaUrl || trace.imageUrl)) {
+        const url = trace.mediaUrl || trace.imageUrl
+        
+        // Skip if already processed
+        if (imageProxySources[trace.id] !== undefined || !url) return
+        
+        // Try loading the image
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        
+        const timeout = setTimeout(() => {
+          // If image hasn't loaded in 3 seconds, switch to proxy
+          if (!img.complete) {
+            const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+            setImageProxySources(prev => ({
+              ...prev,
+              [trace.id]: proxyUrl
+            }))
+          }
+        }, 3000)
+        
+        img.onload = () => {
+          clearTimeout(timeout)
+          // Mark as successfully loaded directly (empty string means use original)
+          setImageProxySources(prev => ({
+            ...prev,
+            [trace.id]: ''
+          }))
+        }
+        
+        img.onerror = () => {
+          clearTimeout(timeout)
+          // Failed to load, use proxy
+          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+          setImageProxySources(prev => ({
+            ...prev,
+            [trace.id]: proxyUrl
+          }))
+        }
+        
+        img.src = url
+      }
+    })
+  }, [traces, imageProxySources])
+
   // Calculate lighting influence on a trace
   // Log when traces change
   useEffect(() => {
@@ -740,6 +788,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <img
                   src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
                   alt={trace.content || 'Trace image'}
+                  crossOrigin="anonymous"
                   className="w-full h-full object-contain pointer-events-none select-none"
                   style={{ 
                     clipPath: trace.cropWidth && trace.cropWidth < 1 
@@ -753,21 +802,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ...prev,
                         [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
                       }))
-                    }
-                  }}
-                  onError={(e) => {
-                    const originalUrl = trace.mediaUrl || trace.imageUrl
-                    // If not already using proxy, try with proxy
-                    if (!imageProxySources[trace.id] && originalUrl) {
-                      console.log(`Retrying with proxy for trace image: ${originalUrl}`)
-                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
-                      setImageProxySources(prev => ({
-                        ...prev,
-                        [trace.id]: proxyUrl
-                      }))
-                    } else {
-                      console.error('Failed to load image (proxy also failed):', originalUrl)
-                      e.currentTarget.style.display = 'none'
                     }
                   }}
                 />
@@ -1705,19 +1739,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <img
                   src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
                   alt={modalTrace.content || 'Trace image'}
+                  crossOrigin="anonymous"
                   className="w-full max-h-96 object-contain rounded-lg"
-                  onError={() => {
-                    const originalUrl = modalTrace.mediaUrl
-                    if (!imageProxySources[modalTrace.id] && originalUrl) {
-                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalUrl)}`
-                      setImageProxySources(prev => ({
-                        ...prev,
-                        [modalTrace.id]: proxyUrl
-                      }))
-                    } else {
-                      console.error('Failed to load modal image:', originalUrl)
-                    }
-                  }}
                 />
               )}
 
