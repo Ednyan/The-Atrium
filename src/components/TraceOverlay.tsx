@@ -43,7 +43,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Skip if already processed
         if (imageProxySources[trace.id] !== undefined || !url) return
         
-        // Try loading the image
+        // Check if URL is likely a direct image (ends with image extension)
+        const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(url)
+        
+        if (!isDirectImage) {
+          // Not a direct image URL (likely a page URL like reddit.com/...)
+          // Always use proxy for non-direct image URLs
+          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+          setImageProxySources(prev => ({
+            ...prev,
+            [trace.id]: proxyUrl
+          }))
+          return
+        }
+        
+        // For direct image URLs, try loading normally first
         const img = new Image()
         img.crossOrigin = 'anonymous'
         
