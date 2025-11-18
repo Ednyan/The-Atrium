@@ -37,11 +37,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // Proactively test image URLs and use proxy for blocked ones
   useEffect(() => {
     traces.forEach(trace => {
-      if (trace.type === 'image' && (trace.mediaUrl || trace.imageUrl)) {
+      // Handle both 'image' type and 'embed' type that contains direct image URLs
+      if ((trace.type === 'image' || trace.type === 'embed') && (trace.mediaUrl || trace.imageUrl)) {
         const url = trace.mediaUrl || trace.imageUrl
         
         // Skip if already processed
         if (imageProxySources[trace.id] !== undefined || !url) return
+        
+        console.log(`Testing ${trace.type} URL for trace ${trace.id}:`, url)
         
         // Check if URL is likely a direct image (ends with image extension)
         const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(url)
@@ -49,6 +52,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         if (!isDirectImage) {
           // Not a direct image URL (likely a page URL like reddit.com/...)
           // Always use proxy for non-direct image URLs
+          console.log(`Not a direct image URL, using proxy immediately`)
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           setImageProxySources(prev => ({
             ...prev,
@@ -57,6 +61,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return
         }
         
+        console.log(`Direct image URL detected, trying direct load first...`)
+        
         // For direct image URLs, try loading normally first
         const img = new Image()
         img.crossOrigin = 'anonymous'
@@ -64,6 +70,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const timeout = setTimeout(() => {
           // If image hasn't loaded in 3 seconds, switch to proxy
           if (!img.complete) {
+            console.log(`Image load timeout, switching to proxy`)
             const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
             setImageProxySources(prev => ({
               ...prev,
@@ -74,6 +81,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         img.onload = () => {
           clearTimeout(timeout)
+          console.log(`Image loaded successfully via direct URL`)
           // Mark as successfully loaded directly (empty string means use original)
           setImageProxySources(prev => ({
             ...prev,
@@ -83,6 +91,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         img.onerror = () => {
           clearTimeout(timeout)
+          console.log(`Image failed to load directly, using proxy`)
           // Failed to load, use proxy
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           setImageProxySources(prev => ({
@@ -877,6 +886,36 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {/* Embed Content */}
               {trace.type === 'embed' && trace.mediaUrl && (() => {
+                // Check if the embed URL is actually a direct image
+                const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
+                
+                if (isDirectImage) {
+                  // Render as image, not iframe
+                  return (
+                    <img
+                      src={imageProxySources[trace.id] || trace.mediaUrl}
+                      alt={trace.content || 'Embedded image'}
+                      crossOrigin="anonymous"
+                      className="w-full h-full object-contain pointer-events-none select-none"
+                      style={{ 
+                        clipPath: trace.cropWidth && trace.cropWidth < 1 
+                          ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+                          : undefined,
+                      }}
+                      onLoad={(e) => {
+                        const img = e.currentTarget
+                        if (img.naturalWidth && img.naturalHeight) {
+                          setImageDimensions(prev => ({
+                            ...prev,
+                            [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
+                          }))
+                        }
+                      }}
+                    />
+                  )
+                }
+                
+                // Otherwise, treat as iframe embed
                 const embedUrl = extractEmbedUrl(trace.mediaUrl)
                 if (!embedUrl) {
                   return (
