@@ -402,6 +402,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const startScaleX = (startTransformRef.current as any).scaleX ?? (startTransformRef.current as any).scale ?? 1
       const startScaleY = (startTransformRef.current as any).scaleY ?? (startTransformRef.current as any).scale ?? 1
       
+      // Check if this is a shape - if so, modify width/height instead of scale
+      const isShape = trace.type === 'shape'
+      const shapeWidth = trace.width || 200
+      const shapeHeight = trace.height || 200
+      
       // Check if corner drag (diagonal) - should preserve aspect ratio
       const isCorner = startPosRef.current.corner.length === 2 // 'tl', 'tr', 'bl', 'br'
       
@@ -418,28 +423,56 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         )
         
         const scaleFactor = currentDist / startDist
-        const newScale = Math.max(0.1, startScaleX * scaleFactor)
         
-        updateTraceTransform(selectedTraceId, { scaleX: newScale, scaleY: newScale })
+        if (isShape) {
+          // For shapes, modify actual width/height proportionally
+          const newWidth = Math.max(20, Math.round(shapeWidth * scaleFactor))
+          const newHeight = Math.max(20, Math.round(shapeHeight * scaleFactor))
+          updateTraceCustomization(selectedTraceId, { width: newWidth, height: newHeight })
+        } else {
+          // For other traces, use scale transform
+          const newScale = Math.max(0.1, startScaleX * scaleFactor)
+          updateTraceTransform(selectedTraceId, { scaleX: newScale, scaleY: newScale })
+        }
       } else {
         // Non-uniform scaling for edges (horizontal/vertical only)
         const corner = startPosRef.current.corner
-        let newScaleX = startScaleX
-        let newScaleY = startScaleY
         
-        const sensitivity = 0.01
-        
-        if (corner === 'l' || corner === 'r') {
-          // Horizontal edge - scale X only
-          const sign = corner === 'r' ? 1 : -1
-          newScaleX = Math.max(0.1, startScaleX * (1 + deltaX * sensitivity * sign))
-        } else if (corner === 't' || corner === 'b') {
-          // Vertical edge - scale Y only
-          const sign = corner === 'b' ? 1 : -1
-          newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
-        }
+        if (isShape) {
+          // For shapes, directly modify width or height
+          let newWidth = shapeWidth
+          let newHeight = shapeHeight
+          
+          if (corner === 'l' || corner === 'r') {
+            // Horizontal edge - change width only
+            const widthDelta = (deltaX / zoom) * (corner === 'r' ? 1 : -1)
+            newWidth = Math.max(20, Math.round(shapeWidth + widthDelta))
+          } else if (corner === 't' || corner === 'b') {
+            // Vertical edge - change height only
+            const heightDelta = (deltaY / zoom) * (corner === 'b' ? 1 : -1)
+            newHeight = Math.max(20, Math.round(shapeHeight + heightDelta))
+          }
+          
+          updateTraceCustomization(selectedTraceId, { width: newWidth, height: newHeight })
+        } else {
+          // For other traces, use scale transform
+          let newScaleX = startScaleX
+          let newScaleY = startScaleY
+          
+          const sensitivity = 0.01
+          
+          if (corner === 'l' || corner === 'r') {
+            // Horizontal edge - scale X only
+            const sign = corner === 'r' ? 1 : -1
+            newScaleX = Math.max(0.1, startScaleX * (1 + deltaX * sensitivity * sign))
+          } else if (corner === 't' || corner === 'b') {
+            // Vertical edge - scale Y only
+            const sign = corner === 'b' ? 1 : -1
+            newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
+          }
 
-        updateTraceTransform(selectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
+          updateTraceTransform(selectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
+        }
       }
     } else if (transformMode === 'rotate') {
       // Calculate rotation based on angle from center
