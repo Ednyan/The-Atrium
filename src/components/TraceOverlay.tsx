@@ -990,6 +990,64 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
+              {/* Shape Content */}
+              {trace.type === 'shape' && (() => {
+                const shapeWidth = trace.width || 200
+                const shapeHeight = trace.height || 200
+                const shapeColor = trace.shapeColor || '#3b82f6'
+                const shapeOpacity = trace.shapeOpacity ?? 1.0
+                const cornerRadius = trace.cornerRadius || 0
+                const shapeType = trace.shapeType || 'rectangle'
+
+                if (shapeType === 'rectangle') {
+                  return (
+                    <div
+                      className="absolute pointer-events-none select-none"
+                      style={{
+                        top: 0,
+                        left: 0,
+                        width: `${shapeWidth}px`,
+                        height: `${shapeHeight}px`,
+                        backgroundColor: shapeColor,
+                        opacity: shapeOpacity,
+                        borderRadius: `${cornerRadius}px`,
+                      }}
+                    />
+                  )
+                } else if (shapeType === 'circle') {
+                  return (
+                    <div
+                      className="absolute pointer-events-none select-none"
+                      style={{
+                        top: 0,
+                        left: 0,
+                        width: `${shapeWidth}px`,
+                        height: `${shapeHeight}px`,
+                        backgroundColor: shapeColor,
+                        opacity: shapeOpacity,
+                        borderRadius: '50%',
+                      }}
+                    />
+                  )
+                } else if (shapeType === 'triangle') {
+                  return (
+                    <svg
+                      className="absolute pointer-events-none select-none"
+                      width={shapeWidth}
+                      height={shapeHeight}
+                      style={{ top: 0, left: 0 }}
+                    >
+                      <polygon
+                        points={`${shapeWidth / 2},0 ${shapeWidth},${shapeHeight} 0,${shapeHeight}`}
+                        fill={shapeColor}
+                        opacity={shapeOpacity}
+                      />
+                    </svg>
+                  )
+                }
+                return null
+              })()}
+
                 </div>
               </div>
 

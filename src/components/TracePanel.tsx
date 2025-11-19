@@ -11,10 +11,19 @@ interface TracePanelProps {
 
 export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePanelProps) {
   const [content, setContent] = useState('')
-  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed'>('text')
+  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>('text')
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Shape-specific state
+  const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle'>('rectangle')
+  const [shapeColor, setShapeColor] = useState('#3b82f6') // Default blue
+  const [shapeOpacity, setShapeOpacity] = useState(1.0)
+  const [cornerRadius, setCornerRadius] = useState(0)
+  const [shapeWidth, setShapeWidth] = useState(200)
+  const [shapeHeight, setShapeHeight] = useState(200)
+  
   const { username, userId, position, addTrace } = useGameStore()
   
   // Use trace position if provided, otherwise fall back to character position
@@ -84,6 +93,15 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
         scaleX: 1.0,
         scaleY: 1.0,
         rotation: 0.0,
+        // Shape properties
+        ...(traceType === 'shape' && {
+          shapeType,
+          shapeColor,
+          shapeOpacity,
+          cornerRadius,
+          width: shapeWidth,
+          height: shapeHeight,
+        }),
       }
 
       console.log('Creating trace:', newTrace)
@@ -91,7 +109,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
       // Save to Supabase if available
       if (supabase) {
         console.log('💾 Saving trace to database...')
-        const { data, error } = await supabase.from('traces').insert({
+        const { data, error} = await supabase.from('traces').insert({
           // Don't specify id - let database generate UUID
           user_id: userId,
           username,
@@ -103,6 +121,15 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           scale: 1.0,
           rotation: 0.0,
           lobby_id: lobbyId,
+          // Shape properties
+          ...(traceType === 'shape' && {
+            shape_type: shapeType,
+            shape_color: shapeColor,
+            shape_opacity: shapeOpacity,
+            corner_radius: cornerRadius,
+            width: shapeWidth,
+            height: shapeHeight,
+          }),
         } as any).select() // Get the generated trace back
         
         if (error) {
@@ -130,6 +157,13 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
               scaleX: dbTrace.scale ?? 1.0,
               scaleY: dbTrace.scale ?? 1.0,
               rotation: dbTrace.rotation ?? 0.0,
+              // Shape properties
+              shapeType: dbTrace.shape_type,
+              shapeColor: dbTrace.shape_color,
+              shapeOpacity: dbTrace.shape_opacity,
+              cornerRadius: dbTrace.corner_radius,
+              width: dbTrace.width,
+              height: dbTrace.height,
             }
             // Add to local store with database ID
             addTrace(trace)
@@ -163,8 +197,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
             <label className="block text-lobby-light text-sm mb-2 font-semibold">
               Content Type
             </label>
-            <div className="grid grid-cols-5 gap-2">
-              {(['text', 'image', 'audio', 'video', 'embed'] as const).map((type) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(['text', 'image', 'audio', 'video', 'embed', 'shape'] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
@@ -180,6 +214,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                   {type === 'audio' && '🎵 Audio'}
                   {type === 'video' && '🎬 Video'}
                   {type === 'embed' && '🔗 Embed'}
+                  {type === 'shape' && '⬛ Shape'}
                 </button>
               ))}
             </div>
@@ -266,6 +301,128 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                 maxLength={100}
                 className="w-full px-4 py-2 mt-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
               />
+            </div>
+          )}
+
+          {/* Shape Controls */}
+          {traceType === 'shape' && (
+            <div className="space-y-4">
+              {/* Shape Type */}
+              <div>
+                <label className="block text-lobby-light text-sm mb-2">Shape Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['rectangle', 'circle', 'triangle'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setShapeType(type)}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                        shapeType === type
+                          ? 'bg-lobby-accent text-lobby-light'
+                          : 'bg-lobby-darker text-lobby-light/60 hover:bg-lobby-darker/70'
+                      }`}
+                    >
+                      {type === 'rectangle' && '⬛'}
+                      {type === 'circle' && '⚫'}
+                      {type === 'triangle' && '🔺'}
+                      {' '}{type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Color Picker */}
+              <div>
+                <label className="block text-lobby-light text-sm mb-2">Color</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={shapeColor}
+                    onChange={(e) => setShapeColor(e.target.value)}
+                    className="w-16 h-10 rounded-lg cursor-pointer bg-lobby-darker border-2 border-lobby-accent/30"
+                  />
+                  <input
+                    type="text"
+                    value={shapeColor}
+                    onChange={(e) => setShapeColor(e.target.value)}
+                    placeholder="#3b82f6"
+                    className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Opacity Slider */}
+              <div>
+                <label className="block text-lobby-light text-sm mb-2">
+                  Opacity: {shapeOpacity.toFixed(2)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={shapeOpacity}
+                  onChange={(e) => setShapeOpacity(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Size Controls */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-lobby-light text-sm mb-2">Width (px)</label>
+                  <input
+                    type="number"
+                    min="20"
+                    max="1000"
+                    value={shapeWidth}
+                    onChange={(e) => setShapeWidth(parseInt(e.target.value) || 200)}
+                    className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light focus:outline-none focus:border-lobby-accent transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-lobby-light text-sm mb-2">Height (px)</label>
+                  <input
+                    type="number"
+                    min="20"
+                    max="1000"
+                    value={shapeHeight}
+                    onChange={(e) => setShapeHeight(parseInt(e.target.value) || 200)}
+                    className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light focus:outline-none focus:border-lobby-accent transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Corner Radius (Rectangle only) */}
+              {shapeType === 'rectangle' && (
+                <div>
+                  <label className="block text-lobby-light text-sm mb-2">
+                    Corner Radius: {cornerRadius}px
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={cornerRadius}
+                    onChange={(e) => setCornerRadius(parseInt(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+              )}
+
+              {/* Optional Label */}
+              <div>
+                <label className="block text-lobby-light text-sm mb-2">Label (optional)</label>
+                <input
+                  type="text"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Shape label..."
+                  maxLength={50}
+                  className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                />
+              </div>
             </div>
           )}
 

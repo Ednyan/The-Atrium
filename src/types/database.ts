@@ -7,7 +7,7 @@ export interface Database {
           created_at: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
           content: string
           position_x: number
           position_y: number
@@ -21,7 +21,7 @@ export interface Database {
           created_at?: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
           content: string
           position_x: number
           position_y: number
@@ -35,7 +35,7 @@ export interface Database {
           created_at?: string
           user_id?: string
           username?: string
-          type?: 'text' | 'image' | 'audio' | 'video' | 'embed'
+          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
           content?: string
           position_x?: number
           position_y?: number
@@ -62,13 +62,20 @@ export interface Trace {
   id: string
   userId: string
   username: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'embed'
+  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
   content: string
   x: number
   y: number
   imageUrl?: string
   mediaUrl?: string
   createdAt: string
+  // Shape properties
+  shapeType?: 'rectangle' | 'circle' | 'triangle'
+  shapeColor?: string
+  shapeOpacity?: number
+  cornerRadius?: number // For rectangles
+  width?: number
+  height?: number
   // Non-uniform scale support
   scale?: number
   scaleX?: number
