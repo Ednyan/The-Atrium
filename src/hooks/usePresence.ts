@@ -109,18 +109,38 @@ export function usePresence(lobbyId: string | null) {
 
     channelRef.current = channel
 
-    // Send position updates at regular intervals (20 times per second)
+    // Send position updates only when position actually changes
+    // Throttle to max 1 update per 2 seconds to reduce Realtime message usage
+    let lastBroadcastTime = 0
+    let lastBroadcastX = position.x
+    let lastBroadcastY = position.y
+    const MIN_BROADCAST_INTERVAL = 2000 // 2000ms = 1 update per 2 seconds max
+    const MIN_MOVEMENT_DISTANCE = 12 // Only update if moved at least 12 pixels
+
     const updateInterval = setInterval(async () => {
       if (channelRef.current) {
-        await channelRef.current.track({
-          username,
-          x: positionRef.current.x,
-          y: positionRef.current.y,
-          playerColor: playerColorRef.current,
-          online_at: new Date().toISOString(),
-        })
+        const now = Date.now()
+        const dx = Math.abs(positionRef.current.x - lastBroadcastX)
+        const dy = Math.abs(positionRef.current.y - lastBroadcastY)
+        const timeSinceLastBroadcast = now - lastBroadcastTime
+        
+        // Only broadcast if:
+        // 1. Enough time has passed (throttle), AND
+        // 2. Player has moved significantly
+        if (timeSinceLastBroadcast >= MIN_BROADCAST_INTERVAL && (dx >= MIN_MOVEMENT_DISTANCE || dy >= MIN_MOVEMENT_DISTANCE)) {
+          await channelRef.current.track({
+            username,
+            x: positionRef.current.x,
+            y: positionRef.current.y,
+            playerColor: playerColorRef.current,
+            online_at: new Date().toISOString(),
+          })
+          lastBroadcastTime = now
+          lastBroadcastX = positionRef.current.x
+          lastBroadcastY = positionRef.current.y
+        }
       }
-    }, 50) // 50ms = 20 updates per second
+    }, 200) // Check every 200ms, but only broadcast when conditions are met
 
     return () => {
       console.log('🔌 Disconnecting from presence channel')
