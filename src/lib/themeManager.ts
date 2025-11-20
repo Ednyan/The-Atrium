@@ -254,14 +254,19 @@ export class ThemeManager {
     const sprite = new PIXI.Sprite(texture)
     sprite.anchor.set(0.5)
     
-    // Random offset within grid cell (smaller for grid mode to look more uniform)
+    // Grid mode: exact positioning at grid intersections, Random mode: random offsets
     const patternMode = this.config.groundPatternMode ?? 'grid'
-    const offsetRange = patternMode === 'grid' ? 20 : 50
-    const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * offsetRange
-    const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * offsetRange
-    
-    sprite.x = worldX + offsetX
-    sprite.y = worldY + offsetY
+    if (patternMode === 'grid') {
+      // Perfect grid alignment - no offsets
+      sprite.x = worldX
+      sprite.y = worldY
+    } else {
+      // Random mode: add offsets for organic placement
+      const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * 50
+      const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * 50
+      sprite.x = worldX + offsetX
+      sprite.y = worldY + offsetY
+    }
     
     // Random scale using config values (always positive)
     const baseScale = this.config.groundElementScale ?? 0.0625
