@@ -920,7 +920,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     border: showBorder ? `3px solid ${isSelected && isCropMode ? '#ff8800' : isSelected ? '#00ff00' : borderColor}` : 'none',
                     borderRadius: '8px',
                     backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
-                    padding: '5px',
+                    padding: '0px',
                     boxShadow: isSelected && isCropMode
                       ? '0 0 20px rgba(255, 136, 0, 0.5)'
                       : isSelected 
