@@ -805,14 +805,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                     if (shapeType === 'rectangle') {
                       return (
-                        <div
+                        <svg
                           className="w-full h-full pointer-events-none select-none"
-                          style={{
-                            backgroundColor: shapeColor,
-                            opacity: shapeOpacity,
-                            borderRadius: `${cornerRadius * zoom}px`,
-                          }}
-                        />
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                        >
+                          <rect
+                            x="0"
+                            y="0"
+                            width="100"
+                            height="100"
+                            rx={cornerRadius}
+                            ry={cornerRadius}
+                            fill={shapeColor}
+                            opacity={shapeOpacity}
+                          />
+                        </svg>
                       )
                     } else if (shapeType === 'circle') {
                       return (

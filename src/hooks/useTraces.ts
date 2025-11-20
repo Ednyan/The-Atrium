@@ -79,6 +79,13 @@ export function useTraces(lobbyId: string | null) {
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
             lobbyId: row.lobby_id,
+            // Shape properties
+            shapeType: row.shape_type,
+            shapeColor: row.shape_color,
+            shapeOpacity: row.shape_opacity,
+            cornerRadius: row.corner_radius,
+            width: row.width,
+            height: row.height,
           }))
           console.log('🎯 Calling setTraces with', traces.length, 'traces')
           setTraces(traces)
