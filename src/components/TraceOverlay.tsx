@@ -310,6 +310,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (updates.lightPulse !== undefined) updateData.light_pulse = updates.lightPulse
     if (updates.lightPulseSpeed !== undefined) updateData.light_pulse_speed = updates.lightPulseSpeed
     if (updates.enableInteraction !== undefined) updateData.enable_interaction = updates.enableInteraction
+    if (updates.borderRadius !== undefined) updateData.border_radius = updates.borderRadius
     // Shape properties
     if (updates.shapeType !== undefined) updateData.shape_type = updates.shapeType
     if (updates.shapeColor !== undefined) updateData.shape_color = updates.shapeColor
@@ -918,7 +919,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
                     border: showBorder ? `3px solid ${isSelected && isCropMode ? '#ff8800' : isSelected ? '#00ff00' : borderColor}` : 'none',
-                    borderRadius: '8px',
+                    borderRadius: `${trace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
                     padding: '0px',
                     boxShadow: isSelected && isCropMode
@@ -1620,6 +1621,32 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </select>
                   </div>
                 </>
+              )}
+
+              {/* Border Radius Customization (for non-shape traces) */}
+              {editingTrace.type !== 'shape' && (
+                <div>
+                  <label className="block text-white mb-2">
+                    Border Radius: {editingTrace.borderRadius ?? 8}px
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    step="1"
+                    value={editingTrace.borderRadius ?? 8}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value)
+                      const updated = { ...editingTrace, borderRadius: value }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { borderRadius: value })
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-white/40 text-xs mt-1">
+                    Adjust the roundness of trace borders (0 = sharp corners)
+                  </p>
+                </div>
               )}
 
               {/* Description/Caption for Media Traces */}

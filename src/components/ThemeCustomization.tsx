@@ -8,11 +8,15 @@ interface ThemeSettings {
   backgroundColor?: string
   particlesEnabled?: boolean
   particleColor?: string
+  particleOpacity?: number
+  particleDensity?: number
   groundParticlesEnabled?: boolean
   groundParticleUrls?: string[]
   groundElementScale?: number
   groundElementScaleRange?: number
   groundElementDensity?: number
+  groundParticleOpacity?: number
+  groundPatternMode?: 'grid' | 'random'
 }
 
 interface ThemeCustomizationProps {
@@ -28,11 +32,15 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
     backgroundColor: '#0a0a0f',
     particlesEnabled: true,
     particleColor: '#ffffff',
+    particleOpacity: 0.6,
+    particleDensity: 1.0,
     groundParticlesEnabled: true,
     groundParticleUrls: [],
     groundElementScale: 0.0625,
     groundElementScaleRange: 0.025,
-    groundElementDensity: 0.5
+    groundElementDensity: 0.5,
+    groundParticleOpacity: 1.0,
+    groundPatternMode: 'grid'
   })
   const [newGroundUrl, setNewGroundUrl] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -191,22 +199,55 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </div>
 
             {settings.particlesEnabled && (
-              <div className="space-y-2">
-                <label className="block text-sm text-lobby-light">Particle Color</label>
-                <div className="flex gap-2 items-center">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="block text-sm text-lobby-light">Particle Color</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={settings.particleColor || '#ffffff'}
+                      onChange={(e) => setSettings({ ...settings, particleColor: e.target.value })}
+                      className="w-16 h-10 rounded border-2 border-lobby-accent/30 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={settings.particleColor || '#ffffff'}
+                      onChange={(e) => setSettings({ ...settings, particleColor: e.target.value })}
+                      className="flex-1 bg-lobby-muted text-white px-3 py-2 rounded border-2 border-lobby-accent/30 font-mono text-sm"
+                      placeholder="#ffffff"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="block text-sm text-lobby-light">
+                    Particle Opacity: {((settings.particleOpacity ?? 0.6) * 100).toFixed(0)}%
+                  </label>
                   <input
-                    type="color"
-                    value={settings.particleColor || '#ffffff'}
-                    onChange={(e) => setSettings({ ...settings, particleColor: e.target.value })}
-                    className="w-16 h-10 rounded border-2 border-lobby-accent/30 cursor-pointer"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={settings.particleOpacity ?? 0.6}
+                    onChange={(e) => setSettings({ ...settings, particleOpacity: parseFloat(e.target.value) })}
+                    className="w-full"
                   />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="block text-sm text-lobby-light">
+                    Particle Density: {(settings.particleDensity ?? 1.0).toFixed(1)}x
+                  </label>
                   <input
-                    type="text"
-                    value={settings.particleColor || '#ffffff'}
-                    onChange={(e) => setSettings({ ...settings, particleColor: e.target.value })}
-                    className="flex-1 bg-lobby-muted text-white px-3 py-2 rounded border-2 border-lobby-accent/30 font-mono text-sm"
-                    placeholder="#ffffff"
+                    type="range"
+                    min="0.1"
+                    max="3.0"
+                    step="0.1"
+                    value={settings.particleDensity ?? 1.0}
+                    onChange={(e) => setSettings({ ...settings, particleDensity: parseFloat(e.target.value) })}
+                    className="w-full"
                   />
+                  <p className="text-xs text-lobby-light/50">Number of floating particles (0.1 = very few, 3.0 = many)</p>
                 </div>
               </div>
             )}
@@ -294,6 +335,48 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 {/* Scale Controls */}
                 <div className="space-y-3 mt-4 pt-4 border-t border-lobby-accent/20">
                   <h4 className="text-sm font-semibold text-lobby-light">Appearance Settings</h4>
+                  
+                  <div className="space-y-2">
+                    <label className="block text-sm text-lobby-light">
+                      Opacity: {((settings.groundParticleOpacity ?? 1.0) * 100).toFixed(0)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.groundParticleOpacity ?? 1.0}
+                      onChange={(e) => setSettings({ ...settings, groundParticleOpacity: parseFloat(e.target.value) })}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="block text-sm text-lobby-light">Layout Pattern</label>
+                    <div className="flex gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="groundPattern"
+                          checked={settings.groundPatternMode === 'grid' || !settings.groundPatternMode}
+                          onChange={() => setSettings({ ...settings, groundPatternMode: 'grid' })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm text-lobby-light">Grid Pattern</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="groundPattern"
+                          checked={settings.groundPatternMode === 'random'}
+                          onChange={() => setSettings({ ...settings, groundPatternMode: 'random' })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm text-lobby-light">Random Placement</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-lobby-light/50">Grid creates uniform spacing, Random creates organic placement</p>
+                  </div>
                   
                   <div className="space-y-2">
                     <label className="block text-sm text-lobby-light">
