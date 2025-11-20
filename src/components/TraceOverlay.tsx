@@ -251,6 +251,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
     if (trace.layerId) newTrace.layer_id = trace.layerId
     if (lobbyId) newTrace.lobby_id = lobbyId
+    
+    // Add shape properties if it's a shape
+    if (trace.type === 'shape') {
+      if (trace.shapeType) newTrace.shape_type = trace.shapeType
+      if (trace.shapeColor) newTrace.shape_color = trace.shapeColor
+      if (trace.shapeOpacity !== undefined) newTrace.shape_opacity = trace.shapeOpacity
+      if (trace.cornerRadius !== undefined) newTrace.corner_radius = trace.cornerRadius
+      if (trace.width) newTrace.width = trace.width
+      if (trace.height) newTrace.height = trace.height
+    }
 
     const { error } = await (supabase.from('traces') as any).insert(newTrace)
     
@@ -501,6 +511,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [transformMode, selectedTraceId])
 
   const getTraceSize = (trace: Trace) => {
+    // For shapes, use their custom dimensions
+    if (trace.type === 'shape') {
+      return { 
+        width: trace.width || 200, 
+        height: trace.height || 200 
+      }
+    }
+    
     // For images, use a container that will adapt to content
     // We'll use inline styles on the image container to handle aspect ratio
     switch (trace.type) {
