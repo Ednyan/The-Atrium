@@ -723,6 +723,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
             // Render trace
             const trace = item.trace!
+            // Use editingTrace for selected trace to show live updates
+            const displayTrace = (selectedTraceId === trace.id && editingTrace) ? editingTrace : trace
         const transform = getTraceTransform(trace)
         const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
         const { width, height } = getTraceSize(trace)
@@ -919,7 +921,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
                     border: showBorder ? `3px solid ${isSelected && isCropMode ? '#ff8800' : isSelected ? '#00ff00' : borderColor}` : 'none',
-                    borderRadius: `${trace.borderRadius ?? 8}px`,
+                    borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
                     padding: '0px',
                     boxShadow: isSelected && isCropMode

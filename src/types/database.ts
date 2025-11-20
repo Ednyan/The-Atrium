@@ -146,6 +146,10 @@ export interface ThemeSettings {
   groundElementScale?: number
   groundElementScaleRange?: number
   groundElementDensity?: number
+  particleOpacity?: number
+  particleDensity?: number
+  groundParticleOpacity?: number
+  groundPatternMode?: 'grid' | 'random'
 }
 
 export interface Lobby {

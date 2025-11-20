@@ -741,6 +741,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         groundDensity: themeSettings?.groundElementDensity ?? 0.5,
         groundElementScale: themeSettings?.groundElementScale ?? 0.0625,
         groundElementScaleRange: themeSettings?.groundElementScaleRange ?? 0.025,
+        particleOpacity: themeSettings?.particleOpacity ?? 0.6,
+        particleDensity: themeSettings?.particleDensity ?? 1.0,
+        groundParticleOpacity: themeSettings?.groundParticleOpacity ?? 1.0,
+        groundPatternMode: themeSettings?.groundPatternMode ?? 'grid',
       })
 
       // Recreate particles with new settings

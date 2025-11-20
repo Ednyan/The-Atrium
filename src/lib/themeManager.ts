@@ -10,6 +10,10 @@ export interface ThemeConfig {
   groundEnabled?: boolean // Toggle ground elements
   groundElementScale?: number // Base scale for ground elements
   groundElementScaleRange?: number // Random scale variation range
+  particleOpacity?: number // Opacity for floating particles (0-1)
+  particleDensity?: number // Density multiplier for particles (0.1-3.0)
+  groundParticleOpacity?: number // Opacity for ground particles (0-1)
+  groundPatternMode?: 'grid' | 'random' // Placement pattern for ground elements
 }
 
 export interface GroundElement {
@@ -144,18 +148,25 @@ export class ThemeManager {
       return
     }
 
-    const gridSize = 100 // Check every 50 pixels for ground elements (closer spacing)
+    const patternMode = this.config.groundPatternMode ?? 'grid'
     const density = this.config.groundDensity / 10 // Adjusted density calculation
     const generationRadius = 800 // Only generate within 800 pixels of player or traces
     let created = 0
     let checked = 0
     let skippedFar = 0
 
-    // Only generate in camera view bounds (minX, minY, maxX, maxY)
-    // Don't expand to include all traces - just what's visible
-    for (let x = Math.floor(minX / gridSize) * gridSize; x < maxX; x += gridSize) {
-      for (let y = Math.floor(minY / gridSize) * gridSize; y < maxY; y += gridSize) {
+    if (patternMode === 'random') {
+      // Random placement mode - no grid, fully random positions
+      const areaWidth = maxX - minX
+      const areaHeight = maxY - minY
+      const numElements = Math.floor((areaWidth * areaHeight) / 10000 * density) // Elements per 100x100 area
+      
+      for (let i = 0; i < numElements; i++) {
         checked++
+        
+        // Generate fully random position in visible area
+        const x = minX + this.seededRandom(minX + i * 123, minY + i * 456) * areaWidth
+        const y = minY + this.seededRandom(minX + i * 789, minY + i * 321) * areaHeight
         
         // Check if this position is within generation radius of player or any trace
         const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
@@ -175,18 +186,55 @@ export class ThemeManager {
           continue
         }
         
-        // Use seeded random to determine if element should exist here
-        const rand = this.seededRandom(x, y)
+        // Check if we already have an element near this position
+        const exists = this.groundElements.some(
+          el => Math.sqrt(Math.pow(el.worldX - x, 2) + Math.pow(el.worldY - y, 2)) < 50
+        )
         
-        if (rand < density) {
-          // Check if we already have an element at this position
-          const exists = this.groundElements.some(
-            el => Math.abs(el.worldX - x) < gridSize && Math.abs(el.worldY - y) < gridSize
-          )
+        if (!exists) {
+          this.createGroundElement(x, y)
+          created++
+        }
+      }
+    } else {
+      // Grid mode - evenly spaced with small random offsets
+      const gridSize = 100 // Check every 100 pixels for ground elements
+      
+      for (let x = Math.floor(minX / gridSize) * gridSize; x < maxX; x += gridSize) {
+        for (let y = Math.floor(minY / gridSize) * gridSize; y < maxY; y += gridSize) {
+          checked++
           
-          if (!exists) {
-            this.createGroundElement(x, y)
-            created++
+          // Check if this position is within generation radius of player or any trace
+          const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
+          let nearTrace = false
+          
+          for (const trace of traces) {
+            const distToTrace = Math.sqrt(Math.pow(x - trace.x, 2) + Math.pow(y - trace.y, 2))
+            if (distToTrace < generationRadius) {
+              nearTrace = true
+              break
+            }
+          }
+          
+          // Skip if not near player or any trace
+          if (distToPlayer >= generationRadius && !nearTrace) {
+            skippedFar++
+            continue
+          }
+          
+          // Use seeded random to determine if element should exist here
+          const rand = this.seededRandom(x, y)
+          
+          if (rand < density) {
+            // Check if we already have an element at this position
+            const exists = this.groundElements.some(
+              el => Math.abs(el.worldX - x) < gridSize && Math.abs(el.worldY - y) < gridSize
+            )
+            
+            if (!exists) {
+              this.createGroundElement(x, y)
+              created++
+            }
           }
         }
       }
@@ -209,9 +257,11 @@ export class ThemeManager {
     const sprite = new PIXI.Sprite(texture)
     sprite.anchor.set(0.5)
     
-    // Random offset within grid cell
-    const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * 50
-    const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * 50
+    // Random offset within grid cell (smaller for grid mode to look more uniform)
+    const patternMode = this.config.groundPatternMode ?? 'grid'
+    const offsetRange = patternMode === 'grid' ? 20 : 50
+    const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * offsetRange
+    const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * offsetRange
     
     sprite.x = worldX + offsetX
     sprite.y = worldY + offsetY
@@ -226,11 +276,14 @@ export class ThemeManager {
     sprite.alpha = 0
 
     this.groundContainer.addChild(sprite)
+    
+    // Use configured ground particle opacity
+    const targetAlpha = this.config.groundParticleOpacity ?? 1.0
     this.groundElements.push({ 
       sprite, 
       worldX: sprite.x, 
       worldY: sprite.y,
-      targetAlpha: 1.0,
+      targetAlpha: targetAlpha,
       fadeSpeed: 0.02 // Fade in over ~50 frames
     })
   }
@@ -249,16 +302,19 @@ export class ThemeManager {
     }
 
     const particleColor = this.config.particleColor ?? 0xffffff
+    const baseOpacity = this.config.particleOpacity ?? 0.6
+    const densityMultiplier = this.config.particleDensity ?? 1.0
+    const particleCount = Math.floor(this.config.particleCount * densityMultiplier)
 
     // Create simple circle particles (dust-like)
-    for (let i = 0; i < this.config.particleCount; i++) {
+    for (let i = 0; i < particleCount; i++) {
       const graphics = new PIXI.Graphics()
       
       // Random size
       const size = 2 + Math.random() * 4
       
-      // Draw glowing circle
-      graphics.beginFill(particleColor, 0.3 + Math.random() * 0.3)
+      // Draw glowing circle with configured opacity
+      graphics.beginFill(particleColor, baseOpacity * (0.5 + Math.random() * 0.5))
       graphics.drawCircle(0, 0, size)
       graphics.endFill()
       
