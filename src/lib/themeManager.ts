@@ -152,22 +152,17 @@ export class ThemeManager {
     const patternMode = this.config.groundPatternMode ?? 'grid'
     const density = this.config.groundDensity / 10 // Adjusted density calculation
     const generationRadius = 800 // Only generate within 800 pixels of player or traces
+    const gridSize = this.config.gridSpacing ?? 100
     let created = 0
     let checked = 0
     let skippedFar = 0
 
-    if (patternMode === 'random') {
-      // Random placement mode - no grid, fully random positions
-      const areaWidth = maxX - minX
-      const areaHeight = maxY - minY
-      const numElements = Math.floor((areaWidth * areaHeight) / 10000 * density) // Elements per 100x100 area
-      
-      for (let i = 0; i < numElements; i++) {
+    // Both modes use grid-based iteration for consistency
+    // Grid mode: place at every grid point
+    // Random mode: use seeded random to decide placement + add offsets (procedural)
+    for (let x = Math.floor(minX / gridSize) * gridSize; x < maxX; x += gridSize) {
+      for (let y = Math.floor(minY / gridSize) * gridSize; y < maxY; y += gridSize) {
         checked++
-        
-        // Generate fully random position in visible area
-        const x = minX + this.seededRandom(minX + i * 123, minY + i * 456) * areaWidth
-        const y = minY + this.seededRandom(minX + i * 789, minY + i * 321) * areaHeight
         
         // Check if this position is within generation radius of player or any trace
         const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
@@ -187,52 +182,22 @@ export class ThemeManager {
           continue
         }
         
-        // Check if we already have an element near this position
+        // In random mode, use seeded random to determine if element should exist
+        if (patternMode === 'random') {
+          const rand = this.seededRandom(x, y)
+          if (rand >= density) {
+            continue // Skip this grid point in random mode
+          }
+        }
+        
+        // Check if we already have an element at this EXACT grid position (within 1px)
         const exists = this.groundElements.some(
-          el => Math.sqrt(Math.pow(el.worldX - x, 2) + Math.pow(el.worldY - y, 2)) < 50
+          el => Math.abs(el.worldX - x) < 1 && Math.abs(el.worldY - y) < 1
         )
         
         if (!exists) {
           this.createGroundElement(x, y)
           created++
-        }
-      }
-    } else {
-      // Grid mode - evenly spaced square grid (no random density, every grid point gets an element)
-      const gridSize = this.config.gridSpacing ?? 100
-      
-      for (let x = Math.floor(minX / gridSize) * gridSize; x < maxX; x += gridSize) {
-        for (let y = Math.floor(minY / gridSize) * gridSize; y < maxY; y += gridSize) {
-          checked++
-          
-          // Check if this position is within generation radius of player or any trace
-          const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
-          let nearTrace = false
-          
-          for (const trace of traces) {
-            const distToTrace = Math.sqrt(Math.pow(x - trace.x, 2) + Math.pow(y - trace.y, 2))
-            if (distToTrace < generationRadius) {
-              nearTrace = true
-              break
-            }
-          }
-          
-          // Skip if not near player or any trace
-          if (distToPlayer >= generationRadius && !nearTrace) {
-            skippedFar++
-            continue
-          }
-          
-          // In grid mode, place element at EVERY grid point (no random density check)
-          // Check if we already have an element at this EXACT position (within 1px tolerance)
-          const exists = this.groundElements.some(
-            el => Math.abs(el.worldX - x) < 1 && Math.abs(el.worldY - y) < 1
-          )
-          
-          if (!exists) {
-            this.createGroundElement(x, y)
-            created++
-          }
         }
       }
     }
@@ -254,16 +219,17 @@ export class ThemeManager {
     const sprite = new PIXI.Sprite(texture)
     sprite.anchor.set(0.5)
     
-    // Grid mode: exact positioning at grid intersections, Random mode: random offsets
+    // Apply offsets based on pattern mode
     const patternMode = this.config.groundPatternMode ?? 'grid'
     if (patternMode === 'grid') {
       // Perfect grid alignment - no offsets
       sprite.x = worldX
       sprite.y = worldY
     } else {
-      // Random mode: add offsets for organic placement
-      const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * 50
-      const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * 50
+      // Random mode: add random offsets from grid position for procedural look
+      const offsetRange = this.config.gridSpacing ? this.config.gridSpacing * 0.4 : 40
+      const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * offsetRange
+      const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * offsetRange
       sprite.x = worldX + offsetX
       sprite.y = worldY + offsetY
     }
@@ -281,10 +247,11 @@ export class ThemeManager {
     
     // Use configured ground particle opacity
     const targetAlpha = this.config.groundParticleOpacity ?? 1.0
+    // Store the GRID position (worldX, worldY) not sprite position for accurate tracking
     this.groundElements.push({ 
       sprite, 
-      worldX: sprite.x, 
-      worldY: sprite.y,
+      worldX: worldX,  // Store grid position, not sprite.x
+      worldY: worldY,  // Store grid position, not sprite.y
       targetAlpha: targetAlpha,
       fadeSpeed: 0.02 // Fade in over ~50 frames
     })
