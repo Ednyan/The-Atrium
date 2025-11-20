@@ -150,6 +150,7 @@ export interface ThemeSettings {
   particleDensity?: number
   groundParticleOpacity?: number
   groundPatternMode?: 'grid' | 'random'
+  gridSpacing?: number
 }
 
 export interface Lobby {

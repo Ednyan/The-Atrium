@@ -745,6 +745,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         particleDensity: themeSettings?.particleDensity ?? 1.0,
         groundParticleOpacity: themeSettings?.groundParticleOpacity ?? 1.0,
         groundPatternMode: themeSettings?.groundPatternMode ?? 'grid',
+        gridSpacing: themeSettings?.gridSpacing ?? 100,
       })
 
       // Recreate particles with new settings

@@ -17,6 +17,7 @@ interface ThemeSettings {
   groundElementDensity?: number
   groundParticleOpacity?: number
   groundPatternMode?: 'grid' | 'random'
+  gridSpacing?: number
 }
 
 interface ThemeCustomizationProps {
@@ -377,6 +378,25 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     </div>
                     <p className="text-xs text-lobby-light/50">Grid creates uniform spacing, Random creates organic placement</p>
                   </div>
+                  
+                  {/* Grid Spacing Control (only show in grid mode) */}
+                  {(settings.groundPatternMode === 'grid' || !settings.groundPatternMode) && (
+                    <div className="space-y-2">
+                      <label className="block text-sm text-lobby-light">
+                        Grid Spacing: {settings.gridSpacing || 100}px
+                      </label>
+                      <input
+                        type="range"
+                        min="25"
+                        max="300"
+                        step="25"
+                        value={settings.gridSpacing || 100}
+                        onChange={(e) => setSettings({ ...settings, gridSpacing: parseInt(e.target.value) })}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-lobby-light/50">Distance between grid elements (smaller = denser)</p>
+                    </div>
+                  )}
                   
                   <div className="space-y-2">
                     <label className="block text-sm text-lobby-light">

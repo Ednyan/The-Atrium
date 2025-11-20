@@ -14,6 +14,7 @@ export interface ThemeConfig {
   particleDensity?: number // Density multiplier for particles (0.1-3.0)
   groundParticleOpacity?: number // Opacity for ground particles (0-1)
   groundPatternMode?: 'grid' | 'random' // Placement pattern for ground elements
+  gridSpacing?: number // Grid spacing in pixels for grid pattern mode (default 100)
 }
 
 export interface GroundElement {
@@ -197,8 +198,8 @@ export class ThemeManager {
         }
       }
     } else {
-      // Grid mode - evenly spaced with small random offsets
-      const gridSize = 100 // Check every 100 pixels for ground elements
+      // Grid mode - evenly spaced square grid (no random density, every grid point gets an element)
+      const gridSize = this.config.gridSpacing ?? 100
       
       for (let x = Math.floor(minX / gridSize) * gridSize; x < maxX; x += gridSize) {
         for (let y = Math.floor(minY / gridSize) * gridSize; y < maxY; y += gridSize) {
@@ -222,19 +223,15 @@ export class ThemeManager {
             continue
           }
           
-          // Use seeded random to determine if element should exist here
-          const rand = this.seededRandom(x, y)
+          // In grid mode, place element at EVERY grid point (no random density check)
+          // Check if we already have an element at this position
+          const exists = this.groundElements.some(
+            el => Math.abs(el.worldX - x) < gridSize && Math.abs(el.worldY - y) < gridSize
+          )
           
-          if (rand < density) {
-            // Check if we already have an element at this position
-            const exists = this.groundElements.some(
-              el => Math.abs(el.worldX - x) < gridSize && Math.abs(el.worldY - y) < gridSize
-            )
-            
-            if (!exists) {
-              this.createGroundElement(x, y)
-              created++
-            }
+          if (!exists) {
+            this.createGroundElement(x, y)
+            created++
           }
         }
       }
@@ -478,8 +475,9 @@ export class ThemeManager {
         }
       }
       
-      // Update target alpha for this element
-      element.targetAlpha = targetFadeOpacity
+      // Update target alpha for this element (multiply by configured opacity)
+      const configuredOpacity = this.config.groundParticleOpacity ?? 1.0
+      element.targetAlpha = targetFadeOpacity * configuredOpacity
       
       // Smoothly interpolate current alpha towards target
       if (element.sprite.alpha < element.targetAlpha) {

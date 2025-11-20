@@ -113,7 +113,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (traces.length === 0) {
       console.log('⚠️ No traces loaded')
     }
-  }, [traces])
+    
+    // Update editingTrace when traces update (to sync database changes like border radius)
+    if (editingTrace && selectedTraceId) {
+      const updatedTrace = traces.find(t => t.id === selectedTraceId)
+      if (updatedTrace) {
+        setEditingTrace(updatedTrace)
+      }
+    }
+  }, [traces, selectedTraceId])
 
   // Log when image dimensions update
   useEffect(() => {
