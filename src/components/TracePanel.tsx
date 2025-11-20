@@ -101,6 +101,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           cornerRadius,
           width: shapeWidth,
           height: shapeHeight,
+          showBorder: false,
+          showBackground: false,
         }),
       }
 
@@ -129,6 +131,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
             corner_radius: cornerRadius,
             width: shapeWidth,
             height: shapeHeight,
+            show_border: false,
+            show_background: false,
           }),
         } as any).select() // Get the generated trace back
         

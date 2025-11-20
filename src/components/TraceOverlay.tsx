@@ -785,34 +785,91 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
               }}
             >
-              {/* Border container - fixed size, doesn't scale with content */}
-              <div
-                className="relative cursor-pointer transition-shadow"
-                style={{
-                  width: `${borderWidth}px`,
-                  height: `${borderHeight}px`,
-                  border: showBorder ? `3px solid ${isSelected && isCropMode ? '#ff8800' : isSelected ? '#00ff00' : borderColor}` : 'none',
-                  borderRadius: '8px',
-                  backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
-                  padding: '5px',
-                  boxShadow: isSelected && isCropMode
-                    ? '0 0 20px rgba(255, 136, 0, 0.5)'
-                    : isSelected 
-                    ? '0 0 20px rgba(0, 255, 0, 0.5)' 
-                    : (showBackground ? '0 4px 12px rgba(0, 0, 0, 0.8)' : 'none'),
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Scaled content wrapper */}
+              {/* Shape rendering - no border container */}
+              {trace.type === 'shape' ? (
                 <div
-                  className="w-full h-full"
+                  className="relative cursor-pointer"
                   style={{
-                    transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%)`,
-                    transformOrigin: 'top left',
-                    width: `${width}px`,
-                    height: `${height}px`,
+                    width: `${(trace.width || 200) * (transform as any).scaleX * zoom}px`,
+                    height: `${(trace.height || 200) * (transform as any).scaleY * zoom}px`,
                   }}
                 >
+                  {(() => {
+                    const shapeColor = trace.shapeColor || '#3b82f6'
+                    const shapeOpacity = trace.shapeOpacity ?? 1.0
+                    const cornerRadius = trace.cornerRadius || 0
+                    const shapeType = trace.shapeType || 'rectangle'
+
+                    if (shapeType === 'rectangle') {
+                      return (
+                        <div
+                          className="w-full h-full pointer-events-none select-none"
+                          style={{
+                            backgroundColor: shapeColor,
+                            opacity: shapeOpacity,
+                            borderRadius: `${cornerRadius}px`,
+                          }}
+                        />
+                      )
+                    } else if (shapeType === 'circle') {
+                      return (
+                        <div
+                          className="w-full h-full pointer-events-none select-none"
+                          style={{
+                            backgroundColor: shapeColor,
+                            opacity: shapeOpacity,
+                            borderRadius: '50%',
+                          }}
+                        />
+                      )
+                    } else if (shapeType === 'triangle') {
+                      return (
+                        <svg
+                          className="w-full h-full pointer-events-none select-none"
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                        >
+                          <polygon
+                            points="50,0 100,100 0,100"
+                            fill={shapeColor}
+                            opacity={shapeOpacity}
+                          />
+                        </svg>
+                      )
+                    }
+                    return null
+                  })()}
+                </div>
+              ) : (
+                /* Border container for non-shape traces - fixed size, doesn't scale with content */
+                <>
+                <div
+                  className="relative cursor-pointer transition-shadow"
+                  style={{
+                    width: `${borderWidth}px`,
+                    height: `${borderHeight}px`,
+                    border: showBorder ? `3px solid ${isSelected && isCropMode ? '#ff8800' : isSelected ? '#00ff00' : borderColor}` : 'none',
+                    borderRadius: '8px',
+                    backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
+                    padding: '5px',
+                    boxShadow: isSelected && isCropMode
+                      ? '0 0 20px rgba(255, 136, 0, 0.5)'
+                      : isSelected 
+                      ? '0 0 20px rgba(0, 255, 0, 0.5)' 
+                      : (showBackground ? '0 4px 12px rgba(0, 0, 0, 0.8)' : 'none'),
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* Scaled content wrapper */}
+                  <div
+                    className="w-full h-full"
+                    style={{
+                      transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%)`,
+                      transformOrigin: 'top left',
+                      width: `${width}px`,
+                      height: `${height}px`,
+                    }}
+                  >
               {/* Image Content */}
               {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && (
                 <img
@@ -997,77 +1054,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
-              {/* Shape Content */}
-              {trace.type === 'shape' && (() => {
-                const shapeWidth = trace.width || 200
-                const shapeHeight = trace.height || 200
-                const shapeColor = trace.shapeColor || '#3b82f6'
-                const shapeOpacity = trace.shapeOpacity ?? 1.0
-                const cornerRadius = trace.cornerRadius || 0
-                const shapeType = trace.shapeType || 'rectangle'
-
-                // Use the trace's actual dimensions (width/height) for the shape
-                // This ensures shapes fill the trace container properly
-                if (shapeType === 'rectangle') {
-                  return (
-                    <div
-                      className="absolute pointer-events-none select-none"
-                      style={{
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        backgroundColor: shapeColor,
-                        opacity: shapeOpacity,
-                        borderRadius: `${cornerRadius}px`,
-                      }}
-                    />
-                  )
-                } else if (shapeType === 'circle') {
-                  return (
-                    <div
-                      className="absolute pointer-events-none select-none"
-                      style={{
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        backgroundColor: shapeColor,
-                        opacity: shapeOpacity,
-                        borderRadius: '50%',
-                      }}
-                    />
-                  )
-                } else if (shapeType === 'triangle') {
-                  // Use viewBox for proper scaling
-                  return (
-                    <svg
-                      className="absolute pointer-events-none select-none"
-                      viewBox={`0 0 ${shapeWidth} ${shapeHeight}`}
-                      style={{ 
-                        top: 0, 
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                      }}
-                      preserveAspectRatio="none"
-                    >
-                      <polygon
-                        points={`${shapeWidth / 2},0 ${shapeWidth},${shapeHeight} 0,${shapeHeight}`}
-                        fill={shapeColor}
-                        opacity={shapeOpacity}
-                      />
-                    </svg>
-                  )
-                }
-                return null
-              })()}
-
+                  </div>
                 </div>
-              </div>
+                </>
+              )}
 
               {/* Username label - outside border container so it doesn't scale */}
-              {showFilename && (
+              {showFilename && trace.type !== 'shape' && (
                 <div
                   className="absolute text-xs font-semibold text-center pointer-events-none"
                   style={{
