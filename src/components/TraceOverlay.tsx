@@ -286,6 +286,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (updates.lightPulse !== undefined) updateData.light_pulse = updates.lightPulse
     if (updates.lightPulseSpeed !== undefined) updateData.light_pulse_speed = updates.lightPulseSpeed
     if (updates.enableInteraction !== undefined) updateData.enable_interaction = updates.enableInteraction
+    // Shape properties
+    if (updates.shapeType !== undefined) updateData.shape_type = updates.shapeType
+    if (updates.shapeColor !== undefined) updateData.shape_color = updates.shapeColor
+    if (updates.shapeOpacity !== undefined) updateData.shape_opacity = updates.shapeOpacity
+    if (updates.cornerRadius !== undefined) updateData.corner_radius = updates.cornerRadius
+    if (updates.width !== undefined) updateData.width = updates.width
+    if (updates.height !== undefined) updateData.height = updates.height
     
     await (supabase.from('traces') as any).update(updateData).eq('id', traceId)
   }
@@ -402,11 +409,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const startScaleX = (startTransformRef.current as any).scaleX ?? (startTransformRef.current as any).scale ?? 1
       const startScaleY = (startTransformRef.current as any).scaleY ?? (startTransformRef.current as any).scale ?? 1
       
-      // Check if this is a shape - if so, modify width/height instead of scale
-      const isShape = trace.type === 'shape'
-      const shapeWidth = trace.width || 200
-      const shapeHeight = trace.height || 200
-      
       // Check if corner drag (diagonal) - should preserve aspect ratio
       const isCorner = startPosRef.current.corner.length === 2 // 'tl', 'tr', 'bl', 'br'
       
@@ -423,56 +425,28 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         )
         
         const scaleFactor = currentDist / startDist
+        const newScale = Math.max(0.1, startScaleX * scaleFactor)
         
-        if (isShape) {
-          // For shapes, modify actual width/height proportionally
-          const newWidth = Math.max(20, Math.round(shapeWidth * scaleFactor))
-          const newHeight = Math.max(20, Math.round(shapeHeight * scaleFactor))
-          updateTraceCustomization(selectedTraceId, { width: newWidth, height: newHeight })
-        } else {
-          // For other traces, use scale transform
-          const newScale = Math.max(0.1, startScaleX * scaleFactor)
-          updateTraceTransform(selectedTraceId, { scaleX: newScale, scaleY: newScale })
-        }
+        updateTraceTransform(selectedTraceId, { scaleX: newScale, scaleY: newScale })
       } else {
         // Non-uniform scaling for edges (horizontal/vertical only)
         const corner = startPosRef.current.corner
+        let newScaleX = startScaleX
+        let newScaleY = startScaleY
         
-        if (isShape) {
-          // For shapes, directly modify width or height
-          let newWidth = shapeWidth
-          let newHeight = shapeHeight
-          
-          if (corner === 'l' || corner === 'r') {
-            // Horizontal edge - change width only
-            const widthDelta = (deltaX / zoom) * (corner === 'r' ? 1 : -1)
-            newWidth = Math.max(20, Math.round(shapeWidth + widthDelta))
-          } else if (corner === 't' || corner === 'b') {
-            // Vertical edge - change height only
-            const heightDelta = (deltaY / zoom) * (corner === 'b' ? 1 : -1)
-            newHeight = Math.max(20, Math.round(shapeHeight + heightDelta))
-          }
-          
-          updateTraceCustomization(selectedTraceId, { width: newWidth, height: newHeight })
-        } else {
-          // For other traces, use scale transform
-          let newScaleX = startScaleX
-          let newScaleY = startScaleY
-          
-          const sensitivity = 0.01
-          
-          if (corner === 'l' || corner === 'r') {
-            // Horizontal edge - scale X only
-            const sign = corner === 'r' ? 1 : -1
-            newScaleX = Math.max(0.1, startScaleX * (1 + deltaX * sensitivity * sign))
-          } else if (corner === 't' || corner === 'b') {
-            // Vertical edge - scale Y only
-            const sign = corner === 'b' ? 1 : -1
-            newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
-          }
-
-          updateTraceTransform(selectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
+        const sensitivity = 0.01
+        
+        if (corner === 'l' || corner === 'r') {
+          // Horizontal edge - scale X only
+          const sign = corner === 'r' ? 1 : -1
+          newScaleX = Math.max(0.1, startScaleX * (1 + deltaX * sensitivity * sign))
+        } else if (corner === 't' || corner === 'b') {
+          // Vertical edge - scale Y only
+          const sign = corner === 'b' ? 1 : -1
+          newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
         }
+
+        updateTraceTransform(selectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
       }
     } else if (transformMode === 'rotate') {
       // Calculate rotation based on angle from center
@@ -1032,6 +1006,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 const cornerRadius = trace.cornerRadius || 0
                 const shapeType = trace.shapeType || 'rectangle'
 
+                // Use the trace's actual dimensions (width/height) for the shape
+                // This ensures shapes fill the trace container properly
                 if (shapeType === 'rectangle') {
                   return (
                     <div
@@ -1039,8 +1015,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       style={{
                         top: 0,
                         left: 0,
-                        width: `${shapeWidth}px`,
-                        height: `${shapeHeight}px`,
+                        width: '100%',
+                        height: '100%',
                         backgroundColor: shapeColor,
                         opacity: shapeOpacity,
                         borderRadius: `${cornerRadius}px`,
@@ -1054,8 +1030,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       style={{
                         top: 0,
                         left: 0,
-                        width: `${shapeWidth}px`,
-                        height: `${shapeHeight}px`,
+                        width: '100%',
+                        height: '100%',
                         backgroundColor: shapeColor,
                         opacity: shapeOpacity,
                         borderRadius: '50%',
@@ -1063,12 +1039,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                   )
                 } else if (shapeType === 'triangle') {
+                  // Use viewBox for proper scaling
                   return (
                     <svg
                       className="absolute pointer-events-none select-none"
-                      width={shapeWidth}
-                      height={shapeHeight}
-                      style={{ top: 0, left: 0 }}
+                      viewBox={`0 0 ${shapeWidth} ${shapeHeight}`}
+                      style={{ 
+                        top: 0, 
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                      }}
+                      preserveAspectRatio="none"
                     >
                       <polygon
                         points={`${shapeWidth / 2},0 ${shapeWidth},${shapeHeight} 0,${shapeHeight}`}
@@ -1654,6 +1636,132 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     Enable Interaction (click to play/interact)
                   </label>
                 </>
+              )}
+
+              {/* Shape Customization */}
+              {editingTrace.type === 'shape' && (
+                <div className="space-y-4">
+                  {/* Shape Type */}
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">Shape Type</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['rectangle', 'circle', 'triangle'] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, shapeType: type }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeType: type })
+                          }}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                            (editingTrace.shapeType || 'rectangle') === type
+                              ? 'bg-lobby-accent text-white'
+                              : 'bg-lobby-darker text-white/60 hover:bg-lobby-darker/70'
+                          }`}
+                        >
+                          {type === 'rectangle' && '⬛'}
+                          {type === 'circle' && '⚫'}
+                          {type === 'triangle' && '🔺'}
+                          {' '}{type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Color Picker */}
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">Fill Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="color"
+                        value={editingTrace.shapeColor || '#3b82f6'}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, shapeColor: e.target.value }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
+                        }}
+                        className="w-16 h-10 rounded-lg cursor-pointer bg-lobby-darker border-2 border-lobby-accent/30"
+                      />
+                      <input
+                        type="text"
+                        value={editingTrace.shapeColor || '#3b82f6'}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, shapeColor: e.target.value }
+                          setEditingTrace(updated)
+                        }}
+                        onBlur={(e) => {
+                          updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
+                        }}
+                        placeholder="#3b82f6"
+                        className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Opacity Slider */}
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">
+                      Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={editingTrace.shapeOpacity ?? 1.0}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value)
+                        const updated = { ...editingTrace, shapeOpacity: value }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { shapeOpacity: value })
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Corner Radius (Rectangle only) */}
+                  {(editingTrace.shapeType || 'rectangle') === 'rectangle' && (
+                    <div>
+                      <label className="block text-white mb-2 font-semibold">
+                        Corner Radius: {editingTrace.cornerRadius || 0}px
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={editingTrace.cornerRadius || 0}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value)
+                          const updated = { ...editingTrace, cornerRadius: value }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { cornerRadius: value })
+                        }}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
+                  {/* Shape Label */}
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">Label (optional)</label>
+                    <input
+                      type="text"
+                      value={editingTrace.content || ''}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, content: e.target.value }
+                        setEditingTrace(updated)
+                      }}
+                      onBlur={(e) => {
+                        updateTraceCustomization(editingTrace.id, { content: e.target.value })
+                      }}
+                      placeholder="Shape label..."
+                      maxLength={50}
+                      className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                    />
+                  </div>
+                </div>
               )}
 
               {/* Lighting Controls */}
