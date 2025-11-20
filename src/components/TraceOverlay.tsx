@@ -702,8 +702,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const cropHeight = trace.cropHeight ?? 1
         
         // Border container should match the cropped content size
-        const borderWidth = width * cropWidth * (transform as any).scaleX * zoom
-        const borderHeight = height * cropHeight * (transform as any).scaleY * zoom
+        // For shapes, use their actual width/height properties
+        const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
+        const shapeHeight = trace.type === 'shape' ? (trace.height || 200) : height
+        const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
+        const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
 
         // Debug logging for image dimensions
         // Selected trace rendering
@@ -790,8 +793,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <div
                   className="relative cursor-pointer"
                   style={{
-                    width: `${(trace.width || 200) * (transform as any).scaleX * zoom}px`,
-                    height: `${(trace.height || 200) * (transform as any).scaleY * zoom}px`,
+                    width: `${borderWidth}px`,
+                    height: `${borderHeight}px`,
                   }}
                 >
                   {(() => {
@@ -807,20 +810,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           style={{
                             backgroundColor: shapeColor,
                             opacity: shapeOpacity,
-                            borderRadius: `${cornerRadius}px`,
+                            borderRadius: `${cornerRadius * zoom}px`,
                           }}
                         />
                       )
                     } else if (shapeType === 'circle') {
                       return (
-                        <div
+                        <svg
                           className="w-full h-full pointer-events-none select-none"
-                          style={{
-                            backgroundColor: shapeColor,
-                            opacity: shapeOpacity,
-                            borderRadius: '50%',
-                          }}
-                        />
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                        >
+                          <ellipse
+                            cx="50"
+                            cy="50"
+                            rx="50"
+                            ry="50"
+                            fill={shapeColor}
+                            opacity={shapeOpacity}
+                          />
+                        </svg>
                       )
                     } else if (shapeType === 'triangle') {
                       return (
@@ -830,7 +839,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           preserveAspectRatio="none"
                         >
                           <polygon
-                            points="50,0 100,100 0,100"
+                            points="50,10 90,90 10,90"
                             fill={shapeColor}
                             opacity={shapeOpacity}
                           />
