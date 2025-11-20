@@ -178,24 +178,7 @@ export class ThemeManager {
           const x = startX + (col * gridSize)
           const y = startY + (row * gridSize)
           
-          // Check if this position is within generation radius of player or any trace
-          const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
-          let nearTrace = false
-          
-          for (const trace of traces) {
-            const distToTrace = Math.sqrt(Math.pow(x - trace.x, 2) + Math.pow(y - trace.y, 2))
-            if (distToTrace < generationRadius) {
-              nearTrace = true
-              break
-            }
-          }
-          
-          // Skip if not near player or any trace
-          if (distToPlayer >= generationRadius && !nearTrace) {
-            skippedFar++
-            continue
-          }
-          
+          // In grid mode, place elements everywhere in view (no radius restriction)
           // Check if we already have an element at this EXACT grid point
           const exists = this.groundElements.some(
             el => el.worldX === x && el.worldY === y
