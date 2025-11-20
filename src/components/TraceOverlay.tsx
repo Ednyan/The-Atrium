@@ -28,6 +28,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceId: string } | null>(null)
   
   const startPosRef = useRef({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
@@ -194,11 +195,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }
 
   const deleteTrace = async (traceId: string) => {
-    if (!confirm('Are you sure you want to delete this trace?')) return
+    const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
     
+    if (!dontAskAgain) {
+      // Show custom confirmation dialog
+      setDeleteConfirmDialog({ traceId })
+      return
+    }
+    
+    // Execute deletion
+    executeDelete(traceId)
+  }
+  
+  const executeDelete = async (traceId: string) => {
     // Immediately remove from local state for instant UI update
     removeTrace(traceId)
     setContextMenu(null)
+    setSelectedTraceId(null)
+    setDeleteConfirmDialog(null)
     
     // Then delete from database
     if (supabase) {
@@ -495,9 +509,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }
     }
     
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Delete key to delete selected trace
+      if (e.key === 'Delete' && selectedTraceId) {
+        e.preventDefault()
+        deleteTrace(selectedTraceId)
+      }
+    }
+    
     window.addEventListener('click', handleClickOutside)
-    return () => window.removeEventListener('click', handleClickOutside)
-  }, [])
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('click', handleClickOutside)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedTraceId])
 
   useEffect(() => {
     if (transformMode !== 'none') {
@@ -813,6 +839,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   style={{
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
+                    overflow: 'hidden',
                   }}
                 >
                   {(() => {
@@ -821,12 +848,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     const cornerRadius = trace.cornerRadius || 0
                     const shapeType = trace.shapeType || 'rectangle'
 
+                    const clipPathStyle = trace.cropWidth && trace.cropWidth < 1 
+                      ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+                      : undefined
+
                     if (shapeType === 'rectangle') {
                       return (
                         <svg
                           className="w-full h-full pointer-events-none select-none"
                           viewBox="0 0 100 100"
                           preserveAspectRatio="none"
+                          style={{ clipPath: clipPathStyle }}
                         >
                           <rect
                             x="0"
@@ -846,6 +878,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           className="w-full h-full pointer-events-none select-none"
                           viewBox="0 0 100 100"
                           preserveAspectRatio="none"
+                          style={{ clipPath: clipPathStyle }}
                         >
                           <ellipse
                             cx="50"
@@ -863,6 +896,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           className="w-full h-full pointer-events-none select-none"
                           viewBox="0 0 100 100"
                           preserveAspectRatio="none"
+                          style={{ clipPath: clipPathStyle }}
                         >
                           <polygon
                             points="50,10 90,90 10,90"
@@ -1346,7 +1380,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         <>
           {/* Menu */}
           <div
-            className="fixed bg-lobby-muted border border-lobby-accent rounded-lg shadow-2xl py-2 z-[200] pointer-events-auto"
+            className="fixed bg-lobby-muted border border-lobby-accent rounded-lg shadow-2xl py-2 z-[200] pointer-events-auto max-h-[80vh] overflow-y-auto"
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
             <button
@@ -1458,7 +1492,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {editingTrace && (
         <>
           <div
-            className="bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4 pointer-events-auto"
+            className="bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4 pointer-events-auto max-h-[90vh] overflow-y-auto"
             style={{ 
               position: 'fixed',
               left: '50%',
@@ -2095,6 +2129,53 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           onClose={() => setShowPlayerMenu(false)}
           position={playerMenuPosition}
         />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmDialog && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[250] pointer-events-auto"
+          onClick={() => setDeleteConfirmDialog(null)}
+        >
+          <div
+            className="bg-lobby-muted border-2 border-red-500 rounded-lg p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold text-red-500 mb-4">Delete Trace</h2>
+            <p className="text-white mb-6">
+              Are you sure you want to delete this trace? This action cannot be undone.
+            </p>
+            <p className="text-white/60 text-sm mb-6">
+              💡 Tip: Press <kbd className="px-2 py-1 bg-black/40 rounded">Delete</kbd> key while a trace is selected for quick deletion.
+            </p>
+            
+            <label className="flex items-center gap-2 text-white/80 text-sm mb-6 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4"
+                onChange={(e) => {
+                  localStorage.setItem('dontAskDeleteTrace', e.target.checked ? 'true' : 'false')
+                }}
+              />
+              Don't ask me again
+            </label>
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                onClick={() => setDeleteConfirmDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-bold"
+                onClick={() => executeDelete(deleteConfirmDialog.traceId)}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
