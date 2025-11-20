@@ -224,9 +224,9 @@ export class ThemeManager {
           }
           
           // In grid mode, place element at EVERY grid point (no random density check)
-          // Check if we already have an element at this position
+          // Check if we already have an element at this EXACT position (within 1px tolerance)
           const exists = this.groundElements.some(
-            el => Math.abs(el.worldX - x) < gridSize && Math.abs(el.worldY - y) < gridSize
+            el => Math.abs(el.worldX - x) < 1 && Math.abs(el.worldY - y) < 1
           )
           
           if (!exists) {
