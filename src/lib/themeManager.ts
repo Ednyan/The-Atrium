@@ -158,27 +158,34 @@ export class ThemeManager {
     let skippedFar = 0
 
     if (patternMode === 'grid') {
-      // GRID MODE: Pure mathematical grid - calculate exact points
-      // Calculate grid boundaries aligned to gridSize
+      // GRID MODE: Pure mathematical grid - simple iteration over exact grid points
+      // Start at grid-aligned position and step by gridSize
       const startX = Math.floor(minX / gridSize) * gridSize
       const startY = Math.floor(minY / gridSize) * gridSize
-      const endX = Math.ceil(maxX / gridSize) * gridSize
-      const endY = Math.ceil(maxY / gridSize) * gridSize
       
-      // Calculate number of rows and columns
-      const cols = Math.round((endX - startX) / gridSize)
-      const rows = Math.round((endY - startY) / gridSize)
-      
-      // Generate array of exact grid points
-      for (let row = 0; row <= rows; row++) {
-        for (let col = 0; col <= cols; col++) {
+      // Generate grid points by stepping through with exact gridSize increments
+      for (let y = startY; y <= maxY; y += gridSize) {
+        for (let x = startX; x <= maxX; x += gridSize) {
           checked++
           
-          // Calculate EXACT grid point
-          const x = startX + (col * gridSize)
-          const y = startY + (row * gridSize)
+          // Check if this position is within generation radius of player or any trace
+          const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
+          let nearTrace = false
           
-          // In grid mode, place elements everywhere in view (no radius restriction)
+          for (const trace of traces) {
+            const distToTrace = Math.sqrt(Math.pow(x - trace.x, 2) + Math.pow(y - trace.y, 2))
+            if (distToTrace < generationRadius) {
+              nearTrace = true
+              break
+            }
+          }
+          
+          // Skip if not near player or any trace
+          if (distToPlayer >= generationRadius && !nearTrace) {
+            skippedFar++
+            continue
+          }
+          
           // Check if we already have an element at this EXACT grid point
           const exists = this.groundElements.some(
             el => el.worldX === x && el.worldY === y
