@@ -140,7 +140,7 @@ export class ThemeManager {
     return (Math.sin(seed) * 43758.5453123) % 1
   }
 
-  generateGroundElements(minX: number, minY: number, maxX: number, maxY: number, playerX: number, playerY: number, traces: Array<{x: number, y: number}>) {
+  generateGroundElements(minX: number, minY: number, maxX: number, maxY: number) {
     if (!this.config.groundEnabled) {
       return
     }
@@ -151,7 +151,6 @@ export class ThemeManager {
 
     const patternMode = this.config.groundPatternMode ?? 'grid'
     const density = this.config.groundDensity / 10 // Adjusted density calculation
-    const generationRadius = 800 // Only generate within 800 pixels of player or traces
     const gridSize = this.config.gridSpacing ?? 100
     let created = 0
 

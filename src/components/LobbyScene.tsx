@@ -400,10 +400,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const maxY = camY + viewportHeight / zoomRef.current + margin
           
           themeManager.generateGroundElements(
-            minX, minY, maxX, maxY,
-            playerPos.x,
-            playerPos.y,
-            tracePositions
+            minX, minY, maxX, maxY
           )
           
           // Update floating particles
