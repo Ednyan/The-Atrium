@@ -154,39 +154,12 @@ export class ThemeManager {
     const generationRadius = 800 // Only generate within 800 pixels of player or traces
     const gridSize = this.config.gridSpacing ?? 100
     let created = 0
-    let checked = 0
-    let skippedFar = 0
 
     if (patternMode === 'grid') {
-      // GRID MODE: Pure mathematical grid - simple iteration over exact grid points
-      // Start at grid-aligned position and step by gridSize
-      const startX = Math.floor(minX / gridSize) * gridSize
-      const startY = Math.floor(minY / gridSize) * gridSize
-      
-      // Generate grid points by stepping through with exact gridSize increments
-      for (let y = startY; y <= maxY; y += gridSize) {
-        for (let x = startX; x <= maxX; x += gridSize) {
-          checked++
-          
-          // Check if this position is within generation radius of player or any trace
-          const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
-          let nearTrace = false
-          
-          for (const trace of traces) {
-            const distToTrace = Math.sqrt(Math.pow(x - trace.x, 2) + Math.pow(y - trace.y, 2))
-            if (distToTrace < generationRadius) {
-              nearTrace = true
-              break
-            }
-          }
-          
-          // Skip if not near player or any trace
-          if (distToPlayer >= generationRadius && !nearTrace) {
-            skippedFar++
-            continue
-          }
-          
-          // Check if we already have an element at this EXACT grid point
+      // GRID MODE: Evenly spaced on X and Y axis - simple and complete
+      for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
+        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+          // Check if we already have an element at this exact position
           const exists = this.groundElements.some(
             el => el.worldX === x && el.worldY === y
           )
@@ -199,31 +172,8 @@ export class ThemeManager {
       }
     } else {
       // RANDOM MODE: Grid-based with density and offsets (procedural)
-      const startX = Math.floor(minX / gridSize) * gridSize
-      const startY = Math.floor(minY / gridSize) * gridSize
-      
-      for (let x = startX; x < maxX; x += gridSize) {
-        for (let y = startY; y < maxY; y += gridSize) {
-          checked++
-          
-          // Check if this position is within generation radius of player or any trace
-          const distToPlayer = Math.sqrt(Math.pow(x - playerX, 2) + Math.pow(y - playerY, 2))
-          let nearTrace = false
-          
-          for (const trace of traces) {
-            const distToTrace = Math.sqrt(Math.pow(x - trace.x, 2) + Math.pow(y - trace.y, 2))
-            if (distToTrace < generationRadius) {
-              nearTrace = true
-              break
-            }
-          }
-          
-          // Skip if not near player or any trace
-          if (distToPlayer >= generationRadius && !nearTrace) {
-            skippedFar++
-            continue
-          }
-          
+      for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
+        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
           // Use seeded random to determine if element should exist at this grid point
           const rand = this.seededRandom(x, y)
           if (rand >= density) {
