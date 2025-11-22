@@ -156,13 +156,14 @@ export class ThemeManager {
 
     if (patternMode === 'grid') {
       // GRID MODE: Use integer math for perfect coverage
-      const startX = Math.ceil(minX / gridSize) * gridSize;
-      const startY = Math.ceil(minY / gridSize) * gridSize;
-      const endX = Math.floor(maxX / gridSize) * gridSize;
-      const endY = Math.floor(maxY / gridSize) * gridSize;
+      // Align grid boundaries to exact multiples of gridSize
+      const startX = Math.floor(minX / gridSize) * gridSize;
+      const startY = Math.floor(minY / gridSize) * gridSize;
+      const endX = Math.ceil(maxX / gridSize) * gridSize;
+      const endY = Math.ceil(maxY / gridSize) * gridSize;
 
-      for (let x = startX; x <= endX; x += gridSize) {
-        for (let y = startY; y <= endY; y += gridSize) {
+      for (let x = startX; x < endX; x += gridSize) {
+        for (let y = startY; y < endY; y += gridSize) {
           // Check if we already have an element at this exact position
           const exists = this.groundElements.some(
             el => el.worldX === x && el.worldY === y
