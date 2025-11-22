@@ -159,14 +159,9 @@ export class ThemeManager {
       for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
         for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
           // Check if we already have an element at this exact position
-          const exists = this.groundElements.some(
-            el => el.worldX === x && el.worldY === y
-          )
-          
-          if (!exists) {
+
             this.createGroundElement(x, y)
             created++
-          }
         }
       }
     } else {
