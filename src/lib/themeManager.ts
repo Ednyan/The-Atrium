@@ -155,13 +155,26 @@ export class ThemeManager {
     let created = 0
 
     if (patternMode === 'grid') {
-      // GRID MODE: Evenly spaced on X and Y axis - simple and complete
-      for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
-        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
-          // Check if we already have an element at this exact position
+      // GRID MODE: Use integer math for perfect coverage
+      const startX = Math.floor(minX / gridSize) * gridSize;
+      const startY = Math.floor(minY / gridSize) * gridSize;
+      const endX = Math.ceil(maxX / gridSize) * gridSize;
+      const endY = Math.ceil(maxY / gridSize) * gridSize;
+      const cols = Math.round((endX - startX) / gridSize);
+      const rows = Math.round((endY - startY) / gridSize);
 
-            this.createGroundElement(x, y)
-            created++
+      for (let col = 0; col <= cols; col++) {
+        for (let row = 0; row <= rows; row++) {
+          const x = startX + col * gridSize;
+          const y = startY + row * gridSize;
+          // Check if we already have an element at this exact position
+          const exists = this.groundElements.some(
+            el => el.worldX === x && el.worldY === y
+          );
+          if (!exists) {
+            this.createGroundElement(x, y);
+            created++;
+          }
         }
       }
     } else {
