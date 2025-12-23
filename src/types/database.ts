@@ -86,8 +86,8 @@ export interface Trace {
   showBackground?: boolean
   showDescription?: boolean
   showFilename?: boolean
-  fontSize?: 'small' | 'medium' | 'large'
-  fontFamily?: 'sans' | 'serif' | 'mono'
+  fontSize?: 'small' | 'medium' | 'large' | number
+  fontFamily?: string
   isLocked?: boolean
   borderRadius?: number // Border radius for trace container (0-50px)
   // Image cropping (values between 0 and 1, representing percentage)

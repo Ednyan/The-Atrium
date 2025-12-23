@@ -1,9 +1,12 @@
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// Removed useEffectOnce, use standard useEffect
 import { useState, useRef, useEffect } from 'react'
 import type { Trace } from '../types/database'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import ProfileCustomization from './ProfileCustomization'
-
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -12,10 +15,31 @@ interface TraceOverlayProps {
   worldOffset: { x: number; y: number }
   lobbyId?: string
 }
-
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop'
 
 export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId }: TraceOverlayProps) {
+    const [customFonts, setCustomFonts] = useState<string[]>([]);
+
+    // Load font files from public/fonts folder
+    useEffect(() => {
+      fetch('/fonts/')
+        .then(async res => {
+          if (!res.ok) return [];
+          const text = await res.text();
+          const matches = Array.from(text.matchAll(/href="([^"]+\.(ttf|otf|woff2?|TTF|OTF|WOFF2?|woff|ttf|otf))"/g));
+          const files = matches.map(m => m[1]);
+          setCustomFonts(files);
+          files.forEach(fontFile => {
+            const fontName = fontFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const fontUrl = `/fonts/${fontFile}`;
+            const style = document.createElement('style');
+            style.innerHTML = `@font-face { font-family: '${fontName}'; src: url('${fontUrl}'); font-display: swap; }`;
+            document.head.appendChild(style);
+          });
+        });
+      // Only run once
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
   const { position, username, playerZIndex, playerColor, otherUsers, removeTrace, userId } = useGameStore()
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
@@ -1111,8 +1135,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <p 
                     className="text-white text-center w-full break-words"
                     style={{
-                      fontSize: `calc(${fontSizeMap[fontSize]} * ${Math.min(width / 120, height / 80)})`,
-                      fontFamily: fontFamilyMap[fontFamily],
+                      fontSize:
+                        typeof fontSize === 'number'
+                          ? `${fontSize}px`
+                          : fontSizeMap[fontSize as 'small' | 'medium' | 'large']
+                            ? `calc(${fontSizeMap[fontSize as 'small' | 'medium' | 'large']} * ${Math.min(width / 120, height / 80)})`
+                            : '14px',
+                      fontFamily:
+                        fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
+                          ? fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
+                          : fontFamily,
                       lineHeight: '1.2',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -1588,38 +1620,57 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
 
                   <div>
-                    <label className="block text-white mb-2">Font Size</label>
-                    <select
-                      value={editingTrace.fontSize ?? 'medium'}
-                      onChange={(e) => {
-                        const value = e.target.value as 'small' | 'medium' | 'large'
-                        const updated = { ...editingTrace, fontSize: value }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { fontSize: value })
+                    <label className="block text-white mb-2">Font Size (px)</label>
+                    <input
+                      type="number"
+                      min={8}
+                      max={200}
+                      value={(() => {
+                        // Show the actual scaled font size based on trace size
+                        const base = typeof editingTrace.fontSize === 'number' ? editingTrace.fontSize : (editingTrace.fontSize ? parseInt(editingTrace.fontSize as string) : 14);
+                        // If scaling is applied, show the scaled value
+                        const scale = Math.min(editingTrace.width ? editingTrace.width / 120 : 1, editingTrace.height ? editingTrace.height / 80 : 1);
+                        return Math.round(base * scale);
+                      })()}
+                      onChange={e => {
+                        const value = parseInt(e.target.value) || 14;
+                        // Store the base value, not the scaled value
+                        const scale = Math.min(editingTrace.width ? editingTrace.width / 120 : 1, editingTrace.height ? editingTrace.height / 80 : 1);
+                        const baseValue = scale > 0 ? Math.round(value / scale) : value;
+                        const updated = { ...editingTrace, fontSize: baseValue };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { fontSize: baseValue });
                       }}
                       className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
-                    >
-                      <option value="small">Small</option>
-                      <option value="medium">Medium</option>
-                      <option value="large">Large</option>
-                    </select>
+                      placeholder="Font size in px"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-white mb-2">Font Family</label>
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
-                      onChange={(e) => {
-                        const value = e.target.value as 'sans' | 'serif' | 'mono'
-                        const updated = { ...editingTrace, fontFamily: value }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { fontFamily: value })
+                      onChange={e => {
+                        const updated = { ...editingTrace, fontFamily: e.target.value };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value });
                       }}
                       className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
                     >
-                      <option value="sans">Sans Serif</option>
+                      <option value="sans">Sans-serif</option>
                       <option value="serif">Serif</option>
                       <option value="mono">Monospace</option>
+                      <option value="palatino">Palatino</option>
+                      <option value="garamond">Garamond</option>
+                      <option value="comic">Comic Sans MS</option>
+                      <option value="impact">Impact</option>
+                      <option value="cursive">Cursive</option>
+                      <option value="fantasy">Fantasy</option>
+                      <option value="system-ui">System UI</option>
+                      {customFonts.map(fontFile => {
+                        const fontName = fontFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+                        return <option key={fontName} value={fontName}>{fontName} (Custom)</option>;
+                      })}
                     </select>
                   </div>
                 </>

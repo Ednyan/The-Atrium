@@ -83,25 +83,38 @@ export class ThemeManager {
   async loadTheme() {
     // Try to load ground elements
     const groundPaths = await this.discoverAssets('/themes/ground')
-    
+
     // Only set default ground elements if not already set by custom URLs
     if (this.config.groundElements.length === 0) {
       this.config.groundElements = groundPaths
     }
 
-    // Load textures for ground elements only
+    // Allow multiple ground element images again
+
+    // Load textures for ground elements only, with retry logic
     for (const path of this.config.groundElements) {
-      if (this.loadedTextures.has(path)) continue
-      
-      try {
-        const texture = await PIXI.Texture.from(path)
-        this.loadedTextures.set(path, texture)
-      } catch (e) {
-        console.warn(`Failed to load ground element: ${path}`)
+      let attempts = 0;
+      let loaded = false;
+      while (attempts < 3 && !loaded) {
+        if (this.loadedTextures.has(path)) {
+          loaded = true;
+          break;
+        }
+        try {
+          const texture = await PIXI.Texture.from(path);
+          this.loadedTextures.set(path, texture);
+          loaded = true;
+        } catch (e) {
+          attempts++;
+          if (attempts >= 3) {
+            console.warn(`Failed to load ground element after 3 attempts: ${path}`);
+          } else {
+            console.warn(`Retrying to load ground element (${attempts}/3): ${path}`);
+          }
+        }
       }
     }
-    
-    console.log(`🎨 Theme loaded: ${this.config.groundElements.length} ground elements`)
+    console.log(`🎨 Theme loaded: ${this.config.groundElements.length} ground element(s)`);
   }
 
   private async discoverAssets(basePath: string): Promise<string[]> {
@@ -155,20 +168,10 @@ export class ThemeManager {
     let created = 0
 
     if (patternMode === 'grid') {
-      // GRID MODE: Use integer math for perfect coverage
-      // Generate grid points from fixed origin (0,0)
-      const originX = 0;
-      const originY = 0;
-      const minCol = Math.ceil((minX - originX) / gridSize);
-      const maxCol = Math.floor((maxX - originX) / gridSize);
-      const minRow = Math.ceil((minY - originY) / gridSize);
-      const maxRow = Math.floor((maxY - originY) / gridSize);
-
-      for (let col = minCol; col <= maxCol; col++) {
-        for (let row = minRow; row <= maxRow; row++) {
-          const x = originX + col * gridSize;
-          const y = originY + row * gridSize;
-          // Check if we already have an element at this exact position
+      // Infinite grid: generate points across the visible area
+      const gridSize = this.config.gridSpacing ?? 100;
+      for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
+        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
           const exists = this.groundElements.some(
             el => el.worldX === x && el.worldY === y
           );
@@ -205,55 +208,55 @@ export class ThemeManager {
   }
 
   private createGroundElement(worldX: number, worldY: number) {
-    const texturePaths = this.config.groundElements
-    if (texturePaths.length === 0) return
+    const texturePaths = this.config.groundElements;
+    if (texturePaths.length === 0) return;
 
-    // Pick random texture
-    const textureIndex = Math.floor(this.seededRandom(worldX * 0.5, worldY * 0.7) * texturePaths.length)
-    const texturePath = texturePaths[textureIndex]
-    const texture = this.loadedTextures.get(texturePath)
-    
-    if (!texture) return
+    // Pick a random texture for each grid point, clamped to valid range
+    let textureIndex = Math.floor(this.seededRandom(worldX * 0.5, worldY * 0.7) * texturePaths.length);
+    textureIndex = Math.max(0, Math.min(textureIndex, texturePaths.length - 1));
+    const texturePath = texturePaths[textureIndex];
+    const texture = this.loadedTextures.get(texturePath);
+    if (!texture) return;
 
-    const sprite = new PIXI.Sprite(texture)
-    sprite.anchor.set(0.5)
-    
+    const sprite = new PIXI.Sprite(texture);
+    sprite.anchor.set(0.5);
+
     // Apply offsets based on pattern mode
-    const patternMode = this.config.groundPatternMode ?? 'grid'
+    const patternMode = this.config.groundPatternMode ?? 'grid';
     if (patternMode === 'grid') {
       // Perfect grid alignment - no offsets
-      sprite.x = worldX
-      sprite.y = worldY
+      sprite.x = worldX;
+      sprite.y = worldY;
     } else {
       // Random mode: add random offsets from grid position for procedural look
-      const offsetRange = this.config.gridSpacing ? this.config.gridSpacing * 0.4 : 40
-      const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * offsetRange
-      const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * offsetRange
-      sprite.x = worldX + offsetX
-      sprite.y = worldY + offsetY
+      const offsetRange = this.config.gridSpacing ? this.config.gridSpacing * 0.4 : 40;
+      const offsetX = (this.seededRandom(worldX * 1.1, worldY * 0.9) - 0.5) * offsetRange;
+      const offsetY = (this.seededRandom(worldX * 0.8, worldY * 1.2) - 0.5) * offsetRange;
+      sprite.x = worldX + offsetX;
+      sprite.y = worldY + offsetY;
     }
-    
-    // Random scale using config values (always positive)
-    const baseScale = this.config.groundElementScale ?? 0.0625
-    const scaleRange = this.config.groundElementScaleRange ?? 0.025
-    const scale = baseScale + this.seededRandom(worldX * 0.3, worldY * 0.6) * scaleRange
-    sprite.scale.set(scale)
-    
-    // Start invisible for fade in
-    sprite.alpha = 0
 
-    this.groundContainer.addChild(sprite)
-    
+    // Random scale using config values (always positive)
+    const baseScale = this.config.groundElementScale ?? 0.0625;
+    const scaleRange = this.config.groundElementScaleRange ?? 0.025;
+    const scale = baseScale + this.seededRandom(worldX * 0.3, worldY * 0.6) * scaleRange;
+    sprite.scale.set(scale);
+
+    // Start invisible for fade in
+    sprite.alpha = 0;
+
+    this.groundContainer.addChild(sprite);
+
     // Use configured ground particle opacity
-    const targetAlpha = this.config.groundParticleOpacity ?? 1.0
+    const targetAlpha = this.config.groundParticleOpacity ?? 1.0;
     // Store the GRID position (worldX, worldY) not sprite position for accurate tracking
-    this.groundElements.push({ 
-      sprite, 
-      worldX: worldX,  // Store grid position, not sprite.x
-      worldY: worldY,  // Store grid position, not sprite.y
+    this.groundElements.push({
+      sprite,
+      worldX: worldX, // Store grid position, not sprite.x
+      worldY: worldY, // Store grid position, not sprite.y
       targetAlpha: targetAlpha,
       fadeSpeed: 0.02 // Fade in over ~50 frames
-    })
+    });
   }
 
   createParticles(viewportWidth: number, viewportHeight: number) {
