@@ -70,10 +70,23 @@ export interface Trace {
   mediaUrl?: string
   createdAt: string
   // Shape properties
-  shapeType?: 'rectangle' | 'circle' | 'triangle'
+  shapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
   shapeColor?: string
   shapeOpacity?: number
-  cornerRadius?: number // For rectangles
+  cornerRadius?: number // For rectangles only
+  shapeOutlineOnly?: boolean // Show outline stroke
+  shapeNoFill?: boolean // Render with no fill (invisible but still interactive)
+  shapeOutlineColor?: string // Color of the outline stroke
+  shapeOutlineWidth?: number // Width of the outline in pixels (1-20)
+  shapePoints?: Array<{
+    x: number
+    y: number
+    cp1x?: number // Control point 1 x (for bezier curves)
+    cp1y?: number // Control point 1 y
+    cp2x?: number // Control point 2 x
+    cp2y?: number // Control point 2 y
+  }> // For path shapes
+  pathCurveType?: 'straight' | 'bezier' // For path shapes - line type
   width?: number
   height?: number
   // Non-uniform scale support

@@ -2,7 +2,7 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, Fragment } from 'react'
 import type { Trace } from '../types/database'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
@@ -14,10 +14,12 @@ interface TraceOverlayProps {
   zoom: number
   worldOffset: { x: number; y: number }
   lobbyId?: string
+  selectedTraceId: string | null
+  setSelectedTraceId: (id: string | null) => void
 }
-type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop'
+type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path'
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
     // Load font files from public/fonts folder
@@ -41,23 +43,40 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
   const { position, username, playerZIndex, playerColor, otherUsers, removeTrace, userId } = useGameStore()
-  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [playerMenuPosition, setPlayerMenuPosition] = useState({ x: 0, y: 0 })
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
   const [localTraceTransforms, setLocalTraceTransforms] = useState<Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number }>>({})
+  const justDraggedRef = useRef(false)
   const [imageDimensions, setImageDimensions] = useState<Record<string, { width: number; height: number }>>({})
   const [modalTrace, setModalTrace] = useState<Trace | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceId: string } | null>(null)
+  const [playingMedia, setPlayingMedia] = useState<Set<string>>(new Set()) // Track traces with playing media
+  const [pathCreationMode, setPathCreationMode] = useState(false) // Track if we're in path creation mode
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
+  const [localShapePoints, setLocalShapePoints] = useState<Record<string, any[]>>({}) // Track shape points during drag
+  const [colorPickerCallback, setColorPickerCallback] = useState<((color: string) => void) | null>(null) // For fallback color picker
   
-  const startPosRef = useRef({ x: 0, y: 0, corner: '' })
+  const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
   const startCropRef = useRef({ cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 })
   const centerRef = useRef({ x: 0, y: 0 })
+  
+  // Refs to store latest values for event handlers (to avoid stale closures)
+  const tracesRef = useRef(traces)
+  const editingTraceRef = useRef(editingTrace)
+  const localShapePointsRef = useRef(localShapePoints)
+  const zoomRef = useRef(zoom)
+  
+  // Keep refs updated
+  useEffect(() => { tracesRef.current = traces }, [traces])
+  useEffect(() => { editingTraceRef.current = editingTrace }, [editingTrace])
+  useEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
 
   // Proactively test image URLs and use proxy for blocked ones
   useEffect(() => {
@@ -156,6 +175,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Cancel color picker if active
+        if (colorPickerCallback) {
+          setColorPickerCallback(null)
+          document.body.style.cursor = 'default'
+          return
+        }
         setSelectedTraceId(null)
         setTransformMode('none')
         setIsCropMode(false)
@@ -165,7 +190,65 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [colorPickerCallback])
+
+  // Fallback color picker - capture canvas and sample color on click
+  useEffect(() => {
+    if (!colorPickerCallback) return
+
+    document.body.style.cursor = 'crosshair'
+
+    const handleClick = (e: MouseEvent) => {
+      // Don't pick from UI elements
+      const target = e.target as HTMLElement
+      if (target.closest('.customize-menu') || target.closest('button')) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      // Try to capture the WebGL canvas
+      const canvas = document.querySelector('canvas') as HTMLCanvasElement
+      if (canvas) {
+        try {
+          // Create a temporary 2D canvas from the WebGL canvas snapshot
+          const tempCanvas = document.createElement('canvas')
+          tempCanvas.width = canvas.width
+          tempCanvas.height = canvas.height
+          const ctx = tempCanvas.getContext('2d')
+          if (ctx) {
+            // Draw the WebGL canvas to our 2D canvas
+            ctx.drawImage(canvas, 0, 0)
+            
+            // Get click position relative to canvas
+            const rect = canvas.getBoundingClientRect()
+            const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width))
+            const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height))
+            
+            // Read the pixel
+            const pixelData = ctx.getImageData(x, y, 1, 1).data
+            const color = `#${pixelData[0].toString(16).padStart(2, '0')}${pixelData[1].toString(16).padStart(2, '0')}${pixelData[2].toString(16).padStart(2, '0')}`
+            
+            colorPickerCallback(color)
+          }
+        } catch (err) {
+          console.warn('Could not capture canvas color:', err)
+        }
+      }
+
+      // Reset
+      setColorPickerCallback(null)
+      document.body.style.cursor = 'default'
+    }
+
+    // Use capture phase
+    window.addEventListener('click', handleClick, true)
+    return () => {
+      window.removeEventListener('click', handleClick, true)
+      document.body.style.cursor = 'default'
+    }
+  }, [colorPickerCallback])
 
   const getScreenPosition = (worldX: number, worldY: number) => {
     const screenX = (worldX * zoom) + worldOffset.x
@@ -309,6 +392,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }
 
   const updateTraceCustomization = async (traceId: string, updates: Partial<Trace>) => {
+    // Update editingTrace immediately if it matches
+    if (editingTrace && editingTrace.id === traceId) {
+      setEditingTrace({ ...editingTrace, ...updates })
+    }
+    
     if (!supabase) return
     
     const updateData: any = {}
@@ -340,6 +428,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (updates.shapeColor !== undefined) updateData.shape_color = updates.shapeColor
     if (updates.shapeOpacity !== undefined) updateData.shape_opacity = updates.shapeOpacity
     if (updates.cornerRadius !== undefined) updateData.corner_radius = updates.cornerRadius
+    if (updates.shapeOutlineOnly !== undefined) updateData.shape_outline_only = updates.shapeOutlineOnly
+    if (updates.shapeNoFill !== undefined) updateData.shape_no_fill = updates.shapeNoFill
+    if (updates.shapeOutlineColor !== undefined) updateData.shape_outline_color = updates.shapeOutlineColor
+    if (updates.shapeOutlineWidth !== undefined) updateData.shape_outline_width = updates.shapeOutlineWidth
+    if (updates.shapePoints !== undefined) updateData.shape_points = updates.shapePoints
+    if (updates.pathCurveType !== undefined) updateData.path_curve_type = updates.pathCurveType
     if (updates.width !== undefined) updateData.width = updates.width
     if (updates.height !== undefined) updateData.height = updates.height
     
@@ -349,9 +443,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const handleMouseDown = (e: React.MouseEvent, trace: Trace, mode: TransformMode, corner?: string) => {
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
     
+    // Disable move/rotate/scale for path shapes - they're controlled by point editing
+    if (trace.type === 'shape' && trace.shapeType === 'path' && mode === 'move') return
+    
     e.stopPropagation()
     setSelectedTraceId(trace.id)
     setTransformMode(mode)
+    
+    // Prevent text selection during drag
+    document.body.classList.add('dragging')
     
   const transform = getTraceTransform(trace)
   startPosRef.current = { x: e.clientX, y: e.clientY, corner: corner || '' }
@@ -372,16 +472,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const handleMouseMove = (e: MouseEvent) => {
     if (transformMode === 'none' || !selectedTraceId) return
 
-    const trace = traces.find(t => t.id === selectedTraceId)
+    // Use refs to get latest values (avoid stale closures)
+    const currentTraces = tracesRef.current
+    const currentEditingTrace = editingTraceRef.current
+    const currentLocalShapePoints = localShapePointsRef.current
+    const currentZoom = zoomRef.current
+
+    const trace = currentTraces.find(t => t.id === selectedTraceId)
     if (!trace) return
+    
+    // Use editingTrace if available for the most up-to-date data
+    const currentTrace = (currentEditingTrace && currentEditingTrace.id === selectedTraceId) ? currentEditingTrace : trace
 
     const deltaX = e.clientX - startPosRef.current.x
     const deltaY = e.clientY - startPosRef.current.y
+    
+    // If mouse has moved more than 3 pixels, consider it a drag
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      justDraggedRef.current = true
+    }
 
   if (transformMode === 'move') {
       // Convert screen delta to world delta
-      const worldDeltaX = deltaX / zoom
-      const worldDeltaY = deltaY / zoom
+      const worldDeltaX = deltaX / currentZoom
+      const worldDeltaY = deltaY / currentZoom
       
       updateTraceTransform(selectedTraceId, {
         x: startTransformRef.current.x + worldDeltaX,
@@ -391,8 +505,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       // Handle crop area adjustment
       const { width, height } = getTraceSize(trace)
       const transform = getTraceTransform(trace)
-      const containerWidth = width * (transform as any).scaleX * zoom
-      const containerHeight = height * (transform as any).scaleY * zoom
+      const containerWidth = width * (transform as any).scaleX * currentZoom
+      const containerHeight = height * (transform as any).scaleY * currentZoom
       
       // Convert pixel delta to crop percentage delta
       const cropDeltaX = deltaX / containerWidth
@@ -512,22 +626,235 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const newRotation = (startTransformRef.current.rotation + angleDelta) % 360
       
       updateTraceTransform(selectedTraceId, { rotation: newRotation })
+    } else if (transformMode === 'point') {
+      // Edit individual points for path shapes using world coordinates
+      const pointIndex = parseInt(startPosRef.current.corner)
+      if (isNaN(pointIndex)) return
+      
+      const worldDeltaX = deltaX / currentZoom
+      const worldDeltaY = deltaY / currentZoom
+      
+      // Use local points if available, otherwise use currentTrace points (which uses editingTrace if available)
+      const currentPoints = currentLocalShapePoints[selectedTraceId] || currentTrace.shapePoints || []
+      const newPoints = [...currentPoints]
+      if (newPoints[pointIndex]) {
+        // Store initial point if not already stored
+        if (!startPosRef.current.initialPoint) {
+          startPosRef.current.initialPoint = { ...currentPoints[pointIndex] }
+        }
+        
+        const initial = startPosRef.current.initialPoint as any
+        
+        // Move point and control handles together
+        newPoints[pointIndex] = {
+          ...initial,
+          x: initial.x + worldDeltaX,
+          y: initial.y + worldDeltaY,
+          // Move control points with the anchor point
+          cp1x: initial.cp1x !== undefined ? initial.cp1x + worldDeltaX : undefined,
+          cp1y: initial.cp1y !== undefined ? initial.cp1y + worldDeltaY : undefined,
+          cp2x: initial.cp2x !== undefined ? initial.cp2x + worldDeltaX : undefined,
+          cp2y: initial.cp2y !== undefined ? initial.cp2y + worldDeltaY : undefined,
+        }
+        // Update local state for instant feedback, DB update on mouseup
+        setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
+      }
+    } else if (transformMode === 'control-in' || transformMode === 'control-out') {
+      // Edit control points for bezier curves using world coordinates
+      const pointIndex = parseInt(startPosRef.current.corner)
+      if (isNaN(pointIndex)) return
+      
+      const worldDeltaX = deltaX / currentZoom
+      const worldDeltaY = deltaY / currentZoom
+      
+      const currentPoints = currentLocalShapePoints[selectedTraceId] || currentTrace.shapePoints || []
+      const newPoints = [...currentPoints]
+      if (newPoints[pointIndex]) {
+        // Store initial control points if not already stored
+        if (!startPosRef.current.initialCpx) {
+          const point = currentPoints[pointIndex]
+          if (transformMode === 'control-in') {
+            startPosRef.current.initialCpx = point.cp1x ?? point.x - 20
+            startPosRef.current.initialCpy = point.cp1y ?? point.y
+          } else {
+            startPosRef.current.initialCpx = point.cp2x ?? point.x + 20
+            startPosRef.current.initialCpy = point.cp2y ?? point.y
+          }
+        }
+        
+        const cpxKey = transformMode === 'control-in' ? 'cp1x' : 'cp2x'
+        const cpyKey = transformMode === 'control-in' ? 'cp1y' : 'cp2y'
+        
+        if (startPosRef.current.initialCpx !== undefined && startPosRef.current.initialCpy !== undefined) {
+          newPoints[pointIndex] = {
+            ...newPoints[pointIndex],
+            [cpxKey]: startPosRef.current.initialCpx + worldDeltaX,
+            [cpyKey]: startPosRef.current.initialCpy + worldDeltaY
+          }
+          // Update local state for instant feedback, DB update on mouseup
+          setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
+        }
+      }
+    } else if (transformMode === 'move-path') {
+      // Move all points of a path shape together
+      const worldDeltaX = deltaX / currentZoom
+      const worldDeltaY = deltaY / currentZoom
+      
+      // Use local points if available (during drag), otherwise use currentTrace points
+      const currentPoints = currentLocalShapePoints[selectedTraceId] || currentTrace.shapePoints || []
+      
+      // Store initial points if not already stored
+      if (!startPosRef.current.initialPoints) {
+        startPosRef.current.initialPoints = currentPoints.map(p => ({ ...p }))
+      }
+      
+      const newPoints = startPosRef.current.initialPoints.map(p => ({
+        x: p.x + worldDeltaX,
+        y: p.y + worldDeltaY,
+        cp1x: p.cp1x !== undefined ? p.cp1x + worldDeltaX : undefined,
+        cp1y: p.cp1y !== undefined ? p.cp1y + worldDeltaY : undefined,
+        cp2x: p.cp2x !== undefined ? p.cp2x + worldDeltaX : undefined,
+        cp2y: p.cp2y !== undefined ? p.cp2y + worldDeltaY : undefined,
+      }))
+      
+      // Update local state for instant feedback, DB update on mouseup
+      setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
     }
   }
 
-  const handleMouseUp = () => {
+  const handleMouseUp = async () => {
+    // Remove dragging class from body
+    document.body.classList.remove('dragging')
+    
+    // If we actually dragged, prevent immediate deselection
+    if (justDraggedRef.current) {
+      // Clear the flag after a short delay (longer than click event)
+      setTimeout(() => {
+        justDraggedRef.current = false
+      }, 100)
+    }
+    
+    // Use refs to get latest values (avoid stale closures)
+    const currentLocalShapePoints = localShapePointsRef.current
+    const currentTraces = tracesRef.current
+    const currentEditingTrace = editingTraceRef.current
+    
+    // Save local shape points to database if any
+    if (selectedTraceId && currentLocalShapePoints[selectedTraceId]) {
+      const pointsToSave = currentLocalShapePoints[selectedTraceId]
+      const trace = currentTraces.find(t => t.id === selectedTraceId)
+      
+      // Update editingTrace immediately so it has the latest data
+      // Create editingTrace if it doesn't exist (for path editing without opening customize menu)
+      if (trace) {
+        if (currentEditingTrace && currentEditingTrace.id === selectedTraceId) {
+          setEditingTrace({ ...currentEditingTrace, shapePoints: pointsToSave })
+        } else {
+          setEditingTrace({ ...trace, shapePoints: pointsToSave })
+        }
+      }
+      
+      // Update database
+      await updateTraceCustomization(selectedTraceId, { shapePoints: pointsToSave })
+      
+      // Clear local state after saving so new points can be added without interference
+      setLocalShapePoints(prev => {
+        const next = { ...prev }
+        delete next[selectedTraceId]
+        return next
+      })
+    }
+    
+    // Clear initial point/control point references
+    if (startPosRef.current.initialPoint) {
+      startPosRef.current.initialPoint = undefined
+    }
+    if (startPosRef.current.initialCpx !== undefined) {
+      startPosRef.current.initialCpx = undefined
+      startPosRef.current.initialCpy = undefined
+    }
+    if (startPosRef.current.initialPoints) {
+      startPosRef.current.initialPoints = undefined
+    }
+    
     // If in crop mode, keep crop mode and transform mode active for more adjustments
-    if (transformMode !== 'crop') {
+    // For point/control editing, keep the trace selected but clear transform mode
+    // This allows clicking on control handles after dragging a point
+    if (transformMode !== 'crop' && transformMode !== 'point' && transformMode !== 'control-in' && transformMode !== 'control-out' && transformMode !== 'move-path') {
       setTransformMode('none')
+    } else if (transformMode === 'point' || transformMode === 'control-in' || transformMode === 'control-out' || transformMode === 'move-path') {
+      // For path point editing, keep the point selected but clear transform mode
+      // This allows clicking control handles after dragging
+      setTransformMode('none')
+      // Note: selectedPointIndex remains set so control handles stay visible
     }
   }
 
   // Click outside to deselect
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // If a trace element was clicked, don't deselect
       const target = e.target as HTMLElement
-      // If clicking outside any trace (not on a trace or transform handle)
-      if (!target.closest('[data-trace-element]')) {
+      if (target.closest('[data-trace-element="true"]')) {
+        return
+      }
+      
+      // Don't deselect if we just finished dragging
+      if (justDraggedRef.current) {
+        return
+      }
+      
+      // CRITICAL: If in path creation mode, prevent ANY deselection
+      if (pathCreationMode) {
+        const target = e.target as HTMLElement
+        
+        // If clicking on UI elements, just ignore the click
+        if (target.closest('[data-trace-element]') ||
+            target.closest('.layer-panel') ||
+            target.closest('[role="dialog"]') ||
+            target.closest('.customize-menu') ||
+            target.closest('button') ||
+            target.closest('select') ||
+            target.closest('input')) {
+          return
+        }
+        
+        // Add new point at click location
+        // Use editingTrace first if available (has latest local changes), then fall back to trace from store
+        if (selectedTraceId) {
+          const trace = traces.find(t => t.id === selectedTraceId)
+          
+          if (trace && trace.shapeType === 'path') {
+            const worldX = (e.clientX - worldOffset.x) / zoom
+            const worldY = (e.clientY - worldOffset.y) / zoom
+            
+            // Use editingTrace's points if available (most up-to-date), otherwise use trace's points
+            const sourceTrace = (editingTrace && editingTrace.id === selectedTraceId) ? editingTrace : trace
+            const currentPoints = sourceTrace.shapePoints || []
+            const newPoints = [...currentPoints, { x: worldX, y: worldY }]
+            
+            console.log('➕ Adding point at world coords:', worldX, worldY)
+            console.log('   Current points count:', currentPoints.length, '-> New count:', newPoints.length)
+            
+            const updated = { ...trace, shapePoints: newPoints }
+            setEditingTrace(updated)
+            updateTraceCustomization(selectedTraceId, { shapePoints: newPoints })
+          }
+        }
+        
+        // IMPORTANT: Always return when in creation mode - never deselect
+        return
+      }
+      
+      // Normal click outside behavior - only when NOT in creation mode
+      const clickTarget = e.target as HTMLElement
+      if (!clickTarget.closest('[data-trace-element]') && 
+          !clickTarget.closest('.layer-panel') &&
+          !clickTarget.closest('[role="dialog"]') &&
+          !clickTarget.closest('.customize-menu') &&
+          !clickTarget.closest('button') &&
+          !clickTarget.closest('select') &&
+          !clickTarget.closest('input')) {
         setSelectedTraceId(null)
         setTransformMode('none')
         setIsCropMode(false)
@@ -548,7 +875,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       window.removeEventListener('click', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedTraceId])
+  }, [selectedTraceId, pathCreationMode, worldOffset, zoom, traces, editingTrace])
 
   useEffect(() => {
     if (transformMode !== 'none') {
@@ -560,6 +887,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }
     }
   }, [transformMode, selectedTraceId])
+
+  // Clear editingTrace when trace is deselected
+  useEffect(() => {
+    if (!selectedTraceId && editingTrace) {
+      // Clear editingTrace when nothing is selected
+      console.log('🔄 Clearing editingTrace')
+      setEditingTrace(null)
+    }
+    // Don't sync on traces updates - let editingTrace be the source of truth during editing
+  }, [selectedTraceId, editingTrace])
+
+  // Disable path creation mode when selection is cleared
+  // Note: We don't check editingTrace here to avoid disabling mode when updating points
+  useEffect(() => {
+    if (!selectedTraceId) {
+      setPathCreationMode(false)
+      setSelectedPointIndex(null)
+    }
+  }, [selectedTraceId])
 
   const getTraceSize = (trace: Trace) => {
     // For shapes, use their custom dimensions
@@ -652,18 +998,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
   return (
     <>
-      <div 
-        className="absolute inset-0"
-        onClick={() => {
-          if (!showPlayerMenu) {
-            setSelectedTraceId(null)
-            setTransformMode('none')
-            setContextMenu(null)
-          }
-        }}
-      >
-        {/* Render traces AND player in z-index order */}
-        {[
+      {/* Render traces AND player in z-index order */}
+      {[
           ...traces.map(trace => ({ type: 'trace' as const, trace, zIndex: trace.zIndex ?? 0 })),
           // Player z-index is stored as layer z-index, convert to trace z-index (layer * 100)
           { type: 'player' as const, trace: null, zIndex: playerZIndex * 100 }
@@ -803,7 +1139,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
         
         // Don't render if completely transparent or far outside viewport
-        if (traceOpacity <= 0 || distanceFromCenter > fadeEndRadius) {
+        // EXCEPTION: Keep rendering if media is playing (video/audio) OR if it's an interactive embed
+        const isPlayingMedia = playingMedia.has(trace.id)
+        const isInteractiveEmbed = trace.type === 'embed' && trace.enableInteraction
+        if (!isPlayingMedia && !isInteractiveEmbed && (traceOpacity <= 0 || distanceFromCenter > fadeEndRadius)) {
           return null
         }
 
@@ -846,6 +1185,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               }}
               onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
               onClick={(e) => {
+                // Don't handle clicks if we're in a transform mode (e.g., dragging a point)
+                if (transformMode !== 'none') {
+                  e.stopPropagation()
+                  return
+                }
                 e.stopPropagation()
                 setSelectedTraceId(trace.id)
               }}
@@ -855,8 +1199,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               }}
               onContextMenu={(e) => {
                 e.preventDefault()
-                e.stopPropagation()
                 setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+                setSelectedTraceId(trace.id)
               }}
             >
               {/* Shape rendering - no border container */}
@@ -866,6 +1210,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   style={{
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
+                    pointerEvents: 'auto',
                     overflow: 'hidden',
                   }}
                 >
@@ -874,6 +1219,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     const shapeOpacity = trace.shapeOpacity ?? 1.0
                     const cornerRadius = trace.cornerRadius || 0
                     const shapeType = trace.shapeType || 'rectangle'
+                    const hasOutline = trace.shapeOutlineOnly ?? false
+                    const noFill = trace.shapeNoFill ?? false
+                    const outlineColor = trace.shapeOutlineColor || shapeColor
+                    const outlineWidth = trace.shapeOutlineWidth ?? 2
+                    
+                    // Determine fill and stroke based on options (independent)
+                    const fill = noFill ? 'none' : shapeColor
+                    const stroke = hasOutline ? outlineColor : 'none'
+                    const strokeWidth = hasOutline ? outlineWidth : 0
+                    
+                    // Convert corner radius to viewBox percentage separately for x and y to keep circles circular
+                    const radiusPercentX = (cornerRadius / width) * 100
+                    const radiusPercentY = (cornerRadius / height) * 100
 
                     const clipPathStyle = trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
@@ -888,13 +1246,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           style={{ clipPath: clipPathStyle }}
                         >
                           <rect
-                            x="0"
-                            y="0"
-                            width="100"
-                            height="100"
-                            rx={cornerRadius}
-                            ry={cornerRadius}
-                            fill={shapeColor}
+                            x={hasOutline ? strokeWidth / 2 : 0}
+                            y={hasOutline ? strokeWidth / 2 : 0}
+                            width={hasOutline ? 100 - strokeWidth : 100}
+                            height={hasOutline ? 100 - strokeWidth : 100}
+                            rx={radiusPercentX}
+                            ry={radiusPercentY}
+                            fill={fill}
+                            stroke={stroke}
+                            strokeWidth={strokeWidth}
+                            vectorEffect="non-scaling-stroke"
                             opacity={shapeOpacity}
                           />
                         </svg>
@@ -910,14 +1271,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           <ellipse
                             cx="50"
                             cy="50"
-                            rx="50"
-                            ry="50"
-                            fill={shapeColor}
+                            rx={hasOutline ? 50 - strokeWidth / 2 : 50}
+                            ry={hasOutline ? 50 - strokeWidth / 2 : 50}
+                            fill={fill}
+                            stroke={stroke}
+                            strokeWidth={strokeWidth}
+                            vectorEffect="non-scaling-stroke"
                             opacity={shapeOpacity}
                           />
                         </svg>
                       )
                     } else if (shapeType === 'triangle') {
+                      const inset = hasOutline ? strokeWidth / 2 : 0
+                      
                       return (
                         <svg
                           className="w-full h-full pointer-events-none select-none"
@@ -926,12 +1292,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           style={{ clipPath: clipPathStyle }}
                         >
                           <polygon
-                            points="50,10 90,90 10,90"
-                            fill={shapeColor}
+                            points={`50,${15 + inset} ${85 - inset},${85 - inset} ${15 + inset},${85 - inset}`}
+                            fill={fill}
+                            stroke={stroke}
+                            strokeWidth={strokeWidth}
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
                             opacity={shapeOpacity}
                           />
                         </svg>
                       )
+                    } else if (shapeType === 'path') {
+                      // Path shapes are rendered as absolute overlay - see below
+                      return null
                     }
                     return null
                   })()}
@@ -948,6 +1321,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
                     padding: '0px',
+                    pointerEvents: 'auto',
                     boxShadow: isSelected && isCropMode
                       ? '0 0 20px rgba(255, 136, 0, 0.5)'
                       : isSelected 
@@ -1021,13 +1395,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }))
                     }
                   }}
+                  onPlay={() => {
+                    setPlayingMedia(prev => new Set(prev).add(trace.id))
+                  }}
+                  onPause={() => {
+                    setPlayingMedia(prev => {
+                      const next = new Set(prev)
+                      next.delete(trace.id)
+                      return next
+                    })
+                  }}
+                  onEnded={() => {
+                    setPlayingMedia(prev => {
+                      const next = new Set(prev)
+                      next.delete(trace.id)
+                      return next
+                    })
+                  }}
                 />
               )}
 
               {/* Audio Content */}
               {trace.type === 'audio' && trace.mediaUrl && (
                 <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
-                  <span className="text-2xl mb-2"></span>
+                  <span className="text-2xl mb-2">🔊</span>
                   <audio
                     src={trace.mediaUrl}
                     controls
@@ -1035,6 +1426,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     style={{ height: '30px' }}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
+                    onPlay={() => {
+                      setPlayingMedia(prev => new Set(prev).add(trace.id))
+                    }}
+                    onPause={() => {
+                      setPlayingMedia(prev => {
+                        const next = new Set(prev)
+                        next.delete(trace.id)
+                        return next
+                      })
+                    }}
+                    onEnded={() => {
+                      setPlayingMedia(prev => {
+                        const next = new Set(prev)
+                        next.delete(trace.id)
+                        return next
+                      })
+                    }}
                   />
                   {showDescription && trace.content && (
                     <p className="text-xs text-white/80 mt-1 text-center truncate w-full pointer-events-none select-none">
@@ -1183,80 +1591,201 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             {/* Transform controls (only for selected trace and not in crop mode) */}
             {isSelected && !isCropMode && (
               <>
-                {/* Corner handles for scaling */}
-                {['tl', 'tr', 'bl', 'br'].map((corner) => {
-                  const offsetX = corner.includes('r') ? (borderWidth / 2) : -(borderWidth / 2)
-                  const offsetY = corner.includes('b') ? (borderHeight / 2) : -(borderHeight / 2)
-                  
-                  // Apply rotation to handle positions
-                  const rad = (transform.rotation * Math.PI) / 180
-                  const cos = Math.cos(rad)
-                  const sin = Math.sin(rad)
-                  const rotatedX = offsetX * cos - offsetY * sin
-                  const rotatedY = offsetX * sin + offsetY * cos
-                  
-                  return (
-                    <div
-                      key={corner}
-                      data-trace-element="true"
-                      className="absolute w-3 h-3 bg-green-400 border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto z-10"
-                      style={{
-                        left: `${screenX + rotatedX}px`,
-                        top: `${screenY + rotatedY}px`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      onMouseDown={(e) => handleMouseDown(e, trace, 'scale', corner)}
-                    />
-                  )
-                })}
+                {/* Special handles for path shapes */}
+                {(trace.type === 'shape' && trace.shapeType === 'path') ? (
+                  <>
+                    {/* Point handles for path - using world coordinates */}
+                    {(() => {
+                      const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
+                      console.log('🔵 Rendering point handles. Points count:', points.length, 'pathCreationMode:', pathCreationMode, 'selectedTraceId:', selectedTraceId)
+                      return points.map((point, index) => {
+                      // Convert world coordinates to screen coordinates
+                      const { screenX, screenY } = getScreenPosition(point.x, point.y)
+                      
+                      const isPointSelected = selectedPointIndex === index
+                      const isBezier = displayTrace.pathCurveType === 'bezier'
+                      
+                      return (
+                        <Fragment key={`point-${index}`}>
+                          {/* Main point handle */}
+                          <div
+                            data-trace-element="true"
+                            className={`absolute w-4 h-4 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform ${
+                              isPointSelected ? 'bg-blue-500' : 'bg-orange-400'
+                            }`}
+                            style={{
+                              left: `${screenX}px`,
+                              top: `${screenY}px`,
+                              transform: 'translate(-50%, -50%)',
+                            }}
+                            onClick={(e) => {
+                              console.log('🎯 Point handle CLICK. Index:', index)
+                              e.stopPropagation() // Prevent background deselection
+                            }}
+                            onMouseDown={(e) => {
+                              console.log('🎯 Point handle MOUSEDOWN. Index:', index, 'pathCreationMode:', pathCreationMode)
+                              e.stopPropagation()
+                              e.preventDefault()
+                              setSelectedPointIndex(index)
+                              handleMouseDown(e, trace, 'point', `${index}`)
+                            }}
+                          />
+                          
+                          {/* Control point handles (only in bezier mode and when point is selected) */}
+                          {isBezier && isPointSelected && (
+                            <>
+                              {(() => {
+                                const cp1x = point.cp1x ?? point.x - 20
+                                const cp1y = point.cp1y ?? point.y
+                                const { screenX: cp1ScreenX, screenY: cp1ScreenY } = getScreenPosition(cp1x, cp1y)
+                                
+                                return (
+                                  <>
+                                    {/* Line from point to control handle */}
+                                    <svg
+                                      className="absolute pointer-events-none"
+                                      style={{
+                                        left: 0,
+                                        top: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        overflow: 'visible',
+                                        zIndex: 9
+                                      }}
+                                    >
+                                      <line
+                                        x1={screenX}
+                                        y1={screenY}
+                                        x2={cp1ScreenX}
+                                        y2={cp1ScreenY}
+                                        stroke="#3b82f6"
+                                        strokeWidth="1"
+                                        strokeDasharray="4 2"
+                                      />
+                                    </svg>
+                                    {/* Control handle */}
+                                    <div
+                                      data-trace-element="true"
+                                      className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
+                                      style={{
+                                        left: `${cp1ScreenX}px`,
+                                        top: `${cp1ScreenY}px`,
+                                        transform: 'translate(-50%, -50%)',
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation() // Prevent background deselection
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation()
+                                        e.preventDefault()
+                                        setSelectedPointIndex(index) // Preserve point selection
+                                        handleMouseDown(e, trace, 'control-in', `${index}`)
+                                      }}
+                                    />
+                                  </>
+                                )
+                              })()}
+                              
+                              {/* Out-handle (cp2) */}
+                              {(() => {
+                                const cp2x = point.cp2x ?? point.x + 20
+                                const cp2y = point.cp2y ?? point.y
+                                const { screenX: cp2ScreenX, screenY: cp2ScreenY } = getScreenPosition(cp2x, cp2y)
+                                
+                                return (
+                                  <>
+                                    {/* Line from point to control handle */}
+                                    <svg
+                                      className="absolute pointer-events-none"
+                                      style={{
+                                        left: 0,
+                                        top: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        overflow: 'visible',
+                                        zIndex: 9
+                                      }}
+                                    >
+                                      <line
+                                        x1={screenX}
+                                        y1={screenY}
+                                        x2={cp2ScreenX}
+                                        y2={cp2ScreenY}
+                                        stroke="#3b82f6"
+                                        strokeWidth="1"
+                                        strokeDasharray="4 2"
+                                      />
+                                    </svg>
+                                    {/* Control handle */}
+                                    <div
+                                      data-trace-element="true"
+                                      className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
+                                      style={{
+                                        left: `${cp2ScreenX}px`,
+                                        top: `${cp2ScreenY}px`,
+                                        transform: 'translate(-50%, -50%)',
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation() // Prevent background deselection
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation()
+                                        e.preventDefault()
+                                        setSelectedPointIndex(index) // Preserve point selection
+                                        handleMouseDown(e, trace, 'control-out', `${index}`)
+                                      }}
+                                    />
+                                  </>
+                                )
+                              })()}
+                            </>
+                          )}
+                        </Fragment>
+                      )
+                    })
+                    })()}
+                    
+                    {/* Move handle for entire path - centered on all points */}
+                    {(() => {
+                      const points = localShapePoints[trace.id] || trace.shapePoints || []
+                      if (points.length === 0) return null
+                      
+                      // Calculate centroid
+                      const sumX = points.reduce((sum, p) => sum + p.x, 0)
+                      const sumY = points.reduce((sum, p) => sum + p.y, 0)
+                      const centerX = sumX / points.length
+                      const centerY = sumY / points.length
+                      
+                      const { screenX, screenY } = getScreenPosition(centerX, centerY)
+                      
+                      return (
+                        <div
+                          data-trace-element="true"
+                          className="absolute w-6 h-6 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform bg-green-500"
+                          style={{
+                            left: `${screenX}px`,
+                            top: `${screenY}px`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation()
+                            e.preventDefault()
+                            setSelectedPointIndex(null)
+                            handleMouseDown(e, trace, 'move-path', 'move-all')
+                          }}
+                        >
+                          <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">⊕</div>
+                        </div>
+                      )
+                    })()}
+                  </>
+                ) : null}
 
-                {/* Edge handles for non-uniform scaling */}
-                {['t', 'r', 'b', 'l'].map((edge) => {
-                  let offsetX = 0
-                  let offsetY = 0
-                  
-                  if (edge === 't') offsetY = -(borderHeight / 2)
-                  else if (edge === 'b') offsetY = (borderHeight / 2)
-                  else if (edge === 'l') offsetX = -(borderWidth / 2)
-                  else if (edge === 'r') offsetX = (borderWidth / 2)
-                  
-                  // Apply rotation to handle positions
-                  const rad = (transform.rotation * Math.PI) / 180
-                  const cos = Math.cos(rad)
-                  const sin = Math.sin(rad)
-                  const rotatedX = offsetX * cos - offsetY * sin
-                  const rotatedY = offsetX * sin + offsetY * cos
-                  
-                  const cursorClass = (edge === 't' || edge === 'b') ? 'cursor-ns-resize' : 'cursor-ew-resize'
-                  
-                  return (
-                    <div
-                      key={edge}
-                      data-trace-element="true"
-                      className={`absolute w-3 h-3 bg-yellow-400 border-2 border-white rounded-full pointer-events-auto z-10 ${cursorClass}`}
-                      style={{
-                        left: `${screenX + rotatedX}px`,
-                        top: `${screenY + rotatedY}px`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      onMouseDown={(e) => handleMouseDown(e, trace, 'scale', edge)}
-                    />
-                  )
-                })}
-
-                {/* Rotation handle at top */}
-                <div
-                  data-trace-element="true"
-                  className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-grab pointer-events-auto z-10"
-                  style={{
-                    left: `${screenX}px`,
-                    top: `${screenY - (borderHeight / 2 + 20)}px`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  onMouseDown={(e) => handleMouseDown(e, trace, 'rotate')}
-                />
-
-                {/* Crop button for all trace types */}
+                {/* Crop button for all trace types (not for path) */}
+                {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
                 <button
                   data-trace-element="true"
                   className={`absolute text-white text-xs font-bold px-3 py-1.5 rounded-md border-2 border-white shadow-lg pointer-events-auto z-10 transition-all hover:scale-110 ${
@@ -1276,6 +1805,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 >
                   {isCropMode ? '✅ Done' : '✂️ Crop'}
                 </button>
+                ) : null}
               </>
             )}
 
@@ -1339,6 +1869,406 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         </div>
         )
         })}
+
+        {/* Render path shapes as absolute SVG overlay */}
+        {traces.filter(t => t.type === 'shape' && t.shapeType === 'path').map(trace => {
+          // Use editingTrace if this is the trace being edited (for instant updates)
+          const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
+          
+          // Use local shape points during drag for instant feedback, otherwise use trace points
+          const points = localShapePoints[displayTrace.id] || displayTrace.shapePoints || []
+          if (points.length < 2) return null // Need at least 2 points to draw
+          
+          const curveType = displayTrace.pathCurveType || 'straight'
+          const shapeColor = displayTrace.shapeColor || '#3b82f6'
+          const shapeOpacity = displayTrace.shapeOpacity ?? 1.0
+          const outlineWidth = displayTrace.shapeOutlineWidth ?? 2
+          
+          // Convert world coordinates to screen coordinates
+          const screenPoints = points.map(p => {
+            const { screenX, screenY } = getScreenPosition(p.x, p.y)
+            const result: any = { x: screenX, y: screenY }
+            if (p.cp1x !== undefined && p.cp1y !== undefined) {
+              const cp1 = getScreenPosition(p.cp1x, p.cp1y)
+              result.cp1x = cp1.screenX
+              result.cp1y = cp1.screenY
+            }
+            if (p.cp2x !== undefined && p.cp2y !== undefined) {
+              const cp2 = getScreenPosition(p.cp2x, p.cp2y)
+              result.cp2x = cp2.screenX
+              result.cp2y = cp2.screenY
+            }
+            return result
+          })
+          
+          // Generate SVG path
+          let pathData = ''
+          if (curveType === 'bezier' && screenPoints.length >= 2) {
+            pathData = `M ${screenPoints[0].x} ${screenPoints[0].y}`
+            
+            if (screenPoints.length === 2) {
+              const p0 = screenPoints[0]
+              const p1 = screenPoints[1]
+              
+              if (p0.cp2x !== undefined && p0.cp2y !== undefined) {
+                const cp1x = p0.cp2x
+                const cp1y = p0.cp2y
+                const cp2x = p1.cp1x !== undefined ? p1.cp1x : cp1x
+                const cp2y = p1.cp1y !== undefined ? p1.cp1y : cp1y
+                pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`
+              } else {
+                const midX = (p0.x + p1.x) / 2
+                const midY = (p0.y + p1.y) / 2
+                pathData += ` Q ${midX} ${midY}, ${p1.x} ${p1.y}`
+              }
+            } else {
+              for (let i = 0; i < screenPoints.length - 1; i++) {
+                const p0 = i > 0 ? screenPoints[i - 1] : screenPoints[i]
+                const p1 = screenPoints[i]
+                const p2 = screenPoints[i + 1]
+                const p3 = i + 2 < screenPoints.length ? screenPoints[i + 2] : p2
+                
+                let cp1x, cp1y, cp2x, cp2y
+                
+                if (p1.cp2x !== undefined && p1.cp2y !== undefined) {
+                  cp1x = p1.cp2x
+                  cp1y = p1.cp2y
+                } else {
+                  const tension = 0.5
+                  cp1x = p1.x + (p2.x - p0.x) / 6 * tension
+                  cp1y = p1.y + (p2.y - p0.y) / 6 * tension
+                }
+                
+                if (p2.cp1x !== undefined && p2.cp1y !== undefined) {
+                  cp2x = p2.cp1x
+                  cp2y = p2.cp1y
+                } else {
+                  const tension = 0.5
+                  cp2x = p2.x - (p3.x - p1.x) / 6 * tension
+                  cp2y = p2.y - (p3.y - p1.y) / 6 * tension
+                }
+                
+                pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`
+              }
+            }
+          }
+          
+          return (
+            <svg
+              key={`path-${trace.id}`}
+              className="absolute select-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+                overflow: 'visible',
+                zIndex: trace.zIndex ?? 0,
+                pointerEvents: 'none'
+              }}
+            >
+              {curveType === 'bezier' ? (
+                <>
+                  {/* Invisible wider stroke for easier clicking */}
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={outlineWidth + 10}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedTraceId(trace.id)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setSelectedTraceId(trace.id)
+                      setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+                    }}
+                  />
+                  {/* Visible path */}
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke={shapeColor}
+                    strokeWidth={outlineWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={shapeOpacity}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Invisible wider stroke for easier clicking */}
+                  <polyline
+                    points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={outlineWidth + 10}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedTraceId(trace.id)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setSelectedTraceId(trace.id)
+                      setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+                    }}
+                  />
+                  {/* Visible path */}
+                  <polyline
+                    points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke={shapeColor}
+                    strokeWidth={outlineWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={shapeOpacity}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                </>
+              )}
+            </svg>
+          )
+        })}
+
+        {/* Render path point handles as absolute overlay (only for selected path) */}
+        {selectedTraceId && (() => {
+          const trace = traces.find(t => t.id === selectedTraceId)
+          if (!trace || trace.type !== 'shape' || trace.shapeType !== 'path') return null
+          
+          const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
+          const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
+          
+          console.log('🟢 Rendering path handles overlay. Points:', points.length)
+          
+          return (
+            <>
+              {/* Point handles */}
+              {points.map((point, index) => {
+                const { screenX, screenY } = getScreenPosition(point.x, point.y)
+                const isPointSelected = selectedPointIndex === index
+                const isBezier = displayTrace.pathCurveType === 'bezier'
+                
+                return (
+                  <Fragment key={`handle-${index}`}>
+                    {/* Main point handle */}
+                    <div
+                      data-trace-element="true"
+                      className={`absolute w-4 h-4 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform ${
+                        isPointSelected ? 'bg-blue-500' : 'bg-orange-400'
+                      }`}
+                      style={{
+                        left: `${screenX}px`,
+                        top: `${screenY}px`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      onClick={(e) => {
+                        console.log('🎯 Handle CLICK. Index:', index)
+                        e.stopPropagation()
+                      }}
+                      onMouseDown={(e) => {
+                        console.log('🎯 Handle MOUSEDOWN. Index:', index)
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setSelectedPointIndex(index)
+                        handleMouseDown(e, trace, 'point', `${index}`)
+                      }}
+                    />
+                    
+                    {/* Bezier control handles (only when point is selected) */}
+                    {isBezier && isPointSelected && (
+                      <>
+                        {/* In-handle (cp1) */}
+                        {(() => {
+                          const cp1x = point.cp1x ?? point.x - 20
+                          const cp1y = point.cp1y ?? point.y
+                          const { screenX: cp1ScreenX, screenY: cp1ScreenY } = getScreenPosition(cp1x, cp1y)
+                          
+                          return (
+                            <>
+                              <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', zIndex: 499 }}>
+                                <line x1={screenX} y1={screenY} x2={cp1ScreenX} y2={cp1ScreenY} stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 2" />
+                              </svg>
+                              <div
+                                data-trace-element="true"
+                                className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
+                                style={{ left: `${cp1ScreenX}px`, top: `${cp1ScreenY}px`, transform: 'translate(-50%, -50%)' }}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation()
+                                  e.preventDefault()
+                                  setSelectedPointIndex(index)
+                                  handleMouseDown(e, trace, 'control-in', `${index}`)
+                                }}
+                              />
+                            </>
+                          )
+                        })()}
+                        
+                        {/* Out-handle (cp2) */}
+                        {(() => {
+                          const cp2x = point.cp2x ?? point.x + 20
+                          const cp2y = point.cp2y ?? point.y
+                          const { screenX: cp2ScreenX, screenY: cp2ScreenY } = getScreenPosition(cp2x, cp2y)
+                          
+                          return (
+                            <>
+                              <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', zIndex: 499 }}>
+                                <line x1={screenX} y1={screenY} x2={cp2ScreenX} y2={cp2ScreenY} stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 2" />
+                              </svg>
+                              <div
+                                data-trace-element="true"
+                                className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
+                                style={{ left: `${cp2ScreenX}px`, top: `${cp2ScreenY}px`, transform: 'translate(-50%, -50%)' }}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation()
+                                  e.preventDefault()
+                                  setSelectedPointIndex(index)
+                                  handleMouseDown(e, trace, 'control-out', `${index}`)
+                                }}
+                              />
+                            </>
+                          )
+                        })()}
+                      </>
+                    )}
+                  </Fragment>
+                )
+              })}
+              
+              {/* Move handle - centered on all points */}
+              {(() => {
+                if (points.length === 0) return null
+                const sumX = points.reduce((sum, p) => sum + p.x, 0)
+                const sumY = points.reduce((sum, p) => sum + p.y, 0)
+                const centerX = sumX / points.length
+                const centerY = sumY / points.length
+                const { screenX, screenY } = getScreenPosition(centerX, centerY)
+                
+                return (
+                  <div
+                    data-trace-element="true"
+                    className="absolute w-6 h-6 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform bg-green-500"
+                    style={{ left: `${screenX}px`, top: `${screenY}px`, transform: 'translate(-50%, -50%)' }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setSelectedPointIndex(null)
+                      handleMouseDown(e, trace, 'move-path', 'move-all')
+                    }}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">⊕</div>
+                  </div>
+                )
+              })()}
+            </>
+          )
+        })()}
+
+        {/* Render regular handles (corner, edge, rotation) as absolute overlay for non-path shapes */}
+        {selectedTraceId && (() => {
+          const trace = traces.find(t => t.id === selectedTraceId)
+          if (!trace || (trace.type === 'shape' && trace.shapeType === 'path')) return null
+          
+          const transform = localTraceTransforms[trace.id] || getTraceTransform(trace)
+          const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
+          const { width, height } = getTraceSize(trace)
+          
+          // Get dimensions with scale and crop applied (same as in main trace rendering)
+          const cropWidth = trace.cropWidth ?? 1
+          const cropHeight = trace.cropHeight ?? 1
+          
+          const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
+          const shapeHeight = trace.type === 'shape' ? (trace.height || 200) : height
+          const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
+          const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
+          
+          return (
+            <>
+              {/* Corner handles for scaling */}
+              {['tl', 'tr', 'bl', 'br'].map((corner) => {
+                const offsetX = corner.includes('r') ? (borderWidth / 2) : -(borderWidth / 2)
+                const offsetY = corner.includes('b') ? (borderHeight / 2) : -(borderHeight / 2)
+                
+                // Apply rotation to handle positions
+                const rad = (transform.rotation * Math.PI) / 180
+                const cos = Math.cos(rad)
+                const sin = Math.sin(rad)
+                const rotatedX = offsetX * cos - offsetY * sin
+                const rotatedY = offsetX * sin + offsetY * cos
+                
+                return (
+                  <div
+                    key={corner}
+                    data-trace-element="true"
+                    className="absolute w-3 h-3 bg-green-400 border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto z-[50]"
+                    style={{
+                      left: `${screenX + rotatedX}px`,
+                      top: `${screenY + rotatedY}px`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    onMouseDown={(e) => handleMouseDown(e, trace, 'scale', corner)}
+                  />
+                )
+              })}
+
+              {/* Edge handles for non-uniform scaling */}
+              {['t', 'r', 'b', 'l'].map((edge) => {
+                let offsetX = 0
+                let offsetY = 0
+                
+                if (edge === 't') offsetY = -(borderHeight / 2)
+                else if (edge === 'b') offsetY = (borderHeight / 2)
+                else if (edge === 'l') offsetX = -(borderWidth / 2)
+                else if (edge === 'r') offsetX = (borderWidth / 2)
+                
+                // Apply rotation to handle positions
+                const rad = (transform.rotation * Math.PI) / 180
+                const cos = Math.cos(rad)
+                const sin = Math.sin(rad)
+                const rotatedX = offsetX * cos - offsetY * sin
+                const rotatedY = offsetX * sin + offsetY * cos
+                
+                const cursorClass = (edge === 't' || edge === 'b') ? 'cursor-ns-resize' : 'cursor-ew-resize'
+                
+                return (
+                  <div
+                    key={edge}
+                    data-trace-element="true"
+                    className={`absolute w-3 h-3 bg-yellow-400 border-2 border-white rounded-full pointer-events-auto z-[50] ${cursorClass}`}
+                    style={{
+                      left: `${screenX + rotatedX}px`,
+                      top: `${screenY + rotatedY}px`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    onMouseDown={(e) => handleMouseDown(e, trace, 'scale', edge)}
+                  />
+                )
+              })}
+
+              {/* Rotation handle at top */}
+              <div
+                data-trace-element="true"
+                className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-grab pointer-events-auto z-[50]"
+                style={{
+                  left: `${screenX}px`,
+                  top: `${screenY - (borderHeight / 2 + 20)}px`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                onMouseDown={(e) => handleMouseDown(e, trace, 'rotate')}
+              />
+            </>
+          )
+        })()}
 
         {/* Render other users in DOM with same styling as active player */}
         {Object.entries(otherUsers).map(([userId, user]) => {
@@ -1408,7 +2338,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
           )
         })}
-      </div>
 
       {/* Context Menu */}
       {contextMenu && (
@@ -1527,12 +2456,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {editingTrace && (
         <>
           <div
-            className="bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4 pointer-events-auto max-h-[90vh] overflow-y-auto"
+            className="customize-menu bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto"
             style={{ 
               position: 'fixed',
-              left: '50%',
+              right: '20px',
               top: '50%',
-              transform: 'translate(-50%, -50%)',
+              transform: 'translateY(-50%)',
               zIndex: 300
             }}
           >
@@ -1786,8 +2715,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Shape Type */}
                   <div>
                     <label className="block text-white mb-2 font-semibold">Shape Type</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['rectangle', 'circle', 'triangle'] as const).map((type) => (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                         <button
                           key={type}
                           type="button"
@@ -1805,6 +2734,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           {type === 'rectangle' && '⬛'}
                           {type === 'circle' && '⚫'}
                           {type === 'triangle' && '🔺'}
+                          {type === 'path' && '〰️'}
                           {' '}{type}
                         </button>
                       ))}
@@ -1814,7 +2744,65 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Color Picker */}
                   <div>
                     <label className="block text-white mb-2 font-semibold">Fill Color</label>
+                    
+                    {/* Color preset palette */}
+                    <div className="grid grid-cols-8 gap-2 mb-3">
+                      {['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+                        '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+                        '#f43f5e', '#ffffff', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#000000'].map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, shapeColor: color }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeColor: color })
+                          }}
+                          className="w-8 h-8 rounded-lg border-2 border-white/20 hover:border-lobby-accent transition-all hover:scale-110"
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                    
                     <div className="flex gap-2 items-center">
+                      {/* Eyedropper button */}
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          
+                          // Use native EyeDropper API if available
+                          if ('EyeDropper' in window) {
+                            try {
+                              const eyeDropper = new (window as any).EyeDropper()
+                              const result = await eyeDropper.open()
+                              const color = result.sRGBHex
+                              const updated = { ...editingTrace, shapeColor: color }
+                              setEditingTrace(updated)
+                              updateTraceCustomization(editingTrace.id, { shapeColor: color })
+                            } catch (err) {
+                              // User cancelled or error
+                              console.log('EyeDropper cancelled or failed:', err)
+                            }
+                          } else {
+                            // Fallback: use canvas capture method
+                            setColorPickerCallback(() => (color: string) => {
+                              const updated = { ...editingTrace, shapeColor: color }
+                              setEditingTrace(updated)
+                              updateTraceCustomization(editingTrace.id, { shapeColor: color })
+                            })
+                          }
+                        }}
+                        className={`p-2 rounded-lg border-2 transition-all ${
+                          colorPickerCallback ? 'bg-lobby-accent border-lobby-accent text-white animate-pulse' : 'bg-lobby-darker border-lobby-accent/30 text-white hover:bg-lobby-accent/20'
+                        }`}
+                        title="Pick color from canvas (Press Escape to cancel)"
+                      >
+                        💧
+                      </button>
+                      
                       <input
                         type="color"
                         value={editingTrace.shapeColor || '#3b82f6'}
@@ -1836,7 +2824,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
                         }}
                         placeholder="#3b82f6"
-                        className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono"
+                        className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono text-sm"
                       />
                     </div>
                   </div>
@@ -1862,6 +2850,127 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                   </div>
 
+                  {/* Outline and Fill Options */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editingTrace.shapeOutlineOnly ?? false}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, shapeOutlineOnly: e.target.checked }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
+                        }}
+                        className="w-4 h-4"
+                      />
+                      Show Outline
+                    </label>
+
+                    <label className="flex items-center gap-2 text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editingTrace.shapeNoFill ?? false}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, shapeNoFill: e.target.checked }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { shapeNoFill: e.target.checked })
+                        }}
+                        className="w-4 h-4"
+                      />
+                      No Fill
+                    </label>
+                  </div>
+
+                  {/* Outline Color (only show if outline is enabled) */}
+                  {editingTrace.shapeOutlineOnly && (
+                    <div>
+                      <label className="block text-white mb-2 font-semibold">Outline Color</label>
+                      
+                      {/* Color preset palette */}
+                      <div className="grid grid-cols-8 gap-2 mb-3">
+                        {['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+                          '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+                          '#f43f5e', '#ffffff', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#000000'].map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => {
+                              const updated = { ...editingTrace, shapeOutlineColor: color }
+                              setEditingTrace(updated)
+                              updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
+                            }}
+                            className="w-8 h-8 rounded-lg border-2 border-white/20 hover:border-lobby-accent transition-all hover:scale-110"
+                            style={{ backgroundColor: color }}
+                            title={color}
+                          />
+                        ))}
+                      </div>
+                      
+                      <div className="flex gap-2 items-center">
+                        {/* Eyedropper button */}
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            e.preventDefault()
+                            
+                            // Use native EyeDropper API if available
+                            if ('EyeDropper' in window) {
+                              try {
+                                const eyeDropper = new (window as any).EyeDropper()
+                                const result = await eyeDropper.open()
+                                const color = result.sRGBHex
+                                const updated = { ...editingTrace, shapeOutlineColor: color }
+                                setEditingTrace(updated)
+                                updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
+                              } catch (err) {
+                                // User cancelled or error
+                                console.log('EyeDropper cancelled or failed:', err)
+                              }
+                            } else {
+                              // Fallback: use canvas capture method
+                              setColorPickerCallback(() => (color: string) => {
+                                const updated = { ...editingTrace, shapeOutlineColor: color }
+                                setEditingTrace(updated)
+                                updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
+                              })
+                            }
+                          }}
+                          className={`p-2 rounded-lg border-2 transition-all ${
+                            colorPickerCallback ? 'bg-lobby-accent border-lobby-accent text-white animate-pulse' : 'bg-lobby-darker border-lobby-accent/30 text-white hover:bg-lobby-accent/20'
+                          }`}
+                          title="Pick color from canvas (Press Escape to cancel)"
+                        >
+                          💧
+                        </button>
+                        
+                        <input
+                          type="color"
+                          value={editingTrace.shapeOutlineColor || editingTrace.shapeColor || '#3b82f6'}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, shapeOutlineColor: e.target.value }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
+                          }}
+                          className="w-16 h-10 rounded-lg cursor-pointer bg-lobby-darker border-2 border-lobby-accent/30"
+                        />
+                        <input
+                          type="text"
+                          value={editingTrace.shapeOutlineColor || editingTrace.shapeColor || '#3b82f6'}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, shapeOutlineColor: e.target.value }
+                            setEditingTrace(updated)
+                          }}
+                          onBlur={(e) => {
+                            updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
+                          }}
+                          placeholder="#3b82f6"
+                          className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Corner Radius (Rectangle only) */}
                   {(editingTrace.shapeType || 'rectangle') === 'rectangle' && (
                     <div>
@@ -1882,7 +2991,151 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className="w-full"
                       />
+                      <p className="text-white/40 text-xs mt-1">
+                        Rounds the corners of the rectangle
+                      </p>
                     </div>
+                  )}
+
+                  {/* Outline Mode (hidden for path as it's always outline) */}
+                  {editingTrace.shapeType !== 'path' && (
+                  <div>
+                    <label className="flex items-center gap-2 text-white cursor-pointer mb-2">
+                      <input
+                        type="checkbox"
+                        checked={editingTrace.shapeOutlineOnly ?? false}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, shapeOutlineOnly: e.target.checked }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="font-semibold">Outline Only (No Fill)</span>
+                    </label>
+                    
+                    {editingTrace.shapeOutlineOnly && (
+                      <div className="ml-6">
+                        <label className="block text-white mb-2">
+                          Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
+                        </label>
+                        <input
+                          type="range"
+                          min="1"
+                          max="20"
+                          step="1"
+                          value={editingTrace.shapeOutlineWidth ?? 2}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value)
+                            const updated = { ...editingTrace, shapeOutlineWidth: value }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
+                          }}
+                          className="w-full"
+                        />
+                        <p className="text-white/40 text-xs mt-1">
+                          Adjust the thickness of the outline
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  )}
+
+                  {/* Path Thickness Control */}
+                  {editingTrace.shapeType === 'path' && (
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">
+                      Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="20"
+                      step="1"
+                      value={editingTrace.shapeOutlineWidth ?? 2}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value)
+                        const updated = { ...editingTrace, shapeOutlineWidth: value }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-white/40 text-xs mt-1">
+                      Adjust the thickness of the path
+                    </p>
+                  </div>
+                  )}
+
+                  {/* Path Point Editing */}
+                  {editingTrace.shapeType === 'path' && (
+                  <>
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">Path Style</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['straight', 'bezier'] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, pathCurveType: type }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { pathCurveType: type })
+                          }}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                            (editingTrace.pathCurveType || 'straight') === type
+                              ? 'bg-lobby-accent text-white'
+                              : 'bg-lobby-darker text-white/60 hover:bg-lobby-darker/70'
+                          }`}
+                        >
+                          {type === 'straight' && '━ Straight'}
+                          {type === 'bezier' && '〰 Curved'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-white mb-2 font-semibold">
+                      Path Points ({(editingTrace.shapePoints || []).length})
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPathCreationMode(!pathCreationMode)
+                        }}
+                        className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-all ${
+                          pathCreationMode
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-lobby-accent text-white hover:bg-lobby-accent/80'
+                        }`}
+                      >
+                        {pathCreationMode ? '✓ Done Adding' : '+ Add Points'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentPoints = editingTrace.shapePoints || []
+                          if (currentPoints.length > 2) {
+                            const newPoints = currentPoints.slice(0, -1)
+                            const updated = { ...editingTrace, shapePoints: newPoints }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-all"
+                      >
+                        Remove Last
+                      </button>
+                    </div>
+                    <p className="text-white/40 text-xs mt-2">
+                      {pathCreationMode 
+                        ? 'Click anywhere on the canvas to add points to your path' 
+                        : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
+                    </p>
+                  </div>
+                  </>
                   )}
 
                   {/* Shape Label */}
@@ -2093,7 +3346,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto"
+            className="fixed inset-0 bg-transparent pointer-events-auto"
             style={{ zIndex: 250 }}
             onClick={() => setEditingTrace(null)}
           />

@@ -42,6 +42,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const tracesDataRef = useRef<typeof traces>([])
   const otherUsersRef = useRef<typeof otherUsers>({})
   const zoomRef = useRef(1.0)
+  const targetZoomRef = useRef(1.0) // Target zoom for smooth interpolation
   const isPanningRef = useRef(false)
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
   const worldOffsetRef = useRef({ x: 0, y: 0 })
@@ -62,6 +63,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+
+  // Debug: Log when selectedTraceId changes
+  useEffect(() => {
+    console.log('LobbyScene: selectedTraceId changed to:', selectedTraceId)
+  }, [selectedTraceId])
 
   // Load lobby info
   useEffect(() => {
@@ -220,12 +227,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       // Mouse wheel zoom handler
       const handleWheel = (e: WheelEvent) => {
+        // Check if mouse is over any UI elements (menus, panels, etc.)
+        const target = e.target as HTMLElement
+        const isOverUI = target.closest('.customize-menu, .layer-panel, select, input, textarea, button') !== null
+        
+        if (isOverUI) {
+          // Let the browser handle normal scrolling for UI elements
+          return
+        }
+        
         e.preventDefault()
         const delta = -e.deltaY * 0.001
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta * ZOOM_SPEED))
-        zoomRef.current = newZoom
-        worldContainer.scale.set(newZoom)
-        setZoom(newZoom)
+        const newTargetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current + delta * ZOOM_SPEED))
+        targetZoomRef.current = newTargetZoom
       }
       
       const wheelListener = handleWheel
@@ -309,9 +323,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const deltaX = e.clientX - lastPanPositionRef.current.x
           const deltaY = e.clientY - lastPanPositionRef.current.y
           
+          // Convert mouse movement to world space based on current zoom
+          // This makes panning feel consistent regardless of zoom level
+          // The viewport size divided by zoom gives us the world space visible on screen
+          const viewportWorldWidth = window.innerWidth / zoomRef.current
+          const viewportWorldHeight = window.innerHeight / zoomRef.current
+          
+          // Convert pixel delta to percentage of screen, then to world units
+          const worldDeltaX = (deltaX / window.innerWidth) * viewportWorldWidth
+          const worldDeltaY = (deltaY / window.innerHeight) * viewportWorldHeight
+          
           // Move the camera (not the player)
-          cameraPositionRef.current.x -= deltaX / zoomRef.current
-          cameraPositionRef.current.y -= deltaY / zoomRef.current
+          cameraPositionRef.current.x -= worldDeltaX
+          cameraPositionRef.current.y -= worldDeltaY
           
           lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
         }
@@ -371,9 +395,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setPosition(newX, newY)
         }
         
+        // Smooth zoom interpolation
+        const zoomLerpSpeed = 0.15 // Higher = faster, lower = smoother
+        zoomRef.current += (targetZoomRef.current - zoomRef.current) * zoomLerpSpeed
+        
+        // Update world container scale
+        worldContainer.scale.set(zoomRef.current)
+        
+        // Update zoom state for React (throttled updates to avoid too many re-renders)
+        if (Math.abs(zoomRef.current - zoom) > 0.01) {
+          setZoom(zoomRef.current)
+        }
+        
         // Update camera (world container offset based on camera position)
-        worldContainer.x = -cameraPositionRef.current.x + viewportWidth / 2
-        worldContainer.y = -cameraPositionRef.current.y + viewportHeight / 2
+        // Apply zoom to camera position for correct centering
+        worldContainer.x = -cameraPositionRef.current.x * zoomRef.current + viewportWidth / 2
+        worldContainer.y = -cameraPositionRef.current.y * zoomRef.current + viewportHeight / 2
         
         // Sync world offset for overlay
         worldOffsetRef.current = { x: worldContainer.x, y: worldContainer.y }
@@ -815,7 +852,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div ref={canvasRef} className="absolute inset-0" />
         
         {/* Trace Content Overlay */}
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
           <TraceOverlay
             traces={traces}
             lobbyWidth={window.innerWidth}
@@ -823,6 +860,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             zoom={zoom}
             worldOffset={worldOffset}
             lobbyId={lobbyId}
+            selectedTraceId={selectedTraceId}
+            setSelectedTraceId={setSelectedTraceId}
           />
         </div>
       </div>
@@ -913,7 +952,33 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Layer Panel */}
       {showLayerPanel && (
-        <LayerPanel onClose={() => setShowLayerPanel(false)} />
+        <LayerPanel 
+          onClose={() => setShowLayerPanel(false)}
+          selectedTraceId={selectedTraceId}
+          onSelectTrace={(traceId) => {
+            console.log('LobbyScene: onSelectTrace called with:', traceId)
+            console.log('LobbyScene: Current selectedTraceId before update:', selectedTraceId)
+            setSelectedTraceId(traceId)
+            console.log('LobbyScene: setSelectedTraceId called with:', traceId)
+          }}
+          onGoToTrace={(traceId) => {
+            const trace = traces.find(t => t.id === traceId)
+            if (trace) {
+              console.log('Teleporting to trace:', {
+                id: trace.id,
+                tracePos: { x: trace.x, y: trace.y },
+                currentCamera: { ...cameraPositionRef.current },
+                currentPlayer: { ...positionRef.current }
+              })
+              // Set camera to trace position
+              cameraPositionRef.current.x = trace.x
+              cameraPositionRef.current.y = trace.y
+              console.log('New camera position:', { ...cameraPositionRef.current })
+            } else {
+              console.warn('Trace not found:', traceId)
+            }
+          }}
+        />
       )}
 
       {/* Instructions */}

@@ -17,7 +17,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   // Shape-specific state
-  const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle'>('rectangle')
+  const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>('rectangle')
   const [shapeColor, setShapeColor] = useState('#3b82f6') // Default blue
   const [shapeOpacity, setShapeOpacity] = useState(1.0)
   const [cornerRadius, setCornerRadius] = useState(0)
@@ -103,6 +103,14 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           height: shapeHeight,
           showBorder: false,
           showBackground: false,
+          // Initialize points for path shapes
+          ...(shapeType === 'path' && {
+            shapePoints: [
+              { x: finalPosition.x - 50, y: finalPosition.y },
+              { x: finalPosition.x + 50, y: finalPosition.y }
+            ],
+            pathCurveType: 'straight'
+          }),
         }),
       }
 
@@ -133,6 +141,14 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
             height: shapeHeight,
             show_border: false,
             show_background: false,
+            // Initialize points for path shapes
+            ...(shapeType === 'path' && {
+              shape_points: [
+                { x: finalPosition.x - 50, y: finalPosition.y },
+                { x: finalPosition.x + 50, y: finalPosition.y }
+              ],
+              path_curve_type: 'straight'
+            }),
           }),
         } as any).select() // Get the generated trace back
         
@@ -191,7 +207,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
   }
 
   return (
-    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 100 }}>
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 1000 }}>
       <div className="bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
         <h2 className="text-2xl font-bold text-lobby-accent mb-4">Leave a Trace</h2>
         
@@ -314,8 +330,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
               {/* Shape Type */}
               <div>
                 <label className="block text-lobby-light text-sm mb-2">Shape Type</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['rectangle', 'circle', 'triangle'] as const).map((type) => (
+                <div className="grid grid-cols-2 gap-2">
+                  {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                     <button
                       key={type}
                       type="button"
@@ -329,6 +345,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                       {type === 'rectangle' && '⬛'}
                       {type === 'circle' && '⚫'}
                       {type === 'triangle' && '🔺'}
+                      {type === 'path' && '〰️'}
                       {' '}{type}
                     </button>
                   ))}

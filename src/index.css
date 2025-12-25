@@ -33,3 +33,12 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Prevent text selection during drag */
+body.dragging,
+body.dragging * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}

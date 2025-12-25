@@ -5,9 +5,12 @@ import type { Layer } from '../types/database'
 
 interface LayerPanelProps {
   onClose: () => void
+  selectedTraceId?: string | null
+  onSelectTrace?: (traceId: string) => void
+  onGoToTrace?: (traceId: string) => void
 }
 
-export default function LayerPanel({ onClose }: LayerPanelProps) {
+export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, onGoToTrace }: LayerPanelProps) {
   const { traces, username, playerZIndex, setPlayerZIndex } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -132,6 +135,11 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
         await (supabase.from('traces') as any).update({ z_index: newTraceZIndex }).eq('id', layerTraces[j].id)
       }
     }
+    
+    // Set player z-index to be on top (above all layers)
+    const newPlayerZIndex = sortedLayers.length + 1
+    console.log(`  Setting player z-index: ${playerZIndex} → ${newPlayerZIndex}`)
+    setPlayerZIndex(newPlayerZIndex)
     
     console.log('✅ Fixed all z-indexes')
   }
@@ -315,9 +323,11 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
     ...sortedLayers.map(l => ({ type: 'layer' as const, data: l, zIndex: l.zIndex })),
     { type: 'player' as const, data: null, zIndex: playerZIndex },
   ].sort((a, b) => b.zIndex - a.zIndex)
+  
+  console.log('📊 allItems calculated:', allItems.map(i => i.type === 'player' ? `Player(${i.zIndex})` : `Layer:${i.data.name}(${i.zIndex})`).join(' > '))
 
   return (
-    <div className="fixed right-4 top-20 bottom-20 w-80 bg-lobby-muted border-2 border-lobby-accent rounded-lg shadow-2xl overflow-hidden flex flex-col z-50">
+    <div className="layer-panel fixed right-4 top-20 bottom-20 w-80 bg-lobby-muted border-2 border-lobby-accent rounded-lg shadow-2xl overflow-hidden flex flex-col z-50">
       {/* Header */}
       <div className="bg-lobby-darker border-b border-lobby-accent p-3 flex justify-between items-center">
         <h2 className="text-lg font-bold text-lobby-accent">🎨 Layers</h2>
@@ -358,8 +368,8 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
                 className="bg-lobby-accent/20 border border-lobby-accent rounded p-2 flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">👤</span>
-                  <span className="text-white font-semibold">{username} (You)</span>
+                  <span className="text-lg">👥</span>
+                  <span className="text-white font-semibold">Players</span>
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -367,12 +377,22 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
                       if (!canMoveUp) return
                       const itemAbove = allItems[index - 1]
                       if (itemAbove.type === 'layer') {
-                        // Swap with layer above
-                        const newPlayerZIndex = itemAbove.zIndex
-                        const newLayerZIndex = playerZIndex
-                        console.log('🔼 Moving player up: player', playerZIndex, '→', newPlayerZIndex, '| layer', itemAbove.zIndex, '→', newLayerZIndex)
-                        setPlayerZIndex(newPlayerZIndex)
-                        await updateLayerZIndex(itemAbove.data.id, newLayerZIndex)
+                        // Capture original values BEFORE any updates
+                        const originalPlayerZIndex = playerZIndex
+                        const originalLayerZIndex = itemAbove.zIndex
+                        
+                        // Check for duplicate z-indexes
+                        if (originalPlayerZIndex === originalLayerZIndex) {
+                          console.warn('⚠️ Duplicate z-indexes detected! Click the 🔧 Fix button first.')
+                          alert('Duplicate z-indexes detected. Please click the 🔧 Fix button to fix layer ordering first.')
+                          return
+                        }
+                        
+                        console.log('🔼 Moving player up: player', originalPlayerZIndex, '→', originalLayerZIndex, '| layer', originalLayerZIndex, '→', originalPlayerZIndex)
+                        
+                        // Swap: player gets layer's z-index, layer gets player's z-index
+                        setPlayerZIndex(originalLayerZIndex)
+                        await updateLayerZIndex(itemAbove.data.id, originalPlayerZIndex)
                       }
                     }}
                     disabled={!canMoveUp}
@@ -386,12 +406,22 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
                       if (!canMoveDown) return
                       const itemBelow = allItems[index + 1]
                       if (itemBelow.type === 'layer') {
-                        // Swap with layer below
-                        const newPlayerZIndex = itemBelow.zIndex
-                        const newLayerZIndex = playerZIndex
-                        console.log('🔽 Moving player down: player', playerZIndex, '→', newPlayerZIndex, '| layer', itemBelow.zIndex, '→', newLayerZIndex)
-                        setPlayerZIndex(newPlayerZIndex)
-                        await updateLayerZIndex(itemBelow.data.id, newLayerZIndex)
+                        // Capture original values BEFORE any updates
+                        const originalPlayerZIndex = playerZIndex
+                        const originalLayerZIndex = itemBelow.zIndex
+                        
+                        // Check for duplicate z-indexes
+                        if (originalPlayerZIndex === originalLayerZIndex) {
+                          console.warn('⚠️ Duplicate z-indexes detected! Click the 🔧 Fix button first.')
+                          alert('Duplicate z-indexes detected. Please click the 🔧 Fix button to fix layer ordering first.')
+                          return
+                        }
+                        
+                        console.log('🔽 Moving player down: player', originalPlayerZIndex, '→', originalLayerZIndex, '| layer', originalLayerZIndex, '→', originalPlayerZIndex)
+                        
+                        // Swap: player gets layer's z-index, layer gets player's z-index
+                        setPlayerZIndex(originalLayerZIndex)
+                        await updateLayerZIndex(itemBelow.data.id, originalPlayerZIndex)
                       }
                     }}
                     disabled={!canMoveDown}
@@ -413,9 +443,19 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
           const layerIndex = sortedLayers.findIndex(l => l.id === layer.id)
           const canMoveUp = layerIndex > 0 // Not already at top (highest z-index)
           const canMoveDown = layerIndex < sortedLayers.length - 1 // Not already at bottom (lowest z-index)
+          
+          // Check if any trace in this group is selected
+          const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId)
 
           return (
-            <div key={layer.id} className="bg-lobby-darker/50 border border-lobby-accent/30 rounded">
+            <div 
+              key={layer.id} 
+              className={`bg-lobby-darker/50 border rounded transition-all ${
+                hasSelectedTrace 
+                  ? 'border-green-500 bg-green-500/10' 
+                  : 'border-lobby-accent/30'
+              }`}
+            >
               {/* Group header */}
               <div className="p-2 flex items-center justify-between hover:bg-lobby-accent/10 cursor-pointer">
                 <div
@@ -471,7 +511,15 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
                   {layerTraces.map((trace) => (
                     <div
                       key={trace.id}
-                      className="bg-lobby-darker border border-lobby-accent/20 rounded p-2 flex items-center justify-between text-sm"
+                      className={`bg-lobby-darker border rounded p-2 flex items-center justify-between text-sm transition-all cursor-pointer hover:bg-lobby-accent/10 ${
+                        trace.id === selectedTraceId
+                          ? 'border-green-500 bg-green-500/20 shadow-lg shadow-green-500/30'
+                          : 'border-lobby-accent/20'
+                      }`}
+                      onClick={() => {
+                        console.log('LayerPanel: Clicking trace', { traceId: trace.id, currentSelected: selectedTraceId, matches: trace.id === selectedTraceId })
+                        onSelectTrace?.(trace.id)
+                      }}
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <span>
@@ -486,13 +534,28 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
                         </span>
                         {trace.illuminate && <span title="Emits light">💡</span>}
                       </div>
-                      <button
-                        onClick={() => moveTraceToLayer(trace.id, null)}
-                        className="text-white/40 hover:text-white/80 text-xs ml-2"
-                        title="Remove from group"
-                      >
-                        ↗
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onGoToTrace?.(trace.id)
+                          }}
+                          className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 rounded hover:bg-blue-500/20 transition-colors"
+                          title="Go to trace"
+                        >
+                          📍
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            moveTraceToLayer(trace.id, null)
+                          }}
+                          className="text-white/40 hover:text-white/80 text-xs px-1.5 py-0.5"
+                          title="Remove from group"
+                        >
+                          ↗
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -509,7 +572,15 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
               {ungroupedTraces.map((trace) => (
                 <div
                   key={trace.id}
-                  className="bg-lobby-darker border border-lobby-accent/20 rounded p-2 flex items-center justify-between text-sm"
+                  className={`bg-lobby-darker border rounded p-2 flex items-center justify-between text-sm transition-all cursor-pointer hover:bg-lobby-accent/10 ${
+                    trace.id === selectedTraceId
+                      ? 'border-green-500 bg-green-500/20 shadow-lg shadow-green-500/30'
+                      : 'border-lobby-accent/20'
+                  }`}
+                  onClick={() => {
+                    console.log('LayerPanel: Clicking ungrouped trace', { traceId: trace.id, currentSelected: selectedTraceId, matches: trace.id === selectedTraceId })
+                    onSelectTrace?.(trace.id)
+                  }}
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span>
@@ -524,20 +595,33 @@ export default function LayerPanel({ onClose }: LayerPanelProps) {
                     </span>
                     {trace.illuminate && <span title="Emits light">💡</span>}
                   </div>
-                  <select
-                    onChange={(e) => {
-                      const layerId = e.target.value || null
-                      moveTraceToLayer(trace.id, layerId)
-                    }}
-                    className="bg-lobby-muted text-white text-xs border border-lobby-accent/30 rounded px-2 py-1 ml-2"
-                  >
-                    <option value="">Move to...</option>
-                    {sortedLayers.map(layer => (
-                      <option key={layer.id} value={layer.id}>
-                        {layer.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onGoToTrace?.(trace.id)
+                      }}
+                      className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 rounded hover:bg-blue-500/20 transition-colors"
+                      title="Go to trace"
+                    >
+                      📍
+                    </button>
+                    <select
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const layerId = e.target.value || null
+                        moveTraceToLayer(trace.id, layerId)
+                      }}
+                      className="bg-lobby-muted text-white text-xs border border-lobby-accent/30 rounded px-2 py-1"
+                    >
+                      <option value="">Move to...</option>
+                      {sortedLayers.map(layer => (
+                        <option key={layer.id} value={layer.id}>
+                          {layer.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               ))}
             </div>
