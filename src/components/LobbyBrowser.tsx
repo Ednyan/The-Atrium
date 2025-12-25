@@ -237,63 +237,86 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-        <div className="text-white text-xl">Loading lobbies...</div>
+      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
+        <div className="text-nier-bg text-sm tracking-[0.2em] uppercase animate-pulse">◇ Loading lobbies...</div>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-nier-black/95 flex items-center justify-center z-50 p-4">
+      {/* Scanline overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+        }}
+      />
+      
+      <div className="bg-nier-blackLight border border-nier-border/40 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col relative">
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-6 h-6 border-l border-b border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-6 h-6 border-r border-b border-nier-border/60" />
+
         {/* Header */}
-        <div className="p-6 border-b border-lobby-accent/30">
+        <div className="p-6 border-b border-nier-border/20">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-lobby-accent">🌐 Lobby Browser</h2>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+                <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Lobby Browser</h2>
+              </div>
+              <p className="text-nier-border/60 text-[10px] tracking-[0.1em] uppercase ml-5">Select destination</p>
+            </div>
             <button
               onClick={onClose}
-              className="text-white/60 hover:text-white text-2xl leading-none"
+              className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
             >
               ×
             </button>
           </div>
           {error && (
-            <div className="mt-3 text-red-400 text-sm bg-red-900/20 border border-red-500/30 rounded px-3 py-2">
-              {error}
+            <div className="mt-4 text-nier-bg/80 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2">
+              ⚠ {error}
             </div>
           )}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-8">
           {/* Your Lobbies */}
           {userLobbies.length > 0 && (
             <section>
-              <h3 className="text-lg font-semibold text-lobby-accent mb-3">Your Lobbies ({userLobbies.length}/3)</h3>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Your Lobbies</span>
+                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                <span className="text-nier-border/50 text-[10px]">{userLobbies.length}/3</span>
+              </div>
               <div className="grid gap-3">
                 {userLobbies.map(lobby => (
-                  <div key={lobby.id} className="bg-lobby-darker border border-lobby-accent/30 rounded-lg p-4">
+                  <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors group">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h4 className="text-white font-semibold text-lg">{lobby.name}</h4>
-                        <div className="flex gap-4 mt-2 text-sm text-white/60">
-                          <span>👥 {lobby.playerCount}/{lobby.maxPlayers}</span>
-                          <span>{lobby.isPublic ? '🌍 Public' : '🔒 Private'}</span>
-                          {lobby.passwordHash && <span>🔑 Password</span>}
+                        <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
+                        <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
+                          <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
+                          <span>{lobby.isPublic ? '◦ Public' : '◦ Private'}</span>
+                          {lobby.passwordHash && <span>◦ Secured</span>}
                         </div>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => onJoinLobby(lobby.id)}
-                          className="px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold"
+                          className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
                         >
-                          Join
+                          Enter
                         </button>
                         <button
                           onClick={() => deleteLobby(lobby.id)}
-                          className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                          className="px-3 py-2 border border-nier-red/40 text-nier-border text-[10px] hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
-                          🗑️
+                          ×
                         </button>
                       </div>
                     </div>
@@ -305,49 +328,59 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
           {/* Create Lobby */}
           <section>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-semibold text-lobby-accent">Create New Lobby</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Create New</span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               {!canCreateMore && (
-                <span className="text-sm text-red-400">Maximum 3 lobbies reached</span>
+                <span className="text-nier-red/60 text-[10px] tracking-wider">Limit reached</span>
               )}
             </div>
             
             {showCreateLobby ? (
-              <div className="bg-lobby-darker border border-lobby-accent/30 rounded-lg p-4 space-y-3">
-                <input
-                  type="text"
-                  value={newLobbyName}
-                  onChange={(e) => setNewLobbyName(e.target.value)}
-                  placeholder="Lobby name..."
-                  className="w-full bg-lobby-dark text-white border border-lobby-accent/30 rounded px-3 py-2"
-                  maxLength={50}
-                />
-                <input
-                  type="password"
-                  value={newLobbyPassword}
-                  onChange={(e) => setNewLobbyPassword(e.target.value)}
-                  placeholder="Password (optional)"
-                  className="w-full bg-lobby-dark text-white border border-lobby-accent/30 rounded px-3 py-2"
-                />
-                <label className="flex items-center gap-2 text-white cursor-pointer">
+              <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
+                <div>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Lobby Name</label>
+                  <input
+                    type="text"
+                    value={newLobbyName}
+                    onChange={(e) => setNewLobbyName(e.target.value)}
+                    placeholder="Enter name..."
+                    className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                    maxLength={50}
+                  />
+                </div>
+                <div>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Password (Optional)</label>
+                  <input
+                    type="password"
+                    value={newLobbyPassword}
+                    onChange={(e) => setNewLobbyPassword(e.target.value)}
+                    placeholder="Leave empty for no password"
+                    className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                  />
+                </div>
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${newLobbyIsPublic ? 'border-nier-bg bg-nier-bg' : 'border-nier-border/40 group-hover:border-nier-border/60'}`}>
+                    {newLobbyIsPublic && <span className="text-nier-black text-[10px]">✓</span>}
+                  </div>
                   <input
                     type="checkbox"
                     checked={newLobbyIsPublic}
                     onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
-                    className="w-4 h-4"
+                    className="hidden"
                   />
-                  Public (visible in lobby browser)
+                  <span className="tracking-wider uppercase text-[10px]">Public (visible in browser)</span>
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-3 pt-2">
                   <button
                     onClick={createLobby}
-                    className="flex-1 px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold"
+                    className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
                   >
-                    Create
+                    Create Lobby
                   </button>
                   <button
                     onClick={() => setShowCreateLobby(false)}
-                    className="px-4 py-2 bg-white/10 text-white rounded hover:bg-white/20"
+                    className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
                     Cancel
                   </button>
@@ -357,47 +390,50 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <button
                 onClick={() => setShowCreateLobby(true)}
                 disabled={!canCreateMore}
-                className="w-full px-4 py-3 bg-lobby-accent/20 text-lobby-accent border border-lobby-accent/30 rounded hover:bg-lobby-accent/30 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                + Create New Lobby
+                ◇ Create New Lobby
               </button>
             )}
           </section>
 
           {/* Public Lobbies */}
           <section>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-semibold text-lobby-accent">Available Lobbies ({lobbies.length})</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Available Lobbies</span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              <span className="text-nier-border/50 text-[10px]">{lobbies.length} found</span>
               <button
                 onClick={() => setShowJoinById(true)}
-                className="px-3 py-1 bg-lobby-accent/20 text-lobby-accent border border-lobby-accent/30 rounded hover:bg-lobby-accent/30 text-sm font-semibold"
+                className="px-3 py-1 border border-nier-border/30 text-nier-border text-[9px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
               >
-                🔗 Join by ID
+                Join by ID
               </button>
             </div>
             <div className="grid gap-3">
               {lobbies.length === 0 ? (
-                <div className="text-white/60 text-center py-8">No lobbies available</div>
+                <div className="text-nier-border/40 text-center py-12 text-xs tracking-wider uppercase">No lobbies available</div>
               ) : (
                 lobbies.map(lobby => (
-                  <div key={lobby.id} className="bg-lobby-darker border border-lobby-accent/30 rounded-lg p-4">
+                  <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h4 className="text-white font-semibold text-lg">
-                          {lobby.name} {!lobby.isPublic && '🔒'}
+                        <h4 className="text-nier-bg text-sm tracking-wide">
+                          {lobby.name}
+                          {!lobby.isPublic && <span className="ml-2 text-nier-border/50 text-[9px]">[Private]</span>}
                         </h4>
-                        <div className="flex gap-4 mt-2 text-sm text-white/60">
-                          <span>👤 {lobby.ownerUsername}</span>
-                          <span>👥 {lobby.playerCount}/{lobby.maxPlayers}</span>
-                          {lobby.passwordHash && <span>🔑 Password</span>}
-                          {!lobby.isPublic && <span>✅ Whitelisted</span>}
+                        <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
+                          <span>◇ {lobby.ownerUsername}</span>
+                          <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
+                          {lobby.passwordHash && <span>◦ Secured</span>}
+                          {!lobby.isPublic && <span>◦ Whitelisted</span>}
                         </div>
                       </div>
                       <button
                         onClick={() => handleJoinClick(lobby)}
-                        className="px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold"
+                        className="px-4 py-2 border border-nier-border/40 text-nier-bg text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
                       >
-                        Join
+                        Enter
                       </button>
                     </div>
                   </div>
@@ -410,31 +446,36 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Password Modal */}
       {selectedLobbyId && (
-        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-          <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-xl font-bold text-lobby-accent mb-4">🔑 Password Required</h3>
+        <div className="absolute inset-0 bg-nier-black/80 flex items-center justify-center">
+          <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+            
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ Password Required</h3>
             <input
               type="password"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
               placeholder="Enter lobby password..."
-              className="w-full bg-lobby-darker text-white border border-lobby-accent/30 rounded px-3 py-2 mb-4"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors mb-4"
               autoFocus
             />
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button
                 onClick={handlePasswordSubmit}
-                className="flex-1 px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold"
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
               >
-                Join
+                Enter
               </button>
               <button
                 onClick={() => {
                   setSelectedLobbyId(null)
                   setPasswordInput('')
                 }}
-                className="px-4 py-2 bg-white/10 text-white rounded hover:bg-white/20"
+                className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
                 Cancel
               </button>
@@ -445,10 +486,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Join by ID Modal */}
       {showJoinById && (
-        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-          <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-xl font-bold text-lobby-accent mb-4">🔗 Join Lobby by ID</h3>
-            <p className="text-white/60 text-sm mb-4">
+        <div className="absolute inset-0 bg-nier-black/80 flex items-center justify-center">
+          <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+            
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-2">◇ Join by ID</h3>
+            <p className="text-nier-border/60 text-[10px] tracking-wider mb-4">
               Enter the lobby ID shared with you by the lobby owner.
             </p>
             <input
@@ -457,10 +503,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               onChange={(e) => setLobbyIdInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && lobbyIdInput && onJoinLobby(lobbyIdInput)}
               placeholder="Lobby ID (UUID)..."
-              className="w-full bg-lobby-darker text-white border border-lobby-accent/30 rounded px-3 py-2 mb-4"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors mb-4 font-mono"
               autoFocus
             />
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button
                 onClick={() => {
                   if (lobbyIdInput) {
@@ -470,16 +516,16 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   }
                 }}
                 disabled={!lobbyIdInput}
-                className="flex-1 px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                Join
+                Enter
               </button>
               <button
                 onClick={() => {
                   setShowJoinById(false)
                   setLobbyIdInput('')
                 }}
-                className="px-4 py-2 bg-white/10 text-white rounded hover:bg-white/20"
+                className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
                 Cancel
               </button>

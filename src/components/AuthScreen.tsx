@@ -165,10 +165,23 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
 
   if (checkEmail) {
     return (
-      <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
-        <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-8 max-w-md w-full mx-4">
-          <h2 className="text-2xl font-bold text-white mb-4">Check Your Email</h2>
-          <p className="text-white/80 mb-4">
+      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
+        {/* Scanline overlay */}
+        <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+          style={{
+            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+          }}
+        />
+        
+        <div className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative">
+          {/* Corner brackets */}
+          <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+          
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">Check Your Email</h2>
+          <p className="text-nier-border text-sm leading-relaxed mb-6">
             We've sent you an email with a confirmation link. Please check your inbox and click the link to verify your account.
           </p>
           <button
@@ -176,7 +189,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
               setCheckEmail(false)
               setMode('login')
             }}
-            className="w-full bg-lobby-accent hover:bg-lobby-accent/80 text-white font-semibold py-2 px-4 rounded"
+            className="w-full py-3 border border-nier-border/60 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bg hover:text-nier-black hover:border-nier-bg"
           >
             Back to Login
           </button>
@@ -186,59 +199,86 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
-      <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-8 max-w-md w-full mx-4">
-        <h1 className="text-3xl font-bold text-white mb-6 text-center">
-          {mode === 'login' ? 'Welcome Back' : 'Create Account'}
-        </h1>
+    <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
+      {/* Scanline overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+        }}
+      />
+      
+      {/* Corner decorations */}
+      <div className="absolute top-8 left-8 w-12 h-12 border-l border-t border-nier-border/20" />
+      <div className="absolute top-8 right-8 w-12 h-12 border-r border-t border-nier-border/20" />
+      <div className="absolute bottom-8 left-8 w-12 h-12 border-l border-b border-nier-border/20" />
+      <div className="absolute bottom-8 right-8 w-12 h-12 border-r border-b border-nier-border/20" />
 
-        <form onSubmit={mode === 'login' ? handleLogin : handleSignup} className="space-y-4">
+      <div className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative">
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="w-8 h-[1px] bg-gradient-to-r from-transparent to-nier-border/40" />
+            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+            <div className="w-8 h-[1px] bg-gradient-to-l from-transparent to-nier-border/40" />
+          </div>
+          <h1 className="text-xl text-nier-bg tracking-[0.2em] uppercase">
+            {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+          </h1>
+        </div>
+
+        <form onSubmit={mode === 'login' ? handleLogin : handleSignup} className="space-y-5">
           {mode === 'signup' && (
             <div>
-              <label className="block text-white/80 text-sm font-semibold mb-2">
+              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                 Username
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-lobby-accent"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                 placeholder="Choose a unique username"
                 required
                 minLength={3}
                 maxLength={20}
                 pattern="[a-zA-Z0-9_]+"
               />
-              <p className="text-white/50 text-xs mt-1">
-                3-20 characters, letters, numbers, and underscores only
+              <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
+                3-20 characters, letters, numbers, underscores
               </p>
             </div>
           )}
 
           {mode === 'login' ? (
             <div>
-              <label className="block text-white/80 text-sm font-semibold mb-2">
+              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                 Email or Username
               </label>
               <input
                 type="text"
                 value={emailOrUsername}
                 onChange={(e) => setEmailOrUsername(e.target.value)}
-                className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-lobby-accent"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                 placeholder="your@email.com or username"
                 required
               />
             </div>
           ) : (
             <div>
-              <label className="block text-white/80 text-sm font-semibold mb-2">
+              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                 Email
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-lobby-accent"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                 placeholder="your@email.com"
                 required
               />
@@ -246,49 +286,49 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           )}
 
           <div>
-            <label className="block text-white/80 text-sm font-semibold mb-2">
+            <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
               Password
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-lobby-accent"
+              className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
               placeholder="••••••••"
               required
               minLength={6}
             />
             {mode === 'signup' && (
-              <p className="text-white/50 text-xs mt-1">
+              <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
                 Minimum 6 characters
               </p>
             )}
           </div>
 
           {error && (
-            <div className="bg-red-500/20 border border-red-500 rounded px-3 py-2 text-red-200 text-sm">
-              {error}
+            <div className="border border-nier-red/40 bg-nier-red/10 px-4 py-3 text-nier-bg/80 text-xs tracking-wide">
+              ⚠ {error}
             </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-lobby-accent hover:bg-lobby-accent/80 disabled:bg-lobby-accent/50 text-white font-semibold py-2 px-4 rounded transition-colors"
+            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bgDark disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Please wait...' : mode === 'login' ? 'Log In' : 'Sign Up'}
+            {loading ? '◇ Processing...' : mode === 'login' ? 'Log In' : 'Sign Up'}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 pt-4 border-t border-nier-border/20 text-center">
           <button
             onClick={() => {
               setMode(mode === 'login' ? 'signup' : 'login')
               setError('')
             }}
-            className="text-lobby-accent hover:text-lobby-accent/80 text-sm"
+            className="text-nier-border text-[11px] tracking-wider hover:text-nier-bg transition-colors"
           >
-            {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
+            {mode === 'login' ? "◇ Don't have an account? Sign up" : '◇ Already have an account? Log in'}
           </button>
         </div>
       </div>

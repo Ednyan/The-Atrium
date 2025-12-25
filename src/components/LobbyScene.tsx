@@ -17,7 +17,7 @@ const MOVE_SPEED = 5
 const MOVE_ACCELERATION = 0.8
 const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
-const MIN_ZOOM = 0.1
+const MIN_ZOOM = 0.15
 const MAX_ZOOM = 3.0
 const ZOOM_SPEED = 0.1
 
@@ -185,7 +185,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     })
     
     if (canvasRef.current) {
-      canvasRef.current.appendChild(app.view as HTMLCanvasElement)
+      const canvas = app.view as HTMLCanvasElement
+      canvas.draggable = false
+      canvas.ondragstart = () => false
+      canvasRef.current.appendChild(canvas)
       appRef.current = app
 
       // Create world container that will move (camera effect)
@@ -403,7 +406,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         worldContainer.scale.set(zoomRef.current)
         
         // Update zoom state for React (throttled updates to avoid too many re-renders)
-        if (Math.abs(zoomRef.current - zoom) > 0.01) {
+        // Only update if zoom changed significantly (reduces re-renders during smooth zoom)
+        if (Math.abs(zoomRef.current - zoom) > 0.02) {
           setZoom(zoomRef.current)
         }
         
@@ -412,9 +416,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         worldContainer.x = -cameraPositionRef.current.x * zoomRef.current + viewportWidth / 2
         worldContainer.y = -cameraPositionRef.current.y * zoomRef.current + viewportHeight / 2
         
-        // Sync world offset for overlay
-        worldOffsetRef.current = { x: worldContainer.x, y: worldContainer.y }
-        setWorldOffset({ x: worldContainer.x, y: worldContainer.y })
+        // Sync world offset for overlay (throttled to reduce re-renders)
+        const newOffsetX = worldContainer.x
+        const newOffsetY = worldContainer.y
+        worldOffsetRef.current = { x: newOffsetX, y: newOffsetY }
+        
+        // Only update state if offset changed significantly
+        if (Math.abs(newOffsetX - worldOffset.x) > 1 || Math.abs(newOffsetY - worldOffset.y) > 1) {
+          setWorldOffset({ x: newOffsetX, y: newOffsetY })
+        }
         
         // Update grid based on camera position
         updateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
@@ -481,91 +491,181 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           tracePlacementIndicatorRef.current.clear()
         }
 
-        // Update trace direction indicators on screen borders
+        // Update trace direction indicators on screen borders (Nier:Automata style)
+        // Now relative to CAMERA position, not player position
         if (traceIndicatorsRef.current) {
           traceIndicatorsRef.current.removeChildren()
+          pulseTime += 0.02 // Slower pulse for elegant animation
           
           // Find traces that are outside the camera viewport
-          const offScreenTraces: Array<{ trace: any; distance: number; angle: number }> = []
+          const offScreenTraces: Array<{ trace: any; distance: number; angle: number; screenX: number; screenY: number }> = []
+          
+          // Use CAMERA position for viewport calculations
+          const cameraX = cameraPositionRef.current.x
+          const cameraY = cameraPositionRef.current.y
           
           tracesDataRef.current.forEach((trace) => {
-            // Calculate trace position in screen coordinates (accounting for zoom and camera position)
-            // The world offset already includes zoom calculations from LobbyScene
-            const traceScreenX = (trace.x - positionRef.current.x) * zoomRef.current + viewportWidth / 2
-            const traceScreenY = (trace.y - positionRef.current.y) * zoomRef.current + viewportHeight / 2
+            // Calculate trace position in screen coordinates relative to CAMERA
+            const traceScreenX = (trace.x - cameraX) * zoomRef.current + viewportWidth / 2
+            const traceScreenY = (trace.y - cameraY) * zoomRef.current + viewportHeight / 2
             
-            // Check if trace is outside viewport bounds (with some margin for trace size)
-            const margin = 150 // Account for trace size
+            // Check if trace is outside viewport bounds
+            const margin = 100
             const isOutsideViewport = 
               traceScreenX < -margin || traceScreenX > viewportWidth + margin ||
               traceScreenY < -margin || traceScreenY > viewportHeight + margin
             
             if (isOutsideViewport) {
-              // Calculate angle and distance from camera center to trace
-              const dx = trace.x - positionRef.current.x
-              const dy = trace.y - positionRef.current.y
+              // Calculate angle and distance from CAMERA center to trace
+              const dx = trace.x - cameraX
+              const dy = trace.y - cameraY
               const distance = Math.sqrt(dx * dx + dy * dy)
               const angle = Math.atan2(dy, dx)
-              offScreenTraces.push({ trace, distance, angle })
+              offScreenTraces.push({ trace, distance, angle, screenX: traceScreenX, screenY: traceScreenY })
             }
           })
           
-          // Debug logging
-          if (tracesDataRef.current.length > 0 && offScreenTraces.length > 0) {
-            console.log('Zoom:', zoomRef.current.toFixed(2), 'Total traces:', tracesDataRef.current.length, 'Off-screen (outside viewport):', offScreenTraces.length)
-          }
-          
-          // Sort by distance and show up to 5 closest off-screen traces
+          // Sort by distance and show up to 8 closest off-screen traces
           offScreenTraces.sort((a, b) => a.distance - b.distance)
-          const closestTraces = offScreenTraces.slice(0, 5)
+          const closestTraces = offScreenTraces.slice(0, 8)
           
-          closestTraces.forEach(({ distance, angle }) => {
-            // Calculate position on screen border
-            const margin = 30
-            let indicatorX = viewportWidth / 2 + Math.cos(angle) * (viewportWidth / 2 - margin)
-            let indicatorY = viewportHeight / 2 + Math.sin(angle) * (viewportHeight / 2 - margin)
+          closestTraces.forEach(({ distance, angle }, index) => {
+            // Calculate position on screen border with edge detection
+            const edgeMargin = 50
+            const cos = Math.cos(angle)
+            const sin = Math.sin(angle)
+            
+            // Find intersection with screen edges
+            let indicatorX: number
+            let indicatorY: number
+            
+            // Calculate intersection with each edge
+            const halfW = viewportWidth / 2 - edgeMargin
+            const halfH = viewportHeight / 2 - edgeMargin
+            
+            // Time to hit right/left edge
+            const tX = cos !== 0 ? halfW / Math.abs(cos) : Infinity
+            // Time to hit top/bottom edge
+            const tY = sin !== 0 ? halfH / Math.abs(sin) : Infinity
+            
+            const t = Math.min(tX, tY)
+            indicatorX = viewportWidth / 2 + cos * t
+            indicatorY = viewportHeight / 2 + sin * t
             
             // Clamp to screen boundaries
-            indicatorX = Math.max(margin, Math.min(viewportWidth - margin, indicatorX))
-            indicatorY = Math.max(margin, Math.min(viewportHeight - margin, indicatorY))
+            indicatorX = Math.max(edgeMargin, Math.min(viewportWidth - edgeMargin, indicatorX))
+            indicatorY = Math.max(edgeMargin, Math.min(viewportHeight - edgeMargin, indicatorY))
             
-            // Create arrow indicator
+            // Nier:Automata style indicator
             const indicator = new Graphics()
             
-            // Arrow triangle
-            indicator.beginFill(0xffd700, 0.8)
-            indicator.moveTo(0, -8)
-            indicator.lineTo(12, 0)
-            indicator.lineTo(0, 8)
-            indicator.lineTo(0, -8)
+            // Staggered pulse for each indicator
+            const staggeredPulse = Math.sin(pulseTime * 3 + index * 0.5) * 0.5 + 0.5
+            const breathe = Math.sin(pulseTime * 2) * 0.3 + 0.7
+            
+            // Distance-based opacity (closer = more opaque)
+            const maxDistance = 3000
+            const distanceAlpha = Math.max(0.4, 1 - (distance / maxDistance) * 0.6)
+            
+            // Outer bracket frame (Nier style)
+            const bracketSize = 18 + staggeredPulse * 4
+            const bracketThickness = 1.5
+            const bracketLength = 8
+            
+            indicator.lineStyle(bracketThickness, 0xDADADA, distanceAlpha * breathe)
+            
+            // Top-left bracket
+            indicator.moveTo(-bracketSize, -bracketSize + bracketLength)
+            indicator.lineTo(-bracketSize, -bracketSize)
+            indicator.lineTo(-bracketSize + bracketLength, -bracketSize)
+            
+            // Top-right bracket
+            indicator.moveTo(bracketSize - bracketLength, -bracketSize)
+            indicator.lineTo(bracketSize, -bracketSize)
+            indicator.lineTo(bracketSize, -bracketSize + bracketLength)
+            
+            // Bottom-right bracket
+            indicator.moveTo(bracketSize, bracketSize - bracketLength)
+            indicator.lineTo(bracketSize, bracketSize)
+            indicator.lineTo(bracketSize - bracketLength, bracketSize)
+            
+            // Bottom-left bracket
+            indicator.moveTo(-bracketSize + bracketLength, bracketSize)
+            indicator.lineTo(-bracketSize, bracketSize)
+            indicator.lineTo(-bracketSize, bracketSize - bracketLength)
+            
+            // Inner diamond shape
+            const diamondSize = 6 + staggeredPulse * 2
+            indicator.lineStyle(1.5, 0xFFFFFF, distanceAlpha * 0.9)
+            indicator.moveTo(0, -diamondSize)
+            indicator.lineTo(diamondSize, 0)
+            indicator.lineTo(0, diamondSize)
+            indicator.lineTo(-diamondSize, 0)
+            indicator.lineTo(0, -diamondSize)
+            
+            // Center dot
+            indicator.beginFill(0xFFFFFF, distanceAlpha)
+            indicator.drawCircle(0, 0, 2)
             indicator.endFill()
             
-            // Circle background
-            indicator.beginFill(0x16213e, 0.9)
-            indicator.drawCircle(0, 0, 10)
-            indicator.endFill()
+            // Direction line extending outward
+            const lineLength = 25 + staggeredPulse * 5
+            indicator.lineStyle(1, 0xDADADA, distanceAlpha * 0.6)
+            indicator.moveTo(Math.cos(angle) * 12, Math.sin(angle) * 12)
+            indicator.lineTo(Math.cos(angle) * lineLength, Math.sin(angle) * lineLength)
             
-            // Arrow again on top
-            indicator.beginFill(0xffd700, 0.9)
-            indicator.moveTo(0, -6)
-            indicator.lineTo(10, 0)
-            indicator.lineTo(0, 6)
-            indicator.lineTo(0, -6)
-            indicator.endFill()
+            // Small arrow head at end of line
+            const arrowDist = lineLength - 2
+            const arrowSize = 4
+            const arrowAngle = 0.5
+            indicator.lineStyle(1, 0xDADADA, distanceAlpha * 0.8)
+            indicator.moveTo(
+              Math.cos(angle) * arrowDist,
+              Math.sin(angle) * arrowDist
+            )
+            indicator.lineTo(
+              Math.cos(angle - arrowAngle) * (arrowDist - arrowSize) + Math.cos(angle) * 2,
+              Math.sin(angle - arrowAngle) * (arrowDist - arrowSize) + Math.sin(angle) * 2
+            )
+            indicator.moveTo(
+              Math.cos(angle) * arrowDist,
+              Math.sin(angle) * arrowDist
+            )
+            indicator.lineTo(
+              Math.cos(angle + arrowAngle) * (arrowDist - arrowSize) + Math.cos(angle) * 2,
+              Math.sin(angle + arrowAngle) * (arrowDist - arrowSize) + Math.sin(angle) * 2
+            )
             
             indicator.x = indicatorX
             indicator.y = indicatorY
-            indicator.rotation = angle
             
-            // Add distance text
-            const distanceText = new Text(`${Math.round(distance)}`, {
-              fontSize: 10,
-              fill: 0xffd700,
+            // Distance text with Nier styling
+            const distanceNum = Math.round(distance)
+            const distanceText = new Text(`${distanceNum}`, {
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: 9,
+              fill: 0xDADADA,
+              letterSpacing: 1,
             })
-            distanceText.x = 0
-            distanceText.y = 15
+            distanceText.alpha = distanceAlpha * 0.8
             distanceText.anchor.set(0.5)
+            
+            // Position text below the indicator
+            distanceText.x = 0
+            distanceText.y = bracketSize + 12
             indicator.addChild(distanceText)
+            
+            // Small unit text
+            const unitText = new Text('u', {
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: 7,
+              fill: 0x888888,
+            })
+            unitText.alpha = distanceAlpha * 0.6
+            unitText.anchor.set(0, 0.5)
+            unitText.x = distanceText.width / 2 + 2
+            unitText.y = bracketSize + 12
+            indicator.addChild(unitText)
             
             traceIndicatorsRef.current?.addChild(indicator)
           })
@@ -845,7 +945,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }, [traces, position])
 
   return (
-    <div className="fixed inset-0 bg-lobby-darker">
+    <div className="fixed inset-0 bg-nier-black">
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
         {/* Pixi Canvas */}
@@ -867,23 +967,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       </div>
 
       {/* HUD */}
-      <div className="absolute top-4 left-4 bg-lobby-muted/90 backdrop-blur-sm px-4 py-2 rounded-lg border-2 border-lobby-accent/30 z-10">
-        <p className="text-lobby-light text-sm">
-          <span className="text-lobby-accent font-bold">{username}</span>
+      <div className="fixed top-4 left-4 bg-black px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
+        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white"></div>
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white"></div>
+        
+        <p className="text-white text-[11px] tracking-[0.15em] uppercase">
+          <span className="font-bold">{username}</span>
         </p>
         {currentLobby && (
-          <p className="text-lobby-light/80 text-xs">
-            📍 {currentLobby.name} {isLobbyOwner && '(Owner)'}
+          <p className="text-gray-300 text-[9px] tracking-wider">
+            {currentLobby.name} {isLobbyOwner && '(Owner)'}
           </p>
         )}
-        <p className="text-lobby-light/60 text-xs">
-          {Object.keys(otherUsers).length} other{Object.keys(otherUsers).length !== 1 ? 's' : ''} online
+        <p className="text-gray-400 text-[9px] tracking-wider">
+          {Object.keys(otherUsers).length} online
         </p>
-        <p className="text-lobby-light/70 text-xs mt-1">
-          Position: ({Math.round(position.x)}, {Math.round(position.y)})
+        <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+          ({Math.round(position.x)}, {Math.round(position.y)})
         </p>
-        <p className="text-lobby-light/70 text-xs">
-          Zoom: {zoomRef.current.toFixed(2)}x
+        <p className="text-gray-400 text-[9px] tracking-wider">
+          {zoomRef.current.toFixed(2)}x
         </p>
         <button
           onClick={() => {
@@ -892,21 +998,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffsetRef.current = { x: 0, y: 0 }
             setWorldOffset({ x: 0, y: 0 })
           }}
-          className="w-full mt-2 bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+          className="w-full mt-2 bg-gray-800 border border-gray-500 hover:border-white text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all"
         >
-          🎯 Recenter Camera
+          ◇ Recenter
         </button>
         <div className="flex gap-1 mt-1">
           <button
             onClick={onLeaveLobby}
-            className="flex-1 bg-red-600/80 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+            className="flex-1 bg-red-800 hover:bg-red-600 text-white px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
           >
             Leave
           </button>
           {isLobbyOwner && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
-              className="flex-1 bg-lobby-accent/80 hover:bg-lobby-accent text-lobby-dark px-3 py-1 rounded text-xs font-semibold transition-all"
+              className="flex-1 bg-white hover:bg-gray-200 text-black px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
             >
               Manage
             </button>
@@ -918,9 +1024,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               navigator.clipboard.writeText(currentLobby.id)
               alert('Lobby ID copied! Share this with others to invite them.')
             }}
-            className="w-full mt-1 bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded text-xs font-semibold transition-all"
+            className="w-full mt-1 bg-gray-800 border border-gray-500 hover:border-white text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all"
           >
-            📋 Copy Lobby ID
+            ◇ Copy Lobby ID
           </button>
         )}
       </div>
@@ -932,17 +1038,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
           setShowTracePanel(!showTracePanel)
         }}
-        className="absolute bottom-4 right-4 bg-lobby-accent hover:bg-lobby-accent/80 text-lobby-light px-6 py-3 rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg z-10"
+        className="fixed bottom-4 right-4 bg-white hover:bg-gray-200 text-black px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-400 pointer-events-auto"
       >
-        {showTracePanel ? 'Close' : '📍 Leave Trace'}
+        <span className="opacity-60 mr-2">◇</span>
+        {showTracePanel ? 'Close' : 'Leave Trace'}
       </button>
 
       {/* Layers Button */}
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
-        className="absolute bottom-20 right-4 bg-lobby-muted hover:bg-lobby-muted/80 text-lobby-light px-6 py-3 rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg z-10 border-2 border-lobby-accent/50"
+        className="fixed bottom-20 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
       >
-        {showLayerPanel ? 'Close Layers' : '🎨 Layers'}
+        <span className="opacity-60 mr-2">◇</span>
+        {showLayerPanel ? 'Close' : 'Layers'}
       </button>
 
       {/* Trace Panel */}
@@ -982,23 +1090,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       )}
 
       {/* Instructions */}
-      <div className="absolute bottom-4 left-4 bg-lobby-muted/90 backdrop-blur-sm px-4 py-3 rounded-lg border-2 border-lobby-accent/30 z-10">
-        <p className="text-lobby-light font-semibold text-xs mb-2">Controls:</p>
+      <div className="fixed bottom-4 left-4 px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
+        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white"></div>
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white"></div>
+        
+        <p className="text-white text-[10px] tracking-[0.15em] uppercase mb-2">Controls</p>
         <div className="space-y-1">
-          <p className="text-lobby-light/60 text-xs flex items-center gap-2">
-            <span className="text-lobby-accent">🖱️</span> Left click + drag to pan
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Pan : Left Click + Drag
           </p>
-          <p className="text-lobby-light/60 text-xs flex items-center gap-2">
-            <span className="text-lobby-accent">🖱️</span> Right click for menu
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Menu : Right Click
           </p>
-          <p className="text-lobby-light/60 text-xs flex items-center gap-2">
-            <span className="text-lobby-accent">�</span> "Leave Trace" button or right-click menu
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Move : WASD / Arrows
           </p>
-          <p className="text-lobby-light/60 text-xs flex items-center gap-2">
-            <span className="text-lobby-accent">⌨️</span> WASD / Arrow keys to move
-          </p>
-          <p className="text-lobby-light/60 text-xs flex items-center gap-2">
-            <span className="text-lobby-accent">🖱️</span> Mouse wheel to zoom
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Zoom : Mouse Wheel
           </p>
         </div>
       </div>
@@ -1014,21 +1125,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           
           {/* Menu */}
           <div
-            className="fixed bg-lobby-darker border-2 border-lobby-accent rounded-lg shadow-2xl z-50 min-w-[180px]"
+            className="fixed bg-nier-blackLight border border-nier-border/40 shadow-2xl z-50 min-w-[180px] relative font-mono"
             style={{
               left: `${contextMenu.x}px`,
               top: `${contextMenu.y}px`,
             }}
           >
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-border/60 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-border/60 pointer-events-none" />
+            
             <div className="py-1">
               <button
                 onClick={() => {
                   setPosition(contextMenu.worldX, contextMenu.worldY)
                   setContextMenu(null)
                 }}
-                className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+                className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase"
               >
-                <span>🚀</span>
+                <span className="text-nier-border/60">◇</span>
                 <span>Teleport here</span>
               </button>
               <button
@@ -1037,9 +1154,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   setShowTracePanel(true)
                   setContextMenu(null)
                 }}
-                className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+                className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase"
               >
-                <span>📍</span>
+                <span className="text-nier-border/60">◇</span>
                 <span>Leave trace here</span>
               </button>
               {isLobbyOwner && (
@@ -1048,9 +1165,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     setShowThemeCustomization(true)
                     setContextMenu(null)
                   }}
-                  className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2 border-t border-lobby-accent/20"
+                  className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase border-t border-nier-border/20"
                 >
-                  <span>🎨</span>
+                  <span className="text-nier-border/60">◇</span>
                   <span>Customize theme</span>
                 </button>
               )}

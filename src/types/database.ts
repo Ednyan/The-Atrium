@@ -101,6 +101,12 @@ export interface Trace {
   showFilename?: boolean
   fontSize?: 'small' | 'medium' | 'large' | number
   fontFamily?: string
+  // Text formatting options
+  textBold?: boolean
+  textItalic?: boolean
+  textUnderline?: boolean
+  textAlign?: 'left' | 'center' | 'right' | 'justify'
+  textColor?: string
   isLocked?: boolean
   borderRadius?: number // Border radius for trace container (0-50px)
   // Image cropping (values between 0 and 1, representing percentage)
@@ -119,6 +125,8 @@ export interface Trace {
   lightPulseSpeed?: number // 0.1 to 5.0, seconds per pulse cycle
   // Embed interaction
   enableInteraction?: boolean // Allow iframe to be interacted with (for embeds)
+  // Click interaction
+  ignoreClicks?: boolean // Make trace unselectable with left click (for backgrounds)
   // Layer system
   layerId?: string | null
   zIndex?: number

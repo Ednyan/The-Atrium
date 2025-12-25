@@ -2,7 +2,7 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
-import React, { useState, useRef, useEffect, Fragment } from 'react'
+import React, { useState, useRef, useEffect, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
@@ -42,7 +42,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       // Only run once
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-  const { position, username, playerZIndex, playerColor, otherUsers, removeTrace, userId } = useGameStore()
+  const { position, username, playerZIndex, playerColor, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, clearPendingChanges, hasPendingChanges } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [playerMenuPosition, setPlayerMenuPosition] = useState({ x: 0, y: 0 })
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
@@ -60,6 +60,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
   const [localShapePoints, setLocalShapePoints] = useState<Record<string, any[]>>({}) // Track shape points during drag
   const [colorPickerCallback, setColorPickerCallback] = useState<((color: string) => void) | null>(null) // For fallback color picker
+  const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
+  const hasEyeDropperSupport = typeof window !== 'undefined' && 'EyeDropper' in window
+  const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
   
   const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
@@ -77,6 +80,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => { editingTraceRef.current = editingTrace }, [editingTrace])
   useEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
   useEffect(() => { zoomRef.current = zoom }, [zoom])
+
+  // Cancel inline editing when selecting a different trace
+  useEffect(() => {
+    if (inlineEditingTraceId && selectedTraceId !== inlineEditingTraceId) {
+      setInlineEditingTraceId(null)
+      setInlineEditText('')
+    }
+  }, [selectedTraceId, inlineEditingTraceId])
 
   // Proactively test image URLs and use proxy for blocked ones
   useEffect(() => {
@@ -192,6 +203,58 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [colorPickerCallback])
 
+  // Global right-click handler for ignoreClicks traces
+  // Since pointer-events: none blocks all events, we need to manually detect right-clicks
+  useEffect(() => {
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      // Only handle if not clicking on an existing trace element
+      const target = e.target as HTMLElement
+      if (target.closest('[data-trace-element="true"]')) {
+        return // Let normal handler take care of it
+      }
+      
+      // Check if click position overlaps with any ignoreClicks trace
+      const clickX = e.clientX
+      const clickY = e.clientY
+      
+      // Find ignoreClicks traces that contain this point
+      for (const trace of traces) {
+        if (!trace.ignoreClicks) continue
+        
+        // Calculate trace bounds in screen coordinates
+        const traceX = trace.x * zoom + worldOffset.x
+        const traceY = trace.y * zoom + worldOffset.y
+        const scaleX = trace.scaleX ?? trace.scale ?? 1
+        const scaleY = trace.scaleY ?? trace.scale ?? 1
+        
+        // Get trace dimensions
+        let width = 200, height = 150
+        if (trace.type === 'shape') {
+          width = trace.width || 200
+          height = trace.height || 200
+        } else if (imageDimensions[trace.id]) {
+          width = imageDimensions[trace.id].width
+          height = imageDimensions[trace.id].height
+        }
+        
+        const halfWidth = (width * scaleX * zoom) / 2
+        const halfHeight = (height * scaleY * zoom) / 2
+        
+        // Check if click is within trace bounds
+        if (clickX >= traceX - halfWidth && clickX <= traceX + halfWidth &&
+            clickY >= traceY - halfHeight && clickY <= traceY + halfHeight) {
+          e.preventDefault()
+          setContextMenu({ x: clickX, y: clickY, traceId: trace.id })
+          setSelectedTraceId(trace.id)
+          return
+        }
+      }
+    }
+    
+    window.addEventListener('contextmenu', handleGlobalContextMenu)
+    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu)
+  }, [traces, zoom, worldOffset, imageDimensions])
+
   // Fallback color picker - capture canvas and sample color on click
   useEffect(() => {
     if (!colorPickerCallback) return
@@ -250,13 +313,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [colorPickerCallback])
 
-  const getScreenPosition = (worldX: number, worldY: number) => {
+  const getScreenPosition = useCallback((worldX: number, worldY: number) => {
     const screenX = (worldX * zoom) + worldOffset.x
     const screenY = (worldY * zoom) + worldOffset.y
     return { screenX, screenY }
-  }
+  }, [zoom, worldOffset.x, worldOffset.y])
 
-  const getTraceTransform = (trace: Trace) => {
+  const getTraceTransform = useCallback((trace: Trace) => {
     const local = localTraceTransforms[trace.id]
     if (local) return local
     
@@ -270,9 +333,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
 
     return transform
-  }
+  }, [localTraceTransforms])
 
-  const updateTraceTransform = async (traceId: string, updates: Partial<{ x: number; y: number; scale?: number; scaleX?: number; scaleY?: number; rotation: number }>) => {
+  const updateTraceTransform = (traceId: string, updates: Partial<{ x: number; y: number; scale?: number; scaleX?: number; scaleY?: number; rotation: number }>) => {
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
 
@@ -288,18 +351,127 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // Update local state immediately for smooth UI
     setLocalTraceTransforms(prev => ({ ...prev, [traceId]: newTransform }))
 
-    // Sync to Supabase if available
-    if (supabase) {
-      const updateData: any = {
-        position_x: newTransform.x,
-        position_y: newTransform.y,
-        // Persist average scale to DB to remain compatible with existing schema
-        scale: ((newTransform.scaleX ?? 1) + (newTransform.scaleY ?? 1)) / 2,
-        rotation: newTransform.rotation,
-      }
-      await (supabase.from('traces') as any).update(updateData).eq('id', traceId)
+    // Update the trace in the store (local only - no DB sync)
+    const updatedTrace: Trace = {
+      ...trace,
+      x: newTransform.x,
+      y: newTransform.y,
+      scaleX: newTransform.scaleX,
+      scaleY: newTransform.scaleY,
+      rotation: newTransform.rotation,
+    }
+    addTrace(updatedTrace)
+    
+    // Mark as having pending changes
+    markTraceChanged(traceId)
+  }
+
+  // Save all pending changes to the database
+  const [isSaving, setIsSaving] = useState(false)
+  const saveAllChanges = async () => {
+    if (!supabase || isSaving) return
+    
+    const db = supabase // Capture for use in closures
+    setIsSaving(true)
+    console.log('💾 Saving all pending changes...')
+    
+    try {
+      // Handle deletions first
+      const deletePromises = Array.from(deletedTraces).map(async (traceId) => {
+        console.log('🗑️ Deleting trace:', traceId)
+        await (db.from('traces') as any).delete().eq('id', traceId)
+      })
+      await Promise.all(deletePromises)
+      
+      // Handle updates
+      const updatePromises = Array.from(pendingChanges).map(async (traceId) => {
+        const trace = traces.find(t => t.id === traceId)
+        if (!trace) return
+        
+        console.log('📝 Saving trace:', traceId)
+        const updateData: any = {
+          position_x: trace.x,
+          position_y: trace.y,
+          scale: ((trace.scaleX ?? 1) + (trace.scaleY ?? 1)) / 2,
+          rotation: trace.rotation ?? 0,
+          show_border: trace.showBorder,
+          show_background: trace.showBackground,
+          show_description: trace.showDescription,
+          show_filename: trace.showFilename,
+          font_size: trace.fontSize,
+          font_family: trace.fontFamily,
+          text_bold: trace.textBold,
+          text_italic: trace.textItalic,
+          text_underline: trace.textUnderline,
+          text_align: trace.textAlign,
+          text_color: trace.textColor,
+          is_locked: trace.isLocked,
+          border_radius: trace.borderRadius,
+          crop_x: trace.cropX,
+          crop_y: trace.cropY,
+          crop_width: trace.cropWidth,
+          crop_height: trace.cropHeight,
+          illuminate: trace.illuminate,
+          light_color: trace.lightColor,
+          light_intensity: trace.lightIntensity,
+          light_radius: trace.lightRadius,
+          light_offset_x: trace.lightOffsetX,
+          light_offset_y: trace.lightOffsetY,
+          light_pulse: trace.lightPulse,
+          light_pulse_speed: trace.lightPulseSpeed,
+          enable_interaction: trace.enableInteraction,
+          ignore_clicks: trace.ignoreClicks,
+          z_index: trace.zIndex,
+        }
+        
+        // Add optional fields
+        if (trace.mediaUrl !== undefined) updateData.media_url = trace.mediaUrl
+        if (trace.content !== undefined) updateData.content = trace.content
+        
+        // Shape properties
+        if (trace.type === 'shape') {
+          if (trace.shapeType !== undefined) updateData.shape_type = trace.shapeType
+          if (trace.shapeColor !== undefined) updateData.shape_color = trace.shapeColor
+          if (trace.shapeOpacity !== undefined) updateData.shape_opacity = trace.shapeOpacity
+          if (trace.cornerRadius !== undefined) updateData.corner_radius = trace.cornerRadius
+          if (trace.shapeOutlineOnly !== undefined) updateData.shape_outline_only = trace.shapeOutlineOnly
+          if (trace.shapeNoFill !== undefined) updateData.shape_no_fill = trace.shapeNoFill
+          if (trace.shapeOutlineColor !== undefined) updateData.shape_outline_color = trace.shapeOutlineColor
+          if (trace.shapeOutlineWidth !== undefined) updateData.shape_outline_width = trace.shapeOutlineWidth
+          if (trace.shapePoints !== undefined) updateData.shape_points = trace.shapePoints
+          if (trace.pathCurveType !== undefined) updateData.path_curve_type = trace.pathCurveType
+          if (trace.width !== undefined) updateData.width = trace.width
+          if (trace.height !== undefined) updateData.height = trace.height
+        }
+        
+        await (db.from('traces') as any).update(updateData).eq('id', traceId)
+      })
+      await Promise.all(updatePromises)
+      
+      // Clear pending changes
+      clearPendingChanges()
+      console.log('✅ All changes saved!')
+    } catch (error) {
+      console.error('❌ Error saving changes:', error)
+      alert('Failed to save some changes. Please try again.')
+    } finally {
+      setIsSaving(false)
     }
   }
+
+  // Ctrl+S keyboard shortcut to save
+  useEffect(() => {
+    const handleSaveShortcut = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        if (hasPendingChanges()) {
+          saveAllChanges()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleSaveShortcut)
+    return () => window.removeEventListener('keydown', handleSaveShortcut)
+  }, [hasPendingChanges, pendingChanges, deletedTraces, traces])
 
   const deleteTrace = async (traceId: string) => {
     const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
@@ -314,17 +486,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     executeDelete(traceId)
   }
   
-  const executeDelete = async (traceId: string) => {
+  const executeDelete = (traceId: string) => {
     // Immediately remove from local state for instant UI update
     removeTrace(traceId)
     setContextMenu(null)
     setSelectedTraceId(null)
     setDeleteConfirmDialog(null)
     
-    // Then delete from database
-    if (supabase) {
-      await (supabase.from('traces') as any).delete().eq('id', traceId)
-    }
+    // Mark for deletion (will be deleted on save)
+    markTraceDeleted(traceId)
   }
 
   const duplicateTrace = async (traceId: string) => {
@@ -348,7 +518,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       show_background: trace.showBackground ?? true,
       show_description: trace.showDescription ?? true,
       show_filename: trace.showFilename ?? true,
-      font_size: trace.fontSize ?? 'medium',
+      font_size: trace.fontSize ?? 16,
       font_family: trace.fontFamily ?? 'sans',
       is_locked: false, // Never duplicate as locked
       crop_x: trace.cropX ?? 0,
@@ -391,53 +561,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }
 
-  const updateTraceCustomization = async (traceId: string, updates: Partial<Trace>) => {
+  const updateTraceCustomization = (traceId: string, updates: Partial<Trace>) => {
+    // Find the trace
+    const trace = traces.find(t => t.id === traceId)
+    if (!trace) return
+    
     // Update editingTrace immediately if it matches
     if (editingTrace && editingTrace.id === traceId) {
       setEditingTrace({ ...editingTrace, ...updates })
     }
     
-    if (!supabase) return
+    // Update the trace in the store (local only - no DB sync)
+    const updatedTrace: Trace = { ...trace, ...updates }
+    addTrace(updatedTrace)
     
-    const updateData: any = {}
-    if (updates.showBorder !== undefined) updateData.show_border = updates.showBorder
-    if (updates.showBackground !== undefined) updateData.show_background = updates.showBackground
-    if (updates.showDescription !== undefined) updateData.show_description = updates.showDescription
-    if (updates.showFilename !== undefined) updateData.show_filename = updates.showFilename
-    if (updates.fontSize !== undefined) updateData.font_size = updates.fontSize
-    if (updates.fontFamily !== undefined) updateData.font_family = updates.fontFamily
-    if (updates.isLocked !== undefined) updateData.is_locked = updates.isLocked
-    if (updates.mediaUrl !== undefined) updateData.media_url = updates.mediaUrl
-    if (updates.content !== undefined) updateData.content = updates.content
-    if (updates.cropX !== undefined) updateData.crop_x = updates.cropX
-    if (updates.cropY !== undefined) updateData.crop_y = updates.cropY
-    if (updates.cropWidth !== undefined) updateData.crop_width = updates.cropWidth
-    if (updates.cropHeight !== undefined) updateData.crop_height = updates.cropHeight
-    if (updates.illuminate !== undefined) updateData.illuminate = updates.illuminate
-    if (updates.lightColor !== undefined) updateData.light_color = updates.lightColor
-    if (updates.lightIntensity !== undefined) updateData.light_intensity = updates.lightIntensity
-    if (updates.lightRadius !== undefined) updateData.light_radius = updates.lightRadius
-    if (updates.lightOffsetX !== undefined) updateData.light_offset_x = updates.lightOffsetX
-    if (updates.lightOffsetY !== undefined) updateData.light_offset_y = updates.lightOffsetY
-    if (updates.lightPulse !== undefined) updateData.light_pulse = updates.lightPulse
-    if (updates.lightPulseSpeed !== undefined) updateData.light_pulse_speed = updates.lightPulseSpeed
-    if (updates.enableInteraction !== undefined) updateData.enable_interaction = updates.enableInteraction
-    if (updates.borderRadius !== undefined) updateData.border_radius = updates.borderRadius
-    // Shape properties
-    if (updates.shapeType !== undefined) updateData.shape_type = updates.shapeType
-    if (updates.shapeColor !== undefined) updateData.shape_color = updates.shapeColor
-    if (updates.shapeOpacity !== undefined) updateData.shape_opacity = updates.shapeOpacity
-    if (updates.cornerRadius !== undefined) updateData.corner_radius = updates.cornerRadius
-    if (updates.shapeOutlineOnly !== undefined) updateData.shape_outline_only = updates.shapeOutlineOnly
-    if (updates.shapeNoFill !== undefined) updateData.shape_no_fill = updates.shapeNoFill
-    if (updates.shapeOutlineColor !== undefined) updateData.shape_outline_color = updates.shapeOutlineColor
-    if (updates.shapeOutlineWidth !== undefined) updateData.shape_outline_width = updates.shapeOutlineWidth
-    if (updates.shapePoints !== undefined) updateData.shape_points = updates.shapePoints
-    if (updates.pathCurveType !== undefined) updateData.path_curve_type = updates.pathCurveType
-    if (updates.width !== undefined) updateData.width = updates.width
-    if (updates.height !== undefined) updateData.height = updates.height
-    
-    await (supabase.from('traces') as any).update(updateData).eq('id', traceId)
+    // Mark as having pending changes
+    markTraceChanged(traceId)
   }
 
   const handleMouseDown = (e: React.MouseEvent, trace: Trace, mode: TransformMode, corner?: string) => {
@@ -907,7 +1046,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [selectedTraceId])
 
-  const getTraceSize = (trace: Trace) => {
+  const getTraceSize = useCallback((trace: Trace) => {
     // For shapes, use their custom dimensions
     if (trace.type === 'shape') {
       return { 
@@ -954,57 +1093,81 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       default:
         return { width: 120, height: 80 }
     }
-  }
+  }, [imageDimensions])
 
-  const getBorderColor = (type: string) => {
+  const getBorderColor = useCallback((type: string) => {
     switch (type) {
       case 'text':
-        return '#ffd700'
+        return '#ffffff'
       case 'image':
-        return '#ff69b4'
+        return '#e5e5e5'
       case 'audio':
-        return '#4ecdc4'
+        return '#d4d4d4'
       case 'video':
-        return '#e94560'
+        return '#c4c4c4'
       case 'embed':
-        return '#9b59b6'
+        return '#b4b4b4'
       default:
-        return '#ffd700'
+        return '#ffffff'
     }
-  }
+  }, [])
 
-  const convertYouTubeUrl = (url: string) => {
+  const convertYouTubeUrl = useCallback((url: string) => {
     const youtubeRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/
     const match = url.match(youtubeRegex)
     if (match) {
       return `https://www.youtube.com/embed/${match[1]}`
     }
     return url
-  }
+  }, [])
 
   // Extract iframe src from HTML embed code or return URL as-is
-  const extractEmbedUrl = (content: string): string | null => {
+  const extractEmbedUrl = useCallback((content: string): string | null => {
     // Check if it's HTML embed code (contains <iframe)
     if (content.includes('<iframe')) {
       const srcMatch = content.match(/src=["']([^"']+)["']/)
       if (srcMatch) {
         return srcMatch[1]
-      }
+          }
       return null
     }
     // It's a regular URL
     return convertYouTubeUrl(content)
-  }
+  }, [convertYouTubeUrl])
+
+  // Memoize visible traces to avoid recalculating on every render
+  // Only show traces that are within the viewport (with some margin)
+  const visibleTraces = React.useMemo(() => {
+    const margin = 500 // Extra margin around viewport
+    const viewportLeft = -worldOffset.x / zoom - margin
+    const viewportTop = -worldOffset.y / zoom - margin
+    const viewportRight = (window.innerWidth - worldOffset.x) / zoom + margin
+    const viewportBottom = (window.innerHeight - worldOffset.y) / zoom + margin
+    
+    return traces.filter(trace => {
+      const traceX = trace.x
+      const traceY = trace.y
+      // Rough bounds check (traces are centered, so add some buffer)
+      const buffer = 500 // Account for large traces
+      return traceX >= viewportLeft - buffer && 
+             traceX <= viewportRight + buffer && 
+             traceY >= viewportTop - buffer && 
+             traceY <= viewportBottom + buffer
+    })
+  }, [traces, zoom, worldOffset.x, worldOffset.y])
+
+  // Memoize sorted items to avoid re-sorting on every render
+  const sortedItems = React.useMemo(() => {
+    return [
+      ...visibleTraces.map(trace => ({ type: 'trace' as const, trace, zIndex: trace.zIndex ?? 0 })),
+      { type: 'player' as const, trace: null, zIndex: playerZIndex * 100 }
+    ].sort((a, b) => a.zIndex - b.zIndex)
+  }, [visibleTraces, playerZIndex])
 
   return (
     <>
       {/* Render traces AND player in z-index order */}
-      {[
-          ...traces.map(trace => ({ type: 'trace' as const, trace, zIndex: trace.zIndex ?? 0 })),
-          // Player z-index is stored as layer z-index, convert to trace z-index (layer * 100)
-          { type: 'player' as const, trace: null, zIndex: playerZIndex * 100 }
-        ]
-          .sort((a, b) => a.zIndex - b.zIndex) // Sort by z-index (lower first)
+      {sortedItems
           .map((item) => {
             if (item.type === 'player') {
               // Render player circle
@@ -1166,22 +1329,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   transformOrigin: 'center center',
                   marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
                   marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
+                  willChange: 'transform, opacity',
                   ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
                 }}
               />
             )}
             
             {/* The trace itself */}
-            <div style={{ opacity: traceOpacity }}>
+            <div style={{ opacity: traceOpacity, willChange: 'transform' }}>
             {/* Container for positioning - doesn't scale */}
             <div
               data-trace-element="true"
-              className="absolute pointer-events-auto"
+              className="absolute"
               style={{
                 left: `${screenX}px`,
                 top: `${screenY}px`,
                 transform: `translate(-50%, -50%) rotate(${transform.rotation}deg)`,
+                willChange: 'transform',
                 transformOrigin: 'center center',
+                pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
               }}
               onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
               onClick={(e) => {
@@ -1195,7 +1361,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation()
-                setModalTrace(trace)
+                // For text traces, enable inline editing instead of modal
+                if (trace.type === 'text' && trace.userId === userId) {
+                  setInlineEditingTraceId(trace.id)
+                  setInlineEditText(trace.content)
+                } else {
+                  setModalTrace(trace)
+                }
               }}
               onContextMenu={(e) => {
                 e.preventDefault()
@@ -1210,7 +1382,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   style={{
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    pointerEvents: 'auto',
+                    pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     overflow: 'hidden',
                   }}
                 >
@@ -1317,15 +1489,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   style={{
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `3px solid ${isSelected && isCropMode ? '#ff8800' : isSelected ? '#00ff00' : borderColor}` : 'none',
+                    border: showBorder ? `3px solid ${isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
                     padding: '0px',
-                    pointerEvents: 'auto',
+                    pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     boxShadow: isSelected && isCropMode
-                      ? '0 0 20px rgba(255, 136, 0, 0.5)'
+                      ? '0 0 20px rgba(156, 163, 175, 0.6)'
                       : isSelected 
-                      ? '0 0 20px rgba(0, 255, 0, 0.5)' 
+                      ? '0 0 20px rgba(255, 255, 255, 0.5)' 
                       : (showBackground ? '0 4px 12px rgba(0, 0, 0, 0.8)' : 'none'),
                     overflow: 'hidden',
                   }}
@@ -1533,36 +1705,96 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Text Content */}
               {trace.type === 'text' && (
                 <div 
-                  className="flex flex-col items-center justify-center h-full w-full p-2 pointer-events-none select-none overflow-hidden"
+                  className={`flex flex-col items-center justify-center h-full w-full p-2 overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
                   style={{
                     clipPath: trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
                       : undefined,
                   }}
                 >
-                  <p 
-                    className="text-white text-center w-full break-words"
-                    style={{
-                      fontSize:
-                        typeof fontSize === 'number'
-                          ? `${fontSize}px`
-                          : fontSizeMap[fontSize as 'small' | 'medium' | 'large']
-                            ? `calc(${fontSizeMap[fontSize as 'small' | 'medium' | 'large']} * ${Math.min(width / 120, height / 80)})`
-                            : '14px',
-                      fontFamily:
-                        fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
-                          ? fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
-                          : fontFamily,
-                      lineHeight: '1.2',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      display: '-webkit-box',
-                      WebkitLineClamp: Math.max(2, Math.floor(height / 20)),
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
-                    {trace.content}
-                  </p>
+                  {inlineEditingTraceId === trace.id ? (
+                    /* Inline editing textarea */
+                    <textarea
+                      autoFocus
+                      value={inlineEditText}
+                      onChange={(e) => setInlineEditText(e.target.value)}
+                      onBlur={() => {
+                        // Save changes on blur
+                        if (inlineEditText !== trace.content) {
+                          updateTraceCustomization(trace.id, { content: inlineEditText })
+                        }
+                        setInlineEditingTraceId(null)
+                        setInlineEditText('')
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          // Cancel editing
+                          setInlineEditingTraceId(null)
+                          setInlineEditText('')
+                        } else if (e.key === 'Enter' && !e.shiftKey) {
+                          // Save on Enter (Shift+Enter for newline)
+                          e.preventDefault()
+                          if (inlineEditText !== trace.content) {
+                            updateTraceCustomization(trace.id, { content: inlineEditText })
+                          }
+                          setInlineEditingTraceId(null)
+                          setInlineEditText('')
+                        }
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="w-full h-full bg-transparent resize-none outline-none border-2 border-white focus:border-gray-400"
+                      style={{
+                        fontSize:
+                          typeof fontSize === 'number'
+                            ? `${fontSize}px`
+                            : fontSizeMap[fontSize as 'small' | 'medium' | 'large']
+                              ? `calc(${fontSizeMap[fontSize as 'small' | 'medium' | 'large']} * ${Math.min(width / 120, height / 80)})`
+                              : '14px',
+                        fontFamily:
+                          fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
+                            ? fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
+                            : fontFamily,
+                        lineHeight: '1.2',
+                        fontWeight: trace.textBold ? 'bold' : 'normal',
+                        fontStyle: trace.textItalic ? 'italic' : 'normal',
+                        textDecoration: trace.textUnderline ? 'underline' : 'none',
+                        textAlign: trace.textAlign ?? 'center',
+                        color: trace.textColor ?? '#ffffff',
+                      }}
+                    />
+                  ) : (
+                    /* Normal display */
+                    <p 
+                      className="w-full break-words"
+                      style={{
+                        fontSize:
+                          typeof fontSize === 'number'
+                            ? `${fontSize}px`
+                            : fontSizeMap[fontSize as 'small' | 'medium' | 'large']
+                              ? `calc(${fontSizeMap[fontSize as 'small' | 'medium' | 'large']} * ${Math.min(width / 120, height / 80)})`
+                              : '14px',
+                        fontFamily:
+                          fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
+                            ? fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
+                            : fontFamily,
+                        lineHeight: '1.2',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: Math.max(2, Math.floor(height / 20)),
+                        WebkitBoxOrient: 'vertical',
+                        fontWeight: trace.textBold ? 'bold' : 'normal',
+                        fontStyle: trace.textItalic ? 'italic' : 'normal',
+                        textDecoration: trace.textUnderline ? 'underline' : 'none',
+                        textAlign: trace.textAlign ?? 'center',
+                        color: trace.textColor ?? '#ffffff',
+                      }}
+                    >
+                      {trace.content}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1610,8 +1842,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           {/* Main point handle */}
                           <div
                             data-trace-element="true"
-                            className={`absolute w-4 h-4 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform ${
-                              isPointSelected ? 'bg-blue-500' : 'bg-orange-400'
+                            className={`absolute w-4 h-4 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform ${
+                              isPointSelected ? 'bg-white' : 'bg-gray-400'
                             }`}
                             style={{
                               left: `${screenX}px`,
@@ -1658,7 +1890,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                         y1={screenY}
                                         x2={cp1ScreenX}
                                         y2={cp1ScreenY}
-                                        stroke="#3b82f6"
+                                        stroke="#9ca3af"
                                         strokeWidth="1"
                                         strokeDasharray="4 2"
                                       />
@@ -1666,7 +1898,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                     {/* Control handle */}
                                     <div
                                       data-trace-element="true"
-                                      className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
+                                      className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
                                       style={{
                                         left: `${cp1ScreenX}px`,
                                         top: `${cp1ScreenY}px`,
@@ -1711,7 +1943,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                         y1={screenY}
                                         x2={cp2ScreenX}
                                         y2={cp2ScreenY}
-                                        stroke="#3b82f6"
+                                        stroke="#9ca3af"
                                         strokeWidth="1"
                                         strokeDasharray="4 2"
                                       />
@@ -1719,7 +1951,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                     {/* Control handle */}
                                     <div
                                       data-trace-element="true"
-                                      className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
+                                      className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
                                       style={{
                                         left: `${cp2ScreenX}px`,
                                         top: `${cp2ScreenY}px`,
@@ -1788,8 +2020,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
                 <button
                   data-trace-element="true"
-                  className={`absolute text-white text-xs font-bold px-3 py-1.5 rounded-md border-2 border-white shadow-lg pointer-events-auto z-10 transition-all hover:scale-110 ${
-                    isCropMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-purple-500 hover:bg-purple-600'
+                  className={`absolute text-xs font-bold px-3 py-1.5 border-2 shadow-lg pointer-events-auto z-10 transition-all hover:scale-110 ${
+                    isCropMode 
+                      ? 'bg-gray-600 border-gray-400 text-white hover:bg-gray-500' 
+                      : 'bg-black border-white text-white hover:bg-gray-800'
                   }`}
                   style={{
                     left: `${screenX}px`,
@@ -1803,7 +2037,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     setTransformMode('none')
                   }}
                 >
-                  {isCropMode ? '✅ Done' : '✂️ Crop'}
+                  {isCropMode ? '✓ DONE' : '✂ CROP'}
                 </button>
                 ) : null}
               </>
@@ -1814,14 +2048,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               <>
                 {/* Crop area overlay - shows the crop boundaries */}
                 <div
-                  className="absolute pointer-events-none"
+                  className="absolute pointer-events-auto cursor-pointer"
                   style={{
                     left: `${screenX - (width * (transform as any).scaleX * zoom / 2)}px`,
                     top: `${screenY - (height * (transform as any).scaleY * zoom / 2)}px`,
                     width: `${width * (transform as any).scaleX * zoom}px`,
                     height: `${height * (transform as any).scaleY * zoom}px`,
-                    border: '2px dashed rgba(255, 136, 0, 0.8)',
-                    boxShadow: 'inset 0 0 0 9999px rgba(0, 0, 0, 0.3)',
+                    border: '2px dashed rgba(156, 163, 175, 0.9)',
+                    boxShadow: 'inset 0 0 0 9999px rgba(0, 0, 0, 0.4)',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsCropMode(false)
+                    setTransformMode('none')
                   }}
                 />
                 
@@ -1850,7 +2089,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <div
                       key={`crop-${corner}`}
                       data-trace-element="true"
-                      className="absolute w-4 h-4 bg-orange-500 border-2 border-white rounded-sm cursor-nwse-resize pointer-events-auto z-10"
+                      className="absolute w-4 h-4 bg-gray-400 border-2 border-black cursor-nwse-resize pointer-events-auto z-10"
                       style={{
                         left: `${handleX}px`,
                         top: `${handleY}px`,
@@ -1963,7 +2202,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 width: '100%',
                 height: '100%',
                 overflow: 'visible',
-                zIndex: trace.zIndex ?? 0,
+                zIndex: Math.min(trace.zIndex ?? 0, 40), // Cap at 40 to stay below handles (z-50)
                 pointerEvents: 'none'
               }}
             >
@@ -2061,8 +2300,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     {/* Main point handle */}
                     <div
                       data-trace-element="true"
-                      className={`absolute w-4 h-4 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform ${
-                        isPointSelected ? 'bg-blue-500' : 'bg-orange-400'
+                      className={`absolute w-4 h-4 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform ${
+                        isPointSelected ? 'bg-white' : 'bg-gray-400'
                       }`}
                       style={{
                         left: `${screenX}px`,
@@ -2094,11 +2333,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           return (
                             <>
                               <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', zIndex: 499 }}>
-                                <line x1={screenX} y1={screenY} x2={cp1ScreenX} y2={cp1ScreenY} stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 2" />
+                                <line x1={screenX} y1={screenY} x2={cp1ScreenX} y2={cp1ScreenY} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" />
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
+                                className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
                                 style={{ left: `${cp1ScreenX}px`, top: `${cp1ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -2121,11 +2360,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           return (
                             <>
                               <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', zIndex: 499 }}>
-                                <line x1={screenX} y1={screenY} x2={cp2ScreenX} y2={cp2ScreenY} stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 2" />
+                                <line x1={screenX} y1={screenY} x2={cp2ScreenX} y2={cp2ScreenY} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" />
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
+                                className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
                                 style={{ left: `${cp2ScreenX}px`, top: `${cp2ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -2156,7 +2395,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <div
                     data-trace-element="true"
-                    className="absolute w-6 h-6 border-2 border-white rounded-full cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform bg-green-500"
+                    className="absolute w-6 h-6 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform bg-white"
                     style={{ left: `${screenX}px`, top: `${screenY}px`, transform: 'translate(-50%, -50%)' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => {
@@ -2175,7 +2414,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         })()}
 
         {/* Render regular handles (corner, edge, rotation) as absolute overlay for non-path shapes */}
-        {selectedTraceId && (() => {
+        {selectedTraceId && !isCropMode && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
           if (!trace || (trace.type === 'shape' && trace.shapeType === 'path')) return null
           
@@ -2210,7 +2449,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     key={corner}
                     data-trace-element="true"
-                    className="absolute w-3 h-3 bg-green-400 border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto z-[50]"
+                    className="absolute w-3 h-3 bg-white border-2 border-black cursor-nwse-resize pointer-events-auto z-[50]"
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -2244,7 +2483,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     key={edge}
                     data-trace-element="true"
-                    className={`absolute w-3 h-3 bg-yellow-400 border-2 border-white rounded-full pointer-events-auto z-[50] ${cursorClass}`}
+                    className={`absolute w-3 h-3 bg-gray-400 border-2 border-black pointer-events-auto z-[50] ${cursorClass}`}
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -2258,7 +2497,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Rotation handle at top */}
               <div
                 data-trace-element="true"
-                className="absolute w-3 h-3 bg-blue-400 border-2 border-white rounded-full cursor-grab pointer-events-auto z-[50]"
+                className="absolute w-3 h-3 bg-gray-600 border-2 border-white cursor-grab pointer-events-auto z-[50]"
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY - (borderHeight / 2 + 20)}px`,
@@ -2344,11 +2583,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         <>
           {/* Menu */}
           <div
-            className="fixed bg-lobby-muted border border-lobby-accent rounded-lg shadow-2xl py-2 z-[200] pointer-events-auto max-h-[80vh] overflow-y-auto"
+            className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[200] pointer-events-auto max-h-[80vh] overflow-y-auto"
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-gray-400 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-gray-400 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-gray-400 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-gray-400 pointer-events-none" />
+            
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 console.log('Customize clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -2356,10 +2601,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu(null)
               }}
             >
-              ⚙️ Customize
+              <span className="text-gray-400 text-[10px]">◇</span> Customize
             </button>
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 console.log('Lock/Unlock clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -2369,11 +2614,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu(null)
               }}
             >
-              {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? '🔓 Unlock' : '🔒 Lock'}
+              <span className="text-gray-400 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? 'Unlock' : 'Lock'}
             </button>
-            <div className="h-px bg-lobby-accent/30 my-1" />
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              onClick={() => {
+                console.log('Toggle click interaction clicked')
+                const trace = traces.find(t => t.id === contextMenu.traceId)
+                if (trace) {
+                  updateTraceCustomization(trace.id, { ignoreClicks: !trace.ignoreClicks })
+                }
+                setContextMenu(null)
+              }}
+            >
+              <span className="text-gray-400 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? 'Enable Clicks' : 'Ignore Clicks'}
+            </button>
+            <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+            <button
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={async () => {
                 console.log('Reset Cropping clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -2388,10 +2646,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu(null)
               }}
             >
-              ↩️ Reset Cropping
+              <span className="text-gray-400 text-[10px]">◇</span> Reset Cropping
             </button>
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={async () => {
                 console.log('Reset Aspect Ratio clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -2407,10 +2665,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu(null)
               }}
             >
-              ⬜ Reset Aspect Ratio
+              <span className="text-gray-400 text-[10px]">◇</span> Reset Aspect Ratio
             </button>
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={async () => {
                 console.log('Reset Rotation clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -2420,26 +2678,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu(null)
               }}
             >
-              🔄 Reset Rotation
+              <span className="text-gray-400 text-[10px]">◇</span> Reset Rotation
             </button>
-            <div className="h-px bg-lobby-accent/30 my-1" />
+            <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-lobby-accent/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 console.log('Duplicate clicked')
                 duplicateTrace(contextMenu.traceId)
               }}
             >
-              📋 Duplicate
+              <span className="text-gray-400 text-[10px]">◇</span> Duplicate
             </button>
             <button
-              className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-500/20 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 console.log('Delete clicked')
                 deleteTrace(contextMenu.traceId)
               }}
             >
-              🗑️ Delete
+              <span className="text-red-500 text-[10px]">◇</span> Delete
             </button>
           </div>
 
@@ -2456,7 +2714,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {editingTrace && (
         <>
           <div
-            className="customize-menu bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto"
+            className="customize-menu bg-black border border-gray-500 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
             style={{ 
               position: 'fixed',
               right: '20px',
@@ -2465,12 +2723,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               zIndex: 300
             }}
           >
-            <h2 className="text-2xl font-bold text-lobby-accent mb-4">Customize Trace</h2>
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-400 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-400 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-400 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-400 pointer-events-none" />
             
-            <div className="space-y-4">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
+              <h2 className="text-lg text-white tracking-[0.15em] uppercase">Customize Trace</h2>
+            </div>
+            
+            <div className="space-y-5">
               {/* Toggle Options */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-white cursor-pointer">
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                    {(editingTrace.showBorder ?? true) && <span className="text-black text-[10px]">✓</span>}
+                  </div>
                   <input
                     type="checkbox"
                     checked={editingTrace.showBorder ?? true}
@@ -2479,12 +2749,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { showBorder: e.target.checked })
                     }}
-                    className="w-4 h-4"
+                    className="hidden"
                   />
-                  Show Border
+                  <span className="tracking-wider uppercase text-[10px]">Show Border</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-white cursor-pointer">
+                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                    {(editingTrace.showBackground ?? true) && <span className="text-black text-[10px]">✓</span>}
+                  </div>
                   <input
                     type="checkbox"
                     checked={editingTrace.showBackground ?? true}
@@ -2493,12 +2766,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { showBackground: e.target.checked })
                     }}
-                    className="w-4 h-4"
+                    className="hidden"
                   />
-                  Show Background
+                  <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-white cursor-pointer">
+                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                    {(editingTrace.showDescription ?? true) && <span className="text-black text-[10px]">✓</span>}
+                  </div>
                   <input
                     type="checkbox"
                     checked={editingTrace.showDescription ?? true}
@@ -2507,12 +2783,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { showDescription: e.target.checked })
                     }}
-                    className="w-4 h-4"
+                    className="hidden"
                   />
-                  Show Description
+                  <span className="tracking-wider uppercase text-[10px]">Show Description</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-white cursor-pointer">
+                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                    {(editingTrace.showFilename ?? true) && <span className="text-black text-[10px]">✓</span>}
+                  </div>
                   <input
                     type="checkbox"
                     checked={editingTrace.showFilename ?? true}
@@ -2521,9 +2800,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { showFilename: e.target.checked })
                     }}
-                    className="w-4 h-4"
+                    className="hidden"
                   />
-                  Show Username
+                  <span className="tracking-wider uppercase text-[10px]">Show Username</span>
                 </label>
               </div>
 
@@ -2531,7 +2810,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'text' && (
                 <>
                   <div>
-                    <label className="block text-white mb-2">Text Content</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Content</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -2541,7 +2820,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { content: e.target.value })
                       }}
-                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
+                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                       placeholder="Your message..."
                       rows={4}
                       maxLength={200}
@@ -2549,34 +2828,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
 
                   <div>
-                    <label className="block text-white mb-2">Font Size (px)</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Font Size (px)</label>
                     <input
                       type="number"
                       min={8}
                       max={200}
-                      value={(() => {
-                        // Show the actual scaled font size based on trace size
-                        const base = typeof editingTrace.fontSize === 'number' ? editingTrace.fontSize : (editingTrace.fontSize ? parseInt(editingTrace.fontSize as string) : 14);
-                        // If scaling is applied, show the scaled value
-                        const scale = Math.min(editingTrace.width ? editingTrace.width / 120 : 1, editingTrace.height ? editingTrace.height / 80 : 1);
-                        return Math.round(base * scale);
-                      })()}
+                      value={typeof editingTrace.fontSize === 'number' ? editingTrace.fontSize : (editingTrace.fontSize === 'small' ? 12 : editingTrace.fontSize === 'large' ? 24 : 16)}
                       onChange={e => {
-                        const value = parseInt(e.target.value) || 14;
-                        // Store the base value, not the scaled value
-                        const scale = Math.min(editingTrace.width ? editingTrace.width / 120 : 1, editingTrace.height ? editingTrace.height / 80 : 1);
-                        const baseValue = scale > 0 ? Math.round(value / scale) : value;
-                        const updated = { ...editingTrace, fontSize: baseValue };
+                        const value = parseInt(e.target.value) || 16;
+                        const updated = { ...editingTrace, fontSize: value };
                         setEditingTrace(updated);
-                        updateTraceCustomization(editingTrace.id, { fontSize: baseValue });
+                        // Update trace in store for live preview and mark as pending
+                        const trace = traces.find(t => t.id === editingTrace.id);
+                        if (trace) {
+                          addTrace({ ...trace, fontSize: value });
+                          markTraceChanged(editingTrace.id);
+                        }
                       }}
-                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
+                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                       placeholder="Font size in px"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-white mb-2">Font Family</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Font Family</label>
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
@@ -2584,7 +2859,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated);
                         updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value });
                       }}
-                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
+                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                     >
                       <option value="sans">Sans-serif</option>
                       <option value="serif">Serif</option>
@@ -2602,13 +2877,130 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       })}
                     </select>
                   </div>
+
+                  {/* Text Formatting */}
+                  <div>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Style</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const updated = { ...editingTrace, textBold: !editingTrace.textBold };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { textBold: !editingTrace.textBold });
+                        }}
+                        className={`flex-1 px-3 py-2 font-bold text-sm border transition-colors ${
+                          editingTrace.textBold
+                            ? 'bg-white text-black border-white'
+                            : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        B
+                      </button>
+                      <button
+                        onClick={() => {
+                          const updated = { ...editingTrace, textItalic: !editingTrace.textItalic };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { textItalic: !editingTrace.textItalic });
+                        }}
+                        className={`flex-1 px-3 py-2 italic text-sm border transition-colors ${
+                          editingTrace.textItalic
+                            ? 'bg-white text-black border-white'
+                            : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        I
+                      </button>
+                      <button
+                        onClick={() => {
+                          const updated = { ...editingTrace, textUnderline: !editingTrace.textUnderline };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { textUnderline: !editingTrace.textUnderline });
+                        }}
+                        className={`flex-1 px-3 py-2 underline text-sm border transition-colors ${
+                          editingTrace.textUnderline
+                            ? 'bg-white text-black border-white'
+                            : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        U
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Text Alignment */}
+                  <div>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Alignment</label>
+                    <div className="flex gap-2">
+                      {(['left', 'center', 'right', 'justify'] as const).map((align) => (
+                        <button
+                          key={align}
+                          onClick={() => {
+                            const updated = { ...editingTrace, textAlign: align };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { textAlign: align });
+                          }}
+                          className={`flex-1 px-2 py-2 text-xs border transition-colors ${
+                            (editingTrace.textAlign ?? 'center') === align
+                              ? 'bg-white text-black border-white'
+                              : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                          }`}
+                        >
+                          {align === 'left' && '◀'}
+                          {align === 'center' && '◆'}
+                          {align === 'right' && '▶'}
+                          {align === 'justify' && '▣'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Text Color */}
+                  <div>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="color"
+                        value={editingTrace.textColor ?? '#ffffff'}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, textColor: e.target.value };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { textColor: e.target.value });
+                        }}
+                        className="w-10 h-10 border border-gray-600 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={editingTrace.textColor ?? '#ffffff'}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, textColor: e.target.value };
+                          setEditingTrace(updated);
+                        }}
+                        onBlur={(e) => {
+                          updateTraceCustomization(editingTrace.id, { textColor: e.target.value });
+                        }}
+                        className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                        placeholder="#ffffff"
+                      />
+                      <button
+                        onClick={() => {
+                          const updated = { ...editingTrace, textColor: '#ffffff' };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { textColor: '#ffffff' });
+                        }}
+                        className="px-3 py-2 bg-gray-900 text-white border border-gray-600 hover:border-gray-400 text-xs"
+                        title="Reset to white"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                  </div>
                 </>
               )}
 
               {/* Border Radius Customization (for non-shape traces) */}
               {editingTrace.type !== 'shape' && (
                 <div>
-                  <label className="block text-white mb-2">
+                  <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                     Border Radius: {editingTrace.borderRadius ?? 8}px
                   </label>
                   <input
@@ -2623,9 +3015,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { borderRadius: value })
                     }}
-                    className="w-full"
+                    className="w-full accent-white"
                   />
-                  <p className="text-white/40 text-xs mt-1">
+                  <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                     Adjust the roundness of trace borders (0 = sharp corners)
                   </p>
                 </div>
@@ -2634,7 +3026,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Description/Caption for Media Traces */}
               {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
                 <div>
-                  <label className="block text-white mb-2">Description/Caption</label>
+                  <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Description / Caption</label>
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
@@ -2644,7 +3036,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     onBlur={(e) => {
                       updateTraceCustomization(editingTrace.id, { content: e.target.value })
                     }}
-                    className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
+                    className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                     placeholder="Optional description..."
                     rows={3}
                     maxLength={200}
@@ -2656,7 +3048,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'embed' && (
                 <>
                   <div>
-                    <label className="block text-white mb-2">Embed URL or HTML Code</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Embed URL or HTML</label>
                     <textarea
                       value={editingTrace.mediaUrl ?? ''}
                       onChange={(e) => {
@@ -2666,17 +3058,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
                       }}
-                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2 font-mono text-sm"
+                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                       placeholder="URL or <iframe src='...'></iframe>"
                       rows={4}
                     />
-                    <p className="text-white/40 text-xs mt-1">
+                    <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                       Direct URL or full embed code
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-white mb-2">Description/Title</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Description / Title</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -2686,14 +3078,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { content: e.target.value })
                       }}
-                      className="w-full bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
+                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                       placeholder="Optional description..."
                       rows={3}
                       maxLength={200}
                     />
                   </div>
 
-                  <label className="flex items-center gap-2 text-white cursor-pointer mt-3">
+                  <label className="flex items-center gap-3 text-white text-xs cursor-pointer mt-3 group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                      {(editingTrace.enableInteraction ?? false) && <span className="text-black text-[10px]">✓</span>}
+                    </div>
                     <input
                       type="checkbox"
                       checked={editingTrace.enableInteraction ?? false}
@@ -2702,9 +3097,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated)
                         updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
                       }}
-                      className="w-4 h-4"
+                      className="hidden"
                     />
-                    Enable Interaction (click to play/interact)
+                    <span className="tracking-wider uppercase text-[10px]">Enable Interaction</span>
                   </label>
                 </>
               )}
@@ -2714,7 +3109,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <div className="space-y-4">
                   {/* Shape Type */}
                   <div>
-                    <label className="block text-white mb-2 font-semibold">Shape Type</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                         <button
@@ -2725,17 +3120,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapeType: type })
                           }}
-                          className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                          className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.shapeType || 'rectangle') === type
-                              ? 'bg-lobby-accent text-white'
-                              : 'bg-lobby-darker text-white/60 hover:bg-lobby-darker/70'
+                              ? 'bg-white text-black border-white'
+                              : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'
                           }`}
                         >
-                          {type === 'rectangle' && '⬛'}
-                          {type === 'circle' && '⚫'}
-                          {type === 'triangle' && '🔺'}
-                          {type === 'path' && '〰️'}
-                          {' '}{type}
+                          {type === 'rectangle' && '⬛ '}
+                          {type === 'circle' && '⚫ '}
+                          {type === 'triangle' && '▲ '}
+                          {type === 'path' && '〰 '}
+                          {type}
                         </button>
                       ))}
                     </div>
@@ -2743,10 +3138,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Color Picker */}
                   <div>
-                    <label className="block text-white mb-2 font-semibold">Fill Color</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
                     
                     {/* Color preset palette */}
-                    <div className="grid grid-cols-8 gap-2 mb-3">
+                    <div className="grid grid-cols-8 gap-1.5 mb-3">
                       {['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
                         '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
                         '#f43f5e', '#ffffff', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#000000'].map(color => (
@@ -2758,7 +3153,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapeColor: color })
                           }}
-                          className="w-8 h-8 rounded-lg border-2 border-white/20 hover:border-lobby-accent transition-all hover:scale-110"
+                          className="w-7 h-7 border border-gray-600 hover:border-white transition-all hover:scale-110"
                           style={{ backgroundColor: color }}
                           title={color}
                         />
@@ -2773,32 +3168,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           e.stopPropagation()
                           e.preventDefault()
                           
-                          // Use native EyeDropper API if available
-                          if ('EyeDropper' in window) {
-                            try {
-                              const eyeDropper = new (window as any).EyeDropper()
-                              const result = await eyeDropper.open()
-                              const color = result.sRGBHex
-                              const updated = { ...editingTrace, shapeColor: color }
-                              setEditingTrace(updated)
-                              updateTraceCustomization(editingTrace.id, { shapeColor: color })
-                            } catch (err) {
-                              // User cancelled or error
-                              console.log('EyeDropper cancelled or failed:', err)
-                            }
-                          } else {
-                            // Fallback: use canvas capture method
-                            setColorPickerCallback(() => (color: string) => {
-                              const updated = { ...editingTrace, shapeColor: color }
-                              setEditingTrace(updated)
-                              updateTraceCustomization(editingTrace.id, { shapeColor: color })
-                            })
+                          if (!hasEyeDropperSupport) {
+                            alert('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
+                            return
+                          }
+                          
+                          try {
+                            const eyeDropper = new (window as any).EyeDropper()
+                            const result = await eyeDropper.open()
+                            const color = result.sRGBHex
+                            const updated = { ...editingTrace, shapeColor: color }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeColor: color })
+                          } catch (err) {
+                            // User cancelled or error
+                            console.log('EyeDropper cancelled or failed:', err)
                           }
                         }}
-                        className={`p-2 rounded-lg border-2 transition-all ${
-                          colorPickerCallback ? 'bg-lobby-accent border-lobby-accent text-white animate-pulse' : 'bg-lobby-darker border-lobby-accent/30 text-white hover:bg-lobby-accent/20'
-                        }`}
-                        title="Pick color from canvas (Press Escape to cancel)"
+                        className="p-2 border transition-all bg-gray-900 border-gray-600 text-white hover:border-gray-400"
+                        title="Pick color from screen"
                       >
                         💧
                       </button>
@@ -2811,7 +3199,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
                         }}
-                        className="w-16 h-10 rounded-lg cursor-pointer bg-lobby-darker border-2 border-lobby-accent/30"
+                        className="w-14 h-9 cursor-pointer bg-gray-900 border border-gray-600"
                       />
                       <input
                         type="text"
@@ -2824,14 +3212,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
                         }}
                         placeholder="#3b82f6"
-                        className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono text-sm"
+                        className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-gray-400 transition-colors font-mono text-sm"
                       />
                     </div>
                   </div>
 
                   {/* Opacity Slider */}
                   <div>
-                    <label className="block text-white mb-2 font-semibold">
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                       Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
                     </label>
                     <input
@@ -2846,13 +3234,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated)
                         updateTraceCustomization(editingTrace.id, { shapeOpacity: value })
                       }}
-                      className="w-full"
+                      className="w-full accent-white"
                     />
                   </div>
 
                   {/* Outline and Fill Options */}
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-white cursor-pointer">
+                    <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-black text-[10px]">✓</span>}
+                      </div>
                       <input
                         type="checkbox"
                         checked={editingTrace.shapeOutlineOnly ?? false}
@@ -2861,12 +3252,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
                         }}
-                        className="w-4 h-4"
+                        className="hidden"
                       />
-                      Show Outline
+                      <span className="tracking-wider uppercase text-[10px]">Show Outline</span>
                     </label>
 
-                    <label className="flex items-center gap-2 text-white cursor-pointer">
+                    <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeNoFill ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                        {(editingTrace.shapeNoFill ?? false) && <span className="text-black text-[10px]">✓</span>}
+                      </div>
                       <input
                         type="checkbox"
                         checked={editingTrace.shapeNoFill ?? false}
@@ -2877,17 +3271,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className="w-4 h-4"
                       />
-                      No Fill
+                      <span className="tracking-wider uppercase text-[10px]">No Fill</span>
                     </label>
                   </div>
 
                   {/* Outline Color (only show if outline is enabled) */}
                   {editingTrace.shapeOutlineOnly && (
                     <div>
-                      <label className="block text-white mb-2 font-semibold">Outline Color</label>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Outline Color</label>
                       
                       {/* Color preset palette */}
-                      <div className="grid grid-cols-8 gap-2 mb-3">
+                      <div className="grid grid-cols-8 gap-1.5 mb-3">
                         {['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
                           '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
                           '#f43f5e', '#ffffff', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#000000'].map(color => (
@@ -2899,7 +3293,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
                             }}
-                            className="w-8 h-8 rounded-lg border-2 border-white/20 hover:border-lobby-accent transition-all hover:scale-110"
+                            className="w-7 h-7 border border-gray-600 hover:border-white transition-all hover:scale-110"
                             style={{ backgroundColor: color }}
                             title={color}
                           />
@@ -2914,32 +3308,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             e.stopPropagation()
                             e.preventDefault()
                             
-                            // Use native EyeDropper API if available
-                            if ('EyeDropper' in window) {
-                              try {
-                                const eyeDropper = new (window as any).EyeDropper()
-                                const result = await eyeDropper.open()
-                                const color = result.sRGBHex
-                                const updated = { ...editingTrace, shapeOutlineColor: color }
-                                setEditingTrace(updated)
-                                updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
-                              } catch (err) {
-                                // User cancelled or error
-                                console.log('EyeDropper cancelled or failed:', err)
-                              }
-                            } else {
-                              // Fallback: use canvas capture method
-                              setColorPickerCallback(() => (color: string) => {
-                                const updated = { ...editingTrace, shapeOutlineColor: color }
-                                setEditingTrace(updated)
-                                updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
-                              })
+                            if (!hasEyeDropperSupport) {
+                              alert('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
+                              return
+                            }
+                            
+                            try {
+                              const eyeDropper = new (window as any).EyeDropper()
+                              const result = await eyeDropper.open()
+                              const color = result.sRGBHex
+                              const updated = { ...editingTrace, shapeOutlineColor: color }
+                              setEditingTrace(updated)
+                              updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
+                            } catch (err) {
+                              // User cancelled or error
+                              console.log('EyeDropper cancelled or failed:', err)
                             }
                           }}
-                          className={`p-2 rounded-lg border-2 transition-all ${
-                            colorPickerCallback ? 'bg-lobby-accent border-lobby-accent text-white animate-pulse' : 'bg-lobby-darker border-lobby-accent/30 text-white hover:bg-lobby-accent/20'
-                          }`}
-                          title="Pick color from canvas (Press Escape to cancel)"
+                          className="p-2 border transition-all bg-gray-900 border-gray-600 text-white hover:border-gray-400"
+                          title="Pick color from screen"
                         >
                           💧
                         </button>
@@ -2952,7 +3339,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
                           }}
-                          className="w-16 h-10 rounded-lg cursor-pointer bg-lobby-darker border-2 border-lobby-accent/30"
+                          className="w-14 h-9 cursor-pointer bg-gray-900 border border-gray-600"
                         />
                         <input
                           type="text"
@@ -2965,7 +3352,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
                           }}
                           placeholder="#3b82f6"
-                          className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono text-sm"
+                          className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-gray-400 transition-colors font-mono text-sm"
                         />
                       </div>
                     </div>
@@ -2974,7 +3361,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Corner Radius (Rectangle only) */}
                   {(editingTrace.shapeType || 'rectangle') === 'rectangle' && (
                     <div>
-                      <label className="block text-white mb-2 font-semibold">
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                         Corner Radius: {editingTrace.cornerRadius || 0}px
                       </label>
                       <input
@@ -2989,9 +3376,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { cornerRadius: value })
                         }}
-                        className="w-full"
+                        className="w-full accent-white"
                       />
-                      <p className="text-white/40 text-xs mt-1">
+                      <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                         Rounds the corners of the rectangle
                       </p>
                     </div>
@@ -3000,7 +3387,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Outline Mode (hidden for path as it's always outline) */}
                   {editingTrace.shapeType !== 'path' && (
                   <div>
-                    <label className="flex items-center gap-2 text-white cursor-pointer mb-2">
+                    <label className="flex items-center gap-3 text-white text-xs cursor-pointer mb-2 group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-black text-[10px]">✓</span>}
+                      </div>
                       <input
                         type="checkbox"
                         checked={editingTrace.shapeOutlineOnly ?? false}
@@ -3009,14 +3399,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
                         }}
-                        className="w-4 h-4"
+                        className="hidden"
                       />
-                      <span className="font-semibold">Outline Only (No Fill)</span>
+                      <span className="tracking-wider uppercase text-[10px]">Outline Only (No Fill)</span>
                     </label>
                     
                     {editingTrace.shapeOutlineOnly && (
                       <div className="ml-6">
-                        <label className="block text-white mb-2">
+                        <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                           Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
                         </label>
                         <input
@@ -3033,7 +3423,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className="w-full"
                         />
-                        <p className="text-white/40 text-xs mt-1">
+                        <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                           Adjust the thickness of the outline
                         </p>
                       </div>
@@ -3044,7 +3434,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Path Thickness Control */}
                   {editingTrace.shapeType === 'path' && (
                   <div>
-                    <label className="block text-white mb-2 font-semibold">
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                       Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
                     </label>
                     <input
@@ -3059,9 +3449,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated)
                         updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
                       }}
-                      className="w-full"
+                      className="w-full accent-white"
                     />
-                    <p className="text-white/40 text-xs mt-1">
+                    <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                       Adjust the thickness of the path
                     </p>
                   </div>
@@ -3071,7 +3461,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {editingTrace.shapeType === 'path' && (
                   <>
                   <div>
-                    <label className="block text-white mb-2 font-semibold">Path Style</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Path Style</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['straight', 'bezier'] as const).map((type) => (
                         <button
@@ -3082,10 +3472,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { pathCurveType: type })
                           }}
-                          className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                          className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathCurveType || 'straight') === type
-                              ? 'bg-lobby-accent text-white'
-                              : 'bg-lobby-darker text-white/60 hover:bg-lobby-darker/70'
+                              ? 'bg-white text-black border-white'
+                              : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'
                           }`}
                         >
                           {type === 'straight' && '━ Straight'}
@@ -3096,7 +3486,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
                   
                   <div>
-                    <label className="block text-white mb-2 font-semibold">
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                       Path Points ({(editingTrace.shapePoints || []).length})
                     </label>
                     <div className="flex gap-2">
@@ -3105,10 +3495,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         onClick={() => {
                           setPathCreationMode(!pathCreationMode)
                         }}
-                        className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-all ${
+                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
                           pathCreationMode
-                            ? 'bg-green-600 text-white hover:bg-green-700'
-                            : 'bg-lobby-accent text-white hover:bg-lobby-accent/80'
+                            ? 'bg-white text-black border-white'
+                            : 'bg-transparent text-white border-gray-600 hover:border-gray-400'
                         }`}
                       >
                         {pathCreationMode ? '✓ Done Adding' : '+ Add Points'}
@@ -3124,12 +3514,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
                           }
                         }}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-all"
+                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
                       >
-                        Remove Last
+                        Remove
                       </button>
                     </div>
-                    <p className="text-white/40 text-xs mt-2">
+                    <p className="text-gray-400 text-[9px] mt-2 tracking-wider">
                       {pathCreationMode 
                         ? 'Click anywhere on the canvas to add points to your path' 
                         : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
@@ -3140,7 +3530,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Shape Label */}
                   <div>
-                    <label className="block text-white mb-2 font-semibold">Label (optional)</label>
+                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
                     <input
                       type="text"
                       value={editingTrace.content || ''}
@@ -3153,17 +3543,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       placeholder="Shape label..."
                       maxLength={50}
-                      className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-gray-400 transition-colors font-mono text-sm"
                     />
                   </div>
                 </div>
               )}
 
               {/* Lighting Controls */}
-              <div className="border-t border-lobby-accent/30 pt-4 mt-4">
-                <h3 className="text-lg font-semibold text-lobby-accent mb-3">💡 Lighting</h3>
+              <div className="border-t border-gray-600 pt-4 mt-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
+                  <h3 className="text-white text-[10px] tracking-[0.15em] uppercase">Lighting</h3>
+                </div>
                 
-                <label className="flex items-center gap-2 text-white cursor-pointer mb-3">
+                <label className="flex items-center gap-3 text-white text-xs cursor-pointer mb-3 group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.illuminate ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                    {(editingTrace.illuminate ?? false) && <span className="text-black text-[10px]">✓</span>}
+                  </div>
                   <input
                     type="checkbox"
                     checked={editingTrace.illuminate ?? false}
@@ -3172,15 +3568,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { illuminate: e.target.checked })
                     }}
-                    className="w-4 h-4"
+                    className="hidden"
                   />
-                  <span className="font-semibold">Enable Light Emission</span>
+                  <span className="tracking-wider uppercase text-[10px]">Enable Light Emission</span>
                 </label>
 
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
                     <div>
-                      <label className="block text-white mb-2">Light Color</label>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Light Color</label>
                       <div className="flex gap-2 items-center">
                         <input
                           type="color"
@@ -3190,7 +3586,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { lightColor: e.target.value })
                           }}
-                          className="w-12 h-10 rounded cursor-pointer"
+                          className="w-12 h-9 cursor-pointer bg-gray-900 border border-gray-600"
                         />
                         <input
                           type="text"
@@ -3202,14 +3598,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           onBlur={(e) => {
                             updateTraceCustomization(editingTrace.id, { lightColor: e.target.value })
                           }}
-                          className="flex-1 bg-lobby-darker text-white border border-lobby-accent rounded px-3 py-2"
+                          className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                           placeholder="#ffffff"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-white mb-2">
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                         Intensity: {(editingTrace.lightIntensity ?? 1.0).toFixed(1)}x
                       </label>
                       <input
@@ -3224,12 +3620,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { lightIntensity: value })
                         }}
-                        className="w-full"
+                        className="w-full accent-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-white mb-2">
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
                         Radius: {editingTrace.lightRadius ?? 200}px
                       </label>
                       <input
@@ -3244,15 +3640,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { lightRadius: value })
                         }}
-                        className="w-full"
+                        className="w-full accent-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-white mb-2">Light Position Offset</label>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-white/70 text-sm mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
+                          <label className="block text-gray-400 text-[9px] tracking-wider mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -3265,11 +3661,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { lightOffsetX: value })
                             }}
-                            className="w-full"
+                            className="w-full accent-white"
                           />
                         </div>
                         <div>
-                          <label className="block text-white/70 text-sm mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
+                          <label className="block text-gray-400 text-[9px] tracking-wider mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -3282,17 +3678,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { lightOffsetY: value })
                             }}
-                            className="w-full"
+                            className="w-full accent-white"
                           />
                         </div>
                       </div>
-                      <p className="text-white/50 text-xs mt-1">
+                      <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                         Adjust light source position relative to trace center
                       </p>
                     </div>
 
                     <div>
-                      <label className="flex items-center gap-2 text-white cursor-pointer mb-2">
+                      <label className="flex items-center gap-3 text-white text-xs cursor-pointer mb-2 group">
+                        <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.lightPulse ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                          {(editingTrace.lightPulse ?? false) && <span className="text-black text-[10px]">✓</span>}
+                        </div>
                         <input
                           type="checkbox"
                           checked={editingTrace.lightPulse ?? false}
@@ -3301,14 +3700,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { lightPulse: e.target.checked })
                           }}
-                          className="w-4 h-4"
+                          className="hidden"
                         />
-                        Enable Pulsing/Flickering
+                        <span className="tracking-wider uppercase text-[10px]">Enable Pulsing/Flickering</span>
                       </label>
                       
                       {editingTrace.lightPulse && (
-                        <div>
-                          <label className="block text-white/70 text-sm mb-1">
+                        <div className="ml-6">
+                          <label className="block text-gray-400 text-[9px] tracking-wider mb-1">
                             Pulse Speed: {editingTrace.lightPulseSpeed ?? 2.0}s per cycle
                           </label>
                           <input
@@ -3323,9 +3722,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { lightPulseSpeed: value })
                             }}
-                            className="w-full"
+                            className="w-full accent-white"
                           />
-                          <p className="text-white/50 text-xs mt-1">
+                          <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
                             Lower = faster pulse, Higher = slower pulse
                           </p>
                         </div>
@@ -3336,8 +3735,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </div>
 
               <button
-                onClick={() => setEditingTrace(null)}
-                className="w-full bg-lobby-accent text-white font-semibold py-2 px-4 rounded hover:bg-opacity-80 transition-all"
+                onClick={() => {
+                  // Mark as pending if there were any changes
+                  if (editingTrace) {
+                    markTraceChanged(editingTrace.id);
+                  }
+                  setEditingTrace(null);
+                }}
+                className="w-full bg-white text-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-gray-200 transition-all border border-white mt-4"
               >
                 Done
               </button>
@@ -3360,21 +3765,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           onClick={() => setModalTrace(null)}
         >
           <div
-            className="bg-lobby-darker border-4 rounded-lg p-6 max-w-3xl max-h-[80vh] overflow-auto"
+            className="bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
             style={{ borderColor: getBorderColor(modalTrace.type) }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+            
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-white">
-                {modalTrace.type === 'text' && '📝 Text Trace'}
-                {modalTrace.type === 'image' && '🖼️ Image Trace'}
-                {modalTrace.type === 'audio' && '🎵 Audio Trace'}
-                {modalTrace.type === 'video' && '🎬 Video Trace'}
-                {modalTrace.type === 'embed' && '🔗 Embedded Content'}
-              </h2>
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rotate-45 border border-gray-500" />
+                <h2 className="text-white text-sm tracking-[0.15em] uppercase font-mono">
+                  {modalTrace.type === 'text' && 'Text Trace'}
+                  {modalTrace.type === 'image' && 'Image Trace'}
+                  {modalTrace.type === 'audio' && 'Audio Trace'}
+                  {modalTrace.type === 'video' && 'Video Trace'}
+                  {modalTrace.type === 'embed' && 'Embedded Content'}
+                </h2>
+              </div>
               <button
                 onClick={() => setModalTrace(null)}
-                className="text-white/80 hover:text-white text-2xl"
+                className="text-gray-400 hover:text-white text-lg transition-colors"
               >
                 ✕
               </button>
@@ -3387,7 +3801,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
                   alt={modalTrace.content || 'Trace image'}
                   crossOrigin="anonymous"
-                  className="w-full max-h-96 object-contain rounded-lg"
+                  className="w-full max-h-96 object-contain"
                 />
               )}
 
@@ -3396,12 +3810,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   src={modalTrace.mediaUrl}
                   controls
                   autoPlay
-                  className="w-full max-h-96 rounded-lg"
+                  className="w-full max-h-96"
                 />
               )}
 
               {modalTrace.type === 'audio' && modalTrace.mediaUrl && (
-                <div className="flex flex-col items-center p-8 bg-black/40 rounded-lg">
+                <div className="flex flex-col items-center p-8 bg-gray-800/50">
                   <span className="text-6xl mb-4">🎵</span>
                   <audio src={modalTrace.mediaUrl} controls autoPlay className="w-full" />
                 </div>
@@ -3411,15 +3825,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 const embedUrl = extractEmbedUrl(modalTrace.mediaUrl)
                 if (!embedUrl) {
                   return (
-                    <div className="w-full h-96 flex items-center justify-center bg-black/50 rounded-lg">
-                      <p className="text-white/60">Invalid embed code</p>
+                    <div className="w-full h-96 flex items-center justify-center bg-gray-800/50">
+                      <p className="text-gray-400 text-sm tracking-wider">Invalid embed code</p>
                     </div>
                   )
                 }
                 return (
                   <iframe
                     src={embedUrl}
-                    className="w-full h-96 rounded-lg"
+                    className="w-full h-96"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
@@ -3427,8 +3841,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               })()}
 
               {modalTrace.type === 'text' && (
-                <div className="bg-black/40 p-6 rounded-lg">
-                  <p className="text-white text-lg whitespace-pre-wrap">
+                <div className="bg-gray-800/50 p-6">
+                  <p className="text-white text-lg whitespace-pre-wrap font-mono">
                     {modalTrace.content}
                   </p>
                 </div>
@@ -3438,17 +3852,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             {/* Caption/Description */}
             {modalTrace.content && modalTrace.type !== 'text' && (
               <div className="mb-4">
-                <p className="text-white/80 text-sm italic">
+                <p className="text-gray-400 text-sm italic">
                   "{modalTrace.content}"
                 </p>
               </div>
             )}
 
             {/* Metadata */}
-            <div className="flex justify-between items-center text-sm text-white/60">
-              <span>By @{modalTrace.username}</span>
+            <div className="flex justify-between items-center text-[10px] text-gray-400 tracking-wider uppercase font-mono">
+              <span>@{modalTrace.username}</span>
               <span>
-                Position: ({Math.round(modalTrace.x)}, {Math.round(modalTrace.y)})
+                ({Math.round(modalTrace.x)}, {Math.round(modalTrace.y)})
               </span>
               <span>{new Date(modalTrace.createdAt).toLocaleString()}</span>
             </div>
@@ -3467,47 +3881,105 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {/* Delete Confirmation Dialog */}
       {deleteConfirmDialog && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[250] pointer-events-auto"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[250] pointer-events-auto"
           onClick={() => setDeleteConfirmDialog(null)}
         >
+          {/* Scanline overlay */}
+          <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+            }}
+          />
+          
           <div
-            className="bg-lobby-muted border-2 border-red-500 rounded-lg p-6 max-w-md w-full mx-4"
+            className="bg-gray-900 border border-red-500/40 p-6 max-w-md w-full mx-4 relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold text-red-500 mb-4">Delete Trace</h2>
-            <p className="text-white mb-6">
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-red-500/60" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-red-500/60" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-red-500/60" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-red-500/60" />
+            
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-1.5 h-1.5 rotate-45 border border-red-500/60" />
+              <h2 className="text-lg text-red-400 tracking-[0.15em] uppercase">Delete Trace</h2>
+            </div>
+            <p className="text-white mb-6 text-sm tracking-wide">
               Are you sure you want to delete this trace? This action cannot be undone.
             </p>
-            <p className="text-white/60 text-sm mb-6">
-              💡 Tip: Press <kbd className="px-2 py-1 bg-black/40 rounded">Delete</kbd> key while a trace is selected for quick deletion.
+            <p className="text-gray-400 text-[10px] tracking-wider uppercase mb-6">
+              ◇ Tip: Press <kbd className="px-2 py-1 bg-gray-800 border border-gray-600 text-gray-300 text-[9px] tracking-wider">Delete</kbd> key for quick deletion
             </p>
             
-            <label className="flex items-center gap-2 text-white/80 text-sm mb-6 cursor-pointer">
-              <input
-                type="checkbox"
-                className="w-4 h-4"
-                onChange={(e) => {
-                  localStorage.setItem('dontAskDeleteTrace', e.target.checked ? 'true' : 'false')
-                }}
-              />
-              Don't ask me again
+            <label className="flex items-center gap-3 text-gray-400 text-xs mb-6 cursor-pointer group">
+              <div className="w-4 h-4 border border-gray-600 flex items-center justify-center group-hover:border-gray-400">
+                <input
+                  type="checkbox"
+                  className="hidden"
+                  onChange={(e) => {
+                    localStorage.setItem('dontAskDeleteTrace', e.target.checked ? 'true' : 'false')
+                    e.currentTarget.parentElement?.classList.toggle('bg-white')
+                  }}
+                />
+              </div>
+              <span className="tracking-wider uppercase text-[10px]">Don't ask again</span>
             </label>
 
             <div className="flex gap-3">
               <button
-                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                className="flex-1 py-3 border border-gray-600 text-gray-400 text-[10px] tracking-[0.15em] uppercase hover:border-gray-400 hover:text-white transition-colors"
                 onClick={() => setDeleteConfirmDialog(null)}
               >
                 Cancel
               </button>
               <button
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-bold"
+                className="flex-1 py-3 border border-red-500/40 bg-red-500/20 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
                 onClick={() => executeDelete(deleteConfirmDialog.traceId)}
               >
                 Delete
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Save Button - Nier:Automata style */}
+      {hasPendingChanges() && (
+        <div className="fixed top-6 right-6 z-[2000] pointer-events-auto">
+          <button
+            onClick={saveAllChanges}
+            disabled={isSaving}
+            className={`
+              relative flex items-center gap-3 px-6 py-3 border
+              transition-all duration-200 text-xs tracking-[0.15em] uppercase
+              ${isSaving 
+                ? 'bg-gray-800 border-gray-600 text-gray-400 cursor-not-allowed' 
+                : 'bg-white border-white text-black hover:bg-gray-200'
+              }
+            `}
+          >
+            {/* Corner brackets */}
+            <span className="absolute top-0 left-0 w-2 h-2 border-l border-t border-black/30" />
+            <span className="absolute top-0 right-0 w-2 h-2 border-r border-t border-black/30" />
+            <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b border-black/30" />
+            <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b border-black/30" />
+            
+            {isSaving ? (
+              <>
+                <span className="animate-pulse">◇</span>
+                Saving...
+              </>
+            ) : (
+              <>
+                <span>◇</span>
+                Save Changes
+                <span className="bg-black/20 px-2 py-0.5 text-[10px]">
+                  {pendingChanges.size + deletedTraces.size}
+                </span>
+              </>
+            )}
+          </button>
         </div>
       )}
     </>

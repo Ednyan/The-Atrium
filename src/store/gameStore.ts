@@ -10,6 +10,10 @@ interface GameState {
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
   
+  // Pending changes tracking - traces that have been modified but not saved to DB
+  pendingChanges: Set<string>  // Set of trace IDs with unsaved changes
+  deletedTraces: Set<string>   // Set of trace IDs that should be deleted on save
+  
   setUsername: (username: string) => void
   setUserId: (userId: string) => void
   setPosition: (x: number, y: number) => void
@@ -20,9 +24,15 @@ interface GameState {
   addTrace: (trace: Trace) => void
   removeTrace: (traceId: string) => void
   setTraces: (traces: Trace[]) => void
+  
+  // Pending changes management
+  markTraceChanged: (traceId: string) => void
+  markTraceDeleted: (traceId: string) => void
+  clearPendingChanges: () => void
+  hasPendingChanges: () => boolean
 }
 
-export const useGameStore = create<GameState>((set) => ({
+export const useGameStore = create<GameState>((set, get) => ({
   username: '',
   userId: '',
   position: { x: 400, y: 300 },
@@ -36,6 +46,10 @@ export const useGameStore = create<GameState>((set) => ({
   })(),
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
+  
+  // Pending changes tracking
+  pendingChanges: new Set<string>(),
+  deletedTraces: new Set<string>(),
 
   setUsername: (username) => set({ username }),
   setUserId: (userId) => set({ userId }),
@@ -88,5 +102,31 @@ export const useGameStore = create<GameState>((set) => ({
   
   setTraces: (traces) => {
     set({ traces })
+  },
+  
+  // Pending changes management
+  markTraceChanged: (traceId) => 
+    set((state) => {
+      const newPending = new Set(state.pendingChanges)
+      newPending.add(traceId)
+      return { pendingChanges: newPending }
+    }),
+    
+  markTraceDeleted: (traceId) =>
+    set((state) => {
+      const newDeleted = new Set(state.deletedTraces)
+      newDeleted.add(traceId)
+      // Also remove from pendingChanges since it's being deleted
+      const newPending = new Set(state.pendingChanges)
+      newPending.delete(traceId)
+      return { deletedTraces: newDeleted, pendingChanges: newPending }
+    }),
+    
+  clearPendingChanges: () =>
+    set({ pendingChanges: new Set<string>(), deletedTraces: new Set<string>() }),
+    
+  hasPendingChanges: () => {
+    const state = get()
+    return state.pendingChanges.size > 0 || state.deletedTraces.size > 0
   },
 }))

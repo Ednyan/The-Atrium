@@ -31,10 +31,10 @@ function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user && supabase) {
-        // Get user profile and active lobby
+        // Get user profile (don't auto-join lobby - let user choose from lobby browser)
         (supabase
           .from('profiles') as any)
-          .select('username, display_name, player_color, active_lobby_id')
+          .select('username, display_name, player_color')
           .eq('id', session.user.id)
           .single()
           .then(({ data }: any) => {
@@ -42,7 +42,6 @@ function App() {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
-              setCurrentLobbyId(data.active_lobby_id)
               setIsAuthenticated(true)
             }
           })
@@ -57,7 +56,7 @@ function App() {
       if (session?.user && supabase) {
         (supabase
           .from('profiles') as any)
-          .select('username, display_name, player_color, active_lobby_id')
+          .select('username, display_name, player_color')
           .eq('id', session.user.id)
           .single()
           .then(({ data }: any) => {
@@ -65,7 +64,7 @@ function App() {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
-              setCurrentLobbyId(data.active_lobby_id)
+              // Don't auto-join lobby - let user choose from lobby browser
               setIsAuthenticated(true)
             }
           })

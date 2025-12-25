@@ -207,14 +207,30 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
   }
 
   return (
-    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 1000 }}>
-      <div className="bg-lobby-muted border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
-        <h2 className="text-2xl font-bold text-lobby-accent mb-4">Leave a Trace</h2>
+    <div className="absolute inset-0 bg-nier-black/90 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 1000 }}>
+      {/* Scanline overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+        }}
+      />
+      
+      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative max-h-[90vh] overflow-y-auto">
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Leave a Trace</h2>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Trace Type Selector */}
           <div>
-            <label className="block text-lobby-light text-sm mb-2 font-semibold">
+            <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-3">
               Content Type
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -223,18 +239,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                   key={type}
                   type="button"
                   onClick={() => setTraceType(type)}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  className={`px-3 py-2 text-[10px] tracking-wider uppercase transition-all ${
                     traceType === type
-                      ? 'bg-lobby-accent text-lobby-light'
-                      : 'bg-lobby-darker text-lobby-light/60 hover:bg-lobby-darker/70'
+                      ? 'bg-nier-bg text-nier-black'
+                      : 'bg-nier-black border border-nier-border/30 text-nier-border hover:border-nier-border/60 hover:text-nier-bg'
                   }`}
                 >
-                  {type === 'text' && '📝 Text'}
-                  {type === 'image' && '🖼️ Image'}
-                  {type === 'audio' && '🎵 Audio'}
-                  {type === 'video' && '🎬 Video'}
-                  {type === 'embed' && '🔗 Embed'}
-                  {type === 'shape' && '⬛ Shape'}
+                  {type === 'text' && '◇ Text'}
+                  {type === 'image' && '◇ Image'}
+                  {type === 'audio' && '◇ Audio'}
+                  {type === 'video' && '◇ Video'}
+                  {type === 'embed' && '◇ Embed'}
+                  {type === 'shape' && '◇ Shape'}
                 </button>
               ))}
             </div>
@@ -243,7 +259,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           {/* Text Content */}
           {traceType === 'text' && (
             <div>
-              <label className="block text-lobby-light text-sm mb-2">
+              <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                 Your message
               </label>
               <textarea
@@ -252,10 +268,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                 placeholder="Share a thought, memory, or feeling..."
                 maxLength={200}
                 rows={4}
-                className="w-full px-4 py-3 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors resize-none"
+                className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors resize-none"
                 autoFocus
               />
-              <p className="text-lobby-light/40 text-xs mt-1">
+              <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
                 {content.length}/200 characters
               </p>
             </div>
@@ -263,8 +279,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
 
           {/* File Upload for Image/Audio/Video */}
           {(traceType === 'image' || traceType === 'audio' || traceType === 'video') && (
-            <div>
-              <label className="block text-lobby-light text-sm mb-2">
+            <div className="space-y-3">
+              <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                 Upload {traceType}
               </label>
               <input
@@ -275,15 +291,15 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                   'video/*'
                 }
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="w-full px-4 py-3 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-lobby-accent file:text-lobby-light file:cursor-pointer hover:file:bg-lobby-accent/80"
+                className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm file:mr-4 file:py-2 file:px-4 file:border-0 file:bg-nier-bg file:text-nier-black file:text-[10px] file:tracking-wider file:uppercase file:cursor-pointer hover:file:bg-nier-bgDark"
               />
-              <p className="text-lobby-light/60 text-xs mt-2">Or paste a URL:</p>
+              <p className="text-nier-border/50 text-[9px] tracking-wider uppercase">Or paste a URL:</p>
               <input
                 type="url"
                 value={mediaUrl}
                 onChange={(e) => setMediaUrl(e.target.value)}
                 placeholder={`https://example.com/${traceType}.${traceType === 'audio' ? 'mp3' : traceType === 'video' ? 'mp4' : 'jpg'}`}
-                className="w-full px-4 py-2 mt-1 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
               />
               <input
                 type="text"
@@ -291,7 +307,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Optional caption..."
                 maxLength={100}
-                className="w-full px-4 py-2 mt-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
               />
             </div>
           )}
@@ -299,19 +315,19 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           {/* Embed URL */}
           {traceType === 'embed' && (
             <div>
-              <label className="block text-lobby-light text-sm mb-2">
+              <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                 Embed URL or HTML Code
               </label>
               <textarea
                 value={mediaUrl}
                 onChange={(e) => setMediaUrl(e.target.value)}
                 placeholder={`Direct URL:\nhttps://youtube.com/watch?v=...\n\nOr full embed code:\n<iframe src="https://..."></iframe>`}
-                className="w-full px-4 py-3 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono text-sm"
+                className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors font-mono"
                 rows={5}
                 autoFocus
               />
-              <p className="text-lobby-light/40 text-xs mt-1">
-                📺 Direct URL (YouTube, Vimeo, etc.) or 📋 Paste full embed code from SoundCloud, Spotify, etc.
+              <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
+                ◇ Direct URL or ◇ Paste full embed code
               </p>
               <input
                 type="text"
@@ -319,7 +335,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Optional description..."
                 maxLength={100}
-                className="w-full px-4 py-2 mt-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                className="w-full px-4 py-2 mt-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
               />
             </div>
           )}
@@ -329,23 +345,23 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
             <div className="space-y-4">
               {/* Shape Type */}
               <div>
-                <label className="block text-lobby-light text-sm mb-2">Shape Type</label>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                     <button
                       key={type}
                       type="button"
                       onClick={() => setShapeType(type)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                      className={`px-3 py-2 text-[10px] tracking-wider uppercase capitalize transition-all ${
                         shapeType === type
-                          ? 'bg-lobby-accent text-lobby-light'
-                          : 'bg-lobby-darker text-lobby-light/60 hover:bg-lobby-darker/70'
+                          ? 'bg-nier-bg text-nier-black'
+                          : 'bg-nier-black border border-nier-border/30 text-nier-border hover:border-nier-border/60 hover:text-nier-bg'
                       }`}
                     >
-                      {type === 'rectangle' && '⬛'}
-                      {type === 'circle' && '⚫'}
-                      {type === 'triangle' && '🔺'}
-                      {type === 'path' && '〰️'}
+                      {type === 'rectangle' && '◻'}
+                      {type === 'circle' && '○'}
+                      {type === 'triangle' && '△'}
+                      {type === 'path' && '~'}
                       {' '}{type}
                     </button>
                   ))}
@@ -354,27 +370,27 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
 
               {/* Color Picker */}
               <div>
-                <label className="block text-lobby-light text-sm mb-2">Color</label>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Color</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="color"
                     value={shapeColor}
                     onChange={(e) => setShapeColor(e.target.value)}
-                    className="w-16 h-10 rounded-lg cursor-pointer bg-lobby-darker border-2 border-lobby-accent/30"
+                    className="w-12 h-10 cursor-pointer bg-nier-black border border-nier-border/30"
                   />
                   <input
                     type="text"
                     value={shapeColor}
                     onChange={(e) => setShapeColor(e.target.value)}
                     placeholder="#3b82f6"
-                    className="flex-1 px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors font-mono"
+                    className="flex-1 px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors font-mono"
                   />
                 </div>
               </div>
 
               {/* Opacity Slider */}
               <div>
-                <label className="block text-lobby-light text-sm mb-2">
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                   Opacity: {shapeOpacity.toFixed(2)}
                 </label>
                 <input
@@ -384,32 +400,32 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                   step="0.01"
                   value={shapeOpacity}
                   onChange={(e) => setShapeOpacity(parseFloat(e.target.value))}
-                  className="w-full"
+                  className="w-full accent-nier-bg"
                 />
               </div>
 
               {/* Size Controls */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-lobby-light text-sm mb-2">Width (px)</label>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Width (px)</label>
                   <input
                     type="number"
                     min="20"
                     max="1000"
                     value={shapeWidth}
                     onChange={(e) => setShapeWidth(parseInt(e.target.value) || 200)}
-                    className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light focus:outline-none focus:border-lobby-accent transition-colors"
+                    className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-lobby-light text-sm mb-2">Height (px)</label>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Height (px)</label>
                   <input
                     type="number"
                     min="20"
                     max="1000"
                     value={shapeHeight}
                     onChange={(e) => setShapeHeight(parseInt(e.target.value) || 200)}
-                    className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light focus:outline-none focus:border-lobby-accent transition-colors"
+                    className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
                   />
                 </div>
               </div>
@@ -417,7 +433,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
               {/* Corner Radius (Rectangle only) */}
               {shapeType === 'rectangle' && (
                 <div>
-                  <label className="block text-lobby-light text-sm mb-2">
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                     Corner Radius: {cornerRadius}px
                   </label>
                   <input
@@ -427,55 +443,57 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                     step="1"
                     value={cornerRadius}
                     onChange={(e) => setCornerRadius(parseInt(e.target.value))}
-                    className="w-full"
+                    className="w-full accent-nier-bg"
                   />
                 </div>
               )}
 
               {/* Optional Label */}
               <div>
-                <label className="block text-lobby-light text-sm mb-2">Label (optional)</label>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
                 <input
                   type="text"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Shape label..."
                   maxLength={50}
-                  className="w-full px-4 py-2 bg-lobby-darker border-2 border-lobby-accent/30 rounded-lg text-lobby-light placeholder-lobby-light/40 focus:outline-none focus:border-lobby-accent transition-colors"
+                  className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                 />
               </div>
             </div>
           )}
 
-          <div className="bg-lobby-darker/50 border-2 border-lobby-accent/20 rounded-lg p-4">
-            <p className="text-lobby-light/60 text-sm mb-2">
-              📍 Trace placement location:
+          {/* Location Info */}
+          <div className="bg-nier-black border border-nier-border/20 p-4">
+            <p className="text-nier-border/60 text-[9px] tracking-[0.15em] uppercase mb-2">
+              ◇ Placement Location
             </p>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-lobby-accent animate-pulse"></div>
-              <p className="text-lobby-accent font-mono">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rotate-45 bg-nier-bg animate-pulse" />
+              <p className="text-nier-bg font-mono text-sm">
                 X: {Math.round(finalPosition.x)} • Y: {Math.round(finalPosition.y)}
               </p>
             </div>
-            <p className="text-lobby-light/40 text-xs mt-2">
-              💡 Tip: Click on the map to choose where your trace appears!
+            <p className="text-nier-border/40 text-[9px] tracking-wider mt-3 uppercase">
+              Click on the map to choose placement
             </p>
           </div>
 
-          <div className="flex gap-3">
+          {/* Buttons */}
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-lobby-darker hover:bg-lobby-dark text-lobby-light rounded-lg transition-colors"
+              className="flex-1 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || (traceType === 'text' && !content.trim()) || ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) || (traceType === 'embed' && !mediaUrl)}
-              className="flex-1 px-4 py-2 bg-lobby-accent hover:bg-lobby-accent/80 disabled:bg-lobby-accent/30 text-lobby-light font-semibold rounded-lg transition-all disabled:cursor-not-allowed"
+              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Saving...' : 'Leave Trace'}
+              {isSubmitting ? '◇ Saving...' : 'Leave Trace'}
             </button>
           </div>
         </form>

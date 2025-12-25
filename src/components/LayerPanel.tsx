@@ -167,6 +167,22 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     }
   }
 
+  const renameGroup = async (layerId: string, currentName: string) => {
+    if (!supabase) return
+    
+    const newName = prompt('Enter new group name:', currentName)
+    if (!newName || newName === currentName) return
+
+    const { error } = await (supabase.from('layers') as any)
+      .update({ name: newName })
+      .eq('id', layerId)
+
+    if (error) {
+      console.error('Error renaming group:', error)
+      alert(`Failed to rename group: ${error.message}`)
+    }
+  }
+
   const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
     if (!supabase) return
 
@@ -327,30 +343,47 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
   console.log('📊 allItems calculated:', allItems.map(i => i.type === 'player' ? `Player(${i.zIndex})` : `Layer:${i.data.name}(${i.zIndex})`).join(' > '))
 
   return (
-    <div className="layer-panel fixed right-4 top-20 bottom-20 w-80 bg-lobby-muted border-2 border-lobby-accent rounded-lg shadow-2xl overflow-hidden flex flex-col z-50">
+    <div 
+      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[9999]" 
+      style={{ 
+        backgroundColor: 'rgba(20,20,20,0.98)',
+        top: '80px',
+        right: '16px',
+        height: 'calc(100vh - 160px)'
+      }}
+    >
+      {/* Corner brackets */}
+      <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-white pointer-events-none" />
+      <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-white pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-white pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-white pointer-events-none" />
+      
       {/* Header */}
-      <div className="bg-lobby-darker border-b border-lobby-accent p-3 flex justify-between items-center">
-        <h2 className="text-lg font-bold text-lobby-accent">🎨 Layers</h2>
+      <div className="bg-black border-b border-gray-600 p-3 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
+          <h2 className="text-sm text-white tracking-[0.15em] uppercase">Layers</h2>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={fixDuplicateZIndexes}
-            className="bg-yellow-600 hover:bg-yellow-500 text-white px-2 py-1 rounded text-xs transition-all"
+            className="px-2 py-1 border border-yellow-600 text-yellow-500 text-[9px] tracking-wider uppercase hover:bg-yellow-600/20 transition-colors"
             title="Fix duplicate z-indexes (run once if layers won't move)"
           >
-            🔧 Fix
+            Fix
           </button>
           <button
             onClick={createGroup}
-            className="bg-lobby-accent hover:bg-lobby-accent/80 text-white px-3 py-1 rounded text-sm transition-all"
+            className="px-3 py-1 bg-white text-black text-[9px] tracking-wider uppercase hover:bg-gray-200 transition-colors"
             title="Create new group"
           >
             + Group
           </button>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white text-xl"
+            className="text-gray-400 hover:text-white text-lg w-6 h-6 flex items-center justify-center transition-colors"
           >
-            ✕
+            ×
           </button>
         </div>
       </div>
@@ -365,11 +398,11 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
             return (
               <div
                 key="player"
-                className="bg-lobby-accent/20 border border-lobby-accent rounded p-2 flex items-center justify-between"
+                className="bg-blue-900/30 border border-blue-400/50 p-2 flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">👥</span>
-                  <span className="text-white font-semibold">Players</span>
+                  <span className="text-blue-400 text-xs">◇</span>
+                  <span className="text-blue-300 text-xs tracking-wider uppercase">Players</span>
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -396,7 +429,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                       }
                     }}
                     disabled={!canMoveUp}
-                    className={`text-xs px-2 ${canMoveUp ? 'text-white/60 hover:text-white cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
+                    className={`text-[10px] px-2 py-1 ${canMoveUp ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
                     title={canMoveUp ? "Move up" : "Already at top"}
                   >
                     ▲
@@ -425,7 +458,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                       }
                     }}
                     disabled={!canMoveDown}
-                    className={`text-xs px-2 ${canMoveDown ? 'text-white/60 hover:text-white cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
+                    className={`text-[10px] px-2 py-1 ${canMoveDown ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
                     title={canMoveDown ? "Move down" : "Already at bottom"}
                   >
                     ▼
@@ -450,24 +483,24 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
           return (
             <div 
               key={layer.id} 
-              className={`bg-lobby-darker/50 border rounded transition-all ${
+              className={`bg-gray-800/80 border transition-all ${
                 hasSelectedTrace 
-                  ? 'border-green-500 bg-green-500/10' 
-                  : 'border-lobby-accent/30'
+                  ? 'border-blue-400 bg-blue-900/20' 
+                  : 'border-gray-600'
               }`}
             >
               {/* Group header */}
-              <div className="p-2 flex items-center justify-between hover:bg-lobby-accent/10 cursor-pointer">
+              <div className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer">
                 <div
                   className="flex items-center gap-2 flex-1"
                   onClick={() => toggleGroup(layer.id)}
                 >
-                  <span className="text-white/60 text-xs">
+                  <span className="text-gray-400 text-[10px]">
                     {isExpanded ? '▼' : '▶'}
                   </span>
-                  <span className="text-lg">📁</span>
-                  <span className="text-white">{layer.name}</span>
-                  <span className="text-white/40 text-xs">({layerTraces.length})</span>
+                  <span className="text-gray-400 text-xs">◇</span>
+                  <span className="text-white text-xs tracking-wide">{layer.name}</span>
+                  <span className="text-gray-500 text-[10px]">({layerTraces.length})</span>
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -476,7 +509,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                       moveLayerUp(layer)
                     }}
                     disabled={!canMoveUp}
-                    className={`text-xs px-2 ${canMoveUp ? 'text-white/60 hover:text-white cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
+                    className={`text-[10px] px-2 py-1 ${canMoveUp ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
                     title={canMoveUp ? "Move up" : "Already at top"}
                   >
                     ▲
@@ -487,7 +520,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                       moveLayerDown(layer)
                     }}
                     disabled={!canMoveDown}
-                    className={`text-xs px-2 ${canMoveDown ? 'text-white/60 hover:text-white cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
+                    className={`text-[10px] px-2 py-1 ${canMoveDown ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
                     title={canMoveDown ? "Move down" : "Already at bottom"}
                   >
                     ▼
@@ -495,12 +528,22 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
+                      renameGroup(layer.id, layer.name)
+                    }}
+                    className="text-gray-400 hover:text-white text-[10px] px-2 py-1"
+                    title="Rename group"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
                       deleteGroup(layer.id)
                     }}
-                    className="text-red-400 hover:text-red-300 text-xs px-2"
+                    className="text-red-400/60 hover:text-red-400 text-[10px] px-2 py-1"
                     title="Delete group"
                   >
-                    🗑️
+                    ×
                   </button>
                 </div>
               </div>
@@ -511,10 +554,10 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                   {layerTraces.map((trace) => (
                     <div
                       key={trace.id}
-                      className={`bg-lobby-darker border rounded p-2 flex items-center justify-between text-sm transition-all cursor-pointer hover:bg-lobby-accent/10 ${
+                      className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                         trace.id === selectedTraceId
-                          ? 'border-green-500 bg-green-500/20 shadow-lg shadow-green-500/30'
-                          : 'border-lobby-accent/20'
+                          ? 'border-blue-400 bg-blue-900/30'
+                          : 'border-gray-600'
                       }`}
                       onClick={() => {
                         console.log('LayerPanel: Clicking trace', { traceId: trace.id, currentSelected: selectedTraceId, matches: trace.id === selectedTraceId })
@@ -522,17 +565,17 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                       }}
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span>
-                          {trace.type === 'text' && '📝'}
-                          {trace.type === 'image' && '🖼️'}
-                          {trace.type === 'audio' && '🎵'}
-                          {trace.type === 'video' && '🎬'}
-                          {trace.type === 'embed' && '🔗'}
+                        <span className="text-gray-400 text-[10px]">
+                          {trace.type === 'text' && '◇'}
+                          {trace.type === 'image' && '◻'}
+                          {trace.type === 'audio' && '♪'}
+                          {trace.type === 'video' && '▷'}
+                          {trace.type === 'embed' && '⬡'}
                         </span>
-                        <span className="text-white/80 truncate">
+                        <span className="text-white/80 truncate tracking-wide">
                           {trace.content.substring(0, 20) || 'Untitled'}
                         </span>
-                        {trace.illuminate && <span title="Emits light">💡</span>}
+                        {trace.illuminate && <span className="text-yellow-400 text-[9px]" title="Emits light">★</span>}
                       </div>
                       <div className="flex items-center gap-1">
                         <button
@@ -540,17 +583,17 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                             e.stopPropagation()
                             onGoToTrace?.(trace.id)
                           }}
-                          className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 rounded hover:bg-blue-500/20 transition-colors"
+                          className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
                           title="Go to trace"
                         >
-                          📍
+                          →
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             moveTraceToLayer(trace.id, null)
                           }}
-                          className="text-white/40 hover:text-white/80 text-xs px-1.5 py-0.5"
+                          className="text-gray-500 hover:text-gray-300 text-[10px] px-1.5 py-0.5"
                           title="Remove from group"
                         >
                           ↗
@@ -566,16 +609,16 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
         {/* Ungrouped traces */}
         {ungroupedTraces.length > 0 && (
-          <div className="bg-lobby-darker/30 border border-lobby-accent/20 rounded p-2">
-            <div className="text-white/60 text-xs mb-2 font-semibold">Ungrouped Traces</div>
+          <div className="bg-gray-900/50 border border-gray-600 p-2">
+            <div className="text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-2">Ungrouped</div>
             <div className="space-y-1">
               {ungroupedTraces.map((trace) => (
                 <div
                   key={trace.id}
-                  className={`bg-lobby-darker border rounded p-2 flex items-center justify-between text-sm transition-all cursor-pointer hover:bg-lobby-accent/10 ${
+                  className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                     trace.id === selectedTraceId
-                      ? 'border-green-500 bg-green-500/20 shadow-lg shadow-green-500/30'
-                      : 'border-lobby-accent/20'
+                      ? 'border-blue-400 bg-blue-900/30'
+                      : 'border-gray-600'
                   }`}
                   onClick={() => {
                     console.log('LayerPanel: Clicking ungrouped trace', { traceId: trace.id, currentSelected: selectedTraceId, matches: trace.id === selectedTraceId })
@@ -583,17 +626,17 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                   }}
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span>
-                      {trace.type === 'text' && '📝'}
-                      {trace.type === 'image' && '🖼️'}
-                      {trace.type === 'audio' && '🎵'}
-                      {trace.type === 'video' && '🎬'}
-                      {trace.type === 'embed' && '🔗'}
+                    <span className="text-gray-400 text-[10px]">
+                      {trace.type === 'text' && '◇'}
+                      {trace.type === 'image' && '◻'}
+                      {trace.type === 'audio' && '♪'}
+                      {trace.type === 'video' && '▷'}
+                      {trace.type === 'embed' && '⬡'}
                     </span>
-                    <span className="text-white/80 truncate">
+                    <span className="text-white/80 truncate tracking-wide">
                       {trace.content.substring(0, 20) || 'Untitled'}
                     </span>
-                    {trace.illuminate && <span title="Emits light">💡</span>}
+                    {trace.illuminate && <span className="text-yellow-400 text-[9px]" title="Emits light">★</span>}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -601,10 +644,10 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                         e.stopPropagation()
                         onGoToTrace?.(trace.id)
                       }}
-                      className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 rounded hover:bg-blue-500/20 transition-colors"
+                      className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
                       title="Go to trace"
                     >
-                      📍
+                      →
                     </button>
                     <select
                       onClick={(e) => e.stopPropagation()}
@@ -612,7 +655,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                         const layerId = e.target.value || null
                         moveTraceToLayer(trace.id, layerId)
                       }}
-                      className="bg-lobby-muted text-white text-xs border border-lobby-accent/30 rounded px-2 py-1"
+                      className="bg-gray-800 text-white text-[10px] border border-gray-600 px-2 py-1 focus:border-gray-400"
                     >
                       <option value="">Move to...</option>
                       {sortedLayers.map(layer => (

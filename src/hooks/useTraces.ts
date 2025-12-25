@@ -60,8 +60,13 @@ export function useTraces(lobbyId: string | null) {
             showBackground: row.show_background ?? true,
             showDescription: row.show_description ?? true,
             showFilename: row.show_filename ?? true,
-            fontSize: row.font_size ?? 'medium',
+            fontSize: row.font_size ?? 16,
             fontFamily: row.font_family ?? 'sans',
+            textBold: row.text_bold ?? false,
+            textItalic: row.text_italic ?? false,
+            textUnderline: row.text_underline ?? false,
+            textAlign: row.text_align ?? 'center',
+            textColor: row.text_color ?? '#ffffff',
             isLocked: row.is_locked ?? false,
             borderRadius: row.border_radius ?? 8,
             cropX: row.crop_x ?? 0,
@@ -77,6 +82,7 @@ export function useTraces(lobbyId: string | null) {
             lightPulse: row.light_pulse ?? false,
             lightPulseSpeed: row.light_pulse_speed ?? 2.0,
             enableInteraction: row.enable_interaction ?? false,
+            ignoreClicks: row.ignore_clicks ?? false,
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
             lobbyId: row.lobby_id,
@@ -142,8 +148,13 @@ export function useTraces(lobbyId: string | null) {
             showBackground: row.show_background ?? true,
             showDescription: row.show_description ?? true,
             showFilename: row.show_filename ?? true,
-            fontSize: row.font_size ?? 'medium',
+            fontSize: row.font_size ?? 16,
             fontFamily: row.font_family ?? 'sans',
+            textBold: row.text_bold ?? false,
+            textItalic: row.text_italic ?? false,
+            textUnderline: row.text_underline ?? false,
+            textAlign: row.text_align ?? 'center',
+            textColor: row.text_color ?? '#ffffff',
             isLocked: row.is_locked ?? false,
             borderRadius: row.border_radius ?? 8,
             cropX: row.crop_x ?? 0,
@@ -159,6 +170,7 @@ export function useTraces(lobbyId: string | null) {
             lightPulse: row.light_pulse ?? false,
             lightPulseSpeed: row.light_pulse_speed ?? 2.0,
             enableInteraction: row.enable_interaction ?? false,
+            ignoreClicks: row.ignore_clicks ?? false,
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
             lobbyId: row.lobby_id,
@@ -190,6 +202,15 @@ export function useTraces(lobbyId: string | null) {
         (payload) => {
           console.log('🔄 Trace updated:', payload.new)
           const row = payload.new as any
+          
+          // Skip updates for traces with pending local changes (to preserve local edits)
+          // Use getState() to get the current value, not a stale closure
+          const currentPendingChanges = useGameStore.getState().pendingChanges
+          if (currentPendingChanges.has(row.id)) {
+            console.log('⏭️ Skipping update for trace with pending changes:', row.id)
+            return
+          }
+          
           const trace: Trace = {
             id: row.id,
             userId: row.user_id,
@@ -209,8 +230,13 @@ export function useTraces(lobbyId: string | null) {
             showBackground: row.show_background ?? true,
             showDescription: row.show_description ?? true,
             showFilename: row.show_filename ?? true,
-            fontSize: row.font_size ?? 'medium',
+            fontSize: row.font_size ?? 16,
             fontFamily: row.font_family ?? 'sans',
+            textBold: row.text_bold ?? false,
+            textItalic: row.text_italic ?? false,
+            textUnderline: row.text_underline ?? false,
+            textAlign: row.text_align ?? 'center',
+            textColor: row.text_color ?? '#ffffff',
             isLocked: row.is_locked ?? false,
             borderRadius: row.border_radius ?? 8,
             cropX: row.crop_x ?? 0,
@@ -226,6 +252,7 @@ export function useTraces(lobbyId: string | null) {
             lightPulse: row.light_pulse ?? false,
             lightPulseSpeed: row.light_pulse_speed ?? 2.0,
             enableInteraction: row.enable_interaction ?? false,
+            ignoreClicks: row.ignore_clicks ?? false,
             layerId: row.layer_id ?? null,
             zIndex: row.z_index ?? 0,
             lobbyId: row.lobby_id,
