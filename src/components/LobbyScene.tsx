@@ -8,13 +8,12 @@ import TraceOverlay from './TraceOverlay'
 import LayerPanel from './LayerPanel'
 import { LobbyManagement } from './LobbyManagement'
 import { ThemeCustomization } from './ThemeCustomization'
+import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase } from '../lib/supabase'
 import type { Lobby } from '../types/database'
 
 const AVATAR_SIZE = 20
-const MOVE_SPEED = 5
-const MOVE_ACCELERATION = 0.8
 const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
@@ -35,8 +34,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const labelRef = useRef<Text | null>(null)
   const playerAvatarRef = useRef<Graphics | null>(null)
   const positionRef = useRef({ x: 0, y: 0 })
-  const velocityRef = useRef({ x: 0, y: 0 })
-  const keysPressed = useRef<Set<string>>(new Set())
   const tracePlacementIndicatorRef = useRef<Graphics | null>(null)
   const traceIndicatorsRef = useRef<Container | null>(null)
   const tracesDataRef = useRef<typeof traces>([])
@@ -51,6 +48,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
   const updateGridRef = useRef<((cameraX: number, cameraY: number) => void) | null>(null)
+  const eventHandlersRef = useRef<{
+    mousedown: ((e: MouseEvent) => void) | null,
+    mousemove: ((e: MouseEvent) => void) | null,
+    mouseup: ((e: MouseEvent) => void) | null,
+    contextmenu: ((e: MouseEvent) => void) | null,
+  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null })
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
@@ -61,6 +64,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
+  const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
@@ -128,38 +132,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }, [position])
   
   // Initialize presence and traces for this lobby
-  usePresence(lobbyId)
+  const { updateCursorPosition } = usePresence(lobbyId)
   useTraces(lobbyId)
-
-  // Smooth keyboard controls with acceleration
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle keyboard movement if user is typing in an input/textarea
-      const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return
-      }
-      
-      const key = e.key.toLowerCase()
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        keysPressed.current.add(key)
-        e.preventDefault()
-      }
-    }
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      keysPressed.current.delete(key)
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-    }
-  }, [])
 
   // Initialize Pixi.js with endless scrolling world
   useEffect(() => {
@@ -288,40 +262,62 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       app.stage.eventMode = 'static'
       app.stage.hitArea = app.screen
       
-      // Mouse down - start panning or show context menu
-      app.stage.on('pointerdown', (event: any) => {
-        const originalEvent = event.data.originalEvent as MouseEvent
-        
+      // Mouse down - start panning or show context menu (using window event for better capture)
+      const handleMouseDown = (e: MouseEvent) => {
         // Left mouse button (button 0) - start panning
-        if (originalEvent.button === 0) {
+        if (e.button === 0) {
           // Close context menu if open
           setContextMenu(null)
           
-          isPanningRef.current = true
-          lastPanPositionRef.current = { x: originalEvent.clientX, y: originalEvent.clientY }
-          event.stopPropagation()
+          // Check if we're clicking on a trace element in the overlay
+          // If so, don't start panning - let the trace handle the click
+          const target = e.target as HTMLElement
+          const isClickingTrace = target.closest('[data-trace-element]') !== null
+          const isClickingUI = target.closest('[data-ui-element]') !== null || 
+                               target.closest('button') !== null ||
+                               target.closest('input') !== null ||
+                               target.closest('select') !== null ||
+                               target.closest('[role="dialog"]') !== null
+          
+          if (!isClickingTrace && !isClickingUI) {
+            isPanningRef.current = true
+            lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
+          }
           return
         }
         
-        // Right mouse button (button 2) - show context menu
-        if (originalEvent.button === 2) {
-          // Calculate world position where user right-clicked
-          const worldX = (event.global.x - worldContainer.x) / zoomRef.current
-          const worldY = (event.global.y - worldContainer.y) / zoomRef.current
+        // Right mouse button (button 2) - show context menu for canvas (not traces)
+        if (e.button === 2) {
+          const target = e.target as HTMLElement
+          const isClickingTrace = target.closest('[data-trace-element]') !== null
           
-          setContextMenu({
-            x: originalEvent.clientX,
-            y: originalEvent.clientY,
-            worldX,
-            worldY,
-          })
-          event.stopPropagation()
+          // Only show canvas context menu if not clicking on a trace
+          if (!isClickingTrace) {
+            // Calculate world position where user right-clicked
+            const worldX = (e.clientX - worldContainerRef.current!.x) / zoomRef.current
+            const worldY = (e.clientY - worldContainerRef.current!.y) / zoomRef.current
+            
+            setContextMenu({
+              x: e.clientX,
+              y: e.clientY,
+              worldX,
+              worldY,
+            })
+          }
           return
         }
-      })
+      }
       
-      // Mouse move - handle panning
+      // Mouse move - handle panning and cursor tracking
       const handleMouseMove = (e: MouseEvent) => {
+        // Always track cursor position in world coordinates
+        // Convert screen coordinates to world coordinates
+        const worldX = (e.clientX - worldContainerRef.current!.x) / zoomRef.current
+        const worldY = (e.clientY - worldContainerRef.current!.y) / zoomRef.current
+        
+        // Update cursor position for presence (will be throttled in the hook)
+        updateCursorPosition(worldX, worldY)
+        
         if (isPanningRef.current) {
           const deltaX = e.clientX - lastPanPositionRef.current.x
           const deltaY = e.clientY - lastPanPositionRef.current.y
@@ -351,53 +347,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         }
       }
       
-      // Prevent context menu on right click
+      // Prevent context menu on right click (we handle it ourselves)
       const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault()
       }
       
+      // Store handlers in ref for cleanup
+      eventHandlersRef.current = {
+        mousedown: handleMouseDown,
+        mousemove: handleMouseMove,
+        mouseup: handleMouseUp,
+        contextmenu: handleContextMenu,
+      }
+      
+      window.addEventListener('mousedown', handleMouseDown)
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
       window.addEventListener('contextmenu', handleContextMenu)
 
-      // Fluid animation loop with keyboard input
+      // Fluid animation loop
       let pulseTime = 0
       app.ticker.add(() => {
-        // Handle keyboard input with acceleration
-        let targetVelX = 0
-        let targetVelY = 0
-        
-        if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) {
-          targetVelY = -MOVE_SPEED
-        }
-        if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) {
-          targetVelY = MOVE_SPEED
-        }
-        if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) {
-          targetVelX = -MOVE_SPEED
-        }
-        if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) {
-          targetVelX = MOVE_SPEED
-        }
-        
-        // Diagonal movement normalization
-        if (targetVelX !== 0 && targetVelY !== 0) {
-          const normalizer = Math.sqrt(2)
-          targetVelX /= normalizer
-          targetVelY /= normalizer
-        }
-        
-        // Smooth acceleration/deceleration
-        velocityRef.current.x += (targetVelX - velocityRef.current.x) * MOVE_ACCELERATION
-        velocityRef.current.y += (targetVelY - velocityRef.current.y) * MOVE_ACCELERATION
-        
-        // Update position if moving
-        if (Math.abs(velocityRef.current.x) > 0.01 || Math.abs(velocityRef.current.y) > 0.01) {
-          const newX = positionRef.current.x + velocityRef.current.x
-          const newY = positionRef.current.y + velocityRef.current.y
-          setPosition(newX, newY)
-        }
-        
         // Smooth zoom interpolation
         const zoomLerpSpeed = 0.15 // Higher = faster, lower = smoother
         zoomRef.current += (targetZoomRef.current - zoomRef.current) * zoomLerpSpeed
@@ -810,7 +780,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         themeManagerRef.current = null
       }
       
-      // Event listeners will be cleaned up automatically when window is unloaded
+      // Remove event listeners
+      if (eventHandlersRef.current.mousedown) {
+        window.removeEventListener('mousedown', eventHandlersRef.current.mousedown)
+      }
+      if (eventHandlersRef.current.mousemove) {
+        window.removeEventListener('mousemove', eventHandlersRef.current.mousemove)
+      }
+      if (eventHandlersRef.current.mouseup) {
+        window.removeEventListener('mouseup', eventHandlersRef.current.mouseup)
+      }
+      if (eventHandlersRef.current.contextmenu) {
+        window.removeEventListener('contextmenu', eventHandlersRef.current.contextmenu)
+      }
+      
       if (appRef.current) {
         appRef.current.destroy(true, { children: true })
         appRef.current = null
@@ -945,7 +928,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }, [traces, position])
 
   return (
-    <div className="fixed inset-0 bg-nier-black">
+    <div className="fixed inset-0 bg-nier-black lobby-scene">
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
         {/* Pixi Canvas */}
@@ -967,7 +950,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       </div>
 
       {/* HUD */}
-      <div className="fixed top-4 left-4 bg-black px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+      <div data-ui-element="true" className="fixed top-4 left-4 bg-black px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
         <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
@@ -977,6 +960,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <p className="text-white text-[11px] tracking-[0.15em] uppercase">
           <span className="font-bold">{username}</span>
         </p>
+        <button
+          onClick={() => setShowProfileCustomization(true)}
+          className="w-full mt-1 bg-gray-700 border border-gray-500 hover:border-white text-white px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
+        >
+          ◇ Customize
+        </button>
         {currentLobby && (
           <p className="text-gray-300 text-[9px] tracking-wider">
             {currentLobby.name} {isLobbyOwner && '(Owner)'}
@@ -1238,6 +1227,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 })
             }
           }}
+        />
+      )}
+
+      {/* Profile Customization Modal */}
+      {showProfileCustomization && (
+        <ProfileCustomization
+          onClose={() => setShowProfileCustomization(false)}
+          position={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
         />
       )}
     </div>

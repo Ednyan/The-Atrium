@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 import type { UserPresence, Trace } from '../types/database'
 
+export type CursorState = 'default' | 'pointer' | 'grab' | 'grabbing' | 'not-allowed'
+
 interface GameState {
   username: string
   userId: string
   position: { x: number; y: number }
   playerZIndex: number
   playerColor: string
+  cursorState: CursorState
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
   
@@ -19,6 +22,7 @@ interface GameState {
   setPosition: (x: number, y: number) => void
   setPlayerZIndex: (zIndex: number) => void
   setPlayerColor: (color: string) => void
+  setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   removeOtherUser: (userId: string) => void
   addTrace: (trace: Trace) => void
@@ -44,6 +48,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('playerColor')
     return stored || '#ffffff'
   })(),
+  cursorState: 'default',
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
   
@@ -62,6 +67,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     localStorage.setItem('playerColor', color)
     set({ playerColor: color })
   },
+  setCursorState: (cursorState) => set({ cursorState }),
   
   updateOtherUser: (userId, presence) =>
     set((state) => {

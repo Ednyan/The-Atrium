@@ -42,9 +42,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       // Only run once
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-  const { position, username, playerZIndex, playerColor, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, clearPendingChanges, hasPendingChanges } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, clearPendingChanges, hasPendingChanges } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
-  const [playerMenuPosition, setPlayerMenuPosition] = useState({ x: 0, y: 0 })
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
   const [localTraceTransforms, setLocalTraceTransforms] = useState<Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number }>>({})
@@ -588,6 +587,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     e.stopPropagation()
     setSelectedTraceId(trace.id)
     setTransformMode(mode)
+    setCursorState('grabbing') // Change cursor to grabbing while dragging
     
     // Prevent text selection during drag
     document.body.classList.add('dragging')
@@ -916,6 +916,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       startPosRef.current.initialPoints = undefined
     }
     
+    // Reset cursor state when done dragging
+    setCursorState('default')
+    
     // If in crop mode, keep crop mode and transform mode active for more adjustments
     // For point/control editing, keep the trace selected but clear transform mode
     // This allows clicking on control handles after dragging a point
@@ -1165,16 +1168,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [visibleTraces, playerZIndex])
 
   return (
-    <>
+    <div style={{ cursor: 'none', pointerEvents: 'none' }}>
       {/* Render traces AND player in z-index order */}
       {sortedItems
           .map((item) => {
             if (item.type === 'player') {
-              // Render player circle
+              // Render player cursor
               const playerScreenX = position.x * zoom + worldOffset.x
               const playerScreenY = position.y * zoom + worldOffset.y
-              const baseSize = 20 // Same as AVATAR_SIZE in LobbyScene
-              const playerSize = baseSize * zoom
 
               // Convert hex color to RGB for shadows
               const hexToRgb = (hex: string) => {
@@ -1187,55 +1188,115 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               }
               const rgb = hexToRgb(playerColor)
 
+              // Get cursor SVG based on state
+              const getCursorSvg = () => {
+                const size = 24 * zoom
+                const baseProps = {
+                  width: size,
+                  height: size,
+                  viewBox: "0 0 24 24",
+                  style: { 
+                    transform: 'translate(-2px, -2px)',
+                    filter: `drop-shadow(0 2px 4px rgba(0,0,0,0.5))`,
+                    transition: 'transform 0.1s ease-out',
+                  } as React.CSSProperties
+                }
+
+                switch (cursorState) {
+                  case 'pointer':
+                    // Hand pointing cursor (for clickable items)
+                    return (
+                      <svg {...baseProps}>
+                        <path
+                          d="M7 5.5a2.5 2.5 0 0 1 5 0v3.062a2.5 2.5 0 0 1 2 0V7.5a2.5 2.5 0 0 1 5 0v7a7.5 7.5 0 0 1-15 0v-5a2.5 2.5 0 0 1 5 0v1.062a2.5 2.5 0 0 1-2 0V5.5z"
+                          fill={playerColor}
+                          stroke="white"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
+                    )
+                  case 'grab':
+                    // Open hand (for draggable items)
+                    return (
+                      <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(1.1)' }}>
+                        <path
+                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                          fill={playerColor}
+                          stroke="#90EE90"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    )
+                  case 'grabbing':
+                    // Closed hand (while dragging)
+                    return (
+                      <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(0.95)' }}>
+                        <path
+                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                          fill={playerColor}
+                          stroke="#FFD700"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    )
+                  case 'not-allowed':
+                    // Red X indicator
+                    return (
+                      <svg {...baseProps}>
+                        <path
+                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                          fill={playerColor}
+                          stroke="#FF4444"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    )
+                  default:
+                    // Default arrow cursor
+                    return (
+                      <svg {...baseProps}>
+                        <path
+                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                          fill={playerColor}
+                          stroke="white"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
+                    )
+                }
+              }
+
+              // Player cursor
               return (
                 <div
-                  key="player-circle"
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setPlayerMenuPosition({ x: e.clientX, y: e.clientY })
-                    setShowPlayerMenu(true)
-                  }}
+                  key="player-cursor"
                   style={{
                     position: 'absolute',
-                    left: playerScreenX - playerSize / 2,
-                    top: playerScreenY - playerSize / 2,
-                    width: playerSize,
-                    height: playerSize,
-                    borderRadius: '50%',
-                    backgroundColor: playerColor,
-                    boxShadow: `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6), 0 0 40px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3), inset 0 0 10px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`,
-                    border: `2px solid ${playerColor}`,
-                    pointerEvents: 'auto',
-                    cursor: 'context-menu',
+                    left: playerScreenX,
+                    top: playerScreenY,
+                    pointerEvents: 'none',
                     transition: 'left 0.05s ease-out, top 0.05s ease-out',
-                    filter: 'blur(0.3px)',
+                    filter: `drop-shadow(0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6))`,
+                    zIndex: 10000,
                   }}
                 >
-                  {/* Inner glow */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: '20%',
-                      borderRadius: '50%',
-                      background: `radial-gradient(circle, rgba(${rgb.r},${rgb.g},${rgb.b},0.9) 0%, rgba(${rgb.r},${rgb.g},${rgb.b},0) 70%)`,
-                      pointerEvents: 'none',
-                    }}
-                  />
+                  {getCursorSvg()}
                   {/* Player label */}
                   <div
                     style={{
                       position: 'absolute',
-                      top: -18 * zoom,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
+                      top: 20 * zoom,
+                      left: 12 * zoom,
                       color: playerColor,
                       fontSize: `${11 * zoom}px`,
                       fontWeight: 600,
                       whiteSpace: 'nowrap',
                       pointerEvents: 'none',
                       textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
-                      letterSpacing: '0.5px'
+                      letterSpacing: '0.5px',
+                      background: 'rgba(0,0,0,0.6)',
+                      padding: '2px 6px',
+                      borderRadius: '3px',
                     }}
                   >
                     {username}
@@ -1349,6 +1410,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 transformOrigin: 'center center',
                 pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
               }}
+              onMouseEnter={() => setCursorState('pointer')}
+              onMouseLeave={() => setCursorState('default')}
               onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
               onClick={(e) => {
                 // Don't handle clicks if we're in a transform mode (e.g., dragging a point)
@@ -2509,12 +2572,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           )
         })()}
 
-        {/* Render other users in DOM with same styling as active player */}
-        {Object.entries(otherUsers).map(([userId, user]) => {
+        {/* Render other users' cursors */}
+        {Object.entries(otherUsers).map(([odUserId, user]) => {
           const userScreenX = user.x * zoom + worldOffset.x
           const userScreenY = user.y * zoom + worldOffset.y
-          const baseSize = 20
-          const userSize = baseSize * zoom
           const userColor = user.playerColor || '#ffffff'
 
           // Convert hex color to RGB for shadows
@@ -2530,46 +2591,50 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
           return (
             <div
-              key={`other-user-${userId}`}
+              key={`other-user-${odUserId}`}
               style={{
                 position: 'absolute',
-                left: userScreenX - userSize / 2,
-                top: userScreenY - userSize / 2,
-                width: userSize,
-                height: userSize,
-                borderRadius: '50%',
-                backgroundColor: userColor,
-                boxShadow: `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6), 0 0 40px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3), inset 0 0 10px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`,
-                border: `2px solid ${userColor}`,
+                left: userScreenX,
+                top: userScreenY,
                 pointerEvents: 'none',
-                transition: 'left 0.1s ease-out, top 0.1s ease-out',
-                filter: 'blur(0.3px)',
+                transition: 'left 0.15s ease-out, top 0.15s ease-out',
+                filter: `drop-shadow(0 0 6px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5))`,
+                zIndex: 999,
               }}
             >
-              {/* Inner glow */}
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: '20%',
-                  borderRadius: '50%',
-                  background: `radial-gradient(circle, rgba(${rgb.r},${rgb.g},${rgb.b},0.9) 0%, rgba(${rgb.r},${rgb.g},${rgb.b},0) 70%)`,
-                  pointerEvents: 'none',
+              {/* Cursor pointer SVG */}
+              <svg
+                width={20 * zoom}
+                height={20 * zoom}
+                viewBox="0 0 24 24"
+                style={{ 
+                  transform: 'translate(-2px, -2px)',
+                  filter: `drop-shadow(0 2px 4px rgba(0,0,0,0.5))`,
                 }}
-              />
+              >
+                <path
+                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                  fill={userColor}
+                  stroke="white"
+                  strokeWidth="1.5"
+                />
+              </svg>
               {/* User label */}
               <div
                 style={{
                   position: 'absolute',
-                  top: -18 * zoom,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
+                  top: 16 * zoom,
+                  left: 10 * zoom,
                   color: userColor,
-                  fontSize: `${11 * zoom}px`,
+                  fontSize: `${10 * zoom}px`,
                   fontWeight: 600,
                   whiteSpace: 'nowrap',
                   pointerEvents: 'none',
-                  textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
-                  letterSpacing: '0.5px'
+                  textShadow: `0 0 6px rgba(${rgb.r},${rgb.g},${rgb.b},0.4), 0 2px 4px rgba(0,0,0,0.8)`,
+                  letterSpacing: '0.5px',
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 5px',
+                  borderRadius: '3px',
                 }}
               >
                 {user.username}
@@ -3874,7 +3939,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {showPlayerMenu && (
         <ProfileCustomization
           onClose={() => setShowPlayerMenu(false)}
-          position={playerMenuPosition}
+          position={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
         />
       )}
 
@@ -3982,6 +4047,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           </button>
         </div>
       )}
-    </>
+    </div>
   )
 }

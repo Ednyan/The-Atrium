@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 export function usePresence(lobbyId: string | null) {
-  const { userId, username, position, playerColor, updateOtherUser, removeOtherUser } = useGameStore()
+  const { userId, username, position, playerColor, updateOtherUser, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
   const playerColorRef = useRef(playerColor)
@@ -29,6 +29,11 @@ export function usePresence(lobbyId: string | null) {
       })
     }
   }, [playerColor, userId, username])
+
+  // Expose function to manually update position (for cursor tracking)
+  const updateCursorPosition = useCallback((worldX: number, worldY: number) => {
+    setPosition(worldX, worldY)
+  }, [setPosition])
 
   useEffect(() => {
     if (!supabase || !userId || !username || !lobbyId) {
@@ -148,4 +153,6 @@ export function usePresence(lobbyId: string | null) {
       channel.unsubscribe()
     }
   }, [userId, username, lobbyId])
+
+  return { updateCursorPosition }
 }
