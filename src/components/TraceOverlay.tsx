@@ -22,8 +22,10 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
-    // Load font files from public/fonts folder
+    // Load font files from public/fonts folder - only once, with cleanup
     useEffect(() => {
+      const styleElements: HTMLStyleElement[] = []
+      
       fetch('/fonts/')
         .then(async res => {
           if (!res.ok) return [];
@@ -34,13 +36,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           files.forEach(fontFile => {
             const fontName = fontFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
             const fontUrl = `/fonts/${fontFile}`;
-            const style = document.createElement('style');
-            style.innerHTML = `@font-face { font-family: '${fontName}'; src: url('${fontUrl}'); font-display: swap; }`;
-            document.head.appendChild(style);
+            // Check if font already exists to avoid duplicates
+            if (!document.querySelector(`style[data-font="${fontName}"]`)) {
+              const style = document.createElement('style');
+              style.setAttribute('data-font', fontName);
+              style.innerHTML = `@font-face { font-family: '${fontName}'; src: url('${fontUrl}'); font-display: swap; }`;
+              document.head.appendChild(style);
+              styleElements.push(style);
+            }
           });
         });
-      // Only run once
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      
+      // Cleanup: remove style elements we added
+      return () => {
+        styleElements.forEach(style => {
+          if (style.parentNode) {
+            style.parentNode.removeChild(style);
+          }
+        });
+      };
     }, []);
   const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, clearPendingChanges, hasPendingChanges } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
@@ -80,6 +94,47 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
+  // Cleanup stale entries from state objects when traces are removed
+  useEffect(() => {
+    const traceIds = new Set(traces.map(t => t.id))
+    
+    // Clean up imageProxySources
+    setImageProxySources(prev => {
+      const filtered: Record<string, string> = {}
+      for (const id in prev) {
+        if (traceIds.has(id)) filtered[id] = prev[id]
+      }
+      return Object.keys(filtered).length === Object.keys(prev).length ? prev : filtered
+    })
+    
+    // Clean up imageDimensions
+    setImageDimensions(prev => {
+      const filtered: Record<string, { width: number; height: number }> = {}
+      for (const id in prev) {
+        if (traceIds.has(id)) filtered[id] = prev[id]
+      }
+      return Object.keys(filtered).length === Object.keys(prev).length ? prev : filtered
+    })
+    
+    // Clean up localShapePoints
+    setLocalShapePoints(prev => {
+      const filtered: Record<string, any[]> = {}
+      for (const id in prev) {
+        if (traceIds.has(id)) filtered[id] = prev[id]
+      }
+      return Object.keys(filtered).length === Object.keys(prev).length ? prev : filtered
+    })
+    
+    // Clean up playingMedia
+    setPlayingMedia(prev => {
+      const filtered = new Set<string>()
+      prev.forEach(id => {
+        if (traceIds.has(id)) filtered.add(id)
+      })
+      return filtered.size === prev.size ? prev : filtered
+    })
+  }, [traces])
+
   // Cancel inline editing when selecting a different trace
   useEffect(() => {
     if (inlineEditingTraceId && selectedTraceId !== inlineEditingTraceId) {
@@ -90,6 +145,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
   // Proactively test image URLs and use proxy for blocked ones
   useEffect(() => {
+    const pendingImages: { img: HTMLImageElement; timeout: ReturnType<typeof setTimeout> }[] = []
+    
     traces.forEach(trace => {
       // Handle both 'image' type and 'embed' type that contains direct image URLs
       if ((trace.type === 'image' || trace.type === 'embed') && (trace.mediaUrl || trace.imageUrl)) {
@@ -98,15 +155,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Skip if already processed
         if (imageProxySources[trace.id] !== undefined || !url) return
         
-        console.log(`Testing ${trace.type} URL for trace ${trace.id}:`, url)
-        
         // Check if URL is likely a direct image (ends with image extension)
         const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(url)
         
         if (!isDirectImage) {
           // Not a direct image URL (likely a page URL like reddit.com/...)
           // Always use proxy for non-direct image URLs
-          console.log(`Not a direct image URL, using proxy immediately`)
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           setImageProxySources(prev => ({
             ...prev,
@@ -115,8 +169,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return
         }
         
-        console.log(`Direct image URL detected, trying direct load first...`)
-        
         // For direct image URLs, try loading normally first
         const img = new Image()
         img.crossOrigin = 'anonymous'
@@ -124,7 +176,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const timeout = setTimeout(() => {
           // If image hasn't loaded in 3 seconds, switch to proxy
           if (!img.complete) {
-            console.log(`Image load timeout, switching to proxy`)
             const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
             setImageProxySources(prev => ({
               ...prev,
@@ -133,9 +184,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           }
         }, 3000)
         
+        pendingImages.push({ img, timeout })
+        
         img.onload = () => {
           clearTimeout(timeout)
-          console.log(`Image loaded successfully via direct URL`)
           // Mark as successfully loaded directly (empty string means use original)
           setImageProxySources(prev => ({
             ...prev,
@@ -145,7 +197,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         img.onerror = () => {
           clearTimeout(timeout)
-          console.log(`Image failed to load directly, using proxy`)
           // Failed to load, use proxy
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           setImageProxySources(prev => ({
@@ -157,29 +208,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         img.src = url
       }
     })
+    
+    // Cleanup: cancel pending image loads and timeouts
+    return () => {
+      pendingImages.forEach(({ img, timeout }) => {
+        clearTimeout(timeout)
+        img.onload = null
+        img.onerror = null
+        img.src = '' // Cancel the image load
+      })
+    }
   }, [traces, imageProxySources])
-
-  // Calculate lighting influence on a trace
-  // Log when traces change
-  useEffect(() => {
-    // Log only important trace changes
-    if (traces.length === 0) {
-      console.log('⚠️ No traces loaded')
-    }
-  }, [traces])
-
-  // Log when image dimensions update
-  useEffect(() => {
-    const dimCount = Object.keys(imageDimensions).length
-    if (dimCount > 0) {
-      console.log('📐 Image dimensions updated:', dimCount, 'images', imageDimensions)
-    }
-  }, [imageDimensions])
-
-  // Log when player z-index changes
-  useEffect(() => {
-    console.log('👤 Player z-index:', playerZIndex)
-  }, [playerZIndex])
 
   // ESC key to deselect trace and close menus
   useEffect(() => {
@@ -372,12 +411,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     
     const db = supabase // Capture for use in closures
     setIsSaving(true)
-    console.log('💾 Saving all pending changes...')
     
     try {
       // Handle deletions first
       const deletePromises = Array.from(deletedTraces).map(async (traceId) => {
-        console.log('🗑️ Deleting trace:', traceId)
         await (db.from('traces') as any).delete().eq('id', traceId)
       })
       await Promise.all(deletePromises)
@@ -387,7 +424,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const trace = traces.find(t => t.id === traceId)
         if (!trace) return
         
-        console.log('📝 Saving trace:', traceId)
         const updateData: any = {
           position_x: trace.x,
           position_y: trace.y,
@@ -449,9 +485,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       
       // Clear pending changes
       clearPendingChanges()
-      console.log('✅ All changes saved!')
     } catch (error) {
-      console.error('❌ Error saving changes:', error)
       alert('Failed to save some changes. Please try again.')
     } finally {
       setIsSaving(false)
@@ -555,7 +589,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const { error } = await (supabase.from('traces') as any).insert(newTrace)
     
     if (error) {
-      console.error('Failed to duplicate trace:', error)
       alert('Failed to duplicate trace: ' + error.message)
     }
   }
@@ -975,9 +1008,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             const currentPoints = sourceTrace.shapePoints || []
             const newPoints = [...currentPoints, { x: worldX, y: worldY }]
             
-            console.log('➕ Adding point at world coords:', worldX, worldY)
-            console.log('   Current points count:', currentPoints.length, '-> New count:', newPoints.length)
-            
             const updated = { ...trace, shapePoints: newPoints }
             setEditingTrace(updated)
             updateTraceCustomization(selectedTraceId, { shapePoints: newPoints })
@@ -1034,7 +1064,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => {
     if (!selectedTraceId && editingTrace) {
       // Clear editingTrace when nothing is selected
-      console.log('🔄 Clearing editingTrace')
       setEditingTrace(null)
     }
     // Don't sync on traces updates - let editingTrace be the source of truth during editing
@@ -1190,7 +1219,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               // Get cursor SVG based on state
               const getCursorSvg = () => {
-                const size = 24 * zoom
+                const size = 24 // Fixed size regardless of zoom
                 const baseProps = {
                   width: size,
                   height: size,
@@ -1285,10 +1314,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     style={{
                       position: 'absolute',
-                      top: 20 * zoom,
-                      left: 12 * zoom,
+                      top: 20,
+                      left: 12,
                       color: playerColor,
-                      fontSize: `${11 * zoom}px`,
+                      fontSize: '11px',
                       fontWeight: 600,
                       whiteSpace: 'nowrap',
                       pointerEvents: 'none',
@@ -1623,7 +1652,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   onLoadedMetadata={(e) => {
                     const video = e.currentTarget
                     if (video.videoWidth && video.videoHeight) {
-                      console.log(`📐 Video loaded for trace ${trace.id}:`, video.videoWidth, 'x', video.videoHeight)
                       setImageDimensions(prev => ({
                         ...prev,
                         [trace.id]: { width: video.videoWidth, height: video.videoHeight }
@@ -1754,7 +1782,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     onLoad={() => {
                       // Set high-resolution 16:9 dimensions for embeds to prevent pixelation when scaled
                       if (!imageDimensions[trace.id]) {
-                        console.log(`📐 Embed loaded for trace ${trace.id}: setting to 16:9 (3840x2160)`)
                         setImageDimensions(prev => ({
                           ...prev,
                           [trace.id]: { width: 3840, height: 2160 }
@@ -1892,7 +1919,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     {/* Point handles for path - using world coordinates */}
                     {(() => {
                       const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
-                      console.log('🔵 Rendering point handles. Points count:', points.length, 'pathCreationMode:', pathCreationMode, 'selectedTraceId:', selectedTraceId)
                       return points.map((point, index) => {
                       // Convert world coordinates to screen coordinates
                       const { screenX, screenY } = getScreenPosition(point.x, point.y)
@@ -1914,11 +1940,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               transform: 'translate(-50%, -50%)',
                             }}
                             onClick={(e) => {
-                              console.log('🎯 Point handle CLICK. Index:', index)
                               e.stopPropagation() // Prevent background deselection
                             }}
                             onMouseDown={(e) => {
-                              console.log('🎯 Point handle MOUSEDOWN. Index:', index, 'pathCreationMode:', pathCreationMode)
                               e.stopPropagation()
                               e.preventDefault()
                               setSelectedPointIndex(index)
@@ -2095,7 +2119,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
-                    console.log('✂️ Crop button clicked for trace:', trace.id)
                     setIsCropMode(!isCropMode)
                     setTransformMode('none')
                   }}
@@ -2348,8 +2371,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
           const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
           
-          console.log('🟢 Rendering path handles overlay. Points:', points.length)
-          
           return (
             <>
               {/* Point handles */}
@@ -2372,11 +2393,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         transform: 'translate(-50%, -50%)',
                       }}
                       onClick={(e) => {
-                        console.log('🎯 Handle CLICK. Index:', index)
                         e.stopPropagation()
                       }}
                       onMouseDown={(e) => {
-                        console.log('🎯 Handle MOUSEDOWN. Index:', index)
                         e.stopPropagation()
                         e.preventDefault()
                         setSelectedPointIndex(index)
@@ -2660,7 +2679,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
-                console.log('Customize clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) setEditingTrace(trace)
                 setContextMenu(null)
@@ -2671,7 +2689,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
-                console.log('Lock/Unlock clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
                   updateTraceCustomization(trace.id, { isLocked: !trace.isLocked })
@@ -2684,7 +2701,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
-                console.log('Toggle click interaction clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
                   updateTraceCustomization(trace.id, { ignoreClicks: !trace.ignoreClicks })
@@ -2698,7 +2714,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={async () => {
-                console.log('Reset Cropping clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
                   updateTraceCustomization(trace.id, {
@@ -2716,7 +2731,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={async () => {
-                console.log('Reset Aspect Ratio clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
                   const transform = getTraceTransform(trace)
@@ -2735,7 +2749,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={async () => {
-                console.log('Reset Rotation clicked')
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
                   updateTraceTransform(trace.id, { rotation: 0 })
@@ -2749,7 +2762,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
-                console.log('Duplicate clicked')
                 duplicateTrace(contextMenu.traceId)
               }}
             >
@@ -2758,7 +2770,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
-                console.log('Delete clicked')
                 deleteTrace(contextMenu.traceId)
               }}
             >
@@ -3246,8 +3257,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapeColor: color })
                           } catch (err) {
-                            // User cancelled or error
-                            console.log('EyeDropper cancelled or failed:', err)
+                            // User cancelled or error - silently ignore
                           }
                         }}
                         className="p-2 border transition-all bg-gray-900 border-gray-600 text-white hover:border-gray-400"
@@ -3386,8 +3396,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
                             } catch (err) {
-                              // User cancelled or error
-                              console.log('EyeDropper cancelled or failed:', err)
+                              // User cancelled or error - silently ignore
                             }
                           }}
                           className="p-2 border transition-all bg-gray-900 border-gray-600 text-white hover:border-gray-400"

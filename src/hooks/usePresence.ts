@@ -31,17 +31,27 @@ export function usePresence(lobbyId: string | null) {
   }, [playerColor, userId, username])
 
   // Expose function to manually update position (for cursor tracking)
+  // Throttled to prevent excessive re-renders
+  const lastCursorUpdateRef = useRef({ x: 0, y: 0, time: 0 })
   const updateCursorPosition = useCallback((worldX: number, worldY: number) => {
-    setPosition(worldX, worldY)
+    const now = Date.now()
+    const dx = Math.abs(worldX - lastCursorUpdateRef.current.x)
+    const dy = Math.abs(worldY - lastCursorUpdateRef.current.y)
+    const timeDiff = now - lastCursorUpdateRef.current.time
+    
+    // Only update if moved at least 2 pixels OR 50ms has passed
+    if (dx > 2 || dy > 2 || timeDiff > 50) {
+      setPosition(worldX, worldY)
+      lastCursorUpdateRef.current = { x: worldX, y: worldY, time: now }
+    }
   }, [setPosition])
 
   useEffect(() => {
     if (!supabase || !userId || !username || !lobbyId) {
-      console.log('⚠️ Presence hook: Missing requirements', { supabase: !!supabase, userId, username, lobbyId })
       return
     }
 
-    console.log('🔌 Connecting to lobby presence channel...', { userId, username, lobbyId })
+    // Connecting to lobby presence channel
 
     // Create lobby-specific presence channel
     const channelName = `lobby-${lobbyId}-presence`
@@ -98,9 +108,7 @@ export function usePresence(lobbyId: string | null) {
         }
       })
       .subscribe(async (status) => {
-        console.log('📡 Presence channel status:', status)
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to presence channel')
           await channel.track({
             username,
             x: position.x,
@@ -108,7 +116,6 @@ export function usePresence(lobbyId: string | null) {
             playerColor: playerColorRef.current,
             online_at: new Date().toISOString(),
           })
-          console.log('📍 Tracking position:', username, 'at', position.x, position.y)
         }
       })
 
@@ -148,7 +155,7 @@ export function usePresence(lobbyId: string | null) {
     }, 200) // Check every 200ms, but only broadcast when conditions are met
 
     return () => {
-      console.log('🔌 Disconnecting from presence channel')
+      // Disconnecting from presence channel
       clearInterval(updateInterval)
       channel.unsubscribe()
     }

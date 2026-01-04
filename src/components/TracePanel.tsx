@@ -70,7 +70,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           }
         } else {
           // No Supabase - use local data URL
-          console.log('No Supabase configured, using local data URL for file:', file.name)
           uploadedUrl = await new Promise<string>((resolve) => {
             const reader = new FileReader()
             reader.onloadend = () => resolve(reader.result as string)
@@ -114,11 +113,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
         }),
       }
 
-      console.log('Creating trace:', newTrace)
-
       // Save to Supabase if available
       if (supabase) {
-        console.log('💾 Saving trace to database...')
         const { data, error} = await supabase.from('traces').insert({
           // Don't specify id - let database generate UUID
           user_id: userId,
@@ -157,8 +153,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           alert(`Failed to save trace: ${error.message}`)
           return // Don't add to local store if database fails
         } else {
-          console.log('✅ Trace saved to database successfully!', data)
-          
           // Use the database-generated trace
           if (data && data[0]) {
             const dbTrace = data[0] as any

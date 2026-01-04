@@ -25,9 +25,11 @@ interface GameState {
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   removeOtherUser: (userId: string) => void
+  clearOtherUsers: () => void
   addTrace: (trace: Trace) => void
   removeTrace: (traceId: string) => void
   setTraces: (traces: Trace[]) => void
+  clearLobbyData: () => void  // Clear all lobby-specific data
   
   // Pending changes management
   markTraceChanged: (traceId: string) => void
@@ -85,6 +87,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { otherUsers: rest }
     }),
   
+  clearOtherUsers: () => set({ otherUsers: {} }),
+  
   addTrace: (trace) =>
     set((state) => {
       // Check if trace already exists (for updates)
@@ -108,6 +112,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   setTraces: (traces) => {
     set({ traces })
+  },
+  
+  // Clear all lobby-specific data when leaving a lobby
+  clearLobbyData: () => {
+    set({
+      traces: [],
+      otherUsers: {},
+      pendingChanges: new Set<string>(),
+      deletedTraces: new Set<string>(),
+      position: { x: 400, y: 300 },  // Reset position
+      cursorState: 'default',
+    })
   },
   
   // Pending changes management

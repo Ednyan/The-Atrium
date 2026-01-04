@@ -3,9 +3,10 @@ import { supabase } from '../lib/supabase'
 
 interface AuthScreenProps {
   onAuthSuccess: (userId: string, username: string) => void
+  onBackToLanding?: () => void
 }
 
-export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
+export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScreenProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [emailOrUsername, setEmailOrUsername] = useState('')
@@ -41,13 +42,11 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
 
     try {
       // Check if username is already taken
-      const { data: existingUser, error: lookupError } = await (supabase
+      const { data: existingUser } = await (supabase
         .from('profiles') as any)
         .select('username')
         .eq('username', username)
         .maybeSingle()
-
-      console.log('Username check:', { existingUser, lookupError })
 
       if (existingUser) {
         setError('Username already taken')
@@ -66,8 +65,6 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           emailRedirectTo: window.location.origin,
         },
       })
-
-      console.log('Signup response:', { data, signupError })
 
       if (signupError) {
         // Check for specific error messages
@@ -213,6 +210,17 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       <div className="absolute bottom-8 left-8 w-12 h-12 border-l border-b border-nier-border/20" />
       <div className="absolute bottom-8 right-8 w-12 h-12 border-r border-b border-nier-border/20" />
 
+      {/* Back to landing button */}
+      {onBackToLanding && (
+        <button
+          onClick={onBackToLanding}
+          className="absolute top-8 left-8 flex items-center gap-2 text-nier-border/60 hover:text-nier-bg transition-colors group z-10"
+        >
+          <span className="text-lg group-hover:-translate-x-1 transition-transform">←</span>
+          <span className="text-[10px] tracking-[0.15em] uppercase">Back</span>
+        </button>
+      )}
+
       <div className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative">
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
@@ -228,7 +236,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             <div className="w-8 h-[1px] bg-gradient-to-l from-transparent to-nier-border/40" />
           </div>
           <h1 className="text-xl text-nier-bg tracking-[0.2em] uppercase">
-            {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+            {mode === 'login' ? 'Welcome' : 'Create Account'}
           </h1>
         </div>
 

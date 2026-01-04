@@ -2,17 +2,37 @@ import { useState, useEffect } from 'react'
 import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
+import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase } from './lib/supabase'
 
+// Storage keys for persisting navigation state
+const STORAGE_KEYS = {
+  HAS_ENTERED: 'lobby_hasEntered',
+  CURRENT_LOBBY: 'lobby_currentLobbyId',
+  SHOW_BROWSER: 'lobby_showBrowser',
+  SHOW_LANDING: 'lobby_showLanding',
+}
+
 function App() {
-  const { username, setUsername, setUserId, setPlayerColor } = useGameStore()
-  const [hasEntered, setHasEntered] = useState(false)
+  const { username, setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
+  const [showLanding, setShowLanding] = useState(() => {
+    // Show landing if user hasn't dismissed it before
+    const stored = localStorage.getItem(STORAGE_KEYS.SHOW_LANDING)
+    return stored === null ? true : stored === 'true'
+  })
+  const [hasEntered, setHasEntered] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.HAS_ENTERED) === 'true'
+  })
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(null)
-  const [showLobbyBrowser, setShowLobbyBrowser] = useState(false)
+  const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(() => {
+    return localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
+  })
+  const [showLobbyBrowser, setShowLobbyBrowser] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.SHOW_BROWSER) === 'true'
+  })
 
   // Check if user is already logged in
   useEffect(() => {
@@ -31,20 +51,46 @@ function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user && supabase) {
-        // Get user profile (don't auto-join lobby - let user choose from lobby browser)
+        // Get user profile
         (supabase
           .from('profiles') as any)
-          .select('username, display_name, player_color')
+          .select('username, display_name, player_color, active_lobby_id')
           .eq('id', session.user.id)
           .single()
-          .then(({ data }: any) => {
+          .then(async ({ data }: any) => {
             if (data) {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
+              
+              // Verify persisted lobby still exists and user has access
+              const storedLobbyId = localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
+              if (storedLobbyId && supabase) {
+                const { data: lobbyExists } = await (supabase as any)
+                  .from('lobbies')
+                  .select('id')
+                  .eq('id', storedLobbyId)
+                  .single()
+                
+                if (!lobbyExists) {
+                  // Lobby was deleted, clear persisted state
+                  localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+                  setCurrentLobbyId(null)
+                  setShowLobbyBrowser(true)
+                  localStorage.setItem(STORAGE_KEYS.SHOW_BROWSER, 'true')
+                }
+              }
             }
           })
+      } else {
+        // Not authenticated - clear persisted navigation state
+        localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+        localStorage.removeItem(STORAGE_KEYS.SHOW_BROWSER)
+        setHasEntered(false)
+        setCurrentLobbyId(null)
+        setShowLobbyBrowser(false)
       }
       setLoading(false)
     })
@@ -64,7 +110,6 @@ function App() {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
-              // Don't auto-join lobby - let user choose from lobby browser
               setIsAuthenticated(true)
             }
           })
@@ -72,16 +117,46 @@ function App() {
         setIsAuthenticated(false)
         setHasEntered(false)
         setCurrentLobbyId(null)
+        setShowLobbyBrowser(false)
+        // Clear persisted state on logout
+        localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+        localStorage.removeItem(STORAGE_KEYS.SHOW_BROWSER)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [setUsername, setUserId])
 
+  // Persist navigation state changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.HAS_ENTERED, String(hasEntered))
+  }, [hasEntered])
+
+  useEffect(() => {
+    if (currentLobbyId) {
+      localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, currentLobbyId)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+    }
+  }, [currentLobbyId])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SHOW_BROWSER, String(showLobbyBrowser))
+  }, [showLobbyBrowser])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SHOW_LANDING, String(showLanding))
+  }, [showLanding])
+
   const handleAuthSuccess = (userId: string, username: string) => {
     setUserId(userId)
     setUsername(username)
     setIsAuthenticated(true)
+  }
+
+  const handleLandingGetStarted = () => {
+    setShowLanding(false)
   }
 
   const handleEnter = () => {
@@ -126,6 +201,8 @@ function App() {
   }
 
   const handleLeaveLobby = () => {
+    // Clear all lobby-specific data from store to free memory
+    clearLobbyData()
     setCurrentLobbyId(null)
     setShowLobbyBrowser(true)
   }
@@ -138,8 +215,13 @@ function App() {
     )
   }
 
+  // Show landing page for new visitors
+  if (showLanding && !isAuthenticated) {
+    return <LandingPage onGetStarted={handleLandingGetStarted} />
+  }
+
   if (!isAuthenticated) {
-    return <AuthScreen onAuthSuccess={handleAuthSuccess} />
+    return <AuthScreen onAuthSuccess={handleAuthSuccess} onBackToLanding={() => setShowLanding(true)} />
   }
 
   if (!hasEntered || !username) {
@@ -152,12 +234,9 @@ function App() {
       <LobbyBrowser
         onJoinLobby={handleJoinLobby}
         onClose={() => {
-          // Can't close without selecting a lobby
-          if (!currentLobbyId) {
-            alert('Please select a lobby to continue')
-          } else {
-            setShowLobbyBrowser(false)
-          }
+          // Go back to welcome/login screen
+          setHasEntered(false)
+          setShowLobbyBrowser(false)
         }}
       />
     )

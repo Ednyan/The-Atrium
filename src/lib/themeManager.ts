@@ -76,8 +76,6 @@ export class ThemeManager {
     const gridIndex = 0
     container.addChildAt(this.groundContainer, gridIndex + 1) // After grid
     container.addChildAt(this.particleContainer, gridIndex + 3) // After lighting
-    
-    console.log('🎨 ThemeManager initialized')
   }
 
   async loadTheme() {
@@ -114,7 +112,6 @@ export class ThemeManager {
         }
       }
     }
-    console.log(`🎨 Theme loaded: ${this.config.groundElements.length} ground element(s)`);
   }
 
   private async discoverAssets(basePath: string): Promise<string[]> {
@@ -153,12 +150,27 @@ export class ThemeManager {
     return (Math.sin(seed) * 43758.5453123) % 1
   }
 
+  private _lastGroundGenTime = 0
+  
   generateGroundElements(minX: number, minY: number, maxX: number, maxY: number) {
     if (!this.config.groundEnabled) {
       return
     }
     
     if (this.config.groundElements.length === 0) {
+      return
+    }
+
+    // Throttle ground element generation (max once per 500ms)
+    const now = Date.now()
+    if (now - this._lastGroundGenTime < 500) {
+      return
+    }
+    this._lastGroundGenTime = now
+
+    // Limit max ground elements to prevent memory issues
+    const MAX_GROUND_ELEMENTS = 500
+    if (this.groundElements.length >= MAX_GROUND_ELEMENTS) {
       return
     }
 
@@ -268,7 +280,6 @@ export class ThemeManager {
     this.particles = []
 
     if (!this.config.particlesEnabled) {
-      console.log('✨ Particles disabled')
       return
     }
 
@@ -315,11 +326,15 @@ export class ThemeManager {
         worldY 
       })
     }
-    
-    console.log(`✨ Created ${this.config.particleCount} dust particles`)
   }
 
+  private _particleFrameCounter = 0
+  
   updateParticles(cameraX: number, cameraY: number, viewportWidth: number, viewportHeight: number) {
+    // Skip frames for performance (update every 2nd frame)
+    this._particleFrameCounter++
+    if (this._particleFrameCounter % 2 !== 0) return
+    
     const time = Date.now() * 0.001
     
     // Calculate viewport radius for fade effect (in world coordinates)
@@ -375,7 +390,22 @@ export class ThemeManager {
     }
   }
 
+  private _cullFrameCounter = 0
+  
   cullGroundElements(cameraX: number, cameraY: number, viewportWidth: number, viewportHeight: number, playerX: number, playerY: number, traces: Array<{x: number, y: number}>, zoom: number) {
+    // Only cull every 10 frames for performance
+    this._cullFrameCounter++
+    if (this._cullFrameCounter % 10 !== 0) {
+      // Still update fade animations but skip culling logic
+      this.groundElements.forEach(element => {
+        if (element.sprite.alpha < element.targetAlpha) {
+          element.sprite.alpha = Math.min(element.targetAlpha, element.sprite.alpha + element.fadeSpeed)
+        } else if (element.sprite.alpha > element.targetAlpha) {
+          element.sprite.alpha = Math.max(element.targetAlpha, element.sprite.alpha - element.fadeSpeed)
+        }
+      })
+      return
+    }
     // If zoom is too small (< 0.5), fade out all ground elements
     if (zoom < 0.3) {
       this.groundElements.forEach(element => {
@@ -474,8 +504,26 @@ export class ThemeManager {
   }
 
   destroy() {
+    // Clear all ground elements
+    this.groundElements.forEach(el => {
+      el.sprite.destroy()
+    })
+    this.groundElements = []
+    
+    // Clear all particles
+    this.particles.forEach(p => {
+      p.sprite.destroy()
+    })
+    this.particles = []
+    
+    // Destroy containers
     this.groundContainer.destroy({ children: true })
     this.particleContainer.destroy({ children: true })
+    
+    // Clear textures
+    this.loadedTextures.forEach(texture => {
+      texture.destroy(true)
+    })
     this.loadedTextures.clear()
   }
 
@@ -493,7 +541,10 @@ export class ThemeManager {
     // Replace ground elements with custom URLs (completely replace, don't merge)
     this.config.groundElements = []
 
-    // Clear ALL old textures
+    // Destroy ALL old textures to prevent memory leak
+    this.loadedTextures.forEach(texture => {
+      texture.destroy(true)
+    })
     this.loadedTextures.clear()
 
     // Load textures for custom URLs with CORS support

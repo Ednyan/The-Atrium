@@ -95,9 +95,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       const enrichedPublic = await enrichLobbiesWithData(uniqueLobbies)
       setLobbies(enrichedPublic)
       setLobbies(enrichedPublic)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading lobbies:', err)
-      setError('Failed to load lobbies')
+      setError(`Failed to load lobbies: ${err?.message || 'Unknown error'}`)
     } finally {
       setLoading(false)
     }

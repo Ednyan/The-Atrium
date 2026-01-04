@@ -8,21 +8,15 @@ export function useTraces(lobbyId: string | null) {
 
   useEffect(() => {
     if (!supabase || !lobbyId) {
-      console.log('⚠️ Traces hook: Supabase or lobbyId not available')
       return
     }
-
-    console.log('📦 Loading traces from database for lobby:', lobbyId)
 
     // Load existing traces
     const loadTraces = async () => {
       try {
         if (!supabase) {
-          console.log('❌ loadTraces: No supabase client')
           return
         }
-        
-        console.log('🔍 Executing database query for traces...')
         
         const { data, error } = await supabase
           .from('traces')
@@ -31,16 +25,11 @@ export function useTraces(lobbyId: string | null) {
           .order('created_at', { ascending: false })
           .limit(100)
 
-        console.log('📊 Query result - data:', data, 'error:', error)
-
         if (error) {
-          console.error('❌ Database error:', error)
           throw error
         }
 
         if (data) {
-          console.log('✅ Loaded', data.length, 'traces from database')
-          console.log('📋 First trace (if any):', data[0])
           const traces: Trace[] = data.map((row: any) => ({
             id: row.id,
             userId: row.user_id,
@@ -100,20 +89,14 @@ export function useTraces(lobbyId: string | null) {
             width: row.width,
             height: row.height,
           }))
-          console.log('🎯 Calling setTraces with', traces.length, 'traces')
           setTraces(traces)
-          console.log('✅ setTraces completed')
-        } else {
-          console.log('⚠️ Query returned no data')
         }
       } catch (error) {
-        console.error('❌ Error loading traces:', error)
+        // Silent error handling
       }
     }
 
     loadTraces()
-
-    console.log('📡 Subscribing to trace updates for lobby:', lobbyId)
 
     // Subscribe to new traces in this lobby
     const channel = supabase
@@ -127,7 +110,6 @@ export function useTraces(lobbyId: string | null) {
           filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload) => {
-          console.log('✨ New trace received:', payload.new)
           const row = payload.new as any
           const trace: Trace = {
             id: row.id,
@@ -200,14 +182,12 @@ export function useTraces(lobbyId: string | null) {
           filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload) => {
-          console.log('🔄 Trace updated:', payload.new)
           const row = payload.new as any
           
           // Skip updates for traces with pending local changes (to preserve local edits)
           // Use getState() to get the current value, not a stale closure
           const currentPendingChanges = useGameStore.getState().pendingChanges
           if (currentPendingChanges.has(row.id)) {
-            console.log('⏭️ Skipping update for trace with pending changes:', row.id)
             return
           }
           
@@ -283,25 +263,15 @@ export function useTraces(lobbyId: string | null) {
           filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload) => {
-          console.log('🗑️ Trace deleted:', payload.old)
           const row = payload.old as any
           if (row.id) {
             removeTrace(row.id)
           }
         }
       )
-      .subscribe((status, err) => {
-        console.log('📡 Traces channel status:', status)
-        if (err) {
-          console.error('❌ Traces channel error:', err)
-        }
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to traces updates!')
-        }
-      })
+      .subscribe()
 
     return () => {
-      console.log('🔌 Unsubscribing from trace updates')
       channel.unsubscribe()
     }
   }, [lobbyId])

@@ -19,11 +19,8 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
   useEffect(() => {
     const loadLayers = async () => {
       if (!supabase) {
-        console.warn('LayerPanel: Supabase not available')
         return
       }
-
-      console.log('LayerPanel: Loading layers...')
 
       const { data, error } = await supabase
         .from('layers')
@@ -31,12 +28,8 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
         .order('z_index', { ascending: false })
 
       if (error) {
-        console.error('Error loading layers:', error)
-        console.error('Make sure you run: supabase/migrations/add_layer_system.sql')
         return
       }
-
-      console.log('LayerPanel: Loaded layers:', data)
 
       if (data) {
         const mappedLayers: Layer[] = data.map((row: any) => ({
@@ -57,8 +50,6 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     // Subscribe to layer changes
     if (!supabase) return
 
-    console.log('LayerPanel: Subscribing to layer changes...')
-
     const channel = supabase
       .channel('layers-channel')
       .on(
@@ -68,17 +59,13 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
           schema: 'public',
           table: 'layers',
         },
-        (payload) => {
-          console.log('LayerPanel: Layer change detected:', payload)
+                () => {
           loadLayers()
         }
       )
-      .subscribe((status) => {
-        console.log('LayerPanel: Subscription status:', status)
-      })
+      .subscribe()
 
     return () => {
-      console.log('LayerPanel: Unsubscribing from layers')
       channel.unsubscribe()
     }
   }, [])
@@ -92,15 +79,11 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     const name = prompt('Enter group name:')
     if (!name) return
 
-    console.log('Creating group:', name)
-
     // Find highest z-index
     const maxZIndex = Math.max(...layers.map(l => l.zIndex), 0)
     const newZIndex = maxZIndex + 1
 
-    console.log('  Max z-index:', maxZIndex, '→ New z-index:', newZIndex)
-
-    const { data, error } = await (supabase.from('layers') as any).insert({
+    const { error } = await (supabase.from('layers') as any).insert({
       name,
       z_index: newZIndex,
       is_group: true,
@@ -108,24 +91,19 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     })
 
     if (error) {
-      console.error('Error creating group:', error)
       alert(`Failed to create group: ${error.message}\n\nMake sure you've run the migration:\nsupabase/migrations/add_layer_system.sql`)
       return
     }
-
-    console.log('Group created successfully:', data)
   }
 
   const fixDuplicateZIndexes = async () => {
     if (!supabase) return
     
-    console.log('🔧 Fixing duplicate z-indexes...')
     const sortedLayers = [...layers].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     
     for (let i = 0; i < sortedLayers.length; i++) {
       const layer = sortedLayers[i]
       const newZIndex = i + 1
-      console.log(`  Setting ${layer.name} z-index: ${layer.zIndex} → ${newZIndex}`)
       await updateLayerZIndex(layer.id, newZIndex)
       
       // Update traces in this layer
@@ -138,10 +116,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     
     // Set player z-index to be on top (above all layers)
     const newPlayerZIndex = sortedLayers.length + 1
-    console.log(`  Setting player z-index: ${playerZIndex} → ${newPlayerZIndex}`)
     setPlayerZIndex(newPlayerZIndex)
-    
-    console.log('✅ Fixed all z-indexes')
   }
 
   const deleteGroup = async (layerId: string) => {
@@ -155,7 +130,6 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
       .eq('layer_id', layerId)
 
     if (tracesError) {
-      console.error('Error deleting traces:', tracesError)
       return
     }
 
@@ -286,27 +260,20 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     
     const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
-    console.log('🔽 Move layer down:', layer.name, 'currentIndex:', currentIndex, 'total:', sortedLayers.length)
     if (currentIndex === sortedLayers.length - 1) {
-      console.log('❌ Already at bottom')
       return
     }
 
     const layerBelow = sortedLayers[currentIndex + 1]
-    console.log('  📊 Before swap:', layer.name, 'z:', layer.zIndex, '|', layerBelow.name, 'z:', layerBelow.zIndex)
     
     // Swap z-indexes of the layers
     const tempZIndex = layer.zIndex
     await updateLayerZIndex(layer.id, layerBelow.zIndex)
     await updateLayerZIndex(layerBelow.id, tempZIndex)
     
-    console.log('  ✅ Swapped z-indexes')
-    
     // Update all traces in both layers to match new layer z-indexes
     const tracesInCurrentLayer = traces.filter(t => t.layerId === layer.id)
     const tracesInBelowLayer = traces.filter(t => t.layerId === layerBelow.id)
-    
-    console.log('  🔄 Updating traces:', tracesInCurrentLayer.length, 'in current,', tracesInBelowLayer.length, 'in below')
     
     // Update current layer's traces (now using layerBelow's z-index)
     for (let i = 0; i < tracesInCurrentLayer.length; i++) {
@@ -339,8 +306,6 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     ...sortedLayers.map(l => ({ type: 'layer' as const, data: l, zIndex: l.zIndex })),
     { type: 'player' as const, data: null, zIndex: playerZIndex },
   ].sort((a, b) => b.zIndex - a.zIndex)
-  
-  console.log('📊 allItems calculated:', allItems.map(i => i.type === 'player' ? `Player(${i.zIndex})` : `Layer:${i.data.name}(${i.zIndex})`).join(' > '))
 
   return (
     <div 
@@ -416,12 +381,9 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                         
                         // Check for duplicate z-indexes
                         if (originalPlayerZIndex === originalLayerZIndex) {
-                          console.warn('⚠️ Duplicate z-indexes detected! Click the 🔧 Fix button first.')
                           alert('Duplicate z-indexes detected. Please click the 🔧 Fix button to fix layer ordering first.')
                           return
                         }
-                        
-                        console.log('🔼 Moving player up: player', originalPlayerZIndex, '→', originalLayerZIndex, '| layer', originalLayerZIndex, '→', originalPlayerZIndex)
                         
                         // Swap: player gets layer's z-index, layer gets player's z-index
                         setPlayerZIndex(originalLayerZIndex)
@@ -445,12 +407,9 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                         
                         // Check for duplicate z-indexes
                         if (originalPlayerZIndex === originalLayerZIndex) {
-                          console.warn('⚠️ Duplicate z-indexes detected! Click the 🔧 Fix button first.')
                           alert('Duplicate z-indexes detected. Please click the 🔧 Fix button to fix layer ordering first.')
                           return
                         }
-                        
-                        console.log('🔽 Moving player down: player', originalPlayerZIndex, '→', originalLayerZIndex, '| layer', originalLayerZIndex, '→', originalPlayerZIndex)
                         
                         // Swap: player gets layer's z-index, layer gets player's z-index
                         setPlayerZIndex(originalLayerZIndex)
@@ -560,7 +519,6 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                           : 'border-gray-600'
                       }`}
                       onClick={() => {
-                        console.log('LayerPanel: Clicking trace', { traceId: trace.id, currentSelected: selectedTraceId, matches: trace.id === selectedTraceId })
                         onSelectTrace?.(trace.id)
                       }}
                     >
@@ -621,7 +579,6 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                       : 'border-gray-600'
                   }`}
                   onClick={() => {
-                    console.log('LayerPanel: Clicking ungrouped trace', { traceId: trace.id, currentSelected: selectedTraceId, matches: trace.id === selectedTraceId })
                     onSelectTrace?.(trace.id)
                   }}
                 >

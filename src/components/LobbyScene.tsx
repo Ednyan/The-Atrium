@@ -17,7 +17,7 @@ const AVATAR_SIZE = 20
 const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
-const MAX_ZOOM = 3.0
+const MAX_ZOOM = 1.15
 const ZOOM_SPEED = 0.1
 
 interface LobbySceneProps {
@@ -36,6 +36,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const positionRef = useRef({ x: 0, y: 0 })
   const tracePlacementIndicatorRef = useRef<Graphics | null>(null)
   const traceIndicatorsRef = useRef<Container | null>(null)
+  // Object pool for trace indicators to prevent memory leaks
+  const indicatorPoolRef = useRef<Array<{ graphics: Graphics, distanceText: Text, unitText: Text }>>([])
   const tracesDataRef = useRef<typeof traces>([])
   const otherUsersRef = useRef<typeof otherUsers>({})
   const zoomRef = useRef(1.0)
@@ -48,12 +50,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
   const updateGridRef = useRef<((cameraX: number, cameraY: number) => void) | null>(null)
+  // prevThemeSettingsRef removed - was causing theme update issues
   const eventHandlersRef = useRef<{
     mousedown: ((e: MouseEvent) => void) | null,
     mousemove: ((e: MouseEvent) => void) | null,
     mouseup: ((e: MouseEvent) => void) | null,
     contextmenu: ((e: MouseEvent) => void) | null,
-  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null })
+    wheel: ((e: WheelEvent) => void) | null,
+  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null })
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
@@ -71,7 +75,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
   // Debug: Log when selectedTraceId changes
   useEffect(() => {
-    console.log('LobbyScene: selectedTraceId changed to:', selectedTraceId)
+    // selectedTraceId changed
   }, [selectedTraceId])
 
   // Load lobby info
@@ -108,7 +112,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // Keep traces ref in sync
   useEffect(() => {
     tracesDataRef.current = traces
-    console.log('📦 Traces updated in state:', traces.length, 'total traces')
+    // Traces updated in state
   }, [traces])
   
   // Keep otherUsers ref in sync
@@ -219,8 +223,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         targetZoomRef.current = newTargetZoom
       }
       
-      const wheelListener = handleWheel
-      window.addEventListener('wheel', wheelListener, { passive: false })
+      eventHandlersRef.current.wheel = handleWheel
+      window.addEventListener('wheel', handleWheel, { passive: false })
 
       // Initialize theme manager
       const themeManager = new ThemeManager(worldContainer, {
@@ -231,7 +235,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       // Load theme assets asynchronously
       themeManager.loadTheme().then(() => {
-        console.log('🎨 Theme loaded')
         themeManager.createParticles(viewportWidth, viewportHeight)
       })
 
@@ -352,13 +355,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         e.preventDefault()
       }
       
-      // Store handlers in ref for cleanup
-      eventHandlersRef.current = {
-        mousedown: handleMouseDown,
-        mousemove: handleMouseMove,
-        mouseup: handleMouseUp,
-        contextmenu: handleContextMenu,
-      }
+      // Store handlers in ref for cleanup (wheel is already set above)
+      eventHandlersRef.current.mousedown = handleMouseDown
+      eventHandlersRef.current.mousemove = handleMouseMove
+      eventHandlersRef.current.mouseup = handleMouseUp
+      eventHandlersRef.current.contextmenu = handleContextMenu
       
       window.addEventListener('mousedown', handleMouseDown)
       window.addEventListener('mousemove', handleMouseMove)
@@ -367,64 +368,88 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       // Fluid animation loop
       let pulseTime = 0
+      let frameCounter = 0
+      let lastGridZoom = 1.0 // Track zoom level when grid was last drawn
+      
       app.ticker.add(() => {
-        // Smooth zoom interpolation
-        const zoomLerpSpeed = 0.15 // Higher = faster, lower = smoother
-        zoomRef.current += (targetZoomRef.current - zoomRef.current) * zoomLerpSpeed
+        frameCounter++
+        
+        // Smooth zoom interpolation with snap-to-target to prevent jitter
+        const zoomLerpSpeed = 0.1 // Slower for smoother animation
+        const zoomDiff = targetZoomRef.current - zoomRef.current
+        
+        // Snap to target if very close (prevents oscillation/jitter)
+        if (Math.abs(zoomDiff) < 0.003) {
+          zoomRef.current = targetZoomRef.current
+        } else {
+          zoomRef.current += zoomDiff * zoomLerpSpeed
+        }
+        
+        // Check if zoom is stable (reached target)
+        const zoomIsStable = zoomRef.current === targetZoomRef.current
         
         // Update world container scale
         worldContainer.scale.set(zoomRef.current)
         
-        // Update zoom state for React (throttled updates to avoid too many re-renders)
-        // Only update if zoom changed significantly (reduces re-renders during smooth zoom)
-        if (Math.abs(zoomRef.current - zoom) > 0.02) {
-          setZoom(zoomRef.current)
-        }
-        
         // Update camera (world container offset based on camera position)
-        // Apply zoom to camera position for correct centering
-        worldContainer.x = -cameraPositionRef.current.x * zoomRef.current + viewportWidth / 2
-        worldContainer.y = -cameraPositionRef.current.y * zoomRef.current + viewportHeight / 2
+        // Round to whole pixels to prevent sub-pixel jitter
+        const rawX = -cameraPositionRef.current.x * zoomRef.current + viewportWidth / 2
+        const rawY = -cameraPositionRef.current.y * zoomRef.current + viewportHeight / 2
+        worldContainer.x = Math.round(rawX)
+        worldContainer.y = Math.round(rawY)
         
-        // Sync world offset for overlay (throttled to reduce re-renders)
+        // Sync world offset for overlay
         const newOffsetX = worldContainer.x
         const newOffsetY = worldContainer.y
         worldOffsetRef.current = { x: newOffsetX, y: newOffsetY }
         
-        // Only update state if offset changed significantly
-        if (Math.abs(newOffsetX - worldOffset.x) > 1 || Math.abs(newOffsetY - worldOffset.y) > 1) {
+        // Update state for React - traces need this to position correctly during zoom
+        // Use requestAnimationFrame-style throttling (every frame is fine, React batches these)
+        const offsetChanged = Math.abs(newOffsetX - worldOffset.x) > 0.5 || Math.abs(newOffsetY - worldOffset.y) > 0.5
+        if (offsetChanged) {
           setWorldOffset({ x: newOffsetX, y: newOffsetY })
         }
         
-        // Update grid based on camera position
-        updateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
+        // Update zoom state for React - update during animation for smooth trace scaling
+        if (Math.abs(zoomRef.current - zoom) > 0.001) {
+          setZoom(zoomRef.current)
+        }
         
-        // Update theme (ground elements and particles)
+        // Update grid - only when zoom is stable or panning (not during zoom animation)
+        if (zoomIsStable && (frameCounter % 2 === 0 || Math.abs(zoomRef.current - lastGridZoom) > 0.001)) {
+          updateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
+          lastGridZoom = zoomRef.current
+        }
+        
+        // Update theme manager
         const themeManager = themeManagerRef.current
         if (themeManager) {
           const camX = cameraPositionRef.current.x
           const camY = cameraPositionRef.current.y
           
-          // Generate ground elements only near player and traces
-          const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
-          const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
-          
-          // Only generate in camera viewport (don't expand to include all traces)
-          const margin = 500
-          const minX = camX - viewportWidth / zoomRef.current - margin
-          const minY = camY - viewportHeight / zoomRef.current - margin
-          const maxX = camX + viewportWidth / zoomRef.current + margin
-          const maxY = camY + viewportHeight / zoomRef.current + margin
-          
-          themeManager.generateGroundElements(
-            minX, minY, maxX, maxY
-          )
-          
-          // Update floating particles
+          // Always update floating particles (they should animate continuously)
           themeManager.updateParticles(camX, camY, viewportWidth, viewportHeight)
           
-          // Cull distant ground elements for performance (also check if near player/traces)
-          themeManager.cullGroundElements(camX, camY, viewportWidth, viewportHeight, playerPos.x, playerPos.y, tracePositions, zoomRef.current)
+          // Only generate/cull ground elements when zoom is stable (heavy operations)
+          if (frameCounter % 2 === 0 && zoomIsStable) {
+            // Generate ground elements only near player and traces
+            const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
+            const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
+            
+            // Only generate in camera viewport (don't expand to include all traces)
+            const margin = 500
+            const minX = camX - viewportWidth / zoomRef.current - margin
+            const minY = camY - viewportHeight / zoomRef.current - margin
+            const maxX = camX + viewportWidth / zoomRef.current + margin
+            const maxY = camY + viewportHeight / zoomRef.current + margin
+            
+            themeManager.generateGroundElements(
+              minX, minY, maxX, maxY
+            )
+            
+            // Cull distant ground elements for performance (also check if near player/traces)
+            themeManager.cullGroundElements(camX, camY, viewportWidth, viewportHeight, playerPos.x, playerPos.y, tracePositions, zoomRef.current)
+          }
         }
         
         // NOTE: Lighting is now handled in TraceOverlay.tsx using DOM elements with blur
@@ -462,109 +487,111 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         }
 
         // Update trace direction indicators on screen borders (Nier:Automata style)
-        // Now relative to CAMERA position, not player position
+        // Uses object pooling to prevent memory leaks
         if (traceIndicatorsRef.current) {
-          traceIndicatorsRef.current.removeChildren()
           pulseTime += 0.02 // Slower pulse for elegant animation
           
           // Find traces that are outside the camera viewport
-          const offScreenTraces: Array<{ trace: any; distance: number; angle: number; screenX: number; screenY: number }> = []
-          
-          // Use CAMERA position for viewport calculations
           const cameraX = cameraPositionRef.current.x
           const cameraY = cameraPositionRef.current.y
           
+          const offScreenTraces: Array<{ distance: number; angle: number }> = []
+          
           tracesDataRef.current.forEach((trace) => {
-            // Calculate trace position in screen coordinates relative to CAMERA
             const traceScreenX = (trace.x - cameraX) * zoomRef.current + viewportWidth / 2
             const traceScreenY = (trace.y - cameraY) * zoomRef.current + viewportHeight / 2
             
-            // Check if trace is outside viewport bounds
             const margin = 100
             const isOutsideViewport = 
               traceScreenX < -margin || traceScreenX > viewportWidth + margin ||
               traceScreenY < -margin || traceScreenY > viewportHeight + margin
             
             if (isOutsideViewport) {
-              // Calculate angle and distance from CAMERA center to trace
               const dx = trace.x - cameraX
               const dy = trace.y - cameraY
               const distance = Math.sqrt(dx * dx + dy * dy)
               const angle = Math.atan2(dy, dx)
-              offScreenTraces.push({ trace, distance, angle, screenX: traceScreenX, screenY: traceScreenY })
+              offScreenTraces.push({ distance, angle })
             }
           })
           
-          // Sort by distance and show up to 8 closest off-screen traces
+          // Sort by distance and show up to 8 closest
           offScreenTraces.sort((a, b) => a.distance - b.distance)
           const closestTraces = offScreenTraces.slice(0, 8)
+          const neededCount = closestTraces.length
           
+          // Ensure pool has enough indicators (create if needed, only once)
+          while (indicatorPoolRef.current.length < neededCount) {
+            const graphics = new Graphics()
+            const distanceText = new Text('', {
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: 9,
+              fill: 0xDADADA,
+              letterSpacing: 1,
+            })
+            distanceText.anchor.set(0.5)
+            const unitText = new Text('u', {
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: 7,
+              fill: 0x888888,
+            })
+            unitText.anchor.set(0, 0.5)
+            graphics.addChild(distanceText)
+            graphics.addChild(unitText)
+            indicatorPoolRef.current.push({ graphics, distanceText, unitText })
+          }
+          
+          // Hide all indicators first
+          indicatorPoolRef.current.forEach(({ graphics }) => {
+            graphics.visible = false
+            if (graphics.parent) graphics.parent.removeChild(graphics)
+          })
+          
+          // Update and show needed indicators
           closestTraces.forEach(({ distance, angle }, index) => {
-            // Calculate position on screen border with edge detection
+            const poolItem = indicatorPoolRef.current[index]
+            const { graphics: indicator, distanceText, unitText } = poolItem
+            
+            // Calculate position on screen border
             const edgeMargin = 50
             const cos = Math.cos(angle)
             const sin = Math.sin(angle)
-            
-            // Find intersection with screen edges
-            let indicatorX: number
-            let indicatorY: number
-            
-            // Calculate intersection with each edge
             const halfW = viewportWidth / 2 - edgeMargin
             const halfH = viewportHeight / 2 - edgeMargin
-            
-            // Time to hit right/left edge
             const tX = cos !== 0 ? halfW / Math.abs(cos) : Infinity
-            // Time to hit top/bottom edge
             const tY = sin !== 0 ? halfH / Math.abs(sin) : Infinity
-            
             const t = Math.min(tX, tY)
-            indicatorX = viewportWidth / 2 + cos * t
-            indicatorY = viewportHeight / 2 + sin * t
-            
-            // Clamp to screen boundaries
+            let indicatorX = viewportWidth / 2 + cos * t
+            let indicatorY = viewportHeight / 2 + sin * t
             indicatorX = Math.max(edgeMargin, Math.min(viewportWidth - edgeMargin, indicatorX))
             indicatorY = Math.max(edgeMargin, Math.min(viewportHeight - edgeMargin, indicatorY))
             
-            // Nier:Automata style indicator
-            const indicator = new Graphics()
-            
-            // Staggered pulse for each indicator
+            // Animation values
             const staggeredPulse = Math.sin(pulseTime * 3 + index * 0.5) * 0.5 + 0.5
             const breathe = Math.sin(pulseTime * 2) * 0.3 + 0.7
-            
-            // Distance-based opacity (closer = more opaque)
             const maxDistance = 3000
             const distanceAlpha = Math.max(0.4, 1 - (distance / maxDistance) * 0.6)
-            
-            // Outer bracket frame (Nier style)
             const bracketSize = 18 + staggeredPulse * 4
-            const bracketThickness = 1.5
-            const bracketLength = 8
             
-            indicator.lineStyle(bracketThickness, 0xDADADA, distanceAlpha * breathe)
+            // Redraw the graphics (clear and redraw is efficient for Graphics)
+            indicator.clear()
+            indicator.lineStyle(1.5, 0xDADADA, distanceAlpha * breathe)
             
-            // Top-left bracket
-            indicator.moveTo(-bracketSize, -bracketSize + bracketLength)
+            // Brackets
+            indicator.moveTo(-bracketSize, -bracketSize + 8)
             indicator.lineTo(-bracketSize, -bracketSize)
-            indicator.lineTo(-bracketSize + bracketLength, -bracketSize)
-            
-            // Top-right bracket
-            indicator.moveTo(bracketSize - bracketLength, -bracketSize)
+            indicator.lineTo(-bracketSize + 8, -bracketSize)
+            indicator.moveTo(bracketSize - 8, -bracketSize)
             indicator.lineTo(bracketSize, -bracketSize)
-            indicator.lineTo(bracketSize, -bracketSize + bracketLength)
-            
-            // Bottom-right bracket
-            indicator.moveTo(bracketSize, bracketSize - bracketLength)
+            indicator.lineTo(bracketSize, -bracketSize + 8)
+            indicator.moveTo(bracketSize, bracketSize - 8)
             indicator.lineTo(bracketSize, bracketSize)
-            indicator.lineTo(bracketSize - bracketLength, bracketSize)
-            
-            // Bottom-left bracket
-            indicator.moveTo(-bracketSize + bracketLength, bracketSize)
+            indicator.lineTo(bracketSize - 8, bracketSize)
+            indicator.moveTo(-bracketSize + 8, bracketSize)
             indicator.lineTo(-bracketSize, bracketSize)
-            indicator.lineTo(-bracketSize, bracketSize - bracketLength)
+            indicator.lineTo(-bracketSize, bracketSize - 8)
             
-            // Inner diamond shape
+            // Diamond
             const diamondSize = 6 + staggeredPulse * 2
             indicator.lineStyle(1.5, 0xFFFFFF, distanceAlpha * 0.9)
             indicator.moveTo(0, -diamondSize)
@@ -578,76 +605,48 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             indicator.drawCircle(0, 0, 2)
             indicator.endFill()
             
-            // Direction line extending outward
+            // Direction line
             const lineLength = 25 + staggeredPulse * 5
             indicator.lineStyle(1, 0xDADADA, distanceAlpha * 0.6)
-            indicator.moveTo(Math.cos(angle) * 12, Math.sin(angle) * 12)
-            indicator.lineTo(Math.cos(angle) * lineLength, Math.sin(angle) * lineLength)
-            
-            // Small arrow head at end of line
-            const arrowDist = lineLength - 2
-            const arrowSize = 4
-            const arrowAngle = 0.5
-            indicator.lineStyle(1, 0xDADADA, distanceAlpha * 0.8)
-            indicator.moveTo(
-              Math.cos(angle) * arrowDist,
-              Math.sin(angle) * arrowDist
-            )
-            indicator.lineTo(
-              Math.cos(angle - arrowAngle) * (arrowDist - arrowSize) + Math.cos(angle) * 2,
-              Math.sin(angle - arrowAngle) * (arrowDist - arrowSize) + Math.sin(angle) * 2
-            )
-            indicator.moveTo(
-              Math.cos(angle) * arrowDist,
-              Math.sin(angle) * arrowDist
-            )
-            indicator.lineTo(
-              Math.cos(angle + arrowAngle) * (arrowDist - arrowSize) + Math.cos(angle) * 2,
-              Math.sin(angle + arrowAngle) * (arrowDist - arrowSize) + Math.sin(angle) * 2
-            )
+            indicator.moveTo(cos * 12, sin * 12)
+            indicator.lineTo(cos * lineLength, sin * lineLength)
             
             indicator.x = indicatorX
             indicator.y = indicatorY
             
-            // Distance text with Nier styling
-            const distanceNum = Math.round(distance)
-            const distanceText = new Text(`${distanceNum}`, {
-              fontFamily: 'Consolas, Monaco, monospace',
-              fontSize: 9,
-              fill: 0xDADADA,
-              letterSpacing: 1,
-            })
+            // Update text
+            distanceText.text = `${Math.round(distance)}`
             distanceText.alpha = distanceAlpha * 0.8
-            distanceText.anchor.set(0.5)
-            
-            // Position text below the indicator
-            distanceText.x = 0
             distanceText.y = bracketSize + 12
-            indicator.addChild(distanceText)
-            
-            // Small unit text
-            const unitText = new Text('u', {
-              fontFamily: 'Consolas, Monaco, monospace',
-              fontSize: 7,
-              fill: 0x888888,
-            })
             unitText.alpha = distanceAlpha * 0.6
-            unitText.anchor.set(0, 0.5)
             unitText.x = distanceText.width / 2 + 2
             unitText.y = bracketSize + 12
-            indicator.addChild(unitText)
             
+            indicator.visible = true
             traceIndicatorsRef.current?.addChild(indicator)
           })
         }
 
         // Update other users in world space
         const currentOtherUsers = otherUsersRef.current
+        
+        // Clean up avatars for users who have left
+        avatarsRef.current.forEach((avatar, id) => {
+          if (!currentOtherUsers[id]) {
+            const label = (avatar as any)?.label
+            if (label) {
+              label.destroy()
+            }
+            avatar.destroy()
+            avatarsRef.current.delete(id)
+          }
+        })
+        
         Object.entries(currentOtherUsers).forEach(([id, user]) => {
           let avatar = avatarsRef.current.get(id)
           
           if (!avatar) {
-            console.log('🎨 Creating avatar for user:', user.username, 'at', user.x, user.y)
+            // Creating avatar for user
             const newAvatar = new Graphics()
             
             // Convert hex color to integer (e.g., '#ff0000' -> 0xff0000)
@@ -793,6 +792,32 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (eventHandlersRef.current.contextmenu) {
         window.removeEventListener('contextmenu', eventHandlersRef.current.contextmenu)
       }
+      if (eventHandlersRef.current.wheel) {
+        window.removeEventListener('wheel', eventHandlersRef.current.wheel)
+      }
+      eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null }
+      
+      // Clear all refs to help garbage collection
+      worldContainerRef.current = null
+      avatarsRef.current.clear()
+      tracesRef.current.clear()
+      labelRef.current = null
+      playerAvatarRef.current = null
+      tracePlacementIndicatorRef.current = null
+      traceIndicatorsRef.current = null
+      lightingLayerRef.current = null
+      gridRef.current = null
+      updateGridRef.current = null
+      tracesDataRef.current = []
+      otherUsersRef.current = {}
+      
+      // Destroy indicator pool objects to free GPU memory
+      indicatorPoolRef.current.forEach(({ graphics, distanceText, unitText }) => {
+        distanceText.destroy(true)
+        unitText.destroy(true)
+        graphics.destroy({ children: true })
+      })
+      indicatorPoolRef.current = []
       
       if (appRef.current) {
         appRef.current.destroy(true, { children: true })
@@ -889,6 +914,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     if (!appRef.current || !worldContainerRef.current) return
     
     const worldContainer = worldContainerRef.current
+    
+    // Create a set of current trace IDs for fast lookup
+    const currentTraceIds = new Set(traces.map(t => t.id))
+    
+    // Clean up containers for traces that no longer exist
+    tracesRef.current.forEach((container, id) => {
+      if (!currentTraceIds.has(id)) {
+        container.destroy({ children: true })
+        tracesRef.current.delete(id)
+      }
+    })
 
     traces.forEach((trace) => {
       if (!tracesRef.current.has(trace.id)) {
@@ -960,12 +996,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <p className="text-white text-[11px] tracking-[0.15em] uppercase">
           <span className="font-bold">{username}</span>
         </p>
-        <button
-          onClick={() => setShowProfileCustomization(true)}
-          className="w-full mt-1 bg-gray-700 border border-gray-500 hover:border-white text-white px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
-        >
-          ◇ Customize
-        </button>
         {currentLobby && (
           <p className="text-gray-300 text-[9px] tracking-wider">
             {currentLobby.name} {isLobbyOwner && '(Owner)'}
@@ -1018,6 +1048,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             ◇ Copy Lobby ID
           </button>
         )}
+        <button
+          onClick={() => setShowProfileCustomization(true)}
+          className="w-full mt-1 bg-gray-700 border border-gray-500 hover:border-white text-white px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
+        >
+          ◇ Customize User
+        </button>
+        {isLobbyOwner && (
+          <button
+            onClick={() => setShowThemeCustomization(true)}
+            className="w-full mt-1 bg-gray-800 border border-gray-500 hover:border-white text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all"
+          >
+            ◇ Background Theme
+          </button>
+        )}
       </div>
 
       {/* Trace Button */}
@@ -1053,24 +1097,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClose={() => setShowLayerPanel(false)}
           selectedTraceId={selectedTraceId}
           onSelectTrace={(traceId) => {
-            console.log('LobbyScene: onSelectTrace called with:', traceId)
-            console.log('LobbyScene: Current selectedTraceId before update:', selectedTraceId)
+            // onSelectTrace called
             setSelectedTraceId(traceId)
-            console.log('LobbyScene: setSelectedTraceId called with:', traceId)
+            // setSelectedTraceId called
           }}
           onGoToTrace={(traceId) => {
             const trace = traces.find(t => t.id === traceId)
             if (trace) {
-              console.log('Teleporting to trace:', {
-                id: trace.id,
-                tracePos: { x: trace.x, y: trace.y },
-                currentCamera: { ...cameraPositionRef.current },
-                currentPlayer: { ...positionRef.current }
-              })
               // Set camera to trace position
               cameraPositionRef.current.x = trace.x
               cameraPositionRef.current.y = trace.y
-              console.log('New camera position:', { ...cameraPositionRef.current })
+              // Camera position updated
             } else {
               console.warn('Trace not found:', traceId)
             }
@@ -1222,6 +1259,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       isPublic: data.is_public,
                       createdAt: data.created_at,
                       updatedAt: data.updated_at,
+                      themeSettings: data.theme_settings,
                     })
                   }
                 })
