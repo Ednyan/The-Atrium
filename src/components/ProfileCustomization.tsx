@@ -153,7 +153,7 @@ export default function ProfileCustomization({ onClose, position }: ProfileCusto
           {/* Color Picker */}
           <div>
             <label className="block text-white/80 text-sm font-semibold mb-2">
-              Player Color
+              Cursor Color
             </label>
             <div className="grid grid-cols-5 gap-2 mb-2">
               {PRESET_COLORS.map((color) => (

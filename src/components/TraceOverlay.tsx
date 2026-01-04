@@ -69,6 +69,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceId: string } | null>(null)
   const [playingMedia, setPlayingMedia] = useState<Set<string>>(new Set()) // Track traces with playing media
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
   const [pathCreationMode, setPathCreationMode] = useState(false) // Track if we're in path creation mode
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
   const [localShapePoints, setLocalShapePoints] = useState<Record<string, any[]>>({}) // Track shape points during drag
@@ -76,23 +77,28 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
   const hasEyeDropperSupport = typeof window !== 'undefined' && 'EyeDropper' in window
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
+  const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
   
   const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
   const startCropRef = useRef({ cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 })
   const centerRef = useRef({ x: 0, y: 0 })
+  const multiStartTransformsRef = useRef<Record<string, { x: number; y: number }>>({}) // Store starting positions for multi-select move
+  const multiStartPathPointsRef = useRef<Record<string, any[]>>({}) // Store starting shapePoints for path traces in multi-select
   
   // Refs to store latest values for event handlers (to avoid stale closures)
   const tracesRef = useRef(traces)
   const editingTraceRef = useRef(editingTrace)
   const localShapePointsRef = useRef(localShapePoints)
   const zoomRef = useRef(zoom)
+  const multiSelectedIdsRef = useRef(multiSelectedIds)
   
   // Keep refs updated
   useEffect(() => { tracesRef.current = traces }, [traces])
   useEffect(() => { editingTraceRef.current = editingTrace }, [editingTrace])
   useEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
   useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => { multiSelectedIdsRef.current = multiSelectedIds }, [multiSelectedIds])
 
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
@@ -231,6 +237,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return
         }
         setSelectedTraceId(null)
+        setMultiSelectedIds(new Set()) // Clear multi-selection on Escape
         setTransformMode('none')
         setIsCropMode(false)
         setContextMenu(null)
@@ -615,9 +622,37 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
     
     // Disable move/rotate/scale for path shapes - they're controlled by point editing
-    if (trace.type === 'shape' && trace.shapeType === 'path' && mode === 'move') return
+    // EXCEPT when multi-selected, then allow moving
+    const isPathWithMultiSelect = trace.type === 'shape' && trace.shapeType === 'path' && mode === 'move'
+    if (isPathWithMultiSelect && multiSelectedIds.size === 0) return
     
     e.stopPropagation()
+    
+    // Handle multi-select with Shift key
+    if (e.shiftKey && mode === 'move') {
+      setMultiSelectedIds(prev => {
+        const next = new Set(prev)
+        if (next.has(trace.id)) {
+          next.delete(trace.id) // Deselect if already selected
+        } else {
+          next.add(trace.id) // Add to selection
+        }
+        // Also add the currently selected trace if not already in selection
+        if (selectedTraceId && !next.has(selectedTraceId)) {
+          next.add(selectedTraceId)
+        }
+        return next
+      })
+      setSelectedTraceId(trace.id)
+      return // Don't start dragging on shift-click, just toggle selection
+    }
+    
+    // If clicking on a trace that's part of multi-selection, keep the selection
+    // Otherwise, clear multi-selection
+    if (!multiSelectedIds.has(trace.id)) {
+      setMultiSelectedIds(new Set())
+    }
+    
     setSelectedTraceId(trace.id)
     setTransformMode(mode)
     setCursorState('grabbing') // Change cursor to grabbing while dragging
@@ -625,17 +660,41 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // Prevent text selection during drag
     document.body.classList.add('dragging')
     
-  const transform = getTraceTransform(trace)
-  startPosRef.current = { x: e.clientX, y: e.clientY, corner: corner || '' }
-  // copy transform including scaleX/scaleY
-  startTransformRef.current = { ...transform }
-  // Store starting crop values
-  startCropRef.current = {
-    cropX: trace.cropX ?? 0,
-    cropY: trace.cropY ?? 0,
-    cropWidth: trace.cropWidth ?? 1,
-    cropHeight: trace.cropHeight ?? 1,
-  }
+    const transform = getTraceTransform(trace)
+    startPosRef.current = { x: e.clientX, y: e.clientY, corner: corner || '' }
+    // copy transform including scaleX/scaleY
+    startTransformRef.current = { ...transform }
+    // Store starting crop values
+    startCropRef.current = {
+      cropX: trace.cropX ?? 0,
+      cropY: trace.cropY ?? 0,
+      cropWidth: trace.cropWidth ?? 1,
+      cropHeight: trace.cropHeight ?? 1,
+    }
+    
+    // Store starting transforms for all multi-selected traces
+    if (multiSelectedIds.size > 0 && (mode === 'move' || mode === 'move-path')) {
+      const startTransforms: Record<string, { x: number; y: number }> = {}
+      const startPathPoints: Record<string, any[]> = {}
+      multiSelectedIds.forEach(id => {
+        const t = traces.find(tr => tr.id === id)
+        if (t) {
+          const tTransform = getTraceTransform(t)
+          startTransforms[id] = { x: tTransform.x, y: tTransform.y }
+          // For path shapes, also store starting shapePoints
+          if (t.type === 'shape' && t.shapeType === 'path' && t.shapePoints) {
+            startPathPoints[id] = t.shapePoints.map(p => ({ ...p }))
+          }
+        }
+      })
+      // Also include the clicked trace
+      startTransforms[trace.id] = { x: transform.x, y: transform.y }
+      if (trace.type === 'shape' && trace.shapeType === 'path' && trace.shapePoints) {
+        startPathPoints[trace.id] = trace.shapePoints.map(p => ({ ...p }))
+      }
+      multiStartTransformsRef.current = startTransforms
+      multiStartPathPointsRef.current = startPathPoints
+    }
     
     const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
     centerRef.current = { x: screenX, y: screenY }
@@ -669,10 +728,52 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
       
-      updateTraceTransform(selectedTraceId, {
-        x: startTransformRef.current.x + worldDeltaX,
-        y: startTransformRef.current.y + worldDeltaY,
-      })
+      // Check if we have multi-selected traces to move together
+      const currentMultiSelected = multiSelectedIdsRef.current
+      if (currentMultiSelected.size > 0 && Object.keys(multiStartTransformsRef.current).length > 0) {
+        // Move all multi-selected traces together
+        currentMultiSelected.forEach(id => {
+          const t = tracesRef.current.find(tr => tr.id === id)
+          // For path shapes, move all points instead of transform
+          if (t && t.type === 'shape' && t.shapeType === 'path') {
+            const startPoints = multiStartPathPointsRef.current[id]
+            if (startPoints) {
+              const newPoints = startPoints.map(p => {
+                const newP: any = { ...p, x: p.x + worldDeltaX, y: p.y + worldDeltaY }
+                // Also offset control points if they exist
+                if (p.cp1x !== undefined) newP.cp1x = p.cp1x + worldDeltaX
+                if (p.cp1y !== undefined) newP.cp1y = p.cp1y + worldDeltaY
+                if (p.cp2x !== undefined) newP.cp2x = p.cp2x + worldDeltaX
+                if (p.cp2y !== undefined) newP.cp2y = p.cp2y + worldDeltaY
+                return newP
+              })
+              setLocalShapePoints(prev => ({ ...prev, [id]: newPoints }))
+              updateTraceCustomization(id, { shapePoints: newPoints })
+            }
+          } else {
+            const startPos = multiStartTransformsRef.current[id]
+            if (startPos) {
+              updateTraceTransform(id, {
+                x: startPos.x + worldDeltaX,
+                y: startPos.y + worldDeltaY,
+              })
+            }
+          }
+        })
+        // Also move the main selected trace if not in multi-select
+        if (!currentMultiSelected.has(selectedTraceId)) {
+          updateTraceTransform(selectedTraceId, {
+            x: startTransformRef.current.x + worldDeltaX,
+            y: startTransformRef.current.y + worldDeltaY,
+          })
+        }
+      } else {
+        // Single trace move
+        updateTraceTransform(selectedTraceId, {
+          x: startTransformRef.current.x + worldDeltaX,
+          y: startTransformRef.current.y + worldDeltaY,
+        })
+      }
     } else if (transformMode === 'crop') {
       // Handle crop area adjustment
       const { width, height } = getTraceSize(trace)
@@ -891,6 +992,42 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       
       // Update local state for instant feedback, DB update on mouseup
       setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
+      
+      // Also move other multi-selected traces
+      const currentMultiSelected = multiSelectedIdsRef.current
+      if (currentMultiSelected.size > 0) {
+        currentMultiSelected.forEach(id => {
+          if (id === selectedTraceId) return // Already handled above
+          const t = tracesRef.current.find(tr => tr.id === id)
+          if (!t) return
+          
+          // For path shapes, move all points
+          if (t.type === 'shape' && t.shapeType === 'path') {
+            const startPoints = multiStartPathPointsRef.current[id]
+            if (startPoints) {
+              const newPathPoints = startPoints.map(p => ({
+                x: p.x + worldDeltaX,
+                y: p.y + worldDeltaY,
+                cp1x: p.cp1x !== undefined ? p.cp1x + worldDeltaX : undefined,
+                cp1y: p.cp1y !== undefined ? p.cp1y + worldDeltaY : undefined,
+                cp2x: p.cp2x !== undefined ? p.cp2x + worldDeltaX : undefined,
+                cp2y: p.cp2y !== undefined ? p.cp2y + worldDeltaY : undefined,
+              }))
+              setLocalShapePoints(prev => ({ ...prev, [id]: newPathPoints }))
+              updateTraceCustomization(id, { shapePoints: newPathPoints })
+            }
+          } else {
+            // For non-path traces, move by transform
+            const startPos = multiStartTransformsRef.current[id]
+            if (startPos) {
+              updateTraceTransform(id, {
+                x: startPos.x + worldDeltaX,
+                y: startPos.y + worldDeltaY,
+              })
+            }
+          }
+        })
+      }
     }
   }
 
@@ -1028,6 +1165,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           !clickTarget.closest('select') &&
           !clickTarget.closest('input')) {
         setSelectedTraceId(null)
+        setMultiSelectedIds(new Set()) // Clear multi-selection when clicking outside
         setTransformMode('none')
         setIsCropMode(false)
       }
@@ -1343,6 +1481,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const { width, height } = getTraceSize(trace)
         const borderColor = getBorderColor(trace.type)
         const isSelected = selectedTraceId === trace.id
+        const isMultiSelected = multiSelectedIds.has(trace.id)
 
         // Apply customization defaults
         const showBorder = trace.showBorder ?? true
@@ -1476,6 +1615,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     height: `${borderHeight}px`,
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     overflow: 'hidden',
+                    outline: isMultiSelected ? '3px solid #60a5fa' : 'none',
+                    outlineOffset: '2px',
+                    boxShadow: isMultiSelected ? '0 0 20px rgba(96, 165, 250, 0.5)' : 'none',
                   }}
                 >
                   {(() => {
@@ -1581,7 +1723,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   style={{
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `3px solid ${isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : borderColor}` : 'none',
+                    border: showBorder ? `3px solid ${isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : isMultiSelected ? '#60a5fa' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
                     padding: '0px',
@@ -1590,6 +1732,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       ? '0 0 20px rgba(156, 163, 175, 0.6)'
                       : isSelected 
                       ? '0 0 20px rgba(255, 255, 255, 0.5)' 
+                      : isMultiSelected
+                      ? '0 0 20px rgba(96, 165, 250, 0.5)'
                       : (showBackground ? '0 4px 12px rgba(0, 0, 0, 0.8)' : 'none'),
                     overflow: 'hidden',
                   }}
@@ -1605,10 +1749,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     }}
                   >
               {/* Image Content */}
-              {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && (
+              {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
                 <img
                   src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
-                  alt={trace.content || 'Trace image'}
+                  alt=""
                   crossOrigin="anonymous"
                   className="w-full h-full object-contain pointer-events-none select-none"
                   style={{ 
@@ -1624,17 +1768,29 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
                       }))
                     }
+                    // Clear from failed if it was there
+                    setFailedImages(prev => {
+                      const next = new Set(prev)
+                      next.delete(trace.id)
+                      return next
+                    })
+                  }}
+                  onError={() => {
+                    // Mark image as failed to show placeholder instead
+                    setFailedImages(prev => new Set(prev).add(trace.id))
                   }}
                 />
               )}
               
-              {/* Image placeholder */}
-              {trace.type === 'image' && !trace.mediaUrl && !trace.imageUrl && (
+              {/* Image placeholder - shown when no URL or when image failed to load */}
+              {trace.type === 'image' && (!trace.mediaUrl && !trace.imageUrl || failedImages.has(trace.id)) && (
                 <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
                   <span className="text-4xl mb-2">🖼️</span>
-                  <p className="text-xs text-white/60 text-center">
-                    {trace.content || 'No image URL'}
-                  </p>
+                  {showDescription && trace.content && (
+                    <p className="text-xs text-white/60 text-center">
+                      {trace.content}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1720,12 +1876,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 // Check if the embed URL is actually a direct image
                 const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
                 
-                if (isDirectImage) {
+                if (isDirectImage && !failedImages.has(trace.id)) {
                   // Render as image, not iframe
                   return (
                     <img
                       src={imageProxySources[trace.id] || trace.mediaUrl}
-                      alt={trace.content || 'Embedded image'}
+                      alt=""
                       crossOrigin="anonymous"
                       className="w-full h-full object-contain pointer-events-none select-none"
                       style={{ 
@@ -1741,8 +1897,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
                           }))
                         }
+                        setFailedImages(prev => {
+                          const next = new Set(prev)
+                          next.delete(trace.id)
+                          return next
+                        })
+                      }}
+                      onError={() => {
+                        setFailedImages(prev => new Set(prev).add(trace.id))
                       }}
                     />
+                  )
+                }
+                
+                // Show placeholder if direct image failed to load
+                if (isDirectImage && failedImages.has(trace.id)) {
+                  return (
+                    <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
+                      <span className="text-4xl mb-2">🖼️</span>
+                      {showDescription && trace.content && (
+                        <p className="text-xs text-white/60 text-center">
+                          {trace.content}
+                        </p>
+                      )}
+                    </div>
                   )
                 }
                 
@@ -1906,6 +2084,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   }}
                 >
                   {trace.username}
+                </div>
+              )}
+
+              {/* Description label - shown to the right of media traces when enabled */}
+              {showDescription && trace.content && (trace.type === 'image' || trace.type === 'video' || trace.type === 'embed') && (
+                <div
+                  className="absolute text-xs pointer-events-none select-none"
+                  style={{
+                    left: `${borderWidth + 12}px`,
+                    top: '0px',
+                    maxWidth: '200px',
+                    color: 'rgba(255, 255, 255, 0.8)',
+                    lineHeight: '1.4',
+                    textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
+                  }}
+                >
+                  {trace.content}
                 </div>
               )}
             </div>
@@ -2278,6 +2473,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             }
           }
           
+          const isPathMultiSelected = multiSelectedIds.has(trace.id)
+          
           return (
             <svg
               key={`path-${trace.id}`}
@@ -2294,6 +2491,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             >
               {curveType === 'bezier' ? (
                 <>
+                  {/* Multi-selection glow effect */}
+                  {isPathMultiSelected && (
+                    <path
+                      d={pathData}
+                      fill="none"
+                      stroke="#60a5fa"
+                      strokeWidth={outlineWidth + 6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity={0.5}
+                      style={{ pointerEvents: 'none', filter: 'blur(3px)' }}
+                    />
+                  )}
                   {/* Invisible wider stroke for easier clicking */}
                   <path
                     d={pathData}
@@ -2305,7 +2515,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
                     onClick={(e) => {
                       e.stopPropagation()
-                      setSelectedTraceId(trace.id)
+                      if (e.shiftKey) {
+                        // Toggle multi-selection - same logic as handleMouseDown
+                        setMultiSelectedIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(trace.id)) {
+                            next.delete(trace.id)
+                          } else {
+                            next.add(trace.id)
+                          }
+                          // Also add the currently selected trace if not already in selection
+                          if (selectedTraceId && !next.has(selectedTraceId)) {
+                            next.add(selectedTraceId)
+                          }
+                          return next
+                        })
+                        setSelectedTraceId(trace.id)
+                      } else {
+                        setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
+                        setSelectedTraceId(trace.id)
+                      }
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault()
@@ -2327,6 +2556,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </>
               ) : (
                 <>
+                  {/* Multi-selection glow effect for polyline */}
+                  {isPathMultiSelected && (
+                    <polyline
+                      points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                      fill="none"
+                      stroke="#60a5fa"
+                      strokeWidth={outlineWidth + 6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity={0.5}
+                      style={{ pointerEvents: 'none', filter: 'blur(3px)' }}
+                    />
+                  )}
                   {/* Invisible wider stroke for easier clicking */}
                   <polyline
                     points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
@@ -2338,7 +2580,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
                     onClick={(e) => {
                       e.stopPropagation()
-                      setSelectedTraceId(trace.id)
+                      if (e.shiftKey) {
+                        // Toggle multi-selection - same logic as handleMouseDown
+                        setMultiSelectedIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(trace.id)) {
+                            next.delete(trace.id)
+                          } else {
+                            next.add(trace.id)
+                          }
+                          // Also add the currently selected trace if not already in selection
+                          if (selectedTraceId && !next.has(selectedTraceId)) {
+                            next.add(selectedTraceId)
+                          }
+                          return next
+                        })
+                        setSelectedTraceId(trace.id)
+                      } else {
+                        setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
+                        setSelectedTraceId(trace.id)
+                      }
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault()
@@ -2496,9 +2757,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         })()}
 
         {/* Render regular handles (corner, edge, rotation) as absolute overlay for non-path shapes */}
+        {/* Also show for paths when they're part of a multi-selection so they can be moved together */}
         {selectedTraceId && !isCropMode && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
-          if (!trace || (trace.type === 'shape' && trace.shapeType === 'path')) return null
+          const isPathInMultiSelect = trace?.type === 'shape' && trace?.shapeType === 'path' && multiSelectedIds.size > 0
+          // Hide for paths unless they're in a multi-selection
+          if (!trace || (trace.type === 'shape' && trace.shapeType === 'path' && !isPathInMultiSelect)) return null
           
           const transform = localTraceTransforms[trace.id] || getTraceTransform(trace)
           const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
@@ -3873,7 +4137,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {modalTrace.type === 'image' && modalTrace.mediaUrl && (
                 <img
                   src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
-                  alt={modalTrace.content || 'Trace image'}
+                  alt=""
                   crossOrigin="anonymous"
                   className="w-full max-h-96 object-contain"
                 />

@@ -79,6 +79,12 @@ function App() {
                   setCurrentLobbyId(null)
                   setShowLobbyBrowser(true)
                   localStorage.setItem(STORAGE_KEYS.SHOW_BROWSER, 'true')
+                } else {
+                  // Lobby exists - restore active_lobby_id (may have been cleared on page unload)
+                  await (supabase
+                    .from('profiles') as any)
+                    .update({ active_lobby_id: storedLobbyId })
+                    .eq('id', session.user.id)
                 }
               }
             }
@@ -127,6 +133,44 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, [setUsername, setUserId])
+
+  // Clear active_lobby_id when browser/tab is closed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (supabase && currentLobbyId) {
+        // Get stored session synchronously from localStorage
+        const storageKey = `sb-${import.meta.env.VITE_SUPABASE_URL?.replace('https://', '').split('.')[0]}-auth-token`
+        const storedSession = localStorage.getItem(storageKey)
+        if (storedSession) {
+          try {
+            const session = JSON.parse(storedSession)
+            const accessToken = session?.access_token
+            const userId = session?.user?.id
+            
+            if (accessToken && userId) {
+              // Use fetch with keepalive to ensure request completes after page unload
+              fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+                method: 'PATCH',
+                headers: {
+                  'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json',
+                  'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify({ active_lobby_id: null }),
+                keepalive: true
+              })
+            }
+          } catch (e) {
+            // Ignore parsing errors on unload
+          }
+        }
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [currentLobbyId])
 
   // Persist navigation state changes
   useEffect(() => {
@@ -200,7 +244,18 @@ function App() {
     }
   }
 
-  const handleLeaveLobby = () => {
+  const handleLeaveLobby = async () => {
+    // Clear active_lobby_id in database so player count updates correctly
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await (supabase
+          .from('profiles') as any)
+          .update({ active_lobby_id: null })
+          .eq('id', user.id)
+      }
+    }
+    
     // Clear all lobby-specific data from store to free memory
     clearLobbyData()
     setCurrentLobbyId(null)

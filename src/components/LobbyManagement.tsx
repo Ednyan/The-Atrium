@@ -101,13 +101,12 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
     if (!supabase) return
 
     try {
+      const trimmedPassword = password.trim()
       const updates: any = {
         name: lobbyName,
         is_public: isPublic,
-      }
-
-      if (password) {
-        updates.password_hash = password // In production, hash this properly
+        // Set password_hash to null if empty (makes lobby public), otherwise set the password
+        password_hash: trimmedPassword || null,
       }
 
       const { error } = await (supabase!
@@ -119,7 +118,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
       onUpdate()
       setError(null)
-      alert('Lobby settings updated!')
+      alert('Atrium settings updated!')
     } catch (err: any) {
       console.error('Error updating lobby:', err)
       setError(err.message || 'Failed to update lobby')
@@ -177,7 +176,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
         {/* Header */}
         <div className="p-6 border-b border-lobby-accent/30">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-lobby-accent">⚙️ Manage Lobby</h2>
+            <h2 className="text-2xl font-bold text-lobby-accent">⚙️ Manage Atrium</h2>
             <button
               onClick={onClose}
               className="text-white/60 hover:text-white text-2xl leading-none"
@@ -231,7 +230,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
           {activeTab === 'settings' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-white mb-2">Lobby Name</label>
+                <label className="block text-white mb-2">Atrium Name</label>
                 <input
                   type="text"
                   value={lobbyName}

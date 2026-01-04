@@ -228,7 +228,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
               Content Type
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {(['text', 'image', 'audio', 'video', 'embed', 'shape'] as const).map((type) => (
+              {(['text', 'embed', 'shape'] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
@@ -240,14 +240,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                   }`}
                 >
                   {type === 'text' && '◇ Text'}
-                  {type === 'image' && '◇ Image'}
-                  {type === 'audio' && '◇ Audio'}
-                  {type === 'video' && '◇ Video'}
                   {type === 'embed' && '◇ Embed'}
                   {type === 'shape' && '◇ Shape'}
                 </button>
               ))}
             </div>
+            {/* Disabled trace types (kept for future use): image, audio, video */}
           </div>
 
           {/* Text Content */}

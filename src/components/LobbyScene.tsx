@@ -62,6 +62,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
+  const [onlinePlayerCount, setOnlinePlayerCount] = useState(1) // Start with 1 (self)
   
   const { username, position, setPosition, otherUsers, traces, userId } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
@@ -119,6 +120,50 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   useEffect(() => {
     otherUsersRef.current = otherUsers
   }, [otherUsers])
+  
+  // T key shortcut to open trace panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      
+      if (e.key === 't' || e.key === 'T') {
+        e.preventDefault()
+        e.stopPropagation()
+        setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
+        setShowTracePanel(prev => !prev)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+  
+  // Refresh online player count every 10 minutes
+  useEffect(() => {
+    if (!supabase || !lobbyId) return
+    
+    const fetchPlayerCount = async () => {
+      const { count } = await (supabase!
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('active_lobby_id', lobbyId) as any)
+      
+      const newCount = (count || 0)
+      // Only update if count changed
+      if (newCount !== onlinePlayerCount) {
+        setOnlinePlayerCount(newCount)
+      }
+    }
+    
+    // Initial fetch
+    fetchPlayerCount()
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchPlayerCount, 30 * 1000)
+    
+    return () => clearInterval(interval)
+  }, [lobbyId, onlinePlayerCount])
   
   // Handle closing trace panel
   const handleCloseTracePanel = () => {
@@ -986,29 +1031,30 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       </div>
 
       {/* HUD */}
-      <div data-ui-element="true" className="fixed top-4 left-4 bg-black px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+      <div data-ui-element="true" className="fixed top-4 left-4 bg-black px-3 py-2 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
         {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
-        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white"></div>
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white"></div>
+        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white"></div>
+        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white"></div>
+        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white"></div>
+        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white"></div>
         
-        <p className="text-white text-[11px] tracking-[0.15em] uppercase">
-          <span className="font-bold">{username}</span>
-        </p>
+        {/* Header with username and online count */}
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-white text-[10px] tracking-[0.1em] uppercase font-bold truncate">
+            {username}
+          </p>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-green-400 text-[8px]">{onlinePlayerCount}</span>
+          </div>
+        </div>
         {currentLobby && (
-          <p className="text-gray-300 text-[9px] tracking-wider">
+          <p className="text-gray-300 text-[8px] tracking-wider truncate">
             {currentLobby.name} {isLobbyOwner && '(Owner)'}
           </p>
         )}
-        <p className="text-gray-400 text-[9px] tracking-wider">
-          {Object.keys(otherUsers).length} online
-        </p>
-        <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
-          ({Math.round(position.x)}, {Math.round(position.y)})
-        </p>
-        <p className="text-gray-400 text-[9px] tracking-wider">
-          {zoomRef.current.toFixed(2)}x
+        <p className="text-gray-500 text-[8px] tracking-wider">
+          ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
         </p>
         <button
           onClick={() => {
@@ -1017,21 +1063,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffsetRef.current = { x: 0, y: 0 }
             setWorldOffset({ x: 0, y: 0 })
           }}
-          className="w-full mt-2 bg-gray-800 border border-gray-500 hover:border-white text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all"
+          className="w-full mt-1.5 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
         >
-          ◇ Recenter
+          Recenter
         </button>
         <div className="flex gap-1 mt-1">
           <button
             onClick={onLeaveLobby}
-            className="flex-1 bg-red-800 hover:bg-red-600 text-white px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
+            className="flex-1 bg-red-900 hover:bg-red-700 text-white px-1 py-0.5 text-[8px] tracking-wider uppercase transition-all"
           >
             Leave
           </button>
           {isLobbyOwner && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
-              className="flex-1 bg-white hover:bg-gray-200 text-black px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
+              className="flex-1 bg-white hover:bg-gray-200 text-black px-1 py-0.5 text-[8px] tracking-wider uppercase transition-all"
             >
               Manage
             </button>
@@ -1043,23 +1089,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               navigator.clipboard.writeText(currentLobby.id)
               alert('Lobby ID copied! Share this with others to invite them.')
             }}
-            className="w-full mt-1 bg-gray-800 border border-gray-500 hover:border-white text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all"
+            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
           >
-            ◇ Copy Lobby ID
+            Copy ID
           </button>
         )}
         <button
           onClick={() => setShowProfileCustomization(true)}
-          className="w-full mt-1 bg-gray-700 border border-gray-500 hover:border-white text-white px-2 py-1 text-[9px] tracking-wider uppercase transition-all"
+          className="w-full mt-1 bg-gray-700 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
         >
-          ◇ Customize User
+          Profile
         </button>
         {isLobbyOwner && (
           <button
             onClick={() => setShowThemeCustomization(true)}
-            className="w-full mt-1 bg-gray-800 border border-gray-500 hover:border-white text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all"
+            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
           >
-            ◇ Background Theme
+            Theme
           </button>
         )}
       </div>
@@ -1129,13 +1175,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <span className="text-gray-500">◇</span> Pan : Left Click + Drag
           </p>
           <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Menu : Right Click
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Move : WASD / Arrows
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
             <span className="text-gray-500">◇</span> Zoom : Mouse Wheel
+          </p>
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Leave Trace : "T" Key
+          </p>
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Select Traces : Left Click Trace
+          </p>
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Move Traces : Left Click Trace + Drag
+          </p>
+          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+            <span className="text-gray-500">◇</span> Edit Traces : Select Trace + Right Click
           </p>
         </div>
       </div>

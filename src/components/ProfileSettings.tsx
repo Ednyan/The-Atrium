@@ -15,6 +15,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  
+  // Password change state
+  const [showPasswordChange, setShowPasswordChange] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
 
   useEffect(() => {
     loadProfile()
@@ -93,8 +101,64 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     }
   }
 
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError('')
+    setPasswordSuccess(false)
+    setPasswordLoading(true)
+
+    if (!supabase) {
+      setPasswordError('Authentication not available')
+      setPasswordLoading(false)
+      return
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters')
+      setPasswordLoading(false)
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      setPasswordLoading(false)
+      return
+    }
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+
+      if (updateError) throw updateError
+
+      setPasswordSuccess(true)
+      setNewPassword('')
+      setConfirmPassword('')
+      
+      setTimeout(() => {
+        setShowPasswordChange(false)
+        setPasswordSuccess(false)
+      }, 2000)
+    } catch (err: any) {
+      setPasswordError(err.message || 'Failed to update password')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
     if (!supabase) return
+    
+    // Clear active_lobby_id before signing out
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await (supabase
+        .from('profiles') as any)
+        .update({ active_lobby_id: null })
+        .eq('id', user.id)
+    }
+    
     await supabase.auth.signOut()
     onClose()
   }
@@ -166,6 +230,69 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               {loading ? 'Updating...' : 'Update Display Name'}
             </button>
           </form>
+
+          <hr className="border-white/20 my-4" />
+
+          {/* Password Change Section */}
+          <div>
+            <button
+              onClick={() => setShowPasswordChange(!showPasswordChange)}
+              className="w-full text-left text-white/80 text-sm font-semibold mb-2 flex items-center justify-between hover:text-white transition-colors"
+            >
+              <span>Change Password</span>
+              <span className="text-white/40">{showPasswordChange ? '▼' : '▶'}</span>
+            </button>
+            
+            {showPasswordChange && (
+              <form onSubmit={handlePasswordChange} className="space-y-3 mt-3">
+                <div>
+                  <label className="block text-white/60 text-xs mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-lobby-accent"
+                    placeholder="••••••••"
+                    minLength={6}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-white/60 text-xs mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-lobby-accent"
+                    placeholder="••••••••"
+                    minLength={6}
+                    required
+                  />
+                </div>
+
+                {passwordError && (
+                  <div className="bg-red-500/20 border border-red-500 rounded px-3 py-2 text-red-200 text-xs">
+                    {passwordError}
+                  </div>
+                )}
+
+                {passwordSuccess && (
+                  <div className="bg-green-500/20 border border-green-500 rounded px-3 py-2 text-green-200 text-xs">
+                    ✓ Password updated successfully!
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={passwordLoading || !newPassword || !confirmPassword}
+                  className="w-full bg-lobby-accent/80 hover:bg-lobby-accent disabled:bg-lobby-accent/30 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded text-sm transition-colors"
+                >
+                  {passwordLoading ? 'Updating...' : 'Update Password'}
+                </button>
+              </form>
+            )}
+          </div>
 
           <hr className="border-white/20 my-4" />
 

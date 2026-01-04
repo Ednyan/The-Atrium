@@ -267,7 +267,7 @@ export class ThemeManager {
       worldX: worldX, // Store grid position, not sprite.x
       worldY: worldY, // Store grid position, not sprite.y
       targetAlpha: targetAlpha,
-      fadeSpeed: 0.02 // Fade in over ~50 frames
+      fadeSpeed: 0.08 // Faster fade for smoother transitions
     });
   }
 
@@ -431,8 +431,8 @@ export class ThemeManager {
     const worldViewportHeight = viewportHeight / zoom
     
     // Fade zones as multipliers of half-width/half-height
-    const fadeStartMultiplier = 0.7 // Start fade at 70% of viewport edge
-    const fadeEndMultiplier = 1.2 // Fully fade at 120% of viewport edge
+    const fadeStartMultiplier = 0.85 // Start fade at 85% of viewport edge (more gradual)
+    const fadeEndMultiplier = 1.4 // Fully fade at 140% of viewport edge (more buffer)
     
     const generationRadius = 800 // Same as generation radius
     
@@ -490,11 +490,10 @@ export class ThemeManager {
         element.sprite.alpha = Math.max(element.targetAlpha, element.sprite.alpha - element.fadeSpeed)
       }
       
-      // Only remove elements that meet ALL these conditions:
-      // 1. Fully faded out (alpha <= 0.01)
-      // 2. Either: far from viewport (normalized distance > fadeEnd) OR shouldn't exist (not near player/trace)
-      const isFarFromViewport = normalizedDistance > fadeEndMultiplier * 1.5
-      if (element.sprite.alpha <= 0.01 && (isFarFromViewport || !shouldExist)) {
+      // Only remove elements that are VERY far from viewport to prevent re-creation flicker
+      // Keep faded elements in memory if they're within reasonable distance
+      const isFarFromViewport = normalizedDistance > 2.5 // Much larger buffer
+      if (element.sprite.alpha <= 0.01 && isFarFromViewport && !shouldExist) {
         this.groundContainer.removeChild(element.sprite)
         element.sprite.destroy()
         return false

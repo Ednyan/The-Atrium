@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Lobby } from '../types/database'
 
@@ -26,10 +26,97 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [passwordInput, setPasswordInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [canCreateMore, setCanCreateMore] = useState(true)
+  const [editingLobbyId, setEditingLobbyId] = useState<string | null>(null)
+  const [editingLobbyName, setEditingLobbyName] = useState('')
 
+  // Memoize particle positions (fireflies)
+  const particles = useMemo(() => 
+    [...Array(15)].map((_, i) => ({
+      left: `${(i * 17 + 3) % 96}%`,
+      top: `${(i * 23 + 5) % 94}%`,
+      duration: 8 + (i * 1.5) % 6,
+      delay: i * 0.5,
+    })), []
+  )
+
+  // Memoize background rectangles (trace-like elements)
+  const backgroundRects = useMemo(() => 
+    [...Array(10)].map((_, i) => ({
+      left: `${(i * 19 + 7) % 90}%`,
+      top: `${(i * 31 + 12) % 85}%`,
+      width: 30 + (i * 17) % 80,
+      height: 15 + (i * 13) % 40,
+      rotation: (i * 7) % 15 - 7,
+      delay: i * 0.3,
+    })), []
+  )
+
+  // Initial load and clear active_lobby_id (user is browsing, not in a lobby)
   useEffect(() => {
-    loadLobbies()
-    checkCanCreateLobby()
+    const clearAndLoad = async () => {
+      // Clear user's active_lobby_id since they're in the browser (not in a lobby)
+      if (supabase) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await (supabase
+            .from('profiles') as any)
+            .update({ active_lobby_id: null })
+            .eq('id', user.id)
+        }
+      }
+      
+      loadLobbies()
+      checkCanCreateLobby()
+    }
+    
+    clearAndLoad()
+  }, [])
+  
+  // Refresh player counts every 10 minutes
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      if (!supabase) return
+      
+      // Refresh player counts for all lobbies
+      const refreshCounts = async (currentLobbies: LobbyWithOwner[]): Promise<LobbyWithOwner[]> => {
+        if (currentLobbies.length === 0) return currentLobbies
+        
+        const updated = await Promise.all(currentLobbies.map(async (lobby) => {
+          const { count } = await (supabase!
+            .from('profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('active_lobby_id', lobby.id) as any)
+          
+          const newCount = count || 0
+          // Only update if count changed
+          if (newCount !== lobby.playerCount) {
+            return { ...lobby, playerCount: newCount }
+          }
+          return lobby
+        }))
+        return updated
+      }
+      
+      setLobbies(prev => {
+        refreshCounts(prev).then(updated => {
+          if (JSON.stringify(updated) !== JSON.stringify(prev)) {
+            setLobbies(updated)
+          }
+        })
+        return prev
+      })
+      
+      setUserLobbies(prev => {
+        refreshCounts(prev).then(updated => {
+          if (JSON.stringify(updated) !== JSON.stringify(prev)) {
+            setUserLobbies(updated)
+          }
+        })
+        return prev
+      })
+    }, 30 * 1000) // 30 seconds
+    
+    return () => clearInterval(refreshInterval)
   }, [])
 
   const loadLobbies = async () => {
@@ -120,11 +207,16 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         .select('id', { count: 'exact', head: true })
         .eq('active_lobby_id', lobby.id) as any)
 
+      // Check if lobby has password (using RPC since password_hash may not be visible to non-owners)
+      const { data: hasPassword } = await (supabase as any).rpc('lobby_has_password', {
+        p_lobby_id: lobby.id
+      })
+
       return {
         id: lobby.id,
         name: lobby.name,
         ownerUserId: lobby.owner_user_id,
-        passwordHash: lobby.password_hash,
+        passwordHash: hasPassword ? 'protected' : null, // Use hasPassword from RPC instead of raw password_hash
         maxPlayers: lobby.max_players,
         isPublic: lobby.is_public,
         createdAt: lobby.created_at,
@@ -199,11 +291,56 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     }
   }
 
-  const handleJoinClick = (lobby: LobbyWithOwner) => {
-    if (lobby.passwordHash) {
-      setSelectedLobbyId(lobby.id)
-    } else {
-      onJoinLobby(lobby.id)
+  const handleJoinClick = async (lobby: LobbyWithOwner) => {
+    if (!supabase) return
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Check user's access status for this lobby
+      const { data: accessStatus, error: accessError } = await (supabase as any).rpc('get_user_lobby_access_status', {
+        p_lobby_id: lobby.id,
+        p_user_id: user.id
+      })
+
+      console.log('Access status:', accessStatus, 'Error:', accessError)
+
+      // If blacklisted, show error
+      if (accessStatus === 'blacklisted') {
+        setError('You have been blocked from entering this atrium')
+        return
+      }
+
+      // If owner or whitelisted, join directly (no password needed)
+      if (accessStatus === 'owner' || accessStatus === 'whitelisted') {
+        onJoinLobby(lobby.id)
+        return
+      }
+
+      // Check if lobby has password - use RPC or fallback to lobby.passwordHash
+      const { data: hasPassword, error: pwError } = await (supabase as any).rpc('lobby_has_password', {
+        p_lobby_id: lobby.id
+      })
+
+      console.log('Has password RPC result:', hasPassword, 'Error:', pwError)
+      
+      // Use RPC result, or fallback to lobby.passwordHash if RPC fails
+      const needsPassword = hasPassword === true || (pwError && lobby.passwordHash)
+
+      if (needsPassword) {
+        // Show password prompt
+        console.log('Showing password prompt')
+        setPasswordInput('') // Clear any previous input
+        setSelectedLobbyId(lobby.id)
+      } else {
+        // No password required, join directly
+        console.log('Joining directly (no password)')
+        onJoinLobby(lobby.id)
+      }
+    } catch (err) {
+      console.error('Error checking lobby access:', err)
+      setError('Failed to check atrium access')
     }
   }
 
@@ -235,24 +372,98 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     }
   }
 
+  const renameLobby = async (lobbyId: string, newName: string) => {
+    if (!supabase || !newName.trim()) return
+    
+    try {
+      const { error } = await (supabase
+        .from('lobbies') as any)
+        .update({ name: newName.trim() })
+        .eq('id', lobbyId)
+
+      if (error) throw error
+
+      // Update local state for user lobbies
+      setUserLobbies(prev => prev.map(l => 
+        l.id === lobbyId ? { ...l, name: newName.trim() } : l
+      ))
+      // Also update the available servers list
+      setLobbies(prev => prev.map(l => 
+        l.id === lobbyId ? { ...l, name: newName.trim() } : l
+      ))
+      setEditingLobbyId(null)
+      setEditingLobbyName('')
+    } catch (err) {
+      console.error('Error renaming lobby:', err)
+      setError('Failed to rename atrium')
+    }
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
-        <div className="text-nier-bg text-sm tracking-[0.2em] uppercase animate-pulse">◇ Loading lobbies...</div>
+        <div className="text-nier-bg text-sm tracking-[0.2em] uppercase animate-pulse">◇ Loading atriums...</div>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 bg-nier-black/95 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50 p-4">
       {/* Scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
         style={{
           backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
         }}
       />
+
+      {/* Animated background grid */}
+      <div 
+        className="absolute inset-0 pointer-events-none opacity-10"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(218, 212, 187, 0.15) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(218, 212, 187, 0.15) 1px, transparent 1px)
+          `,
+          backgroundSize: '60px 60px',
+        }}
+      />
+
+      {/* Background rectangles (trace-like elements) */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {backgroundRects.map((rect, i) => (
+          <div
+            key={i}
+            className="absolute border border-nier-border/[0.08] bg-nier-border/[0.02]"
+            style={{
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+              transform: `rotate(${rect.rotation}deg)`,
+              animation: `rectFloat ${12 + i % 5}s ease-in-out infinite`,
+              animationDelay: `${rect.delay}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Floating particles (fireflies) */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {particles.map((particle, i) => (
+          <div
+            key={i}
+            className="absolute w-1 h-1 bg-nier-border rounded-full opacity-0"
+            style={{
+              left: particle.left,
+              top: particle.top,
+              animation: `firefly ${particle.duration}s ease-in-out infinite`,
+              animationDelay: `${particle.delay}s`,
+            }}
+          />
+        ))}
+      </div>
       
-      <div className="bg-nier-blackLight border border-nier-border/40 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col relative">
+      <div className="bg-nier-blackLight border border-nier-border/40 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col relative z-10">
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
@@ -265,16 +476,26 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div>
               <div className="flex items-center gap-3 mb-1">
                 <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Lobby Browser</h2>
+                <h2 className="text-lg text-white tracking-[0.15em] uppercase">Atrium Browser</h2>
               </div>
               <p className="text-nier-border/60 text-[10px] tracking-[0.1em] uppercase ml-5">Select destination</p>
             </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-            >
-              ×
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={loadLobbies}
+                disabled={loading}
+                className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-border text-[9px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
+              >
+                <span className={loading ? 'animate-spin' : ''}>↻</span>
+                Refresh
+              </button>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+              >
+                ×
+              </button>
+            </div>
           </div>
           {error && (
             <div className="mt-4 text-nier-bg/80 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2">
@@ -285,11 +506,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {/* Your Lobbies */}
+          {/* Your Atriums */}
           {userLobbies.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Your Lobbies</span>
+                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Your Atriums</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 <span className="text-nier-border/50 text-[10px]">{userLobbies.length}/3</span>
               </div>
@@ -298,7 +519,55 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors group">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
+                        {editingLobbyId === lobby.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editingLobbyName}
+                              onChange={(e) => setEditingLobbyName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  renameLobby(lobby.id, editingLobbyName)
+                                } else if (e.key === 'Escape') {
+                                  setEditingLobbyId(null)
+                                  setEditingLobbyName('')
+                                }
+                              }}
+                              className="bg-nier-blackLight border border-nier-border/40 text-nier-bg px-2 py-1 text-sm tracking-wide focus:border-nier-border/60 transition-colors"
+                              autoFocus
+                              maxLength={50}
+                            />
+                            <button
+                              onClick={() => renameLobby(lobby.id, editingLobbyName)}
+                              className="text-nier-border/60 hover:text-nier-bg text-xs"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingLobbyId(null)
+                                setEditingLobbyName('')
+                              }}
+                              className="text-nier-border/60 hover:text-nier-bg text-xs"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
+                            <button
+                              onClick={() => {
+                                setEditingLobbyId(lobby.id)
+                                setEditingLobbyName(lobby.name)
+                              }}
+                              className="text-nier-border/40 hover:text-nier-border text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Rename"
+                            >
+                              ✎
+                            </button>
+                          </div>
+                        )}
                         <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
                           <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
                           <span>{lobby.isPublic ? '◦ Public' : '◦ Private'}</span>
@@ -339,7 +608,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             {showCreateLobby ? (
               <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
                 <div>
-                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Lobby Name</label>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
                   <input
                     type="text"
                     value={newLobbyName}
@@ -376,7 +645,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     onClick={createLobby}
                     className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
                   >
-                    Create Lobby
+                    Create Atrium
                   </button>
                   <button
                     onClick={() => setShowCreateLobby(false)}
@@ -392,15 +661,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 disabled={!canCreateMore}
                 className="w-full py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                ◇ Create New Lobby
+                ◇ Create New Atrium
               </button>
             )}
           </section>
 
-          {/* Public Lobbies */}
+          {/* Public Atriums */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Available Lobbies</span>
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Available Atriums</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               <span className="text-nier-border/50 text-[10px]">{lobbies.length} found</span>
               <button
@@ -412,7 +681,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </div>
             <div className="grid gap-3">
               {lobbies.length === 0 ? (
-                <div className="text-nier-border/40 text-center py-12 text-xs tracking-wider uppercase">No lobbies available</div>
+                <div className="text-nier-border/40 text-center py-12 text-xs tracking-wider uppercase">No atriums available</div>
               ) : (
                 lobbies.map(lobby => (
                   <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors">
@@ -423,7 +692,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           {!lobby.isPublic && <span className="ml-2 text-nier-border/50 text-[9px]">[Private]</span>}
                         </h4>
                         <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
-                          <span>◇ {lobby.ownerUsername}</span>
+                          <span>Atrium by: ◇ {lobby.ownerUsername}</span>
                           <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
                           {lobby.passwordHash && <span>◦ Secured</span>}
                           {!lobby.isPublic && <span>◦ Whitelisted</span>}
@@ -446,7 +715,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Password Modal */}
       {selectedLobbyId && (
-        <div className="absolute inset-0 bg-nier-black/80 flex items-center justify-center">
+        <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
           <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
             <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
             <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
@@ -459,8 +728,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-              placeholder="Enter lobby password..."
-              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors mb-4"
+              placeholder="Insert password here..."
+              autoComplete="new-password"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/30 focus:border-nier-border/60 transition-colors mb-4"
               autoFocus
             />
             <div className="flex gap-3">
@@ -495,14 +765,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             
             <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-2">◇ Join by ID</h3>
             <p className="text-nier-border/60 text-[10px] tracking-wider mb-4">
-              Enter the lobby ID shared with you by the lobby owner.
+              Enter the atrium ID shared with you by the atrium owner.
             </p>
             <input
               type="text"
               value={lobbyIdInput}
               onChange={(e) => setLobbyIdInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && lobbyIdInput && onJoinLobby(lobbyIdInput)}
-              placeholder="Lobby ID (UUID)..."
+              placeholder="Atrium ID (UUID)..."
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors mb-4 font-mono"
               autoFocus
             />
@@ -533,6 +803,24 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           </div>
         </div>
       )}
+
+      {/* CSS for animations */}
+      <style>{`
+        @keyframes firefly {
+          0% { opacity: 0; transform: translateY(0px) translateX(0px); }
+          10% { opacity: 0.15; }
+          30% { opacity: 0.3; transform: translateY(-20px) translateX(15px); }
+          50% { opacity: 0.25; transform: translateY(-50px) translateX(-10px); }
+          70% { opacity: 0.35; transform: translateY(-30px) translateX(25px); }
+          90% { opacity: 0.1; transform: translateY(-10px) translateX(5px); }
+          100% { opacity: 0; transform: translateY(0px) translateX(0px); }
+        }
+        
+        @keyframes rectFloat {
+          0%, 100% { opacity: 0.6; transform: rotate(var(--rotation, 0deg)) translateY(0px); }
+          50% { opacity: 0.9; transform: rotate(var(--rotation, 0deg)) translateY(-10px); }
+        }
+      `}</style>
     </div>
   )
 }
