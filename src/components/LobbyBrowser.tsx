@@ -480,17 +480,17 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center z-50 font-mono">
-        <div className="relative px-10 py-6">
-          <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
-          <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
-          <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
-          <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
-          <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
-          <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50 font-mono px-4">
+        <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
+          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
+          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
+          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
+          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
+          <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
+          <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
             <div className="h-full bg-white/80 animate-nier-slide" />
           </div>
-          <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+          <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
         </div>
       </div>
     )

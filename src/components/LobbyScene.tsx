@@ -59,7 +59,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     mouseup: ((e: MouseEvent) => void) | null,
     contextmenu: ((e: MouseEvent) => void) | null,
     wheel: ((e: WheelEvent) => void) | null,
-  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null })
+    touchstart: ((e: TouchEvent) => void) | null,
+    touchmove: ((e: TouchEvent) => void) | null,
+    touchend: ((e: TouchEvent) => void) | null,
+  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null })
+  const lastTouchDistRef = useRef<number | null>(null)
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
@@ -533,6 +537,62 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault()
       }
+
+      // --- Touch handlers for mobile ---
+      const handleTouchStart = (e: TouchEvent) => {
+        const target = e.target as HTMLElement
+        const isUI = target.closest('[data-ui-element], [data-trace-element], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto') !== null
+        if (isUI) return
+
+        if (e.touches.length === 1 && !isDrawingModeRef.current) {
+          // Single finger - pan
+          isPanningRef.current = true
+          lastPanPositionRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+        } else if (e.touches.length === 2) {
+          // Two fingers - pinch zoom (stop panning)
+          isPanningRef.current = false
+          const dx = e.touches[0].clientX - e.touches[1].clientX
+          const dy = e.touches[0].clientY - e.touches[1].clientY
+          lastTouchDistRef.current = Math.hypot(dx, dy)
+        }
+      }
+
+      const handleTouchMove = (e: TouchEvent) => {
+        if (isDrawingModeRef.current) return
+        e.preventDefault() // Prevent scroll/rubber-band
+
+        if (e.touches.length === 1 && isPanningRef.current) {
+          const touch = e.touches[0]
+          const deltaX = touch.clientX - lastPanPositionRef.current.x
+          const deltaY = touch.clientY - lastPanPositionRef.current.y
+          const vwW = window.innerWidth / zoomRef.current
+          const vwH = window.innerHeight / zoomRef.current
+          cameraPositionRef.current.x -= (deltaX / window.innerWidth) * vwW
+          cameraPositionRef.current.y -= (deltaY / window.innerHeight) * vwH
+          lastPanPositionRef.current = { x: touch.clientX, y: touch.clientY }
+
+          // Also update cursor position for presence
+          if (worldContainerRef.current) {
+            const worldX = (touch.clientX - worldContainerRef.current.x) / zoomRef.current
+            const worldY = (touch.clientY - worldContainerRef.current.y) / zoomRef.current
+            updateCursorPosition(worldX, worldY)
+          }
+        } else if (e.touches.length === 2 && lastTouchDistRef.current !== null) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX
+          const dy = e.touches[0].clientY - e.touches[1].clientY
+          const dist = Math.hypot(dx, dy)
+          const scale = dist / lastTouchDistRef.current
+          const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current * scale))
+          targetZoomRef.current = newZoom
+          zoomRef.current = newZoom // Immediate for pinch
+          lastTouchDistRef.current = dist
+        }
+      }
+
+      const handleTouchEnd = (_e: TouchEvent) => {
+        isPanningRef.current = false
+        lastTouchDistRef.current = null
+      }
       
       // Store handlers in ref for cleanup (wheel is already set above)
       eventHandlersRef.current.mousedown = handleMouseDown
@@ -544,6 +604,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
       window.addEventListener('contextmenu', handleContextMenu)
+      window.addEventListener('touchstart', handleTouchStart, { passive: false })
+      window.addEventListener('touchmove', handleTouchMove, { passive: false })
+      window.addEventListener('touchend', handleTouchEnd)
+      eventHandlersRef.current.touchstart = handleTouchStart
+      eventHandlersRef.current.touchmove = handleTouchMove
+      eventHandlersRef.current.touchend = handleTouchEnd
 
       // Fluid animation loop
       let pulseTime = 0
@@ -974,7 +1040,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (eventHandlersRef.current.wheel) {
         window.removeEventListener('wheel', eventHandlersRef.current.wheel)
       }
-      eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null }
+      if (eventHandlersRef.current.touchstart) {
+        window.removeEventListener('touchstart', eventHandlersRef.current.touchstart)
+      }
+      if (eventHandlersRef.current.touchmove) {
+        window.removeEventListener('touchmove', eventHandlersRef.current.touchmove)
+      }
+      if (eventHandlersRef.current.touchend) {
+        window.removeEventListener('touchend', eventHandlersRef.current.touchend)
+      }
+      eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null }
       
       // Save camera position for this lobby before cleanup
       try {
@@ -1153,7 +1228,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }, [traces, position])
 
   return (
-    <div className="fixed inset-0 bg-nier-black lobby-scene">
+    <div className="fixed inset-0 bg-nier-black lobby-scene" style={{ touchAction: 'none' }}>
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
         {/* Pixi Canvas */}
@@ -1646,6 +1721,53 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             }}
             onWheel={(e) => e.preventDefault()}
             onContextMenu={(e) => e.preventDefault()}
+            onTouchStart={(e) => {
+              if (e.touches.length === 1) {
+                e.preventDefault()
+                e.stopPropagation()
+                const touch = e.touches[0]
+                const point = { x: touch.clientX, y: touch.clientY }
+                currentStrokeRef.current = [point]
+                smoothedPointRef.current = { ...point }
+                setIsDrawing(true)
+                renderDrawingCanvas()
+              }
+            }}
+            onTouchMove={(e) => {
+              if (isDrawing && e.touches.length === 1) {
+                e.preventDefault()
+                const touch = e.touches[0]
+                const raw = { x: touch.clientX, y: touch.clientY }
+                const smoothing = drawingSmoothingRef.current / 100
+                if (smoothing > 0 && smoothedPointRef.current) {
+                  const alpha = 1 - smoothing
+                  const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha
+                  const sy = smoothedPointRef.current.y + (raw.y - smoothedPointRef.current.y) * alpha
+                  smoothedPointRef.current = { x: sx, y: sy }
+                  currentStrokeRef.current.push({ x: sx, y: sy })
+                } else {
+                  smoothedPointRef.current = { ...raw }
+                  currentStrokeRef.current.push(raw)
+                }
+                renderDrawingCanvas()
+              }
+            }}
+            onTouchEnd={(e) => {
+              if (isDrawing) {
+                e.preventDefault()
+                setIsDrawing(false)
+                const rawPoints = currentStrokeRef.current
+                if (rawPoints.length >= 2) {
+                  setCompletedStrokes(prev => [...prev, {
+                    points: [...rawPoints],
+                    color: drawingColorRef.current,
+                    width: drawingWidthRef.current,
+                    isEraser: isEraserModeRef.current,
+                  }])
+                }
+                currentStrokeRef.current = []
+              }
+            }}
           />
         </>
       )}

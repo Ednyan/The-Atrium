@@ -625,6 +625,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     markTraceChanged(traceId)
   }
 
+  // Touch adapter: converts a TouchEvent into a fake React.MouseEvent for handleMouseDown
+  const handleTouchDown = (e: React.TouchEvent, trace: Trace, mode: TransformMode, corner?: string) => {
+    if (e.touches.length !== 1) return
+    e.preventDefault()
+    const touch = e.touches[0]
+    // Create a synthetic React-like MouseEvent from the touch
+    const synth = {
+      button: 0,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      shiftKey: false,
+      stopPropagation: () => e.stopPropagation(),
+      preventDefault: () => e.preventDefault(),
+    } as unknown as React.MouseEvent
+    handleMouseDown(synth, trace, mode, corner)
+  }
+
   const handleMouseDown = (e: React.MouseEvent, trace: Trace, mode: TransformMode, corner?: string) => {
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
     
@@ -1096,10 +1113,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // Reset cursor state when done dragging
     setCursorState('default')
     
-    // If in crop mode, keep crop mode and transform mode active for more adjustments
+    // If in crop mode, clear transform mode but keep isCropMode active for more adjustments
     // For point/control editing, keep the trace selected but clear transform mode
     // This allows clicking on control handles after dragging a point
-    if (transformMode !== 'crop' && transformMode !== 'point' && transformMode !== 'control-in' && transformMode !== 'control-out' && transformMode !== 'move-path') {
+    if (transformMode === 'crop') {
+      setTransformMode('none')
+      // isCropMode stays true so crop handles remain visible
+    } else if (transformMode !== 'point' && transformMode !== 'control-in' && transformMode !== 'control-out' && transformMode !== 'move-path') {
       setTransformMode('none')
     } else if (transformMode === 'point' || transformMode === 'control-in' || transformMode === 'control-out' || transformMode === 'move-path') {
       // For path point editing, keep the point selected but clear transform mode
@@ -1171,6 +1191,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           !clickTarget.closest('button') &&
           !clickTarget.closest('select') &&
           !clickTarget.closest('input')) {
+        // If in crop mode, just exit crop (apply it) without deselecting
+        if (isCropMode) {
+          setIsCropMode(false)
+          setTransformMode('none')
+          return
+        }
         setSelectedTraceId(null)
         setMultiSelectedIds(new Set()) // Clear multi-selection when clicking outside
         setTransformMode('none')
@@ -1192,15 +1218,31 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       window.removeEventListener('click', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedTraceId, pathCreationMode, worldOffset, zoom, traces, editingTrace])
+  }, [selectedTraceId, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode])
 
   useEffect(() => {
     if (transformMode !== 'none') {
+      // Touch wrappers that forward to existing mouse handlers
+      const handleTouchMoveGlobal = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+          e.preventDefault()
+          const touch = e.touches[0]
+          handleMouseMove({ clientX: touch.clientX, clientY: touch.clientY } as MouseEvent)
+        }
+      }
+      const handleTouchEndGlobal = () => {
+        handleMouseUp()
+      }
+
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
+      window.addEventListener('touchmove', handleTouchMoveGlobal, { passive: false })
+      window.addEventListener('touchend', handleTouchEndGlobal)
       return () => {
         window.removeEventListener('mousemove', handleMouseMove)
         window.removeEventListener('mouseup', handleMouseUp)
+        window.removeEventListener('touchmove', handleTouchMoveGlobal)
+        window.removeEventListener('touchend', handleTouchEndGlobal)
       }
     }
   }, [transformMode, selectedTraceId])
@@ -1344,7 +1386,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [visibleTraces, playerZIndex])
 
   return (
-    <div style={{ cursor: 'none', pointerEvents: 'none' }}>
+    <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
       {/* Render traces AND player in z-index order */}
       {sortedItems
           .map((item) => {
@@ -1589,6 +1631,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               onMouseEnter={() => setCursorState('pointer')}
               onMouseLeave={() => setCursorState('default')}
               onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
+              onTouchStart={(e) => handleTouchDown(e, trace, 'move')}
               onClick={(e) => {
                 // Don't handle clicks if we're in a transform mode (e.g., dragging a point)
                 if (transformMode !== 'none') {
@@ -2128,6 +2171,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setSelectedPointIndex(index)
                               handleMouseDown(e, trace, 'point', `${index}`)
                             }}
+                            onTouchStart={(e) => {
+                              e.stopPropagation()
+                              setSelectedPointIndex(index)
+                              handleTouchDown(e, trace, 'point', `${index}`)
+                            }}
                           />
                           
                           {/* Control point handles (only in bezier mode and when point is selected) */}
@@ -2179,6 +2227,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                         e.preventDefault()
                                         setSelectedPointIndex(index) // Preserve point selection
                                         handleMouseDown(e, trace, 'control-in', `${index}`)
+                                      }}
+                                      onTouchStart={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedPointIndex(index)
+                                        handleTouchDown(e, trace, 'control-in', `${index}`)
                                       }}
                                     />
                                   </>
@@ -2233,6 +2286,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                         setSelectedPointIndex(index) // Preserve point selection
                                         handleMouseDown(e, trace, 'control-out', `${index}`)
                                       }}
+                                      onTouchStart={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedPointIndex(index)
+                                        handleTouchDown(e, trace, 'control-out', `${index}`)
+                                      }}
                                     />
                                   </>
                                 )
@@ -2274,6 +2332,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             e.preventDefault()
                             setSelectedPointIndex(null)
                             handleMouseDown(e, trace, 'move-path', 'move-all')
+                          }}
+                          onTouchStart={(e) => {
+                            e.stopPropagation()
+                            setSelectedPointIndex(null)
+                            handleTouchDown(e, trace, 'move-path', 'move-all')
                           }}
                         >
                           <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">⊕</div>
@@ -2364,6 +2427,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onMouseDown={(e) => {
                         e.stopPropagation()
                         handleMouseDown(e, trace, 'crop', corner)
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation()
+                        handleTouchDown(e, trace, 'crop', corner)
                       }}
                     />
                   )
@@ -2647,6 +2714,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setSelectedPointIndex(index)
                         handleMouseDown(e, trace, 'point', `${index}`)
                       }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation()
+                        setSelectedPointIndex(index)
+                        handleTouchDown(e, trace, 'point', `${index}`)
+                      }}
                     />
                     
                     {/* Bezier control handles (only when point is selected) */}
@@ -2674,6 +2746,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                   setSelectedPointIndex(index)
                                   handleMouseDown(e, trace, 'control-in', `${index}`)
                                 }}
+                                onTouchStart={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedPointIndex(index)
+                                  handleTouchDown(e, trace, 'control-in', `${index}`)
+                                }}
                               />
                             </>
                           )
@@ -2700,6 +2777,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                   e.preventDefault()
                                   setSelectedPointIndex(index)
                                   handleMouseDown(e, trace, 'control-out', `${index}`)
+                                }}
+                                onTouchStart={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedPointIndex(index)
+                                  handleTouchDown(e, trace, 'control-out', `${index}`)
                                 }}
                               />
                             </>
@@ -2731,6 +2813,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       e.preventDefault()
                       setSelectedPointIndex(null)
                       handleMouseDown(e, trace, 'move-path', 'move-all')
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      setSelectedPointIndex(null)
+                      handleTouchDown(e, trace, 'move-path', 'move-all')
                     }}
                   >
                     <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">⊕</div>
@@ -2787,6 +2874,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       transform: 'translate(-50%, -50%)',
                     }}
                     onMouseDown={(e) => handleMouseDown(e, trace, 'scale', corner)}
+                    onTouchStart={(e) => handleTouchDown(e, trace, 'scale', corner)}
                   />
                 )
               })}
@@ -2821,6 +2909,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       transform: 'translate(-50%, -50%)',
                     }}
                     onMouseDown={(e) => handleMouseDown(e, trace, 'scale', edge)}
+                    onTouchStart={(e) => handleTouchDown(e, trace, 'scale', edge)}
                   />
                 )
               })}
@@ -2835,6 +2924,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   transform: 'translate(-50%, -50%)',
                 }}
                 onMouseDown={(e) => handleMouseDown(e, trace, 'rotate')}
+                onTouchStart={(e) => handleTouchDown(e, trace, 'rotate')}
               />
             </>
           )
