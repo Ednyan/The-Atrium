@@ -28,6 +28,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [canCreateMore, setCanCreateMore] = useState(true)
   const [editingLobbyId, setEditingLobbyId] = useState<string | null>(null)
   const [editingLobbyName, setEditingLobbyName] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [joinByIdError, setJoinByIdError] = useState<string | null>(null)
+  const [joinByIdLoading, setJoinByIdLoading] = useState(false)
 
   // Memoize particle positions (fireflies)
   const particles = useMemo(() => 
@@ -180,7 +183,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       const allLobbies = [...(publicLobbies || []), ...privateLobbies]
       const uniqueLobbies = Array.from(new Map(allLobbies.map(lobby => [lobby.id, lobby])).values())
       const enrichedPublic = await enrichLobbiesWithData(uniqueLobbies)
-      setLobbies(enrichedPublic)
       setLobbies(enrichedPublic)
     } catch (err: any) {
       console.error('Error loading lobbies:', err)
@@ -352,6 +354,83 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     }
   }
 
+  // Handle Join by ID with proper access checks
+  const handleJoinById = async () => {
+    if (!supabase || !lobbyIdInput.trim()) return
+    
+    const lobbyId = lobbyIdInput.trim()
+    setJoinByIdError(null)
+    setJoinByIdLoading(true)
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setJoinByIdError('Not authenticated')
+        setJoinByIdLoading(false)
+        return
+      }
+
+      // First check if lobby exists
+      const { data: lobby, error: lobbyError } = await (supabase as any)
+        .from('lobbies')
+        .select('id, name')
+        .eq('id', lobbyId)
+        .single()
+      
+      if (lobbyError || !lobby) {
+        setJoinByIdError('Atrium not found. Please check the ID.')
+        setJoinByIdLoading(false)
+        return
+      }
+
+      // Check user's access status for this lobby
+      const { data: accessStatus } = await (supabase as any).rpc('get_user_lobby_access_status', {
+        p_lobby_id: lobbyId,
+        p_user_id: user.id
+      })
+
+      // If blacklisted, show error
+      if (accessStatus === 'blacklisted') {
+        setJoinByIdError('You have been blocked from this atrium')
+        setJoinByIdLoading(false)
+        return
+      }
+
+      // If owner or whitelisted, join directly (no password needed)
+      if (accessStatus === 'owner' || accessStatus === 'whitelisted') {
+        setShowJoinById(false)
+        setLobbyIdInput('')
+        setJoinByIdLoading(false)
+        onJoinLobby(lobbyId)
+        return
+      }
+
+      // Check if lobby has password
+      const { data: hasPassword } = await (supabase as any).rpc('lobby_has_password', {
+        p_lobby_id: lobbyId
+      })
+
+      if (hasPassword) {
+        // Close join by ID modal and show password prompt
+        setShowJoinById(false)
+        setLobbyIdInput('')
+        setJoinByIdLoading(false)
+        setPasswordInput('')
+        setSelectedLobbyId(lobbyId)
+      } else {
+        // No password required, join directly
+        setShowJoinById(false)
+        setLobbyIdInput('')
+        setJoinByIdLoading(false)
+        onJoinLobby(lobbyId)
+      }
+    } catch (err) {
+      console.error('Error joining by ID:', err)
+      setJoinByIdError('Failed to join atrium')
+      setJoinByIdLoading(false)
+    }
+  }
+
   const deleteLobby = async (lobbyId: string) => {
     if (!supabase) return
     if (!confirm('Are you sure you want to delete this lobby? All traces will be lost.')) return
@@ -401,8 +480,18 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
-        <div className="text-nier-bg text-sm tracking-[0.2em] uppercase animate-pulse">◇ Loading atriums...</div>
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50 font-mono">
+        <div className="relative px-10 py-6">
+          <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
+          <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
+          <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+            <div className="h-full bg-white/80 animate-nier-slide" />
+          </div>
+          <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+        </div>
       </div>
     )
   }
@@ -671,7 +760,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex items-center gap-2 mb-4">
               <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Available Atriums</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              <span className="text-nier-border/50 text-[10px]">{lobbies.length} found</span>
+              <span className="text-nier-border/50 text-[10px]">{lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length} found</span>
               <button
                 onClick={() => setShowJoinById(true)}
                 className="px-3 py-1 border border-nier-border/30 text-nier-border text-[9px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
@@ -679,11 +768,35 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 Join by ID
               </button>
             </div>
+            
+            {/* Search Bar */}
+            <div className="mb-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search atriums by name..."
+                  className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/30 focus:border-nier-border/60 transition-colors pr-10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-nier-border/50 hover:text-nier-bg transition-colors"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            
             <div className="grid gap-3">
-              {lobbies.length === 0 ? (
-                <div className="text-nier-border/40 text-center py-12 text-xs tracking-wider uppercase">No atriums available</div>
+              {lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+                <div className="text-nier-border/40 text-center py-12 text-xs tracking-wider uppercase">
+                  {searchQuery ? 'No atriums match your search' : 'No atriums available'}
+                </div>
               ) : (
-                lobbies.map(lobby => (
+                lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).map(lobby => (
                   <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
@@ -756,7 +869,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Join by ID Modal */}
       {showJoinById && (
-        <div className="absolute inset-0 bg-nier-black/80 flex items-center justify-center">
+        <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
           <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
             <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
             <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
@@ -767,33 +880,37 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <p className="text-nier-border/60 text-[10px] tracking-wider mb-4">
               Enter the atrium ID shared with you by the atrium owner.
             </p>
+            {joinByIdError && (
+              <div className="text-red-400 text-xs mb-3 bg-red-400/10 border border-red-400/30 px-3 py-2">
+                {joinByIdError}
+              </div>
+            )}
             <input
               type="text"
               value={lobbyIdInput}
-              onChange={(e) => setLobbyIdInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && lobbyIdInput && onJoinLobby(lobbyIdInput)}
+              onChange={(e) => {
+                setLobbyIdInput(e.target.value)
+                setJoinByIdError(null)
+              }}
+              onKeyPress={(e) => e.key === 'Enter' && lobbyIdInput && handleJoinById()}
               placeholder="Atrium ID (UUID)..."
+              autoComplete="off"
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors mb-4 font-mono"
               autoFocus
             />
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  if (lobbyIdInput) {
-                    onJoinLobby(lobbyIdInput)
-                    setShowJoinById(false)
-                    setLobbyIdInput('')
-                  }
-                }}
-                disabled={!lobbyIdInput}
+                onClick={handleJoinById}
+                disabled={!lobbyIdInput || joinByIdLoading}
                 className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                Enter
+                {joinByIdLoading ? 'Checking...' : 'Enter'}
               </button>
               <button
                 onClick={() => {
                   setShowJoinById(false)
                   setLobbyIdInput('')
+                  setJoinByIdError(null)
                 }}
                 className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >

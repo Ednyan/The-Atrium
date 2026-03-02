@@ -67,14 +67,17 @@ export function usePresence(lobbyId: string | null) {
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState()
+        console.log('[Presence] Sync - all users:', Object.keys(state))
         
         Object.entries(state).forEach(([key, presences]) => {
           // Skip current user and filter out non-UUID keys (old pre-auth users)
           if (key !== userId && presences && presences.length > 0) {
             // Only show authenticated users (UUIDs start with hex characters and have dashes)
             const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+            console.log('[Presence] User key:', key, 'isValidUUID:', isValidUUID, 'presences:', presences)
             if (isValidUUID) {
               const presence = presences[0] as any
+              console.log('[Presence] Updating other user:', key, presence.username)
               updateOtherUser(key, {
                 userId: key,
                 username: presence.username,

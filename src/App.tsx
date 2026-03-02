@@ -15,24 +15,174 @@ const STORAGE_KEYS = {
   SHOW_LANDING: 'lobby_showLanding',
 }
 
+// Route parsing helper
+function parseRoute(): { page: string; lobbyId?: string } {
+  const hash = window.location.hash.slice(1) || '/'
+  
+  if (hash.startsWith('/atrium/')) {
+    const lobbyId = hash.replace('/atrium/', '')
+    return { page: 'atrium', lobbyId }
+  }
+  
+  switch (hash) {
+    case '/':
+      return { page: 'landing' }
+    case '/login':
+      return { page: 'login' }
+    case '/welcome':
+      return { page: 'welcome' }
+    case '/browse':
+      return { page: 'browse' }
+    default:
+      return { page: 'landing' }
+  }
+}
+
+// Navigation helper - updates both URL and route state
+let setRouteCallback: ((route: { page: string; lobbyId?: string }) => void) | null = null
+
+function navigate(path: string) {
+  window.location.hash = path
+  // Also immediately update route state to avoid render-time navigate calls
+  if (setRouteCallback) {
+    setRouteCallback(parseRoute())
+  }
+}
+
 function App() {
-  const { username, setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
-  const [showLanding, setShowLanding] = useState(() => {
-    // Show landing if user hasn't dismissed it before
-    const stored = localStorage.getItem(STORAGE_KEYS.SHOW_LANDING)
-    return stored === null ? true : stored === 'true'
-  })
-  const [hasEntered, setHasEntered] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.HAS_ENTERED) === 'true'
-  })
+  const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
+  
+  // URL-based routing state
+  const [route, setRoute] = useState(parseRoute)
+  
+  // Store the setRoute callback for the navigate function
+  useEffect(() => {
+    setRouteCallback = setRoute
+    return () => { setRouteCallback = null }
+  }, [])
+  
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(() => {
     return localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
   })
-  const [showLobbyBrowser, setShowLobbyBrowser] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.SHOW_BROWSER) === 'true'
-  })
+  
+  // Track verified lobby access (for URL-based navigation security)
+  const [verifiedLobbyId, setVerifiedLobbyId] = useState<string | null>(null)
+  const [lobbyAccessError, setLobbyAccessError] = useState<string | null>(null)
+  const [verifyingAccess, setVerifyingAccess] = useState(false)
+
+  // Listen for hash changes (browser back/forward)
+  useEffect(() => {
+    const handleHashChange = () => {
+      setRoute(parseRoute())
+      // Reset access verification when route changes
+      setLobbyAccessError(null)
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  // Verify lobby access when trying to access via URL
+  useEffect(() => {
+    const verifyLobbyAccess = async () => {
+      if (!supabase || !isAuthenticated) return
+      if (route.page !== 'atrium' || !route.lobbyId) return
+      
+      // If already verified for this lobby, skip
+      if (verifiedLobbyId === route.lobbyId) return
+      
+      setVerifyingAccess(true)
+      setLobbyAccessError(null)
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          setLobbyAccessError('Not authenticated')
+          setVerifyingAccess(false)
+          return
+        }
+        
+        // Check if lobby exists
+        const { data: lobby, error: lobbyError } = await (supabase as any)
+          .from('lobbies')
+          .select('id, owner_user_id, is_public, password_hash')
+          .eq('id', route.lobbyId)
+          .single()
+        
+        if (lobbyError || !lobby) {
+          setLobbyAccessError('Atrium not found')
+          setVerifyingAccess(false)
+          return
+        }
+        
+        // Owner always has access
+        if (lobby.owner_user_id === user.id) {
+          setVerifiedLobbyId(route.lobbyId)
+          setCurrentLobbyId(route.lobbyId)
+          localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+          // Update active_lobby_id
+          await (supabase.from('profiles') as any)
+            .update({ active_lobby_id: route.lobbyId })
+            .eq('id', user.id)
+          setVerifyingAccess(false)
+          return
+        }
+        
+        // Check access status using RPC
+        const { data: accessStatus } = await (supabase as any).rpc('get_user_lobby_access_status', {
+          p_lobby_id: route.lobbyId,
+          p_user_id: user.id,
+        })
+        
+        if (accessStatus === 'blacklisted') {
+          setLobbyAccessError('You have been blocked from this atrium')
+          setVerifyingAccess(false)
+          return
+        }
+        
+        // Check if user is whitelisted (can bypass password)
+        if (accessStatus === 'whitelisted') {
+          setVerifiedLobbyId(route.lobbyId)
+          setCurrentLobbyId(route.lobbyId)
+          localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+          await (supabase.from('profiles') as any)
+            .update({ active_lobby_id: route.lobbyId })
+            .eq('id', user.id)
+          setVerifyingAccess(false)
+          return
+        }
+        
+        // Check if lobby has a password
+        const { data: hasPassword } = await (supabase as any).rpc('lobby_has_password', {
+          p_lobby_id: route.lobbyId,
+        })
+        
+        if (hasPassword) {
+          // Has password and user is not whitelisted - need to go through lobby browser
+          setLobbyAccessError('This atrium requires a password. Please join through the atrium browser.')
+          setVerifyingAccess(false)
+          return
+        }
+        
+        // Public lobby, no password - allow access
+        setVerifiedLobbyId(route.lobbyId)
+        setCurrentLobbyId(route.lobbyId)
+        localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+        await (supabase.from('profiles') as any)
+          .update({ active_lobby_id: route.lobbyId })
+          .eq('id', user.id)
+        setVerifyingAccess(false)
+        
+      } catch (err) {
+        console.error('Error verifying lobby access:', err)
+        setLobbyAccessError('Failed to verify access')
+        setVerifyingAccess(false)
+      }
+    }
+    
+    verifyLobbyAccess()
+  }, [route.page, route.lobbyId, isAuthenticated, verifiedLobbyId])
 
   // Check if user is already logged in
   useEffect(() => {
@@ -66,26 +216,37 @@ function App() {
               
               // Verify persisted lobby still exists and user has access
               const storedLobbyId = localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
-              if (storedLobbyId && supabase) {
+              // Also check URL for lobby ID
+              const urlRoute = parseRoute()
+              const lobbyIdToRestore = urlRoute.page === 'atrium' && urlRoute.lobbyId ? urlRoute.lobbyId : storedLobbyId
+              
+              if (lobbyIdToRestore && supabase) {
                 const { data: lobbyExists } = await (supabase as any)
                   .from('lobbies')
                   .select('id')
-                  .eq('id', storedLobbyId)
+                  .eq('id', lobbyIdToRestore)
                   .single()
                 
                 if (!lobbyExists) {
-                  // Lobby was deleted, clear persisted state
+                  // Lobby was deleted, clear persisted state and go to browse
                   localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
                   setCurrentLobbyId(null)
-                  setShowLobbyBrowser(true)
-                  localStorage.setItem(STORAGE_KEYS.SHOW_BROWSER, 'true')
+                  navigate('/browse')
                 } else {
-                  // Lobby exists - restore active_lobby_id (may have been cleared on page unload)
+                  // Lobby exists - restore active_lobby_id and set current lobby
+                  setCurrentLobbyId(lobbyIdToRestore)
+                  localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, lobbyIdToRestore)
+                  navigate(`/atrium/${lobbyIdToRestore}`)
                   await (supabase
                     .from('profiles') as any)
-                    .update({ active_lobby_id: storedLobbyId })
+                    .update({ active_lobby_id: lobbyIdToRestore })
                     .eq('id', session.user.id)
                 }
+              } else if (urlRoute.page === 'browse') {
+                // User is at browse page, stay there
+              } else if (!storedLobbyId) {
+                // No lobby stored, go to welcome
+                navigate('/welcome')
               }
             }
           })
@@ -93,10 +254,8 @@ function App() {
         // Not authenticated - clear persisted navigation state
         localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
         localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
-        localStorage.removeItem(STORAGE_KEYS.SHOW_BROWSER)
-        setHasEntered(false)
         setCurrentLobbyId(null)
-        setShowLobbyBrowser(false)
+        navigate('/')
       }
       setLoading(false)
     })
@@ -117,17 +276,20 @@ function App() {
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
+              // Navigate to welcome after login
+              const currentRoute = parseRoute()
+              if (currentRoute.page === 'landing' || currentRoute.page === 'login') {
+                navigate('/welcome')
+              }
             }
           })
       } else {
         setIsAuthenticated(false)
-        setHasEntered(false)
         setCurrentLobbyId(null)
-        setShowLobbyBrowser(false)
         // Clear persisted state on logout
         localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
         localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
-        localStorage.removeItem(STORAGE_KEYS.SHOW_BROWSER)
+        navigate('/')
       }
     })
 
@@ -172,11 +334,7 @@ function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [currentLobbyId])
 
-  // Persist navigation state changes
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.HAS_ENTERED, String(hasEntered))
-  }, [hasEntered])
-
+  // Persist current lobby to localStorage
   useEffect(() => {
     if (currentLobbyId) {
       localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, currentLobbyId)
@@ -185,29 +343,23 @@ function App() {
     }
   }, [currentLobbyId])
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SHOW_BROWSER, String(showLobbyBrowser))
-  }, [showLobbyBrowser])
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SHOW_LANDING, String(showLanding))
-  }, [showLanding])
-
   const handleAuthSuccess = (userId: string, username: string) => {
     setUserId(userId)
     setUsername(username)
     setIsAuthenticated(true)
+    navigate('/welcome')
   }
 
   const handleLandingGetStarted = () => {
-    setShowLanding(false)
+    navigate('/login')
   }
 
   const handleEnter = () => {
-    setHasEntered(true)
     // If no active lobby, show lobby browser
-    if (!currentLobbyId) {
-      setShowLobbyBrowser(true)
+    if (currentLobbyId) {
+      navigate(`/atrium/${currentLobbyId}`)
+    } else {
+      navigate('/browse')
     }
   }
 
@@ -237,7 +389,8 @@ function App() {
         .eq('id', user.id)
 
       setCurrentLobbyId(lobbyId)
-      setShowLobbyBrowser(false)
+      setVerifiedLobbyId(lobbyId) // Mark as verified since we just passed the access check
+      navigate(`/atrium/${lobbyId}`)
     } catch (err) {
       console.error('Error joining lobby:', err)
       alert('Failed to join lobby')
@@ -256,48 +409,177 @@ function App() {
       }
     }
     
+    // Clear verified lobby
+    setVerifiedLobbyId(null)
+    
     // Clear all lobby-specific data from store to free memory
     clearLobbyData()
     setCurrentLobbyId(null)
-    setShowLobbyBrowser(true)
+    navigate('/browse')
+  }
+
+  const handleBackToLanding = () => {
+    navigate('/')
   }
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="fixed inset-0 bg-black flex items-center justify-center font-mono">
+        <div className="relative px-10 py-6">
+          <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
+          <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">Initializing</p>
+          <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+            <div className="h-full bg-white/80 animate-nier-slide" />
+          </div>
+          <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+        </div>
       </div>
     )
   }
 
-  // Show landing page for new visitors
-  if (showLanding && !isAuthenticated) {
+  // URL-based routing
+  const currentPage = route.page
+  
+  // If not authenticated, only allow landing and login pages
+  if (!isAuthenticated) {
+    if (currentPage === 'login') {
+      return <AuthScreen onAuthSuccess={handleAuthSuccess} onBackToLanding={handleBackToLanding} />
+    }
+    // Default to landing page for unauthenticated users
     return <LandingPage onGetStarted={handleLandingGetStarted} />
   }
 
-  if (!isAuthenticated) {
-    return <AuthScreen onAuthSuccess={handleAuthSuccess} onBackToLanding={() => setShowLanding(true)} />
+  // Authenticated user routing
+  // Allow authenticated users to see landing page (for logout/info)
+  if (currentPage === 'landing') {
+    return <LandingPage onGetStarted={() => navigate('/welcome')} isAuthenticated={true} />
   }
-
-  if (!hasEntered || !username) {
-    return <WelcomeScreen onEnter={handleEnter} />
+  
+  if (currentPage === 'login') {
+    // Already authenticated, go to welcome
+    setTimeout(() => navigate('/welcome'), 0)
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center font-mono">
+        <div className="relative px-10 py-6">
+          <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
+          <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">Redirecting</p>
+          <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+            <div className="h-full bg-white/80 animate-nier-slide" />
+          </div>
+          <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+        </div>
+      </div>
+    )
   }
-
-  // Show lobby browser if no active lobby
-  if (showLobbyBrowser || !currentLobbyId) {
+  
+  if (currentPage === 'welcome') {
+    return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} />
+  }
+  
+  if (currentPage === 'browse') {
     return (
       <LobbyBrowser
         onJoinLobby={handleJoinLobby}
-        onClose={() => {
-          // Go back to welcome/login screen
-          setHasEntered(false)
-          setShowLobbyBrowser(false)
-        }}
+        onClose={() => navigate('/welcome')}
       />
     )
   }
+  
+  if (currentPage === 'atrium' && route.lobbyId) {
+    // Show loading while verifying access
+    if (verifyingAccess) {
+      return (
+        <div className="fixed inset-0 bg-black flex items-center justify-center font-mono">
+          <div className="flex flex-col items-center gap-6">
+            {/* Decorative brackets */}
+            <div className="relative px-10 py-6">
+              <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
 
-  return <LobbyScene lobbyId={currentLobbyId} onLeaveLobby={handleLeaveLobby} />
+              <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">
+                Verifying Access
+              </p>
+
+              {/* Loading bar */}
+              <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+                <div className="h-full bg-white/80 animate-nier-slide" />
+              </div>
+
+              <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">
+                ◇ Please wait
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    
+    // Show error if access denied
+    if (lobbyAccessError) {
+      return (
+        <div className="fixed inset-0 bg-black flex flex-col items-center justify-center gap-4">
+          <div className="text-red-400 text-xl">{lobbyAccessError}</div>
+          <button
+            onClick={() => {
+              setLobbyAccessError(null)
+              navigate('/browse')
+            }}
+            className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
+          >
+            Go to Atrium Browser
+          </button>
+        </div>
+      )
+    }
+    
+    // Only render lobby scene if access is verified
+    if (verifiedLobbyId === route.lobbyId) {
+      return <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} />
+    }
+    
+    // Still waiting for verification
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center font-mono">
+        <div className="relative px-10 py-6">
+          <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
+          <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
+          <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
+          <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
+          <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">Entering Atrium</p>
+          <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+            <div className="h-full bg-white/80 animate-nier-slide" />
+          </div>
+          <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+        </div>
+      </div>
+    )
+  }
+  
+  // Default - no valid route, go to welcome
+  setTimeout(() => navigate('/welcome'), 0)
+  return (
+    <div className="fixed inset-0 bg-black flex items-center justify-center font-mono">
+      <div className="relative px-10 py-6">
+        <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-white/40" />
+        <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-white/40" />
+        <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-white/40" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
+        <p className="text-white text-[11px] tracking-[0.25em] uppercase mb-4 text-center">Loading</p>
+        <div className="w-48 h-[3px] bg-white/10 overflow-hidden">
+          <div className="h-full bg-white/80 animate-nier-slide" />
+        </div>
+        <p className="text-gray-500 text-[8px] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+      </div>
+    </div>
+  )
 }
 
 export default App

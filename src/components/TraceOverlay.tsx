@@ -161,6 +161,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Skip if already processed
         if (imageProxySources[trace.id] !== undefined || !url) return
         
+        // Data URLs (e.g. from freehand drawing) need no proxy
+        if (url.startsWith('data:')) {
+          setImageProxySources(prev => ({ ...prev, [trace.id]: '' }))
+          return
+        }
+        
         // Check if URL is likely a direct image (ends with image extension)
         const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(url)
         
@@ -273,11 +279,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const scaleY = trace.scaleY ?? trace.scale ?? 1
         
         // Get trace dimensions
-        let width = 200, height = 150
+        const traceDims = getTraceSize(trace)
+        let width = traceDims.width, height = traceDims.height
         if (trace.type === 'shape') {
           width = trace.width || 200
           height = trace.height || 200
-        } else if (imageDimensions[trace.id]) {
+        } else if (trace.type !== 'text' && imageDimensions[trace.id]) {
           width = imageDimensions[trace.id].width
           height = imageDimensions[trace.id].height
         }
@@ -1229,7 +1236,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // We'll use inline styles on the image container to handle aspect ratio
     switch (trace.type) {
       case 'text':
-        return { width: 120, height: 80 }
+        // Text traces use width/height as their base size
+        // Text content conforms to the box (like Excel's wrap text)
+        return { width: trace.width || 150, height: trace.height || 80 }
       case 'image':
         // Use dimensions if available, otherwise square default
         if (imageDimensions[trace.id]) {
@@ -1491,7 +1500,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const fontSize = trace.fontSize ?? 'medium'
         const fontFamily = trace.fontFamily ?? 'sans'
 
-        const fontSizeMap = { small: '10px', medium: '12px', large: '14px' }
         const fontFamilyMap = { sans: 'sans-serif', serif: 'serif', mono: 'monospace' }
 
         // Apply crop to border size
@@ -1738,10 +1746,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     overflow: 'hidden',
                   }}
                 >
-                  {/* Scaled content wrapper */}
+                  {/* Scaled content wrapper - text traces render at final pixel size to avoid distortion */}
                   <div
                     className="w-full h-full"
-                    style={{
+                    style={trace.type === 'text' ? {
+                      width: '100%',
+                      height: '100%',
+                    } : {
                       transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%)`,
                       transformOrigin: 'top left',
                       width: `${width}px`,
@@ -1970,11 +1981,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 )
               })()}
 
-              {/* Text Content */}
-              {trace.type === 'text' && (
+              {/* Text Content - renders at final pixel size, text conforms to box like Excel */}
+              {trace.type === 'text' && (() => {
+                // Calculate the actual pixel font size accounting for zoom
+                const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
+                const scaledFontSize = baseFontSize * zoom
+                const textStyles = {
+                  fontSize: `${scaledFontSize}px`,
+                  fontFamily: fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono'] || fontFamily,
+                  lineHeight: '1.3',
+                  fontWeight: (trace.textBold ? 'bold' : 'normal') as React.CSSProperties['fontWeight'],
+                  fontStyle: (trace.textItalic ? 'italic' : 'normal') as React.CSSProperties['fontStyle'],
+                  textDecoration: trace.textUnderline ? 'underline' : 'none',
+                  textAlign: (trace.textAlign ?? 'center') as React.CSSProperties['textAlign'],
+                  color: trace.textColor ?? '#ffffff',
+                }
+                return (
                 <div 
-                  className={`flex flex-col items-center justify-center h-full w-full p-2 overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
+                  className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
                   style={{
+                    padding: `${Math.max(4, 6 * zoom)}px`,
                     clipPath: trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
                       : undefined,
@@ -1987,7 +2013,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       value={inlineEditText}
                       onChange={(e) => setInlineEditText(e.target.value)}
                       onBlur={() => {
-                        // Save changes on blur
                         if (inlineEditText !== trace.content) {
                           updateTraceCustomization(trace.id, { content: inlineEditText })
                         }
@@ -1996,11 +2021,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
-                          // Cancel editing
                           setInlineEditingTraceId(null)
                           setInlineEditText('')
                         } else if (e.key === 'Enter' && !e.shiftKey) {
-                          // Save on Enter (Shift+Enter for newline)
                           e.preventDefault()
                           if (inlineEditText !== trace.content) {
                             updateTraceCustomization(trace.id, { content: inlineEditText })
@@ -2013,58 +2036,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => e.stopPropagation()}
                       className="w-full h-full bg-transparent resize-none outline-none border-2 border-white focus:border-gray-400"
-                      style={{
-                        fontSize:
-                          typeof fontSize === 'number'
-                            ? `${fontSize}px`
-                            : fontSizeMap[fontSize as 'small' | 'medium' | 'large']
-                              ? `calc(${fontSizeMap[fontSize as 'small' | 'medium' | 'large']} * ${Math.min(width / 120, height / 80)})`
-                              : '14px',
-                        fontFamily:
-                          fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
-                            ? fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
-                            : fontFamily,
-                        lineHeight: '1.2',
-                        fontWeight: trace.textBold ? 'bold' : 'normal',
-                        fontStyle: trace.textItalic ? 'italic' : 'normal',
-                        textDecoration: trace.textUnderline ? 'underline' : 'none',
-                        textAlign: trace.textAlign ?? 'center',
-                        color: trace.textColor ?? '#ffffff',
-                      }}
+                      style={textStyles}
                     />
                   ) : (
-                    /* Normal display */
+                    /* Normal display - text wraps and conforms to box */
                     <p 
-                      className="w-full break-words"
-                      style={{
-                        fontSize:
-                          typeof fontSize === 'number'
-                            ? `${fontSize}px`
-                            : fontSizeMap[fontSize as 'small' | 'medium' | 'large']
-                              ? `calc(${fontSizeMap[fontSize as 'small' | 'medium' | 'large']} * ${Math.min(width / 120, height / 80)})`
-                              : '14px',
-                        fontFamily:
-                          fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
-                            ? fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono']
-                            : fontFamily,
-                        lineHeight: '1.2',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: Math.max(2, Math.floor(height / 20)),
-                        WebkitBoxOrient: 'vertical',
-                        fontWeight: trace.textBold ? 'bold' : 'normal',
-                        fontStyle: trace.textItalic ? 'italic' : 'normal',
-                        textDecoration: trace.textUnderline ? 'underline' : 'none',
-                        textAlign: trace.textAlign ?? 'center',
-                        color: trace.textColor ?? '#ffffff',
-                      }}
+                      className="w-full break-words whitespace-pre-wrap overflow-hidden"
+                      style={textStyles}
                     >
                       {trace.content}
                     </p>
                   )}
                 </div>
-              )}
+                )
+              })()}
 
                   </div>
                 </div>

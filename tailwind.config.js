@@ -48,6 +48,7 @@ export default {
         'nier-pulse': 'nier-pulse 2s ease-in-out infinite',
         'nier-scan': 'nier-scan 3s ease-in-out infinite',
         'nier-flicker': 'nier-flicker 0.15s ease-in-out',
+        'nier-slide': 'nier-slide 1.2s ease-in-out infinite',
       },
       keyframes: {
         'nier-pulse': {
@@ -61,6 +62,11 @@ export default {
         'nier-flicker': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.8' },
+        },
+        'nier-slide': {
+          '0%': { width: '0%', marginLeft: '0%' },
+          '50%': { width: '40%', marginLeft: '30%' },
+          '100%': { width: '0%', marginLeft: '100%' },
         },
       },
     },

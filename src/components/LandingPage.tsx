@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 
 interface LandingPageProps {
   onGetStarted: () => void
+  isAuthenticated?: boolean
 }
 
 interface Section {
@@ -17,7 +18,7 @@ const sections: Section[] = [
   { id: 'who', title: 'Who Am I', subtitle: 'The creator behind the project' },
 ]
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPageProps) {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const [activeSection, setActiveSection] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
@@ -295,12 +296,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
             
             <span className="text-sm tracking-[0.2em] uppercase text-nier-border group-hover:text-nier-bg transition-colors">
-              ◇ Enter The Atrium
+              {isAuthenticated ? '◇ Continue to Atrium' : '◇ Enter The Atrium'}
             </span>
           </button>
 
           <p className="mt-8 text-nier-border/40 text-xs tracking-wider">
-            Free to use • No credit card required
+            {isAuthenticated ? 'Welcome back' : 'Free to use • No credit card required'}
           </p>
         </div>
 
@@ -584,7 +585,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
               
               <span className="text-sm tracking-[0.2em] uppercase text-nier-border group-hover:text-nier-bg transition-colors">
-                ◇ Begin Your Journey
+                {isAuthenticated ? '◇ Continue to Atrium' : '◇ Begin Your Journey'}
               </span>
             </button>
           </div>

@@ -381,10 +381,20 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
       {onBackToLanding && (
         <button
           onClick={onBackToLanding}
-          className="absolute top-8 left-8 flex items-center gap-2 text-nier-border/60 hover:text-nier-bg transition-colors group z-20"
+          className="absolute top-12 left-12 group z-20"
         >
-          <span className="text-lg group-hover:-translate-x-1 transition-transform">←</span>
-          <span className="text-[10px] tracking-[0.15em] uppercase">Back</span>
+          <div className="relative px-4 py-2 border border-nier-border/40 bg-nier-black/80 hover:border-nier-border/80 hover:bg-nier-blackLight transition-all duration-300">
+            {/* Corner accents */}
+            <div className="absolute -top-0.5 -left-0.5 w-2 h-2 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+            <div className="absolute -bottom-0.5 -left-0.5 w-2 h-2 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+            <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+            
+            <div className="flex items-center gap-3">
+              <span className="text-nier-border/60 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
+              <span className="text-[10px] tracking-[0.2em] uppercase text-nier-border/60 group-hover:text-nier-bg transition-colors">Back</span>
+            </div>
+          </div>
         </button>
       )}
 

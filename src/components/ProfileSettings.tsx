@@ -159,8 +159,16 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         .eq('id', user.id)
     }
     
+    // Clear local storage
+    localStorage.removeItem('lobby_hasEntered')
+    localStorage.removeItem('lobby_currentLobbyId')
+    localStorage.removeItem('lobby_showBrowser')
+    
     await supabase.auth.signOut()
-    onClose()
+    
+    // Force navigation to landing page
+    window.location.hash = '/'
+    window.location.reload()
   }
 
   return (

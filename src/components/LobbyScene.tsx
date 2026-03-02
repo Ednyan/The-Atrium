@@ -11,7 +11,8 @@ import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase } from '../lib/supabase'
-import type { Lobby } from '../types/database'
+// pathSimplify no longer needed - drawings saved as raster images
+import type { Lobby, Trace } from '../types/database'
 
 const AVATAR_SIZE = 20
 const TRACE_RENDER_DISTANCE = 2000
@@ -42,6 +43,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const otherUsersRef = useRef<typeof otherUsers>({})
   const zoomRef = useRef(1.0)
   const targetZoomRef = useRef(1.0) // Target zoom for smooth interpolation
+  const cameraRestoredRef = useRef(false) // Whether we restored a saved camera position
   const isPanningRef = useRef(false)
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
   const worldOffsetRef = useRef({ x: 0, y: 0 })
@@ -73,11 +75,105 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  const [hudMinimized, setHudMinimized] = useState(false)
+  const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
+  const [controlsMinimized, setControlsMinimized] = useState(false)
 
-  // Debug: Log when selectedTraceId changes
+  // Freehand drawing mode
+  const [isDrawingMode, setIsDrawingMode] = useState(false)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [isEraserMode, setIsEraserMode] = useState(false)
+  const [completedStrokes, setCompletedStrokes] = useState<Array<{ points: Array<{ x: number; y: number }>; color: string; width: number; isEraser: boolean }>>([])
+  const [drawingColor, setDrawingColor] = useState('#ffffff')
+  const [drawingWidth, setDrawingWidth] = useState(3)
+  const [drawingSmoothing, setDrawingSmoothing] = useState(30)
+  const [isSavingDrawing, setIsSavingDrawing] = useState(false)
+  const currentStrokeRef = useRef<Array<{ x: number; y: number }>>([])
+  const isDrawingModeRef = useRef(false)
+  const isEraserModeRef = useRef(false)
+  const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
+  const completedStrokesRef = useRef<typeof completedStrokes>([])
+  const drawingColorRef = useRef('#ffffff')
+  const drawingWidthRef = useRef(3)
+  const smoothedPointRef = useRef<{ x: number; y: number } | null>(null)
+  const drawingSmoothingRef = useRef(30)
+
+  // Keep drawing mode ref in sync
   useEffect(() => {
-    // selectedTraceId changed
-  }, [selectedTraceId])
+    isDrawingModeRef.current = isDrawingMode
+  }, [isDrawingMode])
+
+  // Keep drawing refs in sync
+  useEffect(() => { isEraserModeRef.current = isEraserMode }, [isEraserMode])
+  useEffect(() => { drawingColorRef.current = drawingColor }, [drawingColor])
+  useEffect(() => { drawingWidthRef.current = drawingWidth }, [drawingWidth])
+  useEffect(() => { drawingSmoothingRef.current = drawingSmoothing }, [drawingSmoothing])
+  useEffect(() => {
+    completedStrokesRef.current = completedStrokes
+    renderDrawingCanvas()
+  }, [completedStrokes])
+
+  // Canvas drawing helpers
+  const drawBezierStroke = (ctx: CanvasRenderingContext2D, points: Array<{x: number; y: number}>, color: string, width: number, isEraser: boolean) => {
+    if (points.length < 2) return
+    ctx.save()
+    ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over'
+    ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : color
+    ctx.lineWidth = width
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(points[0].x, points[0].y)
+    if (points.length === 2) {
+      ctx.lineTo(points[1].x, points[1].y)
+    } else {
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = i > 0 ? points[i - 1] : points[i]
+        const p1 = points[i]
+        const p2 = points[i + 1]
+        const p3 = i + 2 < points.length ? points[i + 2] : p2
+        const tension = 0.5
+        const cp1x = p1.x + (p2.x - p0.x) / 6 * tension
+        const cp1y = p1.y + (p2.y - p0.y) / 6 * tension
+        const cp2x = p2.x - (p3.x - p1.x) / 6 * tension
+        const cp2y = p2.y - (p3.y - p1.y) / 6 * tension
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+      }
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  const renderDrawingCanvas = () => {
+    const canvas = drawingCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    // Draw completed strokes
+    for (const stroke of completedStrokesRef.current) {
+      drawBezierStroke(ctx, stroke.points, stroke.color, stroke.width, stroke.isEraser)
+    }
+    // Draw current active stroke
+    if (currentStrokeRef.current.length >= 2) {
+      drawBezierStroke(ctx, currentStrokeRef.current, drawingColorRef.current, drawingWidthRef.current, isEraserModeRef.current)
+    }
+  }
+
+  // Canvas resize effect
+  useEffect(() => {
+    if (!isDrawingMode) return
+    const canvas = drawingCanvasRef.current
+    if (!canvas) return
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+      renderDrawingCanvas()
+    }
+    resize()
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [isDrawingMode])
 
   // Load lobby info
   useEffect(() => {
@@ -113,7 +209,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // Keep traces ref in sync
   useEffect(() => {
     tracesDataRef.current = traces
-    // Traces updated in state
   }, [traces])
   
   // Keep otherUsers ref in sync
@@ -132,6 +227,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         e.stopPropagation()
         setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
         setShowTracePanel(prev => !prev)
+      }
+      if (e.key === 'd' || e.key === 'D') {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDrawingMode(prev => {
+          if (!prev) return true
+          // Exiting: clear everything
+          setCompletedStrokes([])
+          currentStrokeRef.current = []
+          setIsEraserMode(false)
+          return false
+        })
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        if (isDrawingModeRef.current) {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsEraserMode(prev => !prev)
+        }
       }
     }
     
@@ -171,11 +285,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     setClickedTracePosition(null)
   }
   
+  // Restore saved camera position for this lobby on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`lobby_camera_${lobbyId}`)
+      if (saved) {
+        const { x, y, zoom: savedZoom } = JSON.parse(saved)
+        cameraPositionRef.current = { x, y }
+        zoomRef.current = savedZoom ?? 1.0
+        targetZoomRef.current = savedZoom ?? 1.0
+        cameraRestoredRef.current = true
+      }
+    } catch {}
+  }, [lobbyId])
+
   // Keep position ref in sync
   useEffect(() => {
     positionRef.current = position
-    // Initialize camera to center on player at start (only once)
-    if (cameraPositionRef.current.x === 0 && cameraPositionRef.current.y === 0) {
+    // Initialize camera to center on player at start (only once, if no saved position)
+    if (!cameraRestoredRef.current && cameraPositionRef.current.x === 0 && cameraPositionRef.current.y === 0) {
       cameraPositionRef.current = { x: position.x, y: position.y }
     }
   }, [position])
@@ -312,7 +440,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       // Mouse down - start panning or show context menu (using window event for better capture)
       const handleMouseDown = (e: MouseEvent) => {
-        // Left mouse button (button 0) - start panning
+        // Left mouse button (button 0) - start panning or drawing
         if (e.button === 0) {
           // Close context menu if open
           setContextMenu(null)
@@ -324,10 +452,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const isClickingUI = target.closest('[data-ui-element]') !== null || 
                                target.closest('button') !== null ||
                                target.closest('input') !== null ||
+                               target.closest('textarea') !== null ||
                                target.closest('select') !== null ||
-                               target.closest('[role="dialog"]') !== null
+                               target.closest('label') !== null ||
+                               target.closest('[role="dialog"]') !== null ||
+                               target.closest('.customize-menu') !== null ||
+                               target.closest('.pointer-events-auto') !== null
           
           if (!isClickingTrace && !isClickingUI) {
+            // Don't start panning if in drawing mode
+            if (isDrawingModeRef.current) return
             isPanningRef.current = true
             lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
           }
@@ -842,7 +976,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
       eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null }
       
+      // Save camera position for this lobby before cleanup
+      try {
+        localStorage.setItem(`lobby_camera_${lobbyId}`, JSON.stringify({
+          x: cameraPositionRef.current.x,
+          y: cameraPositionRef.current.y,
+          zoom: zoomRef.current,
+        }))
+      } catch {}
+
       // Clear all refs to help garbage collection
+      cameraRestoredRef.current = false
       worldContainerRef.current = null
       avatarsRef.current.clear()
       tracesRef.current.clear()
@@ -1038,16 +1182,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white"></div>
         <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white"></div>
         
-        {/* Header with username and online count */}
+        {/* Header with username, online count, and minimize toggle */}
         <div className="flex items-center justify-between gap-2">
           <p className="text-white text-[10px] tracking-[0.1em] uppercase font-bold truncate">
             {username}
           </p>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-green-400 text-[8px]">{onlinePlayerCount}</span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-green-400 text-[8px]">{onlinePlayerCount}</span>
+            </div>
+            <button
+              onClick={() => setHudMinimized(!hudMinimized)}
+              className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+              title={hudMinimized ? 'Expand' : 'Minimize'}
+            >
+              {hudMinimized ? '▸' : '▾'}
+            </button>
           </div>
         </div>
+        {!hudMinimized && (
+          <>
         {currentLobby && (
           <p className="text-gray-300 text-[8px] tracking-wider truncate">
             {currentLobby.name} {isLobbyOwner && '(Owner)'}
@@ -1108,6 +1263,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             Theme
           </button>
         )}
+          </>
+        )}
       </div>
 
       {/* Trace Button */}
@@ -1131,6 +1288,367 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <span className="opacity-60 mr-2">◇</span>
         {showLayerPanel ? 'Close' : 'Layers'}
       </button>
+
+      {/* Draw Button */}
+      <button
+        onClick={() => {
+          if (isDrawingMode) {
+            setCompletedStrokes([])
+            currentStrokeRef.current = []
+            setIsEraserMode(false)
+          }
+          setIsDrawingMode(!isDrawingMode)
+        }}
+        className={`fixed bottom-36 right-4 ${isDrawingMode ? 'bg-white text-black border-white' : 'bg-gray-800 hover:bg-gray-700 text-white border-gray-500'} px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
+      >
+        <span className="opacity-60 mr-2">✎</span>
+        {isDrawingMode ? 'Exit Draw' : 'Draw'}
+      </button>
+
+      {/* Drawing Mode Overlay */}
+      {isDrawingMode && (
+        <>
+          {/* Drawing controls panel */}
+          <div
+            data-ui-element="true"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto"
+            style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
+          >
+            <div className="relative border-2 border-white px-6 py-3">
+              {/* Corner brackets */}
+              <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white" />
+              <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white" />
+              <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white" />
+              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white" />
+
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <p className="text-white text-[10px] tracking-[0.15em] uppercase">Freehand Draw</p>
+                  <button
+                    onClick={() => setDrawControlsMinimized(!drawControlsMinimized)}
+                    className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+                    title={drawControlsMinimized ? 'Expand controls' : 'Minimize controls'}
+                  >
+                    {drawControlsMinimized ? '▸' : '▾'}
+                  </button>
+                </div>
+
+                {!drawControlsMinimized && (<>
+
+                {/* Draw / Eraser toggle */}
+                <div className="flex border border-gray-600">
+                  <button
+                    onClick={() => setIsEraserMode(false)}
+                    className={`px-3 py-1 text-[9px] tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-gray-400 hover:text-white'}`}
+                  >
+                    ✎ Brush
+                  </button>
+                  <button
+                    onClick={() => setIsEraserMode(true)}
+                    className={`px-3 py-1 text-[9px] tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-gray-400 hover:text-white'}`}
+                  >
+                    ◻ Eraser
+                  </button>
+                </div>
+
+                {/* Color picker - only shown in brush mode */}
+                {!isEraserMode && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-400 text-[8px] tracking-wider uppercase">Color</span>
+                    <input
+                      type="color"
+                      value={drawingColor}
+                      onChange={(e) => setDrawingColor(e.target.value)}
+                      className="w-6 h-6 cursor-pointer bg-transparent border border-gray-600"
+                    />
+                  </div>
+                )}
+
+                {/* Stroke width */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-400 text-[8px] tracking-wider uppercase">{isEraserMode ? 'Size' : 'Width'}</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max={isEraserMode ? '60' : '20'}
+                    value={drawingWidth}
+                    onChange={(e) => setDrawingWidth(Number(e.target.value))}
+                    className="w-16 h-1 cursor-pointer accent-white"
+                  />
+                  <span className="text-gray-300 text-[9px] w-4">{drawingWidth}</span>
+                </div>
+
+                {/* Smoothing */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-400 text-[8px] tracking-wider uppercase">Smooth</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="80"
+                    value={drawingSmoothing}
+                    onChange={(e) => setDrawingSmoothing(Number(e.target.value))}
+                    className="w-16 h-1 cursor-pointer accent-white"
+                  />
+                  <span className="text-gray-300 text-[9px] w-4">{drawingSmoothing}%</span>
+                </div>
+
+                {/* Quick colors - only in brush mode */}
+                {!isEraserMode && (
+                  <div className="flex gap-1">
+                    {['#ffffff', '#ff4444', '#44ff44', '#4488ff', '#ffff44', '#ff44ff', '#44ffff'].map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setDrawingColor(color)}
+                        className={`w-4 h-4 border ${drawingColor === color ? 'border-white scale-125' : 'border-gray-600'} transition-all`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Undo last stroke */}
+                {completedStrokes.length > 0 && (
+                  <button
+                    onClick={() => setCompletedStrokes(prev => prev.slice(0, -1))}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-gray-500"
+                  >
+                    Undo
+                  </button>
+                )}
+
+                {/* Clear all strokes */}
+                {completedStrokes.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setCompletedStrokes([])
+                      currentStrokeRef.current = []
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-gray-500"
+                  >
+                    Clear
+                  </button>
+                )}
+
+                {/* Print (save as image) button */}
+                {completedStrokes.length > 0 && (
+                  <button
+                    disabled={isSavingDrawing}
+                    onClick={async () => {
+                      setIsSavingDrawing(true)
+                      try {
+                        // Render all strokes to find tight bounding box
+                        const allPoints = completedStrokes.flatMap(s => s.points)
+                        if (allPoints.length === 0) return
+
+                        const padding = 20
+                        const minSX = Math.min(...allPoints.map(p => p.x)) - padding
+                        const maxSX = Math.max(...allPoints.map(p => p.x)) + padding
+                        const minSY = Math.min(...allPoints.map(p => p.y)) - padding
+                        const maxSY = Math.max(...allPoints.map(p => p.y)) + padding
+                        const cropW = Math.max(1, maxSX - minSX)
+                        const cropH = Math.max(1, maxSY - minSY)
+
+                        // Create offscreen canvas sized to the bounding box
+                        const offscreen = document.createElement('canvas')
+                        offscreen.width = Math.ceil(cropW)
+                        offscreen.height = Math.ceil(cropH)
+                        const offCtx = offscreen.getContext('2d')!
+
+                        // Draw strokes shifted so bounding box starts at (0,0)
+                        for (const stroke of completedStrokes) {
+                          const shifted = stroke.points.map(p => ({ x: p.x - minSX, y: p.y - minSY }))
+                          drawBezierStroke(offCtx, shifted, stroke.color, stroke.width, stroke.isEraser)
+                        }
+
+                        // Export as PNG blob and upload to Supabase Storage
+                        const blob = await new Promise<Blob>((resolve) => {
+                          offscreen.toBlob((b) => resolve(b!), 'image/png')
+                        })
+                        const fileName = `drawing_${userId}_${Date.now()}.png`
+                        
+                        let imageUrl = ''
+                        const { error: uploadError } = await supabase!.storage
+                          .from('traces')
+                          .upload(fileName, blob, { contentType: 'image/png' })
+                        
+                        if (uploadError) {
+                          console.error('Storage upload failed, falling back to data URL:', uploadError)
+                          imageUrl = offscreen.toDataURL('image/png')
+                        } else {
+                          const { data: { publicUrl } } = supabase!.storage
+                            .from('traces')
+                            .getPublicUrl(fileName)
+                          imageUrl = publicUrl
+                        }
+
+                        // Convert screen-space bounds to world coordinates
+                        const panX = worldContainerRef.current?.x ?? 0
+                        const panY = worldContainerRef.current?.y ?? 0
+                        const zoom = zoomRef.current
+                        const worldMinX = (minSX - panX) / zoom
+                        const worldMinY = (minSY - panY) / zoom
+                        const worldW = cropW / zoom
+                        const worldH = cropH / zoom
+                        const worldCenterX = worldMinX + worldW / 2
+                        const worldCenterY = worldMinY + worldH / 2
+
+                        if (supabase) {
+                          const { data, error } = await supabase.from('traces').insert({
+                            user_id: userId,
+                            username,
+                            type: 'image',
+                            content: 'freehand drawing',
+                            media_url: imageUrl,
+                            position_x: worldCenterX,
+                            position_y: worldCenterY,
+                            scale: 1.0,
+                            rotation: 0.0,
+                            lobby_id: lobbyId,
+                            width: Math.round(worldW),
+                            height: Math.round(worldH),
+                            show_border: false,
+                            show_background: false,
+                            show_description: false,
+                          } as any).select()
+
+                          if (!error && data && data[0]) {
+                            const dbTrace = data[0] as any
+                            const trace: Trace = {
+                              id: dbTrace.id,
+                              userId: dbTrace.user_id,
+                              username: dbTrace.username,
+                              type: dbTrace.type,
+                              content: dbTrace.content,
+                              x: dbTrace.position_x,
+                              y: dbTrace.position_y,
+                              createdAt: dbTrace.created_at,
+                              scale: dbTrace.scale ?? 1.0,
+                              scaleX: dbTrace.scale ?? 1.0,
+                              scaleY: dbTrace.scale ?? 1.0,
+                              rotation: dbTrace.rotation ?? 0.0,
+                              width: dbTrace.width,
+                              height: dbTrace.height,
+                              mediaUrl: dbTrace.media_url,
+                              showBorder: false,
+                              showBackground: false,
+                              showDescription: false,
+                              lobbyId: dbTrace.lobby_id,
+                            }
+                            useGameStore.getState().addTrace(trace)
+                          } else if (error) {
+                            console.error('Failed to save drawing:', error)
+                          }
+                        }
+                      } catch (err) {
+                        console.error('Error saving drawing:', err)
+                      }
+                      setIsSavingDrawing(false)
+                      setCompletedStrokes([])
+                      currentStrokeRef.current = []
+                    }}
+                    className="bg-white hover:bg-gray-200 text-black px-4 py-1 text-[9px] tracking-wider uppercase transition-all border border-white font-bold"
+                  >
+                    {isSavingDrawing ? '...' : `⎙ Print (${completedStrokes.length})`}
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setIsDrawingMode(false)
+                    setCompletedStrokes([])
+                    currentStrokeRef.current = []
+                    setIsEraserMode(false)
+                  }}
+                  className="ml-2 bg-red-900 hover:bg-red-700 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-red-600"
+                >
+                  Exit
+                </button>
+                </>)}
+
+                {drawControlsMinimized && (
+                  <button
+                    onClick={() => {
+                      setIsDrawingMode(false)
+                      setCompletedStrokes([])
+                      currentStrokeRef.current = []
+                      setIsEraserMode(false)
+                    }}
+                    className="ml-2 bg-red-900 hover:bg-red-700 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-red-600"
+                  >
+                    Exit
+                  </button>
+                )}
+              </div>
+              {!drawControlsMinimized && (
+                <p className="text-gray-500 text-[8px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
+              )}
+            </div>
+          </div>
+
+          {/* Drawing canvas overlay - below UI buttons, above traces */}
+          <canvas
+            ref={drawingCanvasRef}
+            className="fixed inset-0 z-[9998]"
+            style={{
+              cursor: isEraserMode ? 'cell' : 'crosshair',
+              width: '100vw',
+              height: '100vh',
+            }}
+            onMouseDown={(e) => {
+              if (e.button === 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                const point = { x: e.clientX, y: e.clientY }
+                currentStrokeRef.current = [point]
+                smoothedPointRef.current = { ...point }
+                setIsDrawing(true)
+                renderDrawingCanvas()
+              } else if (e.button === 2) {
+                e.preventDefault()
+                currentStrokeRef.current = []
+                smoothedPointRef.current = null
+                setIsDrawing(false)
+                renderDrawingCanvas()
+              }
+            }}
+            onMouseMove={(e) => {
+              if (isDrawing) {
+                const raw = { x: e.clientX, y: e.clientY }
+                const smoothing = drawingSmoothingRef.current / 100
+                if (smoothing > 0 && smoothedPointRef.current) {
+                  // Exponential moving average: lerp from smoothed toward raw
+                  const alpha = 1 - smoothing
+                  const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha
+                  const sy = smoothedPointRef.current.y + (raw.y - smoothedPointRef.current.y) * alpha
+                  smoothedPointRef.current = { x: sx, y: sy }
+                  currentStrokeRef.current.push({ x: sx, y: sy })
+                } else {
+                  smoothedPointRef.current = { ...raw }
+                  currentStrokeRef.current.push(raw)
+                }
+                renderDrawingCanvas()
+              }
+            }}
+            onMouseUp={(e) => {
+              if (e.button === 0 && isDrawing) {
+                setIsDrawing(false)
+                const rawPoints = currentStrokeRef.current
+                if (rawPoints.length >= 2) {
+                  setCompletedStrokes(prev => [...prev, {
+                    points: [...rawPoints],
+                    color: drawingColorRef.current,
+                    width: drawingWidthRef.current,
+                    isEraser: isEraserModeRef.current,
+                  }])
+                }
+                currentStrokeRef.current = []
+              }
+            }}
+            onWheel={(e) => e.preventDefault()}
+            onContextMenu={(e) => e.preventDefault()}
+          />
+        </>
+      )}
 
       {/* Trace Panel */}
       {showTracePanel && (
@@ -1169,27 +1687,41 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white"></div>
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white"></div>
         
-        <p className="text-white text-[10px] tracking-[0.15em] uppercase mb-2">Controls</p>
-        <div className="space-y-1">
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Pan : Left Click + Drag
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Zoom : Mouse Wheel
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Leave Trace : "T" Key
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Select Traces : Left Click Trace
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Move Traces : Left Click Trace + Drag
-          </p>
-          <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-            <span className="text-gray-500">◇</span> Edit Traces : Select Trace + Right Click
-          </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-white text-[10px] tracking-[0.15em] uppercase">Controls</p>
+          <button
+            onClick={() => setControlsMinimized(!controlsMinimized)}
+            className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+            title={controlsMinimized ? 'Expand' : 'Minimize'}
+          >
+            {controlsMinimized ? '▸' : '▾'}
+          </button>
         </div>
+        {!controlsMinimized && (
+          <div className="space-y-1 mt-2">
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Pan : Left Click + Drag
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Zoom : Mouse Wheel
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Leave Trace : "T" Key
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Select Traces : Left Click Trace
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Move Traces : Left Click Trace + Drag
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Edit Traces : Select Trace + Right Click
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Freehand Draw : "D" Key
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Context Menu */}
@@ -1236,6 +1768,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               >
                 <span className="text-nier-border/60">◇</span>
                 <span>Leave trace here</span>
+              </button>
+              <button
+                onClick={() => {
+                  setIsDrawingMode(true)
+                  setContextMenu(null)
+                }}
+                className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase"
+              >
+                <span className="text-nier-border/60">◇</span>
+                <span>Freehand draw</span>
               </button>
               {isLobbyOwner && (
                 <button
