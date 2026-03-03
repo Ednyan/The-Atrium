@@ -4,7 +4,6 @@ import { useGameStore } from '../store/gameStore'
 
 interface ProfileCustomizationProps {
   onClose: () => void
-  position: { x: number; y: number }
 }
 
 const PRESET_COLORS = [
@@ -20,8 +19,8 @@ const PRESET_COLORS = [
   '#89a4f4', // Blue
 ]
 
-export default function ProfileCustomization({ onClose, position }: ProfileCustomizationProps) {
-  const { userId, username, setUsername, playerColor, setPlayerColor } = useGameStore()
+export default function ProfileCustomization({ onClose }: ProfileCustomizationProps) {
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(false)
@@ -125,17 +124,20 @@ export default function ProfileCustomization({ onClose, position }: ProfileCusto
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 z-[100] bg-black/20" 
+        className="fixed inset-0 z-[10000] bg-black/60 flex items-center justify-center p-4" 
         onClick={onClose}
-      />
+        style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
       
-      {/* Context Menu */}
+      {/* Modal */}
       <div 
-        className="fixed z-[101] bg-black/95 border-2 border-white/20 rounded-lg p-4 w-80 pointer-events-auto"
+        className="z-[10000] bg-black/95 border-2 border-white/20 rounded-lg p-4 w-80 max-h-[90vh] overflow-y-auto pointer-events-auto"
         style={{
-          left: `${position.x}px`,
-          top: `${position.y}px`,
           boxShadow: '0 0 30px rgba(255, 255, 255, 0.1)',
+          touchAction: 'pan-y',
+          overscrollBehavior: 'contain',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -180,6 +182,29 @@ export default function ProfileCustomization({ onClose, position }: ProfileCusto
               className="w-full h-10 rounded border-2 border-white/20 bg-black/50 cursor-pointer"
             />
           </div>
+
+          {/* Trace Distance Indicators Toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-white/80 text-sm font-semibold">
+              Distance Indicators
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowTraceIndicators(!showTraceIndicators)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                showTraceIndicators ? 'bg-white/80' : 'bg-white/20'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 rounded-full transition-all ${
+                  showTraceIndicators ? 'left-[22px] bg-black' : 'left-0.5 bg-white/60'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="text-white/40 text-xs -mt-2">
+            Show off-screen trace direction &amp; distance
+          </p>
 
           {/* Display Name */}
           <div>
@@ -228,6 +253,7 @@ export default function ProfileCustomization({ onClose, position }: ProfileCusto
             {loading ? 'Saving...' : 'Save Changes'}
           </button>
         </form>
+      </div>
       </div>
     </>
   )

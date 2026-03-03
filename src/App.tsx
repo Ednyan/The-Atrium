@@ -528,7 +528,7 @@ function App() {
       return (
         <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4 overflow-y-auto">
           <div className="flex flex-col items-center my-auto py-8">
-            <div className="relative px-[5vw] sm:px-10 py-[4vw] sm:py-8 w-[90vw] sm:w-auto max-w-md">
+            <div className="relative px-[5vw] sm:px-10 lg:px-14 py-[4vw] sm:py-8 lg:py-12 w-[90vw] sm:w-auto sm:min-w-[420px] lg:min-w-[520px] max-w-2xl">
               {/* Corner brackets */}
               <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
               <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
@@ -536,20 +536,20 @@ function App() {
               <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
 
               {isPasswordError ? (
-                <div className="flex flex-col items-center gap-[2vw] sm:gap-4">
-                  <p className="text-pink-300 text-[clamp(10px,2.8vw,14px)] tracking-[0.2em] uppercase text-center">Tuturu~! ♪</p>
-                  <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-wide text-center leading-relaxed">
+                <div className="flex flex-col items-center gap-[2vw] sm:gap-4 lg:gap-5">
+                  <p className="text-pink-300 text-[clamp(10px,2.8vw,18px)] tracking-[0.2em] uppercase text-center">Tuturu~! ♪</p>
+                  <p className="text-white text-[clamp(9px,2.5vw,16px)] tracking-wide text-center leading-relaxed">
                     Mayushii doesn't remember seeing your name on the list~! This atrium is password-protected, you know?
                   </p>
-                  <p className="text-gray-400 text-[clamp(8px,2.2vw,12px)] tracking-wide text-center leading-relaxed italic">
+                  <p className="text-gray-400 text-[clamp(8px,2.2vw,14px)] tracking-wide text-center leading-relaxed italic">
                     If you try to sneak in again... Mayushii might have to do something she'd really rather not~ ✦
                   </p>
                   <img
                     src="/assets/images/mayuri_knives.gif"
                     alt="Mayushii says no~"
-                    className="w-[55vw] sm:w-64 max-w-xs rounded border border-white/10 mt-2"
+                    className="w-[55vw] sm:w-72 lg:w-96 max-w-lg rounded border border-white/10 mt-2"
                   />
-                  <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-1 text-center">◇ Please use the atrium browser to enter properly~</p>
+                  <p className="text-gray-500 text-[clamp(7px,1.8vw,12px)] tracking-[0.2em] uppercase mt-1 text-center">◇ Please use the atrium browser to enter properly~</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-4">
@@ -562,7 +562,7 @@ function App() {
                   setLobbyAccessError(null)
                   navigate('/browse')
                 }}
-                className="w-full mt-5 bg-white/5 hover:bg-white/15 text-white px-[3vw] sm:px-6 py-2 text-[clamp(8px,2.2vw,12px)] tracking-[0.2em] uppercase transition-all border border-white/20 hover:border-white/40"
+                className="w-full mt-5 bg-white/5 hover:bg-white/15 text-white px-[3vw] sm:px-6 py-2 lg:py-3 text-[clamp(8px,2.2vw,14px)] tracking-[0.2em] uppercase transition-all border border-white/20 hover:border-white/40"
               >
                 Go to Atrium Browser
               </button>

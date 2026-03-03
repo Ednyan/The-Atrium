@@ -104,8 +104,13 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-lobby-darker border-2 border-lobby-accent rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] p-4"
+      style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+        <div className="bg-lobby-darker border-2 border-lobby-accent rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
         {/* Header */}
         <div className="sticky top-0 bg-lobby-darker border-b border-lobby-accent/30 px-6 py-4 flex justify-between items-center">
           <h2 className="text-xl font-bold text-white">🎨 Customize Theme</h2>

@@ -172,8 +172,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-      <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4">
+    <div
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4"
+      style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-white">Profile Settings</h2>
           <button

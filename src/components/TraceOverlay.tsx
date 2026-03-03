@@ -1495,7 +1495,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     pointerEvents: 'none',
                     transition: 'left 0.05s ease-out, top 0.05s ease-out',
                     filter: `drop-shadow(0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6))`,
-                    zIndex: 10000,
+                    zIndex: 10001,
                   }}
                 >
                   {getCursorSvg()}

@@ -158,7 +158,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       </div>
 
       {/* Section indicators (Nier-style, on the right) */}
-      <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 flex flex-col items-end gap-6">
+      <div className="fixed right-2 sm:right-8 top-1/2 -translate-y-1/2 z-40 flex flex-col items-end gap-4 sm:gap-6">
         {sections.map((section, index) => {
           const isActive = activeSection === index
           const distance = Math.abs(activeSection - index)
@@ -171,7 +171,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             >
               {/* Section label (shows on hover or when active) */}
               <span 
-                className={`text-[10px] tracking-[0.15em] uppercase transition-all duration-300 ${
+                className={`text-[10px] tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline ${
                   isActive 
                     ? 'text-nier-bg opacity-100' 
                     : 'text-nier-border/60 opacity-0 group-hover:opacity-100'
@@ -233,7 +233,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 1: Hero */}
       <section 
         ref={el => sectionRefs.current[0] = el}
-        className="min-h-screen flex flex-col items-center justify-center px-6 relative"
+        className="min-h-screen flex flex-col items-center justify-center px-5 sm:px-12 relative"
       >
         {/* Corner brackets */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30" />
@@ -241,29 +241,29 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-nier-border/30" />
 
-        <div className="text-center max-w-3xl">
+        <div className="text-center max-w-2xl mx-auto">
           <div className="flex items-center justify-center gap-4 mb-6">
             <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/50" />
             <span className="text-nier-border/70 text-xs tracking-[0.3em] uppercase">A Shared Canvas Experience</span>
             <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/50" />
           </div>
           
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-extralight tracking-wider mb-6">
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-extralight tracking-wider mb-6">
             <span className="text-nier-border/60">THE</span>{' '}
             <span className="text-white">DIGITAL</span>
             <br />
             <span className="text-white">ATRIUM</span>
           </h1>
           
-          <p className="text-nier-border text-lg md:text-xl font-light tracking-wide mb-4">
+          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-4">
             A curated space where ideas converge and art coexists.
           </p>
-          <p className="text-nier-border/60 text-sm md:text-base font-light tracking-wide mb-12">
+          <p className="text-nier-border/60 text-xs md:text-sm font-light tracking-wide mb-10">
             Enter the atrium. Leave your mark. Discover others.
           </p>
 
           {/* Feature highlights */}
-          <div className="flex flex-wrap justify-center gap-8 mb-12 text-xs tracking-[0.15em] uppercase text-nier-border/50">
+          <div className="flex flex-wrap justify-center gap-5 mb-10 text-[10px] tracking-[0.15em] uppercase text-nier-border/50">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/40" />
               <span>Infinite Canvas</span>
@@ -279,7 +279,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
 
           {/* Diamond separator */}
-          <div className="flex items-center justify-center gap-3 mb-12">
+          <div className="flex items-center justify-center gap-3 mb-10">
             <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
             <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
             <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
@@ -288,7 +288,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* CTA Button */}
           <button
             onClick={onGetStarted}
-            className="group relative px-12 py-4 bg-transparent border border-nier-border/50 hover:border-nier-bg hover:bg-nier-bg/5 transition-all duration-300"
+            className="group relative px-10 py-3 bg-transparent border border-nier-border/50 hover:border-nier-bg hover:bg-nier-bg/5 transition-all duration-300"
           >
             <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
             <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
@@ -317,30 +317,30 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 2: What Is This */}
       <section 
         ref={el => sectionRefs.current[1] = el}
-        className="min-h-screen flex items-center justify-center px-6 py-24 relative"
+        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-3xl w-full mx-auto">
           {/* Section header */}
-          <div className="flex items-center gap-4 mb-12">
+          <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               What Is This
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
 
-          <div className="grid md:grid-cols-2 gap-12">
-            <div className="space-y-6">
-              <p className="text-nier-border text-lg leading-relaxed">
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <p className="text-nier-border text-sm md:text-base leading-relaxed">
                 <span className="text-nier-bg">The Digital Atrium</span> is a collaborative infinite canvas 
                 where people gather to share, explore, and build together.
               </p>
-              <p className="text-nier-border/70 leading-relaxed">
+              <p className="text-nier-border/70 text-sm leading-relaxed">
                 Like a grand entrance hall in a museum, the atrium serves as a central space where 
                 art, ideas, and content from many sources come together in one place. Each visitor 
                 can leave their mark—a trace—for others to discover.
               </p>
-              <p className="text-nier-border/70 leading-relaxed">
+              <p className="text-nier-border/70 text-sm leading-relaxed">
                 Create your own private atrium for your community, or explore public spaces to see 
                 what others have created. It's a living document of collective expression.
               </p>
@@ -386,22 +386,22 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 3: How It Works */}
       <section 
         ref={el => sectionRefs.current[2] = el}
-        className="min-h-screen flex items-center justify-center px-6 py-24 relative"
+        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-3xl w-full mx-auto">
           {/* Section header */}
-          <div className="flex items-center gap-4 mb-12">
+          <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               How It Works
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
 
-          <div className="space-y-12">
+          <div className="space-y-10">
             {/* Controls */}
             <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-white mb-6 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
                 <span className="text-nier-border/40">01</span>
                 Navigation
               </h3>
@@ -411,7 +411,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   { key: 'Scroll Wheel', desc: 'Zoom in and out' },
                   { key: 'T Key', desc: 'Quick-place a trace' },
                 ].map((control, i) => (
-                  <div key={i} className="border border-nier-border/20 p-4 bg-nier-black/30">
+                  <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
                     <div className="text-white text-sm font-mono mb-2">{control.key}</div>
                     <div className="text-nier-border/60 text-xs">{control.desc}</div>
                   </div>
@@ -421,15 +421,15 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* Creating traces */}
             <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-white mb-6 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
                 <span className="text-nier-border/40">02</span>
                 Leaving Traces
               </h3>
-              <div className="border border-nier-border/30 p-6 bg-nier-black/30">
-                <p className="text-nier-border/70 leading-relaxed mb-4">
+              <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
+                <p className="text-nier-border/70 text-sm leading-relaxed mb-3">
                   Click anywhere on the canvas to open the trace menu. Choose between:
                 </p>
-                <div className="flex flex-wrap gap-6 text-sm">
+                <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
                     <span className="text-nier-border"><span className="text-nier-bg">Text</span> — Notes, thoughts, poetry</span>
@@ -448,12 +448,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* Storage recommendation */}
             <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-white mb-6 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
                 <span className="text-nier-border/40">03</span>
                 Adding Your Content
               </h3>
-              <div className="border border-nier-border/30 p-6 bg-nier-black/30">
-                <p className="text-nier-border/70 leading-relaxed mb-4">
+              <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
+                <p className="text-nier-border/70 text-sm leading-relaxed mb-3">
                   The atrium connects to your content through embedded links. We recommend using free 
                   third-party platforms for hosting your media:
                 </p>
@@ -479,12 +479,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* The ecosystem */}
             <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-white mb-6 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
                 <span className="text-nier-border/40">04</span>
                 The Ecosystem
               </h3>
-              <div className="grid md:grid-cols-3 gap-6">
-                <div className="text-center p-6">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-lg">1</span>
                   </div>
@@ -493,7 +493,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     Set up your atrium. Define its purpose and who can access it.
                   </p>
                 </div>
-                <div className="text-center p-6">
+                <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-lg">2</span>
                   </div>
@@ -502,7 +502,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     Invite others or leave traces yourself. Build a collection of ideas.
                   </p>
                 </div>
-                <div className="text-center p-6">
+                <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-lg">3</span>
                   </div>
@@ -520,14 +520,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 4: Who Am I */}
       <section 
         ref={el => sectionRefs.current[3] = el}
-        className="min-h-screen flex items-center justify-center px-6 py-24 relative"
+        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-2xl w-full mx-auto text-center">
           {/* Section header */}
-          <div className="flex items-center justify-center gap-4 mb-12">
-            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[100px]" />
+          <div className="flex items-center justify-center gap-3 mb-10">
+            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               Who and Why?
             </h2>
             <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
@@ -535,7 +535,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
 
           {/* Placeholder for personal content */}
-          <div className="border border-nier-border/30 p-8 md:p-12 bg-nier-black/30 mb-8">
+          <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
             <p className="text-nier-border/60 text-sm leading-relaxed mb-6 italic">
               [Your personal introduction goes here. Talk about yourself, your motivations 
               for creating The Digital Atrium, and what drives you.]
@@ -568,7 +568,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
 
           {/* Final CTA */}
-          <div className="mt-16">
+          <div className="mt-12">
             <div className="flex items-center justify-center gap-3 mb-8">
               <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
               <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />

@@ -734,6 +734,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         // Update trace direction indicators on screen borders (Nier:Automata style)
         // Uses object pooling to prevent memory leaks
         if (traceIndicatorsRef.current) {
+          // Check if indicators are toggled off
+          const showIndicators = useGameStore.getState().showTraceIndicators
+          if (!showIndicators) {
+            indicatorPoolRef.current.forEach(({ graphics }) => {
+              graphics.visible = false
+              if (graphics.parent) graphics.parent.removeChild(graphics)
+            })
+          } else {
           pulseTime += 0.02 // Slower pulse for elegant animation
           
           // Find traces that are outside the camera viewport
@@ -870,6 +878,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             indicator.visible = true
             traceIndicatorsRef.current?.addChild(indicator)
           })
+          } // end showIndicators else
         }
 
         // Update other users in world space
@@ -1988,7 +1997,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {showProfileCustomization && (
         <ProfileCustomization
           onClose={() => setShowProfileCustomization(false)}
-          position={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
         />
       )}
     </div>
