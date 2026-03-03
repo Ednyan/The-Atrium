@@ -11,7 +11,7 @@ interface LayerPanelProps {
 }
 
 export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, onGoToTrace }: LayerPanelProps) {
-  const { traces, username, playerZIndex, setPlayerZIndex } = useGameStore()
+  const { traces, username, playerZIndex, setPlayerZIndex, addTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
@@ -186,6 +186,13 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
     if (error) {
       console.error('Error moving trace:', error)
+    } else {
+      // Optimistic local update - realtime subscription may drop this
+      // due to pendingChanges guard, so update the store directly
+      const trace = traces.find(t => t.id === traceId)
+      if (trace) {
+        addTrace({ ...trace, layerId: layerId, zIndex: newZIndex })
+      }
     }
   }
 

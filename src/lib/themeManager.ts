@@ -391,28 +391,32 @@ export class ThemeManager {
   }
 
   private _cullFrameCounter = 0
+  private _groundHidden = false
+  
+  isGroundHidden(): boolean {
+    return this._groundHidden
+  }
   
   cullGroundElements(cameraX: number, cameraY: number, viewportWidth: number, viewportHeight: number, playerX: number, playerY: number, traces: Array<{x: number, y: number}>, zoom: number) {
-    // Only cull every 10 frames for performance
+    // Only cull every 10 frames for performance, but always run fade animations
     this._cullFrameCounter++
-    if (this._cullFrameCounter % 10 !== 0) {
-      // Still update fade animations but skip culling logic
-      this.groundElements.forEach(element => {
-        if (element.sprite.alpha < element.targetAlpha) {
-          element.sprite.alpha = Math.min(element.targetAlpha, element.sprite.alpha + element.fadeSpeed)
-        } else if (element.sprite.alpha > element.targetAlpha) {
-          element.sprite.alpha = Math.max(element.targetAlpha, element.sprite.alpha - element.fadeSpeed)
-        }
-      })
-      return
+    
+    // Simple zoom threshold: hide ground elements below 0.35 zoom, show above 0.4
+    const zoomHideThreshold = 0.35
+    const zoomShowThreshold = 0.4
+    
+    // Determine if ground should be hidden (with hysteresis to prevent flicker)
+    if (!this._groundHidden && zoom < zoomHideThreshold) {
+      this._groundHidden = true
+    } else if (this._groundHidden && zoom > zoomShowThreshold) {
+      this._groundHidden = false
     }
-    // If zoom is too small (< 0.5), fade out all ground elements
-    if (zoom < 0.3) {
+    
+    // If hidden, fade all elements out and skip the rest
+    if (this._groundHidden) {
       this.groundElements.forEach(element => {
         element.targetAlpha = 0
-        if (element.sprite.alpha > 0) {
-          element.sprite.alpha = Math.max(0, element.sprite.alpha - element.fadeSpeed)
-        }
+        element.sprite.alpha = Math.max(0, element.sprite.alpha - element.fadeSpeed * 3)
       })
       // Remove fully faded elements
       this.groundElements = this.groundElements.filter(element => {
@@ -422,6 +426,18 @@ export class ThemeManager {
           return false
         }
         return true
+      })
+      return
+    }
+    
+    if (this._cullFrameCounter % 10 !== 0) {
+      // Still update fade animations but skip culling logic
+      this.groundElements.forEach(element => {
+        if (element.sprite.alpha < element.targetAlpha) {
+          element.sprite.alpha = Math.min(element.targetAlpha, element.sprite.alpha + element.fadeSpeed)
+        } else if (element.sprite.alpha > element.targetAlpha) {
+          element.sprite.alpha = Math.max(element.targetAlpha, element.sprite.alpha - element.fadeSpeed)
+        }
       })
       return
     }
@@ -479,7 +495,7 @@ export class ThemeManager {
         }
       }
       
-      // Update target alpha for this element (multiply by configured opacity)
+      // Update target alpha for this element
       const configuredOpacity = this.config.groundParticleOpacity ?? 1.0
       element.targetAlpha = targetFadeOpacity * configuredOpacity
       

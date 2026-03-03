@@ -87,6 +87,8 @@ export interface Trace {
     cp2y?: number // Control point 2 y
   }> // For path shapes
   pathCurveType?: 'straight' | 'bezier' // For path shapes - line type
+  pathArrowStart?: 'none' | 'triangle' | 'diamond' // Arrow at start of path
+  pathArrowEnd?: 'none' | 'triangle' | 'diamond' // Arrow at end of path
   width?: number
   height?: number
   // Non-uniform scale support

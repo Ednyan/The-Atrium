@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Application, Graphics, Text, Container } from 'pixi.js'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { usePresence } from '../hooks/usePresence'
 import { useTraces } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
@@ -82,6 +82,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [hudMinimized, setHudMinimized] = useState(false)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(false)
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const hudRef = useRef<HTMLDivElement>(null)
+
+  // Warn user when leaving/refreshing with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (useGameStore.getState().hasPendingChanges()) {
+        e.preventDefault()
+        e.returnValue = '' // Required for Chrome
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
 
   // Freehand drawing mode
   const [isDrawingMode, setIsDrawingMode] = useState(false)
@@ -535,6 +549,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       // Prevent context menu on right click (we handle it ourselves)
       const handleContextMenu = (e: MouseEvent) => {
+        // Allow native browser context menu inside selectable text areas (modal preview)
+        const target = e.target as HTMLElement
+        if (target.closest('.selectable-text')) return
         e.preventDefault()
       }
 
@@ -675,13 +692,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           // Always update floating particles (they should animate continuously)
           themeManager.updateParticles(camX, camY, viewportWidth, viewportHeight)
           
-          // Only generate/cull ground elements when zoom is stable (heavy operations)
-          if (frameCounter % 2 === 0 && zoomIsStable) {
-            // Generate ground elements only near player and traces
-            const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
-            const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
-            
-            // Only generate in camera viewport (don't expand to include all traces)
+          const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
+          const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
+          
+          // Only GENERATE ground elements when zoom is stable and not hidden (expensive)
+          if (frameCounter % 2 === 0 && zoomIsStable && !themeManager.isGroundHidden()) {
             const margin = 500
             const minX = camX - viewportWidth / zoomRef.current - margin
             const minY = camY - viewportHeight / zoomRef.current - margin
@@ -691,8 +706,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             themeManager.generateGroundElements(
               minX, minY, maxX, maxY
             )
-            
-            // Cull distant ground elements for performance (also check if near player/traces)
+          }
+          
+          // Always CULL ground elements (handles fade-out during zoom to prevent flickering)
+          if (frameCounter % 2 === 0) {
             themeManager.cullGroundElements(camX, camY, viewportWidth, viewportHeight, playerPos.x, playerPos.y, tracePositions, zoomRef.current)
           }
         }
@@ -1259,7 +1276,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       </div>
 
       {/* HUD */}
-      <div data-ui-element="true" className="fixed top-4 left-4 bg-black px-3 py-2 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
+      <div ref={hudRef} data-ui-element="true" className="fixed top-4 left-4 bg-black px-3 py-2 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white"></div>
         <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white"></div>
@@ -1308,7 +1325,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </button>
         <div className="flex gap-1 mt-1">
           <button
-            onClick={onLeaveLobby}
+            onClick={() => {
+              if (useGameStore.getState().hasPendingChanges()) {
+                setShowLeaveDialog(true)
+              } else {
+                onLeaveLobby()
+              }
+            }}
             className="flex-1 bg-red-900 hover:bg-red-700 text-white px-1 py-0.5 text-[8px] tracking-wider uppercase transition-all"
           >
             Leave
@@ -1351,18 +1374,50 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
       </div>
 
+      {/* Atrium size indicator - bottom center */}
+      {(() => {
+        const sizeBytes = useGameStore.getState().getLobbySizeBytes()
+        const sizeMB = sizeBytes / (1024 * 1024)
+        const limitMB = LOBBY_SIZE_LIMIT / (1024 * 1024)
+        const pct = Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+        const isFull = sizeBytes >= LOBBY_SIZE_LIMIT
+        return (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto" title={`${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
+            <div className="flex items-center gap-2 bg-black/90 border border-gray-600 px-3 py-2">
+              <span className={`text-[9px] font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-gray-400'}`}>
+                Usage
+              </span>
+              <div className="w-20 h-2 bg-gray-800 border border-gray-700 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-white/50'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className={`text-[9px] font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                {sizeMB.toFixed(1)}/{limitMB}MB
+              </span>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Trace Button */}
+      {(() => {
+        const isFull = useGameStore.getState().isLobbyFull()
+        return (
       <button
         onClick={() => {
           // Open trace panel at current player position
           setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
           setShowTracePanel(!showTracePanel)
         }}
-        className="fixed bottom-4 right-4 bg-white hover:bg-gray-200 text-black px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-400 pointer-events-auto"
+        className={`fixed bottom-4 right-4 ${isFull ? 'bg-red-200 hover:bg-red-100 border-red-400' : 'bg-white hover:bg-gray-200 border-gray-400'} text-black px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
       >
         <span className="opacity-60 mr-2">◇</span>
-        {showTracePanel ? 'Close' : 'Leave Trace'}
+        {isFull ? 'Atrium Full' : showTracePanel ? 'Close' : 'Leave Trace'}
       </button>
+        )
+      })()}
 
       {/* Layers Button */}
       <button
@@ -1577,6 +1632,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                         const worldCenterY = worldMinY + worldH / 2
 
                         if (supabase) {
+                          // Check lobby size limit before saving drawing
+                          if (useGameStore.getState().isLobbyFull()) {
+                            const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
+                            alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+                            setIsSavingDrawing(false)
+                            return
+                          }
                           const { data, error } = await supabase.from('traces').insert({
                             user_id: userId,
                             username,
@@ -1999,6 +2061,116 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClose={() => setShowProfileCustomization(false)}
         />
       )}
+
+      {/* Unsaved Changes Leave Dialog */}
+      {showLeaveDialog && (() => {
+        const hudBottom = hudRef.current ? hudRef.current.getBoundingClientRect().bottom : 200
+        return (
+        <div
+          className="fixed inset-0 z-[10002] pointer-events-auto"
+          onClick={() => setShowLeaveDialog(false)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-500 p-6 absolute left-4"
+            style={{ top: `${hudBottom + 8}px`, maxWidth: '200px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+
+            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-gray-400 mr-2">◇</span>Unsaved Changes
+            </h3>
+            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+              You have {useGameStore.getState().pendingChanges.size + useGameStore.getState().deletedTraces.size} unsaved change(s). Are you sure you want to leave?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={async () => {
+                  // Save and leave
+                  const state = useGameStore.getState()
+                  if (supabase && state.hasPendingChanges()) {
+                    try {
+                      // Delete traces
+                      for (const traceId of state.deletedTraces) {
+                        await (supabase.from('traces') as any).delete().eq('id', traceId)
+                      }
+                      // Update traces
+                      for (const traceId of state.pendingChanges) {
+                        const trace = state.traces.find(t => t.id === traceId)
+                        if (!trace) continue
+                        const updateData: any = {
+                          position_x: trace.x, position_y: trace.y,
+                          scale: ((trace.scaleX ?? 1) + (trace.scaleY ?? 1)) / 2,
+                          rotation: trace.rotation ?? 0,
+                          show_border: trace.showBorder, show_background: trace.showBackground,
+                          show_description: trace.showDescription, show_filename: trace.showFilename,
+                          font_size: trace.fontSize, font_family: trace.fontFamily,
+                          text_bold: trace.textBold, text_italic: trace.textItalic,
+                          text_underline: trace.textUnderline, text_align: trace.textAlign,
+                          text_color: trace.textColor, is_locked: trace.isLocked,
+                          border_radius: trace.borderRadius,
+                          crop_x: trace.cropX, crop_y: trace.cropY,
+                          crop_width: trace.cropWidth, crop_height: trace.cropHeight,
+                          illuminate: trace.illuminate, light_color: trace.lightColor,
+                          light_intensity: trace.lightIntensity, light_radius: trace.lightRadius,
+                          light_offset_x: trace.lightOffsetX, light_offset_y: trace.lightOffsetY,
+                          light_pulse: trace.lightPulse, light_pulse_speed: trace.lightPulseSpeed,
+                          enable_interaction: trace.enableInteraction, ignore_clicks: trace.ignoreClicks,
+                          z_index: trace.zIndex,
+                        }
+                        if (trace.mediaUrl !== undefined) updateData.media_url = trace.mediaUrl
+                        if (trace.content !== undefined) updateData.content = trace.content
+                        if (trace.type === 'shape') {
+                          if (trace.shapeType) updateData.shape_type = trace.shapeType
+                          if (trace.shapeColor) updateData.shape_color = trace.shapeColor
+                          if (trace.shapeOpacity !== undefined) updateData.shape_opacity = trace.shapeOpacity
+                          if (trace.shapePoints) updateData.shape_points = trace.shapePoints
+                          if (trace.pathCurveType) updateData.path_curve_type = trace.pathCurveType
+                          if (trace.pathArrowStart) updateData.path_arrow_start = trace.pathArrowStart
+                          if (trace.pathArrowEnd) updateData.path_arrow_end = trace.pathArrowEnd
+                          if (trace.width) updateData.width = trace.width
+                          if (trace.height) updateData.height = trace.height
+                        }
+                        await (supabase.from('traces') as any).update(updateData).eq('id', traceId)
+                      }
+                      state.clearPendingChanges()
+                    } catch {
+                      // Continue leaving even if save fails
+                    }
+                  }
+                  setShowLeaveDialog(false)
+                  onLeaveLobby()
+                }}
+                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              >
+                ◇ Save and Leave
+              </button>
+              <button
+                onClick={() => {
+                  useGameStore.getState().clearPendingChanges()
+                  setShowLeaveDialog(false)
+                  onLeaveLobby()
+                }}
+                className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
+              >
+                Yes, Leave Without Saving
+              </button>
+              <button
+                onClick={() => setShowLeaveDialog(false)}
+                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+              >
+                Return to Atrium
+              </button>
+            </div>
+          </div>
+        </div>
+        )
+      })()}
     </div>
   )
 }

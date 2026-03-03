@@ -4,11 +4,23 @@ import { supabase } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
 export function useTraces(lobbyId: string | null) {
-  const { setTraces, addTrace, removeTrace } = useGameStore()
+  const { setTraces, addTrace, removeTrace, setServerLobbySize } = useGameStore()
 
   useEffect(() => {
     if (!supabase || !lobbyId) {
       return
+    }
+
+    // Fetch actual lobby size from Supabase RPC
+    const fetchLobbySize = async (traceCount: number) => {
+      try {
+        const { data, error } = await (supabase as any).rpc('get_lobby_size_bytes', { p_lobby_id: lobbyId })
+        if (!error && data !== null) {
+          setServerLobbySize(Number(data), traceCount)
+        }
+      } catch {
+        // Silently fall back to client-side estimation
+      }
     }
 
     // Load existing traces
@@ -86,10 +98,14 @@ export function useTraces(lobbyId: string | null) {
             shapeOutlineWidth: row.shape_outline_width,
             shapePoints: row.shape_points,
             pathCurveType: row.path_curve_type,
+            pathArrowStart: row.path_arrow_start,
+            pathArrowEnd: row.path_arrow_end,
             width: row.width,
             height: row.height,
           }))
           setTraces(traces)
+          // Fetch the real lobby size from Supabase
+          fetchLobbySize(traces.length)
         }
       } catch (error) {
         // Silent error handling
@@ -167,6 +183,8 @@ export function useTraces(lobbyId: string | null) {
             shapeOutlineWidth: row.shape_outline_width,
             shapePoints: row.shape_points,
             pathCurveType: row.path_curve_type,
+            pathArrowStart: row.path_arrow_start,
+            pathArrowEnd: row.path_arrow_end,
             width: row.width,
             height: row.height,
           }
@@ -247,6 +265,8 @@ export function useTraces(lobbyId: string | null) {
             shapeOutlineWidth: row.shape_outline_width,
             shapePoints: row.shape_points,
             pathCurveType: row.path_curve_type,
+            pathArrowStart: row.path_arrow_start,
+            pathArrowEnd: row.path_arrow_end,
             width: row.width,
             height: row.height,
           }

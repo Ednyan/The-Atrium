@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
@@ -24,7 +24,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
   const [shapeWidth, setShapeWidth] = useState(200)
   const [shapeHeight, setShapeHeight] = useState(200)
   
-  const { username, userId, position, addTrace } = useGameStore()
+  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGameStore()
+  const lobbyFull = isLobbyFull()
   
   // Use trace position if provided, otherwise fall back to character position
   const finalPosition = tracePosition || position
@@ -32,6 +33,13 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    
+    // Check lobby size limit
+    if (isLobbyFull()) {
+      const sizeMB = (getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
+      alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+      return
+    }
     
     // Validate based on trace type
     if (traceType === 'text' && !content.trim()) return
@@ -482,10 +490,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || (traceType === 'text' && !content.trim()) || ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) || (traceType === 'embed' && !mediaUrl)}
+              disabled={isSubmitting || lobbyFull || (traceType === 'text' && !content.trim()) || ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) || (traceType === 'embed' && !mediaUrl)}
               className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? '◇ Saving...' : 'Leave Trace'}
+              {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : 'Leave Trace'}
             </button>
           </div>
         </form>
