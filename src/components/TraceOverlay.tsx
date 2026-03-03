@@ -4287,7 +4287,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {showPlayerMenu && (
         <ProfileCustomization
           onClose={() => setShowPlayerMenu(false)}
-          position={{ x: window.innerWidth / 2, y: window.innerHeight / 2 }}
         />
       )}
 
