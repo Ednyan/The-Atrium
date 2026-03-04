@@ -45,6 +45,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
   })
   const [newGroundUrl, setNewGroundUrl] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
 
   useEffect(() => {
     loadThemeSettings()
@@ -77,9 +78,9 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
     if (error) {
       console.error('Failed to save theme settings:', error)
-      alert('Failed to save theme settings')
     } else {
-      alert('Theme settings saved!')
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 2000)
       onUpdate()
     }
   }
@@ -457,7 +458,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-lobby-darker border-t border-lobby-accent/30 px-6 py-4 flex justify-end gap-3">
+        <div className="sticky bottom-0 bg-lobby-darker border-t border-lobby-accent/30 px-6 py-4 flex justify-end gap-3 items-center">
+          {saveSuccess && (
+            <span className="text-green-400 text-xs font-mono tracking-wider mr-auto">
+              ✓ Theme saved
+            </span>
+          )}
           <button
             onClick={onClose}
             className="px-4 py-2 rounded text-lobby-light hover:bg-lobby-muted/50 transition-all"

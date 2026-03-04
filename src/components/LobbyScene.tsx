@@ -83,6 +83,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [defaultTraceType, setDefaultTraceType] = useState<string | null>(null)
   const hudRef = useRef<HTMLDivElement>(null)
 
   // Warn user when leaving/refreshing with unsaved changes
@@ -95,6 +96,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  // Reset PixiJS ticker when returning from Alt-Tab to prevent cursor sluggishness
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && appRef.current) {
+        const ticker = appRef.current.ticker
+        ;(ticker as any).lastTime = performance.now()
+        // Snap zoom to target immediately to avoid laggy interpolation
+        if (zoomRef.current !== targetZoomRef.current) {
+          zoomRef.current = targetZoomRef.current
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   // Freehand drawing mode
@@ -486,24 +503,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           return
         }
         
-        // Right mouse button (button 2) - show context menu for canvas (not traces)
+        // Right mouse button (button 2) - close context menu on left click already handles this
         if (e.button === 2) {
-          const target = e.target as HTMLElement
-          const isClickingTrace = target.closest('[data-trace-element]') !== null
-          
-          // Only show canvas context menu if not clicking on a trace
-          if (!isClickingTrace) {
-            // Calculate world position where user right-clicked
-            const worldX = (e.clientX - worldContainerRef.current!.x) / zoomRef.current
-            const worldY = (e.clientY - worldContainerRef.current!.y) / zoomRef.current
-            
-            setContextMenu({
-              x: e.clientX,
-              y: e.clientY,
-              worldX,
-              worldY,
-            })
-          }
           return
         }
       }
@@ -547,7 +548,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         }
       }
       
-      // Prevent context menu on right click (we handle it ourselves)
+      // Prevent browser context menu on right click (canvas context menu now handled by overlay div)
       const handleContextMenu = (e: MouseEvent) => {
         // Allow native browser context menu inside selectable text areas (modal preview)
         const target = e.target as HTMLElement
@@ -1260,8 +1261,44 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {/* Pixi Canvas */}
         <div ref={canvasRef} className="absolute inset-0" />
         
+        {/* Right-click capture overlay - transparent div above canvas to reliably catch contextmenu */}
+        <div
+          className="absolute inset-0"
+          style={{ pointerEvents: 'auto', zIndex: 1 }}
+          onContextMenu={(e) => {
+            // Allow native browser context menu inside selectable text areas
+            const target = e.target as HTMLElement
+            if (target.closest('.selectable-text')) return
+            e.preventDefault()
+            
+            // Check if clicking on a trace element or UI
+            const isClickingTrace = target.closest('[data-trace-element]') !== null
+            const isClickingUI = target.closest('[data-ui-element]') !== null ||
+                                 target.closest('button') !== null ||
+                                 target.closest('input') !== null ||
+                                 target.closest('textarea') !== null ||
+                                 target.closest('select') !== null ||
+                                 target.closest('[role="dialog"]') !== null ||
+                                 target.closest('.customize-menu') !== null ||
+                                 target.closest('.layer-panel') !== null
+            
+            // Only show canvas context menu if not clicking on a trace or UI
+            if (!isClickingTrace && !isClickingUI && worldContainerRef.current) {
+              const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
+              const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
+              
+              setContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                worldX,
+                worldY,
+              })
+            }
+          }}
+        />
+        
         {/* Trace Content Overlay */}
-        <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
+        <div className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 2 }}>
           <TraceOverlay
             traces={traces}
             lobbyWidth={window.innerWidth}
@@ -1845,7 +1882,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} />
+        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} defaultType={defaultTraceType} />
       )}
 
       {/* Layer Panel */}
@@ -1922,16 +1959,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <>
           {/* Backdrop to close menu */}
           <div
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-[10000]"
             onClick={() => setContextMenu(null)}
           />
           
           {/* Menu */}
           <div
-            className="fixed bg-nier-blackLight border border-nier-border/40 shadow-2xl z-50 min-w-[180px] relative font-mono"
+            className="fixed bg-nier-blackLight border border-nier-border/40 shadow-2xl z-[10001] min-w-[180px] relative font-mono"
             style={{
-              left: `${contextMenu.x}px`,
-              top: `${contextMenu.y}px`,
+              left: `${Math.min(contextMenu.x, window.innerWidth - 200)}px`,
+              top: `${Math.min(contextMenu.y, window.innerHeight - 300)}px`,
             }}
           >
             {/* Corner brackets */}
@@ -1954,13 +1991,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <button
                 onClick={() => {
                   setClickedTracePosition({ x: contextMenu.worldX, y: contextMenu.worldY })
+                  setDefaultTraceType('text')
                   setShowTracePanel(true)
                   setContextMenu(null)
                 }}
                 className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase"
               >
                 <span className="text-nier-border/60">◇</span>
-                <span>Leave trace here</span>
+                <span>Text trace</span>
+              </button>
+              <button
+                onClick={() => {
+                  setClickedTracePosition({ x: contextMenu.worldX, y: contextMenu.worldY })
+                  setDefaultTraceType('embed')
+                  setShowTracePanel(true)
+                  setContextMenu(null)
+                }}
+                className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase"
+              >
+                <span className="text-nier-border/60">◇</span>
+                <span>Embed trace</span>
+              </button>
+              <button
+                onClick={() => {
+                  setClickedTracePosition({ x: contextMenu.worldX, y: contextMenu.worldY })
+                  setDefaultTraceType('shape')
+                  setShowTracePanel(true)
+                  setContextMenu(null)
+                }}
+                className="w-full px-4 py-2 text-left text-nier-bg hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[10px] tracking-wider uppercase"
+              >
+                <span className="text-nier-border/60">◇</span>
+                <span>Shape trace</span>
               </button>
               <button
                 onClick={() => {

@@ -7,11 +7,14 @@ interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
   lobbyId: string
+  defaultType?: string | null
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, defaultType }: TracePanelProps) {
   const [content, setContent] = useState('')
-  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>('text')
+  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(
+    (defaultType as 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape') || 'text'
+  )
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)

@@ -207,6 +207,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         img.onload = () => {
           clearTimeout(timeout)
+          // Capture natural dimensions during preflight for proper container sizing
+          if (img.naturalWidth && img.naturalHeight) {
+            setImageDimensions(prev => ({
+              ...prev,
+              [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
+            }))
+          }
           // Mark as successfully loaded directly (empty string means use original)
           setImageProxySources(prev => ({
             ...prev,
@@ -1292,14 +1299,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Text content conforms to the box (like Excel's wrap text)
         return { width: trace.width || 150, height: trace.height || 80 }
       case 'image':
-        // Use dimensions if available, otherwise square default
+        // Use custom dimensions if user resized, then detected dimensions, then default
+        if (trace.width && trace.height) {
+          return { width: trace.width, height: trace.height }
+        }
         if (imageDimensions[trace.id]) {
           const dim = imageDimensions[trace.id]
-          const maxSize = 200
-          const scale = Math.min(maxSize / dim.width, maxSize / dim.height, 1)
+          // Scale down to reasonable base size using the longest edge
+          const maxBase = 300
+          const longest = Math.max(dim.width, dim.height)
+          const scale = longest > maxBase ? maxBase / longest : 1
           return { width: Math.round(dim.width * scale), height: Math.round(dim.height * scale) }
         }
-        return { width: 150, height: 150 }
+        return { width: 200, height: 200 }
       case 'audio':
         return { width: 120, height: 60 }
       case 'video':
@@ -1312,15 +1324,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
         return { width: 200, height: 150 }
       case 'embed':
-        // Use detected 16:9 dimensions if available
+        // Use custom dimensions if user resized, then detected dimensions, then default
+        if (trace.width && trace.height) {
+          return { width: trace.width, height: trace.height }
+        }
         if (imageDimensions[trace.id]) {
           const dim = imageDimensions[trace.id]
-          const maxSize = 240
-          const scale = Math.min(maxSize / dim.width, maxSize / dim.height, 1)
+          // Scale down to reasonable base size using the longest edge
+          const maxBase = 300
+          const longest = Math.max(dim.width, dim.height)
+          const scale = longest > maxBase ? maxBase / longest : 1
           return { width: Math.round(dim.width * scale), height: Math.round(dim.height * scale) }
         }
         // Default 16:9 aspect ratio
-        return { width: 240, height: 135 }
+        return { width: 300, height: 169 }
       default:
         return { width: 120, height: 80 }
     }
@@ -1503,7 +1520,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     left: playerScreenX,
                     top: playerScreenY,
                     pointerEvents: 'none',
-                    transition: 'left 0.05s ease-out, top 0.05s ease-out',
                     filter: `drop-shadow(0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6))`,
                     zIndex: 10003,
                   }}
@@ -1778,6 +1794,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <div
                   className="relative cursor-pointer transition-shadow"
                   style={{
+                    boxSizing: 'content-box',
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
                     border: showBorder ? `3px solid ${isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : isMultiSelected ? '#60a5fa' : borderColor}` : 'none',
