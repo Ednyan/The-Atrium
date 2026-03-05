@@ -7,14 +7,11 @@ interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
   lobbyId: string
-  defaultType?: string | null
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, defaultType }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePanelProps) {
   const [content, setContent] = useState('')
-  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(
-    (defaultType as 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape') || 'text'
-  )
+  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>('text')
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -269,13 +266,13 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, defaultTyp
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Share a thought, memory, or feeling..."
-                maxLength={200}
+                maxLength={256}
                 rows={4}
                 className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors resize-none"
                 autoFocus
               />
               <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
-                {content.length}/200 characters
+                {content.length}/256 characters
               </p>
             </div>
           )}

@@ -72,11 +72,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
   const [imageRetryCount, setImageRetryCount] = useState<Record<string, number>>({}) // Track retry attempts per trace
   const processedImageIds = React.useRef<Set<string>>(new Set()) // Track which images have been preflight-tested
+  const [confirmedImageIds, setConfirmedImageIds] = useState<Set<string>>(new Set()) // Track embeds confirmed to be actual images (even without file extension)
   const [pathCreationMode, setPathCreationMode] = useState(false) // Track if we're in path creation mode
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
   const [localShapePoints, setLocalShapePoints] = useState<Record<string, any[]>>({}) // Track shape points during drag
   const [colorPickerCallback, setColorPickerCallback] = useState<((color: string) => void) | null>(null) // For fallback color picker
   const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
+  const copiedTraceIdRef = useRef<string | null>(null) // Track copied trace for Ctrl+C/V
   const hasEyeDropperSupport = typeof window !== 'undefined' && 'EyeDropper' in window
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
@@ -175,28 +177,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return
         }
         
-        // Check if URL is likely a direct image (ends with image extension)
-        const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(url)
-        
-        if (!isDirectImage) {
-          // Not a direct image URL (likely a page URL like reddit.com/...)
-          // Always use proxy for non-direct image URLs
-          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
-          setImageProxySources(prev => ({
-            ...prev,
-            [trace.id]: proxyUrl
-          }))
-          return
-        }
-        
-        // For direct image URLs, try loading normally first
+        // Always try loading as an image first (handles extensionless image URLs like Google Images)
         const img = new Image()
-        // Don't set crossOrigin - it forces CORS which many image servers don't support
-        // crossOrigin is only needed for reading pixel data, not for display
         
         const timeout = setTimeout(() => {
-          // If image hasn't loaded in 8 seconds, switch to proxy
           if (!img.complete) {
+            // Timed out — use proxy for this URL
             const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
             setImageProxySources(prev => ({
               ...prev,
@@ -207,14 +193,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         img.onload = () => {
           clearTimeout(timeout)
-          // Capture natural dimensions during preflight for proper container sizing
+          // URL is a valid image! Capture dimensions and mark as confirmed image
           if (img.naturalWidth && img.naturalHeight) {
             setImageDimensions(prev => ({
               ...prev,
               [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
             }))
           }
-          // Mark as successfully loaded directly (empty string means use original)
+          // Mark this embed as a confirmed image (so render uses <img> not <iframe>)
+          if (trace.type === 'embed') {
+            setConfirmedImageIds(prev => new Set(prev).add(trace.id))
+          }
+          // Loaded directly (empty string means use original URL)
           setImageProxySources(prev => ({
             ...prev,
             [trace.id]: ''
@@ -223,7 +213,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         img.onerror = () => {
           clearTimeout(timeout)
-          // Failed to load, use proxy
+          // Failed to load as image — use proxy
+          // The proxy will try to fetch; if it's actually an image, the render <img> onLoad will confirm it
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           setImageProxySources(prev => ({
             ...prev,
@@ -454,6 +445,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           rotation: trace.rotation ?? 0,
           show_border: trace.showBorder,
           show_background: trace.showBackground,
+          border_color: trace.borderColor,
+          border_opacity: trace.borderOpacity,
+          fill_color: trace.fillColor,
+          fill_opacity: trace.fillOpacity,
           show_description: trace.showDescription,
           show_filename: trace.showFilename,
           font_size: trace.fontSize,
@@ -531,6 +526,31 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     return () => window.removeEventListener('keydown', handleSaveShortcut)
   }, [hasPendingChanges, pendingChanges, deletedTraces, traces])
 
+  // Ctrl+C / Ctrl+V keyboard shortcuts for copy/paste traces
+  useEffect(() => {
+    const handleCopyPaste = (e: KeyboardEvent) => {
+      // Don't trigger when typing in inputs/textareas
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        // Copy selected trace
+        if (selectedTraceId) {
+          copiedTraceIdRef.current = selectedTraceId
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        // Paste (duplicate) copied trace
+        if (copiedTraceIdRef.current) {
+          e.preventDefault()
+          duplicateTrace(copiedTraceIdRef.current)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleCopyPaste)
+    return () => window.removeEventListener('keydown', handleCopyPaste)
+  }, [selectedTraceId, traces, userId, username])
+
   const deleteTrace = async (traceId: string) => {
     const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
     
@@ -581,11 +601,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       rotation: trace.rotation ?? 0,
       show_border: trace.showBorder ?? true,
       show_background: trace.showBackground ?? true,
+      border_color: trace.borderColor,
+      border_opacity: trace.borderOpacity,
+      fill_color: trace.fillColor,
+      fill_opacity: trace.fillOpacity,
       show_description: trace.showDescription ?? true,
       show_filename: trace.showFilename ?? true,
       font_size: trace.fontSize ?? 16,
       font_family: trace.fontFamily ?? 'sans',
+      text_bold: trace.textBold ?? false,
+      text_italic: trace.textItalic ?? false,
+      text_underline: trace.textUnderline ?? false,
+      text_align: trace.textAlign ?? 'center',
+      text_color: trace.textColor ?? '#ffffff',
       is_locked: false, // Never duplicate as locked
+      border_radius: trace.borderRadius ?? 8,
       crop_x: trace.cropX ?? 0,
       crop_y: trace.cropY ?? 0,
       crop_width: trace.cropWidth ?? 1,
@@ -597,6 +627,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       light_offset_x: trace.lightOffsetX ?? 0,
       light_offset_y: trace.lightOffsetY ?? 0,
       z_index: trace.zIndex ?? 0,
+      ignore_clicks: trace.ignoreClicks ?? false,
     }
 
     // Only add optional fields if they exist
@@ -614,6 +645,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       if (trace.shapeColor) newTrace.shape_color = trace.shapeColor
       if (trace.shapeOpacity !== undefined) newTrace.shape_opacity = trace.shapeOpacity
       if (trace.cornerRadius !== undefined) newTrace.corner_radius = trace.cornerRadius
+      if (trace.shapeOutlineOnly !== undefined) newTrace.shape_outline_only = trace.shapeOutlineOnly
+      if (trace.shapeNoFill !== undefined) newTrace.shape_no_fill = trace.shapeNoFill
+      if (trace.shapeOutlineColor) newTrace.shape_outline_color = trace.shapeOutlineColor
+      if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
+      if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
+      if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
+      if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
+      if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd
       if (trace.width) newTrace.width = trace.width
       if (trace.height) newTrace.height = trace.height
     }
@@ -1556,7 +1595,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const transform = getTraceTransform(trace)
         const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
         const { width, height } = getTraceSize(trace)
-        const borderColor = getBorderColor(trace.type)
+        const borderColor = trace.borderColor || getBorderColor(trace.type)
         const isSelected = selectedTraceId === trace.id
         const isMultiSelected = multiSelectedIds.has(trace.id)
 
@@ -1799,7 +1838,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     height: `${borderHeight}px`,
                     border: showBorder ? `3px solid ${isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : isMultiSelected ? '#60a5fa' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
-                    backgroundColor: showBackground ? 'rgba(26, 26, 46, 0.95)' : 'transparent',
+                    backgroundColor: showBackground ? (() => {
+                      const fc = displayTrace.fillColor || '#1a1a2e';
+                      const fo = displayTrace.fillOpacity ?? 0.95;
+                      // Convert hex to rgba
+                      const r = parseInt(fc.slice(1, 3), 16) || 26;
+                      const g = parseInt(fc.slice(3, 5), 16) || 26;
+                      const b = parseInt(fc.slice(5, 7), 16) || 46;
+                      return `rgba(${r}, ${g}, ${b}, ${fo})`;
+                    })() : 'transparent',
+                    ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
+                      borderColor: isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : isMultiSelected ? '#60a5fa' : (() => {
+                        const bc = borderColor;
+                        const bo = trace.borderOpacity;
+                        const r = parseInt(bc.slice(1, 3), 16) || 255;
+                        const g = parseInt(bc.slice(3, 5), 16) || 255;
+                        const b = parseInt(bc.slice(5, 7), 16) || 255;
+                        return `rgba(${r}, ${g}, ${b}, ${bo})`;
+                      })()
+                    } : {}),
                     padding: '0px',
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     boxShadow: isSelected && isCropMode
@@ -1965,8 +2022,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {/* Embed Content */}
               {trace.type === 'embed' && trace.mediaUrl && (() => {
-                // Check if the embed URL is actually a direct image
-                const isDirectImage = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
+                // Check if the embed URL is actually an image (by extension OR confirmed via preflight)
+                const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
+                const isConfirmedImage = confirmedImageIds.has(trace.id)
+                const isDirectImage = hasImageExtension || isConfirmedImage
                 
                 if (isDirectImage && !failedImages.has(trace.id)) {
                   // Render as image, not iframe
@@ -3322,7 +3381,134 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   />
                   <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                 </label>
+              </div>
 
+              {/* Border & Fill Color Controls (for text and embed traces) */}
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed') && (
+                <>
+                  {/* Border Color & Opacity */}
+                  {(editingTrace.showBorder ?? true) && (
+                    <div>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
+                      <div className="flex gap-2 items-center mb-2">
+                        <input
+                          type="color"
+                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, borderColor: e.target.value };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
+                          }}
+                          className="w-10 h-10 border border-gray-600 cursor-pointer bg-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, borderColor: e.target.value };
+                            setEditingTrace(updated);
+                          }}
+                          onBlur={(e) => {
+                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
+                          }}
+                          className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                          placeholder="#ffffff"
+                        />
+                        <button
+                          onClick={() => {
+                            const updated = { ...editingTrace, borderColor: undefined };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { borderColor: undefined });
+                          }}
+                          className="px-3 py-2 bg-gray-900 text-white border border-gray-600 hover:border-gray-400 text-xs"
+                          title="Reset to default"
+                        >
+                          ↺
+                        </button>
+                      </div>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-1">
+                        Border Opacity: {Math.round((editingTrace.borderOpacity ?? 1) * 100)}%
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={Math.round((editingTrace.borderOpacity ?? 1) * 100)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) / 100;
+                          const updated = { ...editingTrace, borderOpacity: value };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { borderOpacity: value });
+                        }}
+                        className="w-full accent-white"
+                      />
+                    </div>
+                  )}
+
+                  {/* Fill Color & Opacity */}
+                  {(editingTrace.showBackground ?? true) && (
+                    <div>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                      <div className="flex gap-2 items-center mb-2">
+                        <input
+                          type="color"
+                          value={editingTrace.fillColor || '#1a1a2e'}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, fillColor: e.target.value };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
+                          }}
+                          className="w-10 h-10 border border-gray-600 cursor-pointer bg-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={editingTrace.fillColor || '#1a1a2e'}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, fillColor: e.target.value };
+                            setEditingTrace(updated);
+                          }}
+                          onBlur={(e) => {
+                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
+                          }}
+                          className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                          placeholder="#1a1a2e"
+                        />
+                        <button
+                          onClick={() => {
+                            const updated = { ...editingTrace, fillColor: undefined };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { fillColor: undefined });
+                          }}
+                          className="px-3 py-2 bg-gray-900 text-white border border-gray-600 hover:border-gray-400 text-xs"
+                          title="Reset to default"
+                        >
+                          ↺
+                        </button>
+                      </div>
+                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-1">
+                        Fill Opacity: {Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}%
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) / 100;
+                          const updated = { ...editingTrace, fillOpacity: value };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { fillOpacity: value });
+                        }}
+                        className="w-full accent-white"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="space-y-3">
                 <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
                     {(editingTrace.showDescription ?? true) && <span className="text-black text-[10px]">✓</span>}
@@ -3375,7 +3561,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                       placeholder="Your message..."
                       rows={4}
-                      maxLength={200}
+                      maxLength={256}
                     />
                   </div>
 
@@ -3591,7 +3777,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                     placeholder="Optional description..."
                     rows={3}
-                    maxLength={200}
+                    maxLength={256}
                   />
                 </div>
               )}
@@ -3633,7 +3819,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
                       placeholder="Optional description..."
                       rows={3}
-                      maxLength={200}
+                      maxLength={256}
                     />
                   </div>
 

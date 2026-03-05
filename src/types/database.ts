@@ -99,6 +99,10 @@ export interface Trace {
   // Customization options
   showBorder?: boolean
   showBackground?: boolean
+  borderColor?: string // Custom border color
+  borderOpacity?: number // Border opacity 0-1
+  fillColor?: string // Custom fill/background color
+  fillOpacity?: number // Fill/background opacity 0-1
   showDescription?: boolean
   showFilename?: boolean
   fontSize?: 'small' | 'medium' | 'large' | number
