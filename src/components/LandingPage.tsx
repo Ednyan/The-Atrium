@@ -12,7 +12,7 @@ interface Section {
 }
 
 const sections: Section[] = [
-  { id: 'hero', title: 'The Digital Atrium', subtitle: 'A shared space for collective expression' },
+  { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
   { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
   { id: 'how', title: 'How It Works', subtitle: 'Navigate, create, collaborate' },
   { id: 'who', title: 'Who Am I', subtitle: 'The creator behind the project' },
@@ -256,10 +256,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </h1>
           
           <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-4">
-            A curated space where ideas converge and art coexists.
+            A museum of references created by you.
           </p>
           <p className="text-nier-border/60 text-xs md:text-sm font-light tracking-wide mb-10">
-            Enter the atrium. Leave your mark. Discover others.
+            Create your atrium. Discover others. Leave traces
           </p>
 
           {/* Feature highlights */}
@@ -336,13 +336,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 where people gather to share, explore, and build together.
               </p>
               <p className="text-nier-border/70 text-sm leading-relaxed">
-                Like a grand entrance hall in a museum, the atrium serves as a central space where 
-                art, ideas, and content from many sources come together in one place. Each visitor 
-                can leave their mark—a trace—for others to discover.
+                Like a grand entrance hall in a museum, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
               </p>
               <p className="text-nier-border/70 text-sm leading-relaxed">
-                Create your own private atrium for your community, or explore public spaces to see 
-                what others have created. It's a living document of collective expression.
+               Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium walls. 
+               It's a living document of collective expression for sharing and brainstorming. Have you heard of mind maps?
               </p>
             </div>
 
@@ -353,8 +351,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Traces</span>
                 </div>
                 <p className="text-nier-border/60 text-sm leading-relaxed">
-                  Leave text, embeds, or shapes anywhere on the infinite canvas. Each trace persists 
-                  for others to find.
+                  Leave text, embeds, or shapes anywhere on the infinite canvas. Each trace persists for you to see or others to find.
                 </p>
               </div>
               
@@ -427,7 +424,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               </h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
                 <p className="text-nier-border/70 text-sm leading-relaxed mb-3">
-                  Click anywhere on the canvas to open the trace menu. Choose between:
+                  Click the Leave trace button (or T key shortcut) to leave a trace. Choose between:
                 </p>
                 <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
                   <div className="flex items-center gap-2">
@@ -537,25 +534,26 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Placeholder for personal content */}
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
             <p className="text-nier-border/60 text-sm leading-relaxed mb-6 italic">
-              [Your personal introduction goes here. Talk about yourself, your motivations 
-              for creating The Digital Atrium, and what drives you.]
+              My name is Eduardo Pereira (aka Mindeformer or Red Puer).
+I’m a 3D artist that was FED UP by having a bunch of random images stored in my computer for reference and inspiration and no good alternative. That’s the reason I developed The Atrium.
             </p>
             
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
             
             <p className="text-nier-border/60 text-sm leading-relaxed italic">
-              [Share your story, your vision for this project, and what you hope 
-              visitors will take away from their experience.]
+              I wanted to create something simple to use and fast to iterate, like if you where creating a collage of images in a piece of paper.
+The result became what seems like a mix between pinterest, pureref and miro but with no paywalls, without storing hundreds of images in your pc and with the flexibility most platforms don’t have.
             </p>
           </div>
 
           {/* Social links placeholder */}
           <div className="flex items-center justify-center gap-6">
-            <span className="text-nier-border/40 text-xs tracking-[0.1em] uppercase">Connect:</span>
+            <span className="text-nier-border/40 text-xs tracking-[0.1em] uppercase">Connect with me:</span>
             {[
-              { name: 'GitHub', url: '#' },
-              { name: 'Twitter', url: '#' },
-              { name: 'Email', url: '#' },
+              { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
+              { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
+              { name: 'Youtube', url: 'https://www.youtube.com/@mindeformer' },
+              { name: 'Email', url: 'mailto:mindeformer@gmail.com' },
             ].map((social, i) => (
               <a
                 key={i}
