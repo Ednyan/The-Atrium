@@ -15,6 +15,7 @@ const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
   { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
   { id: 'how', title: 'How It Works', subtitle: 'Navigate, create, collaborate' },
+  { id: 'free', title: 'But How', subtitle: 'How this stays free' },
   { id: 'who', title: 'Who Am I', subtitle: 'The creator behind the project' },
 ]
 
@@ -514,9 +515,74 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         </div>
       </section>
 
-      {/* SECTION 4: Who Am I */}
+      {/* SECTION 4: But How Is This Free? */}
       <section 
         ref={el => sectionRefs.current[3] = el}
+        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
+      >
+        <div className="max-w-2xl w-full mx-auto text-center">
+          {/* Section header */}
+          <div className="flex items-center justify-center gap-3 mb-10">
+            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
+            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+              But How?
+            </h2>
+            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
+          </div>
+
+          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-8 italic">
+            "How is this even possible while being free?"
+          </p>
+
+          <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
+            <p className="text-nier-border/80 text-sm leading-relaxed mb-6">
+              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-white">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
+            </p>
+
+            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
+
+            <p className="text-nier-border/80 text-sm leading-relaxed mb-6">
+              The entire platform runs on free-tier services, which means there are a couple of limits for now:
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-6">
+              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
+                    <span className="text-nier-bg -rotate-45 text-sm font-mono">3</span>
+                  </div>
+                  <span className="text-white text-sm tracking-wider uppercase">Atriums per user</span>
+                </div>
+                <p className="text-nier-border/50 text-xs leading-relaxed">
+                  Each account can create up to three atriums — more than enough to get started.
+                </p>
+              </div>
+
+              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
+                    <span className="text-nier-bg -rotate-45 text-xs font-mono">10<span className="text-[8px]">MB</span></span>
+                  </div>
+                  <span className="text-white text-sm tracking-wider uppercase">Per atrium</span>
+                </div>
+                <p className="text-nier-border/50 text-xs leading-relaxed">
+                  Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-nier-border/60 text-sm leading-relaxed text-center italic">
+              As you'll soon realize, it's plenty.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 5: Who Am I */}
+      <section 
+        ref={el => sectionRefs.current[4] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-2xl w-full mx-auto text-center">
@@ -534,7 +600,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Placeholder for personal content */}
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
             <p className="text-nier-border/60 text-sm leading-relaxed mb-6 italic">
-              My name is Eduardo Pereira (aka Mindeformer or Red Puer).
+              My name is Eduardo Paranhos (aka Mindeformer or Red Puer).
 I’m a 3D artist that was FED UP by having a bunch of random images stored in my computer for reference and inspiration and no good alternative. That’s the reason I developed The Atrium.
             </p>
             
