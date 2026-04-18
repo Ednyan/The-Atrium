@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/master/core/tauri-config-schema/schema.json",
+  "productName": "The Digital Atrium",
+  "version": "1.0.0",
+  "identifier": "com.digitalatrium.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npx vite --port 1420 --strictPort",
+    "beforeBuildCommand": "npx vite build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "The Digital Atrium",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' https: http: data: blob: asset: http://asset.localhost; media-src 'self' https: http: data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; frame-src https: http:; connect-src 'self' https: wss:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:atrium.db"]
+    }
+  }
+}

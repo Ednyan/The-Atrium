@@ -6,6 +6,8 @@ export interface ThemeConfig {
   particleCount: number // Number of floating particles
   groundDensity: number // Elements per 1000x1000 area
   particleColor?: number // Hex color for particles
+  gridColor?: number // Hex color for grid
+  gridOpacity?: number // Opacity for grid (0-1)
   particlesEnabled?: boolean // Toggle particles
   groundEnabled?: boolean // Toggle ground elements
   groundElementScale?: number // Base scale for ground elements
@@ -117,7 +119,7 @@ export class ThemeManager {
   private async discoverAssets(basePath: string): Promise<string[]> {
     // Try to discover PNG files in the folder
     const knownGroundElements = [
-      'rock-7562944_1280.png', // Add actual files found
+      'rock-7562944_1280.png',
       'stone_1.png', 'stone_2.png', 'stone_3.png',
       'grass_1.png', 'grass_2.png', 'grass_3.png',
       'flower_1.png', 'flower_2.png', 'flower_3.png',
@@ -125,23 +127,19 @@ export class ThemeManager {
     ]
     
     const list = basePath.includes('ground') ? knownGroundElements : []
-    const discovered: string[] = []
 
-    for (const filename of list) {
-      const path = `${basePath}/${filename}`
-      // Check if file exists by attempting to fetch
-      try {
+    // Check all files in parallel instead of sequentially
+    const results = await Promise.allSettled(
+      list.map(async (filename) => {
+        const path = `${basePath}/${filename}`
         const response = await fetch(path, { method: 'HEAD' })
-        if (response.ok) {
-          discovered.push(path)
-        }
-      } catch (e) {
-        // File doesn't exist, skip
-      }
-    }
+        return response.ok ? path : null
+      })
+    )
 
-    // Discovered ${discovered.length} ground elements
-    return discovered
+    return results
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value !== null)
+      .map(r => r.value)
   }
 
   // Seeded random for consistent placement

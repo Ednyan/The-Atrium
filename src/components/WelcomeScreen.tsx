@@ -1,6 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
+import { isDesktop } from '../lib/supabase'
+
+// Lazy load desktop-only components to avoid importing Tauri deps in web mode
+const ExportDatabase = lazy(() => import('./ExportDatabase'))
 
 interface WelcomeScreenProps {
   onEnter: () => void
@@ -9,8 +13,28 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [isHovered, setIsHovered] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const { username } = useGameStore()
+
+  const toggleFullscreen = async () => {
+    if (isDesktop) {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      const current = await win.isFullscreen()
+      await win.setFullscreen(!current)
+      setIsFullscreen(!current)
+    } else {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        await document.exitFullscreen()
+        setIsFullscreen(false)
+      }
+    }
+  }
 
   // Memoize particle positions (fireflies)
   const particles = useMemo(() => 
@@ -176,6 +200,43 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             >
               <span className="relative z-10">◇ Profile Settings</span>
             </button>
+
+            {/* Export Atrium button (desktop only) */}
+            {isDesktop && (
+              <button
+                onClick={() => setShowExport(true)}
+                onMouseEnter={() => setIsHovered('export')}
+                onMouseLeave={() => setIsHovered(null)}
+                className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+              >
+                <span className="relative z-10">◇ Export Atrium</span>
+              </button>
+            )}
+
+            {/* Fullscreen button */}
+            <button
+              onClick={toggleFullscreen}
+              onMouseEnter={() => setIsHovered('fullscreen')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+            >
+              <span className="relative z-10">◇ {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+            </button>
+
+            {/* Exit button (desktop only) */}
+            {isDesktop && (
+              <button
+                onClick={async () => {
+                  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+                  getCurrentWindow().close()
+                }}
+                onMouseEnter={() => setIsHovered('exit')}
+                onMouseLeave={() => setIsHovered(null)}
+                className="relative w-full py-3 border border-nier-red/40 text-nier-red text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-red/80 hover:text-nier-bg hover:bg-nier-red/20"
+              >
+                <span className="relative z-10">◇ Exit Application</span>
+              </button>
+            )}
           </div>
 
           {/* Info */}
@@ -211,6 +272,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
       </div>
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
+      {showExport && (
+        <Suspense fallback={null}>
+          <ExportDatabase onClose={() => setShowExport(false)} />
+        </Suspense>
+      )}
     </>
   )
 }

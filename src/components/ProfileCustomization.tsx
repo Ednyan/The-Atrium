@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 
 interface ProfileCustomizationProps {
@@ -23,7 +23,7 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
   const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
-  const [canChangeName, setCanChangeName] = useState(false)
+  const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
   const [daysUntilChange, setDaysUntilChange] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -46,15 +46,17 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
       setDisplayName(data.display_name || data.username)
       setSelectedColor(data.player_color || '#ffffff')
       
-      // Check if user can change display name
-      const lastChanged = new Date(data.display_name_last_changed)
-      const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
-      
-      if (daysSinceChange >= 15) {
-        setCanChangeName(true)
-      } else {
-        setCanChangeName(false)
-        setDaysUntilChange(Math.ceil(15 - daysSinceChange))
+      // Desktop: no name change restrictions
+      if (!isDesktop) {
+        const lastChanged = new Date(data.display_name_last_changed)
+        const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
+        
+        if (daysSinceChange >= 15) {
+          setCanChangeName(true)
+        } else {
+          setCanChangeName(false)
+          setDaysUntilChange(Math.ceil(15 - daysSinceChange))
+        }
       }
     }
   }
@@ -67,16 +69,16 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
 
     if (!supabase || !userId) return
 
-    // Validate display name if attempting to change it
+    // Validate display name if attempting to change it (web only)
     const nameChanged = displayName !== username
-    if (nameChanged && !canChangeName) {
+    if (!isDesktop && nameChanged && !canChangeName) {
       setError(`You can change your display name in ${daysUntilChange} days`)
       setLoading(false)
       return
     }
 
     if (displayName.length < 1 || displayName.length > 30) {
-      setError('Display name must be 1-30 characters')
+      setError('Name must be 1-30 characters')
       setLoading(false)
       return
     }
@@ -87,10 +89,18 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
         updated_at: new Date().toISOString(),
       }
 
-      // Only update display name if it changed and user can change it
-      if (nameChanged && canChangeName) {
-        updateData.display_name = displayName
-        updateData.display_name_last_changed = new Date().toISOString()
+      if (isDesktop) {
+        // Desktop: always update the name directly, no cooldown
+        if (nameChanged) {
+          updateData.display_name = displayName
+          updateData.username = displayName
+        }
+      } else {
+        // Web: only update display name if it changed and user can change it
+        if (nameChanged && canChangeName) {
+          updateData.display_name = displayName
+          updateData.display_name_last_changed = new Date().toISOString()
+        }
       }
 
       const { error: updateError } = await (supabase
@@ -124,7 +134,7 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 z-[10000] bg-black/60 flex items-center justify-center p-4" 
+        className="fixed inset-0 z-[10000] bg-nier-black/80 flex items-center justify-center p-4" 
         onClick={onClose}
         style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
         onTouchMove={(e) => e.stopPropagation()}
@@ -133,44 +143,53 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
       
       {/* Modal */}
       <div 
-        className="z-[10000] bg-black/95 border-2 border-white/20 rounded-lg p-4 w-80 max-h-[90vh] overflow-y-auto pointer-events-auto"
+        className="z-[10000] bg-nier-blackLight border border-nier-border/40 p-5 w-80 max-h-[90vh] overflow-y-auto pointer-events-auto relative"
         style={{
-          boxShadow: '0 0 30px rgba(255, 255, 255, 0.1)',
           touchAction: 'pan-y',
           overscrollBehavior: 'contain',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-white font-semibold text-lg">Customize Profile</h3>
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
+
+        <div className="flex justify-between items-center mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+            <h3 className="text-lg text-white tracking-[0.15em] uppercase">Profile</h3>
+          </div>
           <button
             onClick={onClose}
-            className="text-white/60 hover:text-white text-xl leading-none"
+            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
           >
             ×
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-5">
           {/* Color Picker */}
           <div>
-            <label className="block text-white/80 text-sm font-semibold mb-2">
-              Cursor Color
-            </label>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Cursor Color</span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+            </div>
             <div className="grid grid-cols-5 gap-2 mb-2">
               {PRESET_COLORS.map((color) => (
                 <button
                   key={color}
                   type="button"
                   onClick={() => setSelectedColor(color)}
-                  className={`w-10 h-10 rounded-full border-2 transition-all ${
+                  className={`w-10 h-10 border-2 transition-all ${
                     selectedColor === color 
-                      ? 'border-white scale-110' 
-                      : 'border-white/30 hover:border-white/60'
+                      ? 'border-nier-bg scale-110' 
+                      : 'border-nier-border/30 hover:border-nier-border/60'
                   }`}
                   style={{ 
                     backgroundColor: color,
-                    boxShadow: selectedColor === color ? `0 0 15px ${color}` : 'none'
+                    boxShadow: selectedColor === color ? `0 0 12px ${color}40` : 'none'
                   }}
                 />
               ))}
@@ -179,65 +198,68 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
               type="color"
               value={selectedColor}
               onChange={(e) => setSelectedColor(e.target.value)}
-              className="w-full h-10 rounded border-2 border-white/20 bg-black/50 cursor-pointer"
+              className="w-full h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
             />
           </div>
 
           {/* Trace Distance Indicators Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-white/80 text-sm font-semibold">
+            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
               Distance Indicators
             </label>
-            <button
-              type="button"
-              onClick={() => setShowTraceIndicators(!showTraceIndicators)}
-              className={`relative w-11 h-6 rounded-full transition-colors ${
-                showTraceIndicators ? 'bg-white/80' : 'bg-white/20'
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-5 h-5 rounded-full transition-all ${
-                  showTraceIndicators ? 'left-[22px] bg-black' : 'left-0.5 bg-white/60'
-                }`}
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                showTraceIndicators ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+              }`}>
+                {showTraceIndicators && <span className="text-nier-bg text-[10px]">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={showTraceIndicators}
+                onChange={() => setShowTraceIndicators(!showTraceIndicators)}
+                className="hidden"
               />
-            </button>
+            </label>
           </div>
-          <p className="text-white/40 text-xs -mt-2">
+          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
             Show off-screen trace direction &amp; distance
           </p>
 
           {/* Display Name */}
           <div>
-            <label className="block text-white/80 text-sm font-semibold mb-2">
-              Display Name
-            </label>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
+                {isDesktop ? 'Username' : 'Display Name'}
+              </span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+            </div>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-white/60"
-              placeholder="Your display name"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+              placeholder={isDesktop ? 'Your username' : 'Your display name'}
               maxLength={30}
-              disabled={!canChangeName}
+              disabled={!isDesktop && !canChangeName}
             />
             
-            {!canChangeName && (
-              <p className="text-yellow-400/80 text-xs mt-1">
-                ⏰ Can change in {daysUntilChange} days
+            {!isDesktop && !canChangeName && (
+              <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
+                ◇ Can change in {daysUntilChange} days
               </p>
             )}
           </div>
 
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-500/20 border border-red-500 rounded px-3 py-2 text-red-200 text-sm">
+            <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="bg-green-500/20 border border-green-500 rounded px-3 py-2 text-green-200 text-sm">
-              ✓ Profile updated!
+            <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+              ✓ Profile updated
             </div>
           )}
 
@@ -245,10 +267,7 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-white/90 hover:bg-white disabled:bg-white/30 disabled:cursor-not-allowed text-black font-semibold py-2 px-4 rounded transition-colors"
-            style={{
-              boxShadow: '0 0 20px rgba(255, 255, 255, 0.3)',
-            }}
+            className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             {loading ? 'Saving...' : 'Save Changes'}
           </button>

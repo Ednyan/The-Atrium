@@ -172,58 +172,67 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4"
+      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000] p-4"
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+      <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-6 h-6 border-l border-b border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-6 h-6 border-r border-b border-nier-border/60" />
+
         {/* Header */}
-        <div className="p-6 border-b border-lobby-accent/30">
+        <div className="p-6 border-b border-nier-border/20">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-lobby-accent">⚙️ Manage Atrium</h2>
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+              <h2 className="text-lg text-white tracking-[0.15em] uppercase">Manage Atrium</h2>
+            </div>
             <button
               onClick={onClose}
-              className="text-white/60 hover:text-white text-2xl leading-none"
+              className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
             >
               ×
             </button>
           </div>
           {error && (
-            <div className="mt-3 text-red-400 text-sm bg-red-900/20 border border-red-500/30 rounded px-3 py-2">
+            <div className="mt-3 text-nier-bg/80 text-[10px] tracking-wider border border-nier-red/40 bg-nier-red/10 px-3 py-2">
               {error}
             </div>
           )}
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-lobby-accent/30">
+        <div className="flex border-b border-nier-border/20">
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex-1 px-4 py-3 font-semibold ${
+            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'settings'
-                ? 'bg-lobby-accent/20 text-lobby-accent border-b-2 border-lobby-accent'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
+                : 'text-nier-border/60 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
             Settings
           </button>
           <button
             onClick={() => setActiveTab('whitelist')}
-            className={`flex-1 px-4 py-3 font-semibold ${
+            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'whitelist'
-                ? 'bg-lobby-accent/20 text-lobby-accent border-b-2 border-lobby-accent'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
+                : 'text-nier-border/60 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
             Whitelist ({whitelist.length})
           </button>
           <button
             onClick={() => setActiveTab('blacklist')}
-            className={`flex-1 px-4 py-3 font-semibold ${
+            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'blacklist'
-                ? 'bg-lobby-accent/20 text-lobby-accent border-b-2 border-lobby-accent'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
+                : 'text-nier-border/60 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
             Blacklist ({blacklist.length})
@@ -235,40 +244,47 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
           {activeTab === 'settings' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-white mb-2">Atrium Name</label>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
                 <input
                   type="text"
                   value={lobbyName}
                   onChange={(e) => setLobbyName(e.target.value)}
-                  className="w-full bg-lobby-darker text-white border border-lobby-accent/30 rounded px-3 py-2"
+                  className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                   maxLength={50}
                 />
               </div>
 
               <div>
-                <label className="block text-white mb-2">Password (leave empty to remove)</label>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Password (leave empty to remove)</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="New password..."
-                  className="w-full bg-lobby-darker text-white border border-lobby-accent/30 rounded px-3 py-2"
+                  className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-white cursor-pointer">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  isPublic ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {isPublic && <span className="text-nier-bg text-[10px]">✓</span>}
+                </div>
                 <input
                   type="checkbox"
                   checked={isPublic}
                   onChange={(e) => setIsPublic(e.target.checked)}
-                  className="w-4 h-4"
+                  className="hidden"
                 />
-                Public (visible in lobby browser)
+                <span className="text-nier-border text-[10px] tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                  Public (visible in atrium browser)
+                </span>
               </label>
 
               <button
                 onClick={updateLobbySettings}
-                className="w-full px-4 py-3 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold"
+                className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
               >
                 Save Settings
               </button>
@@ -279,7 +295,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
             <div className="space-y-4">
               {/* Search Users */}
               <div>
-                <label className="block text-white mb-2">Add User</label>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Add User</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -287,11 +303,11 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
                     placeholder="Search username..."
-                    className="flex-1 bg-lobby-darker text-white border border-lobby-accent/30 rounded px-3 py-2"
+                    className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                   />
                   <button
                     onClick={searchUsers}
-                    className="px-4 py-2 bg-lobby-accent text-lobby-dark rounded hover:bg-lobby-accent/80 font-semibold"
+                    className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
                   >
                     Search
                   </button>
@@ -299,16 +315,16 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
                 {/* Search Results */}
                 {searchResults.length > 0 && (
-                  <div className="mt-2 bg-lobby-darker border border-lobby-accent/30 rounded max-h-40 overflow-y-auto">
+                  <div className="mt-2 bg-nier-black border border-nier-border/20 max-h-40 overflow-y-auto">
                     {searchResults.map(user => (
                       <div
                         key={user.id}
-                        className="flex justify-between items-center px-3 py-2 hover:bg-white/5"
+                        className="flex justify-between items-center px-3 py-2 hover:bg-nier-bg/5 transition-colors"
                       >
-                        <span className="text-white">{user.username}</span>
+                        <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
                         <button
                           onClick={() => addToList(user.id, activeTab)}
-                          className="px-3 py-1 bg-lobby-accent/20 text-lobby-accent rounded text-sm hover:bg-lobby-accent/30"
+                          className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
                           Add
                         </button>
@@ -320,22 +336,25 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
               {/* Current List */}
               <div>
-                <h3 className="text-white font-semibold mb-2">
-                  {activeTab === 'whitelist' ? 'Whitelisted Users' : 'Blacklisted Users'}
-                </h3>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
+                    {activeTab === 'whitelist' ? 'Whitelisted Users' : 'Blacklisted Users'}
+                  </span>
+                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                </div>
                 <div className="space-y-2">
                   {(activeTab === 'whitelist' ? whitelist : blacklist).length === 0 ? (
-                    <div className="text-white/60 text-center py-4">No users in this list</div>
+                    <div className="text-nier-border/40 text-[10px] tracking-wider uppercase text-center py-4">No users in this list</div>
                   ) : (
                     (activeTab === 'whitelist' ? whitelist : blacklist).map(entry => (
                       <div
                         key={entry.id}
-                        className="flex justify-between items-center bg-lobby-darker border border-lobby-accent/30 rounded px-3 py-2"
+                        className="flex justify-between items-center bg-nier-black border border-nier-border/20 px-3 py-2"
                       >
-                        <span className="text-white">{entry.username}</span>
+                        <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
                         <button
                           onClick={() => removeFromList(entry.id)}
-                          className="px-3 py-1 bg-red-600/20 text-red-400 rounded text-sm hover:bg-red-600/30"
+                          className="px-3 py-1 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
                           Remove
                         </button>

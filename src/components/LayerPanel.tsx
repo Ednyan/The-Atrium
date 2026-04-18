@@ -11,9 +11,13 @@ interface LayerPanelProps {
 }
 
 export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, onGoToTrace }: LayerPanelProps) {
-  const { traces, username, playerZIndex, setPlayerZIndex, addTrace } = useGameStore()
+  const { traces, username, setPlayerZIndex, addTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  // Dialog state for create/rename/delete (replaces prompt/confirm which don't work in Tauri)
+  const [dialogMode, setDialogMode] = useState<'create' | 'rename' | 'delete' | null>(null)
+  const [dialogInput, setDialogInput] = useState('')
+  const [dialogTargetId, setDialogTargetId] = useState<string | null>(null)
 
   // Load layers from database
   useEffect(() => {
@@ -70,29 +74,31 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     }
   }, [])
 
-  const createGroup = async () => {
+  const createGroup = () => {
     if (!supabase) {
       alert('Supabase not initialized')
       return
     }
+    setDialogMode('create')
+    setDialogInput('')
+    setDialogTargetId(null)
+  }
 
-    const name = prompt('Enter group name:')
-    if (!name) return
+  const doCreateGroup = async (name: string) => {
+    if (!supabase || !name.trim()) return
 
-    // Find highest z-index
     const maxZIndex = Math.max(...layers.map(l => l.zIndex), 0)
     const newZIndex = maxZIndex + 1
 
     const { error } = await (supabase.from('layers') as any).insert({
-      name,
+      name: name.trim(),
       z_index: newZIndex,
       is_group: true,
       user_id: username,
     })
 
     if (error) {
-      alert(`Failed to create group: ${error.message}\n\nMake sure you've run the migration:\nsupabase/migrations/add_layer_system.sql`)
-      return
+      alert(`Failed to create group: ${error.message}`)
     }
   }
 
@@ -119,9 +125,14 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     setPlayerZIndex(newPlayerZIndex)
   }
 
-  const deleteGroup = async (layerId: string) => {
+  const deleteGroup = (layerId: string) => {
     if (!supabase) return
-    if (!confirm('Delete this group and all traces inside it?')) return
+    setDialogMode('delete')
+    setDialogTargetId(layerId)
+  }
+
+  const doDeleteGroup = async (layerId: string) => {
+    if (!supabase) return
 
     // Delete all traces in this group
     const { error: tracesError } = await supabase
@@ -141,19 +152,22 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     }
   }
 
-  const renameGroup = async (layerId: string, currentName: string) => {
+  const renameGroup = (layerId: string, currentName: string) => {
     if (!supabase) return
-    
-    const newName = prompt('Enter new group name:', currentName)
-    if (!newName || newName === currentName) return
+    setDialogMode('rename')
+    setDialogInput(currentName)
+    setDialogTargetId(layerId)
+  }
+
+  const doRenameGroup = async (layerId: string, newName: string) => {
+    if (!supabase || !newName.trim()) return
 
     const { error } = await (supabase.from('layers') as any)
-      .update({ name: newName })
+      .update({ name: newName.trim() })
       .eq('id', layerId)
 
     if (error) {
       console.error('Error renaming group:', error)
-      alert(`Failed to rename group: ${error.message}`)
     }
   }
 
@@ -308,10 +322,9 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
   // Sort layers by z-index (highest first)
   const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
 
-  // Create a combined list with player position
+  // Create a list of layer items
   const allItems = [
     ...sortedLayers.map(l => ({ type: 'layer' as const, data: l, zIndex: l.zIndex })),
-    { type: 'player' as const, data: null, zIndex: playerZIndex },
   ].sort((a, b) => b.zIndex - a.zIndex)
 
   return (
@@ -362,78 +375,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
       {/* Layer list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {allItems.map((item, index) => {
-          if (item.type === 'player') {
-            const canMoveUp = index > 0
-            const canMoveDown = index < allItems.length - 1
-            
-            return (
-              <div
-                key="player"
-                className="bg-blue-900/30 border border-blue-400/50 p-2 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-blue-400 text-xs">◇</span>
-                  <span className="text-blue-300 text-xs tracking-wider uppercase">Players</span>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={async () => {
-                      if (!canMoveUp) return
-                      const itemAbove = allItems[index - 1]
-                      if (itemAbove.type === 'layer') {
-                        // Capture original values BEFORE any updates
-                        const originalPlayerZIndex = playerZIndex
-                        const originalLayerZIndex = itemAbove.zIndex
-                        
-                        // Check for duplicate z-indexes
-                        if (originalPlayerZIndex === originalLayerZIndex) {
-                          alert('Duplicate z-indexes detected. Please click the 🔧 Fix button to fix layer ordering first.')
-                          return
-                        }
-                        
-                        // Swap: player gets layer's z-index, layer gets player's z-index
-                        setPlayerZIndex(originalLayerZIndex)
-                        await updateLayerZIndex(itemAbove.data.id, originalPlayerZIndex)
-                      }
-                    }}
-                    disabled={!canMoveUp}
-                    className={`text-[10px] px-2 py-1 ${canMoveUp ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
-                    title={canMoveUp ? "Move up" : "Already at top"}
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!canMoveDown) return
-                      const itemBelow = allItems[index + 1]
-                      if (itemBelow.type === 'layer') {
-                        // Capture original values BEFORE any updates
-                        const originalPlayerZIndex = playerZIndex
-                        const originalLayerZIndex = itemBelow.zIndex
-                        
-                        // Check for duplicate z-indexes
-                        if (originalPlayerZIndex === originalLayerZIndex) {
-                          alert('Duplicate z-indexes detected. Please click the 🔧 Fix button to fix layer ordering first.')
-                          return
-                        }
-                        
-                        // Swap: player gets layer's z-index, layer gets player's z-index
-                        setPlayerZIndex(originalLayerZIndex)
-                        await updateLayerZIndex(itemBelow.data.id, originalPlayerZIndex)
-                      }
-                    }}
-                    disabled={!canMoveDown}
-                    className={`text-[10px] px-2 py-1 ${canMoveDown ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
-                    title={canMoveDown ? "Move down" : "Already at bottom"}
-                  >
-                    ▼
-                  </button>
-                </div>
-              </div>
-            )
-          }
-
+        {allItems.map((item) => {
           const layer = item.data as Layer
           const layerTraces = getTracesForLayer(layer.id)
           const isExpanded = expandedGroups.has(layer.id)
@@ -635,6 +577,85 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
           </div>
         )}
       </div>
+
+      {/* Dialog for create/rename/delete */}
+      {dialogMode && (
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-black border-2 border-white p-4 w-64">
+            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-white pointer-events-none" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-white pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-white pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-white pointer-events-none" />
+
+            {dialogMode === 'delete' ? (
+              <>
+                <p className="text-white text-xs tracking-[0.15em] uppercase mb-4">
+                  Delete this group and all traces inside it?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (dialogTargetId) doDeleteGroup(dialogTargetId)
+                      setDialogMode(null)
+                    }}
+                    className="flex-1 bg-red-900 hover:bg-red-700 text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setDialogMode(null)}
+                    className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-white text-xs tracking-[0.15em] uppercase mb-3">
+                  {dialogMode === 'create' ? 'New Group Name' : 'Rename Group'}
+                </p>
+                <input
+                  autoFocus
+                  type="text"
+                  value={dialogInput}
+                  onChange={(e) => setDialogInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && dialogInput.trim()) {
+                      if (dialogMode === 'create') doCreateGroup(dialogInput)
+                      else if (dialogMode === 'rename' && dialogTargetId) doRenameGroup(dialogTargetId, dialogInput)
+                      setDialogMode(null)
+                    }
+                    if (e.key === 'Escape') setDialogMode(null)
+                  }}
+                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider"
+                  placeholder="Group name..."
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (dialogInput.trim()) {
+                        if (dialogMode === 'create') doCreateGroup(dialogInput)
+                        else if (dialogMode === 'rename' && dialogTargetId) doRenameGroup(dialogTargetId, dialogInput)
+                      }
+                      setDialogMode(null)
+                    }}
+                    className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                  >
+                    {dialogMode === 'create' ? 'Create' : 'Rename'}
+                  </button>
+                  <button
+                    onClick={() => setDialogMode(null)}
+                    className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -129,7 +129,7 @@ export function useTraces(lobbyId: string | null) {
           table: 'traces',
           filter: `lobby_id=eq.${lobbyId}`,
         },
-        (payload) => {
+        (payload: any) => {
           const row = payload.new as any
           const trace: Trace = {
             id: row.id,
@@ -207,7 +207,7 @@ export function useTraces(lobbyId: string | null) {
           table: 'traces',
           filter: `lobby_id=eq.${lobbyId}`,
         },
-        (payload) => {
+        (payload: any) => {
           const row = payload.new as any
           
           // Skip updates for traces with pending local changes (to preserve local edits)
@@ -294,7 +294,7 @@ export function useTraces(lobbyId: string | null) {
           table: 'traces',
           filter: `lobby_id=eq.${lobbyId}`,
         },
-        (payload) => {
+        (payload: any) => {
           const row = payload.old as any
           if (row.id) {
             removeTrace(row.id)

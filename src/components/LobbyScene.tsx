@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Application, Graphics, Text, Container } from 'pixi.js'
+import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { usePresence } from '../hooks/usePresence'
 import { useTraces } from '../hooks/useTraces'
@@ -10,7 +11,7 @@ import { LobbyManagement } from './LobbyManagement'
 import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -69,7 +70,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
   const [onlinePlayerCount, setOnlinePlayerCount] = useState(1) // Start with 1 (self)
   
-  const { username, position, setPosition, otherUsers, traces, userId } = useGameStore()
+  const { username, position, otherUsers, traces, userId } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
@@ -82,6 +83,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const hudRef = useRef<HTMLDivElement>(null)
 
   // Warn user when leaving/refreshing with unsaved changes
@@ -349,6 +352,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   useEffect(() => {
     if (!canvasRef.current || appRef.current) return
 
+    let cancelled = false
+
     // Use full viewport dimensions
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
@@ -396,10 +401,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         grid.lineStyle(1, gridColor, gridOpacity)
         
         const gridSize = 50
-        const startX = Math.floor((cameraX - viewportWidth) / gridSize) * gridSize
-        const endX = Math.ceil((cameraX + viewportWidth * 2) / gridSize) * gridSize
-        const startY = Math.floor((cameraY - viewportHeight) / gridSize) * gridSize
-        const endY = Math.ceil((cameraY + viewportHeight * 2) / gridSize) * gridSize
+        // Account for zoom: visible world area = viewport / zoom
+        const currentZoom = zoomRef.current
+        const visibleW = window.innerWidth / currentZoom
+        const visibleH = window.innerHeight / currentZoom
+        const margin = gridSize * 2
+        const startX = Math.floor((cameraX - visibleW / 2 - margin) / gridSize) * gridSize
+        const endX = Math.ceil((cameraX + visibleW / 2 + margin) / gridSize) * gridSize
+        const startY = Math.floor((cameraY - visibleH / 2 - margin) / gridSize) * gridSize
+        const endY = Math.ceil((cameraY + visibleH / 2 + margin) / gridSize) * gridSize
         
         for (let x = startX; x <= endX; x += gridSize) {
           grid.moveTo(x, startY)
@@ -441,7 +451,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       // Load theme assets asynchronously
       themeManager.loadTheme().then(() => {
-        themeManager.createParticles(viewportWidth, viewportHeight)
+        if (!cancelled) {
+          themeManager.createParticles(viewportWidth, viewportHeight)
+        }
       })
 
       // Player avatar now rendered in DOM (TraceOverlay) for z-index support
@@ -674,9 +686,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setZoom(zoomRef.current)
         }
         
-        // Update grid - only when zoom is stable or panning (not during zoom animation)
-        if (zoomIsStable && (frameCounter % 2 === 0 || Math.abs(zoomRef.current - lastGridZoom) > 0.001)) {
-          updateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
+        // Update grid every frame during zoom changes, otherwise every other frame
+        const zoomChanged = Math.abs(zoomRef.current - lastGridZoom) > 0.001
+        if (zoomChanged || (zoomIsStable && frameCounter % 2 === 0)) {
+          if (updateGridRef.current) {
+            updateGridRef.current(cameraPositionRef.current.x, cameraPositionRef.current.y)
+          }
           lastGridZoom = zoomRef.current
         }
         
@@ -1041,6 +1056,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
 
     return () => {
+      cancelled = true
       // Cleanup theme manager
       if (themeManagerRef.current) {
         themeManagerRef.current.destroy()
@@ -1111,7 +1127,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         appRef.current = null
       }
     }
-  }, [username, setPosition, currentLobby]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update theme when lobby theme settings change
   useEffect(() => {
@@ -1134,13 +1150,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     
     const newUpdateGrid = (cameraX: number, cameraY: number) => {
       grid.clear()
-      grid.lineStyle(1, gridColor, gridOpacity)
-      
+      grid.lineStyle(1, gridColor, gridOpacity) 
       const gridSize = 50
-      const startX = Math.floor((cameraX - viewportWidth) / gridSize) * gridSize
-      const endX = Math.ceil((cameraX + viewportWidth * 2) / gridSize) * gridSize
-      const startY = Math.floor((cameraY - viewportHeight) / gridSize) * gridSize
-      const endY = Math.ceil((cameraY + viewportHeight * 2) / gridSize) * gridSize
+      const currentZoom = zoomRef.current
+      const visibleW = window.innerWidth / currentZoom
+      const visibleH = window.innerHeight / currentZoom
+      const margin = gridSize * 2
+      const startX = Math.floor((cameraX - visibleW / 2 - margin) / gridSize) * gridSize
+      const endX = Math.ceil((cameraX + visibleW / 2 + margin) / gridSize) * gridSize
+      const startY = Math.floor((cameraY - visibleH / 2 - margin) / gridSize) * gridSize
+      const endY = Math.ceil((cameraY + visibleH / 2 + margin) / gridSize) * gridSize
       
       for (let x = startX; x <= endX; x += gridSize) {
         grid.moveTo(x, startY)
@@ -1160,11 +1179,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // Update ThemeManager settings
     if (themeManagerRef.current) {
       const themeSettings = currentLobby.themeSettings
-      const particleColor = themeSettings?.particleColor ? 
-        parseInt(themeSettings.particleColor.replace('#', ''), 16) : 0xffffff
-      
+
       themeManagerRef.current.updateConfig({
-        particleColor,
+        gridColor: themeSettings?.gridColor ? parseInt(themeSettings.gridColor.replace('#', ''), 16) : 0x3b82f6,
+        particleColor:themeSettings?.particleColor ? parseInt(themeSettings.particleColor.replace('#', ''), 16) : 0xffffff,
         particlesEnabled: themeSettings?.particlesEnabled ?? true,
         groundEnabled: themeSettings?.groundParticlesEnabled ?? true,
         groundDensity: themeSettings?.groundElementDensity ?? 0.5,
@@ -1250,8 +1268,226 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     })
   }, [traces, position])
 
+  // Fullscreen toggle
+  const toggleFullscreen = async () => {
+    if (isDesktop) {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      const current = await win.isFullscreen()
+      await win.setFullscreen(!current)
+      setIsFullscreen(!current)
+    } else {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        await document.exitFullscreen()
+        setIsFullscreen(false)
+      }
+    }
+  }
+
+  // Listen for fullscreen changes (e.g. user presses Escape)
+  useEffect(() => {
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', handleFsChange)
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault()
+        toggleFullscreen()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+
+  // Drag-and-drop trace creation
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only hide overlay when actually leaving the container
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false)
+    }
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+
+    if (!worldContainerRef.current) return
+
+    // Check lobby size limit
+    if (useGameStore.getState().isLobbyFull()) {
+      const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
+      alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+      return
+    }
+
+    // Convert screen coordinates to world coordinates
+    const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
+    const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
+
+    const files = e.dataTransfer.files
+    const urlData = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || ''
+
+    // URL drops take priority (handles browser-to-app drags on both desktop and web)
+    if (urlData.trim()) {
+      const url = urlData.trim().split('\n')[0].trim()
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        const lower = url.toLowerCase()
+        let traceType: 'image' | 'video' | 'audio' | 'embed' = 'embed'
+        if (/\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/.test(lower)) traceType = 'image'
+        else if (/\.(mp4|webm|ogg|mov)(\?.*)?$/.test(lower)) traceType = 'video'
+        else if (/\.(mp3|wav|flac|aac|m4a)(\?.*)?$/.test(lower)) traceType = 'audio'
+
+        await insertDroppedTrace(traceType, url, url, worldX, worldY)
+        return
+      }
+    }
+
+    // File drops from filesystem (desktop only)
+    if (isDesktop && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const mime = file.type
+        let traceType: 'image' | 'audio' | 'video' | 'text'
+        if (mime.startsWith('image/')) traceType = 'image'
+        else if (mime.startsWith('audio/')) traceType = 'audio'
+        else if (mime.startsWith('video/')) traceType = 'video'
+        else traceType = 'text'
+
+        // Offset multiple drops so they don't stack
+        const dropX = worldX + i * 30
+        const dropY = worldY + i * 30
+
+        if (traceType === 'text') {
+          const text = await file.text()
+          await insertDroppedTrace(traceType, text.slice(0, 5000), undefined, dropX, dropY)
+        } else {
+          const uploadedUrl = await uploadFile(file)
+          if (uploadedUrl) {
+            await insertDroppedTrace(traceType, `${traceType} drop`, uploadedUrl, dropX, dropY)
+          }
+        }
+      }
+    }
+  }
+
+  const uploadFile = async (file: File): Promise<string | undefined> => {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${userId}_${Date.now()}.${fileExt}`
+
+    if (isDesktop && supabase) {
+      // Desktop: create blob URL instantly, write to disk in background for persistence
+      const blobUrl = URL.createObjectURL(file)
+      const localUrl = `local://traces/${fileName}`
+      // Pre-seed cache so TraceOverlay resolves instantly
+      import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
+      // Write to local storage for persistence (fire-and-forget)
+      supabase.storage.from('traces').upload(fileName, file)
+      return localUrl
+    }
+
+    if (supabase) {
+      const { error } = await supabase.storage.from('traces').upload(fileName, file)
+      if (!error) {
+        const { data: { publicUrl } } = supabase.storage.from('traces').getPublicUrl(fileName)
+        return publicUrl
+      }
+    }
+    // Fallback to data URL
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const insertDroppedTrace = async (
+    traceType: string,
+    content: string,
+    mediaUrl: string | undefined,
+    x: number,
+    y: number,
+  ) => {
+    if (supabase) {
+      const { data, error } = await supabase.from('traces').insert({
+        user_id: userId,
+        username,
+        type: traceType,
+        content,
+        position_x: x,
+        position_y: y,
+        media_url: mediaUrl || null,
+        scale: 1.0,
+        rotation: 0.0,
+        lobby_id: lobbyId,
+        show_description: false,
+      } as any).select()
+
+      if (error) {
+        console.error('Drop trace insert error:', error)
+        return
+      }
+      if (data && data[0]) {
+        const d = data[0] as any
+        const trace: Trace = {
+          id: d.id,
+          userId: d.user_id,
+          username: d.username,
+          type: d.type,
+          content: d.content,
+          x: d.position_x,
+          y: d.position_y,
+          mediaUrl: d.media_url || undefined,
+          createdAt: d.created_at,
+          scale: d.scale ?? 1.0,
+          scaleX: d.scale ?? 1.0,
+          scaleY: d.scale ?? 1.0,
+          rotation: d.rotation ?? 0.0,
+        }
+        useGameStore.getState().addTrace(trace)
+      }
+    } else {
+      const trace: Trace = {
+        id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        userId,
+        username,
+        type: traceType as any,
+        content,
+        x,
+        y,
+        mediaUrl,
+        createdAt: new Date().toISOString(),
+        scale: 1.0,
+        scaleX: 1.0,
+        scaleY: 1.0,
+        rotation: 0.0,
+      }
+      useGameStore.getState().addTrace(trace)
+    }
+  }
+
   return (
-    <div className="fixed inset-0 bg-nier-black lobby-scene" style={{ touchAction: 'none' }}>
+    <div
+      className="fixed inset-0 bg-nier-black lobby-scene"
+      style={{ touchAction: 'none' }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
         {/* Pixi Canvas */}
@@ -1270,6 +1506,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             setSelectedTraceId={setSelectedTraceId}
           />
         </div>
+
+        {/* Drop Zone Indicator */}
+        {isDragOver && (
+          <div className="absolute inset-0 z-[9998] pointer-events-none flex items-center justify-center"
+               style={{ backgroundColor: 'rgba(218, 212, 187, 0.08)', border: '2px dashed rgba(156, 150, 129, 0.5)' }}>
+            <div className="bg-black/80 border border-nier-border px-6 py-3">
+              <p className="text-nier-bg text-sm tracking-[0.15em] uppercase font-mono">
+                {isDesktop ? 'DROP FILE TO CREATE TRACE' : 'DROP LINK TO CREATE TRACE'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* HUD */}
@@ -1319,6 +1567,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           className="w-full mt-1.5 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
         >
           Recenter
+        </button>
+        <button
+          onClick={toggleFullscreen}
+          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+        >
+          {isFullscreen ? 'Windowed' : 'Fullscreen'}
         </button>
         <div className="flex gap-1 mt-1">
           <button
@@ -1376,22 +1630,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const sizeBytes = useGameStore.getState().getLobbySizeBytes()
         const sizeMB = sizeBytes / (1024 * 1024)
         const limitMB = LOBBY_SIZE_LIMIT / (1024 * 1024)
-        const pct = Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
-        const isFull = sizeBytes >= LOBBY_SIZE_LIMIT
+        const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+        const isFull = !isDesktop && sizeBytes >= LOBBY_SIZE_LIMIT
         return (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto" title={`${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto" title={isDesktop ? `${sizeMB.toFixed(2)}MB used` : `${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
             <div className="flex items-center gap-2 bg-black/90 border border-gray-600 px-3 py-2">
               <span className={`text-[9px] font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-gray-400'}`}>
                 Usage
               </span>
+              {!isDesktop && (
               <div className="w-20 h-2 bg-gray-800 border border-gray-700 overflow-hidden">
                 <div
                   className={`h-full transition-all duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-white/50'}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
+              )}
               <span className={`text-[9px] font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-gray-500'}`}>
-                {sizeMB.toFixed(1)}/{limitMB}MB
+                {sizeMB.toFixed(1)}{isDesktop ? 'MB' : `/${limitMB}MB`}
               </span>
             </div>
           </div>
@@ -1919,30 +2175,31 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <ThemeCustomization
           lobby={currentLobby}
           onClose={() => setShowThemeCustomization(false)}
-          onUpdate={() => {
+          onUpdate={async () => {
             // Reload lobby info to get updated theme
-            if (supabase) {
-              (supabase
+            if (!supabase) return
+            try {
+              const { data, error } = await (supabase
                 .from('lobbies')
                 .select('*')
                 .eq('id', lobbyId)
                 .single() as any)
-                .then(({ data, error }: any) => {
-                  if (!error && data) {
-                    const lobby: Lobby = {
-                      id: data.id,
-                      name: data.name,
-                      ownerUserId: data.owner_user_id,
-                      passwordHash: data.password_hash,
-                      maxPlayers: data.max_players,
-                      isPublic: data.is_public,
-                      createdAt: data.created_at,
-                      updatedAt: data.updated_at,
-                      themeSettings: data.theme_settings,
-                    }
-                    setCurrentLobby(lobby)
-                  }
-                })
+              if (!error && data) {
+                const lobby: Lobby = {
+                  id: data.id,
+                  name: data.name,
+                  ownerUserId: data.owner_user_id,
+                  passwordHash: data.password_hash,
+                  maxPlayers: data.max_players,
+                  isPublic: data.is_public,
+                  createdAt: data.created_at,
+                  updatedAt: data.updated_at,
+                  themeSettings: data.theme_settings,
+                }
+                setCurrentLobby(lobby)
+              }
+            } catch (err) {
+              console.error('Failed to reload lobby after theme save:', err)
             }
           }}
         />

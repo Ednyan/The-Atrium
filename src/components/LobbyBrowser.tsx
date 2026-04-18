@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
+import ImportAtrium from './ImportAtrium'
 import type { Lobby } from '../types/database'
 
 interface LobbyWithOwner extends Lobby {
@@ -31,6 +32,27 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [joinByIdError, setJoinByIdError] = useState<string | null>(null)
   const [joinByIdLoading, setJoinByIdLoading] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const toggleFullscreen = async () => {
+    if (isDesktop) {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      const current = await win.isFullscreen()
+      await win.setFullscreen(!current)
+      setIsFullscreen(!current)
+    } else {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        await document.exitFullscreen()
+        setIsFullscreen(false)
+      }
+    }
+  }
 
   // Memoize particle positions (fireflies)
   const particles = useMemo(() => 
@@ -433,7 +455,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   const deleteLobby = async (lobbyId: string) => {
     if (!supabase) return
-    if (!confirm('Are you sure you want to delete this lobby? All traces will be lost.')) return
 
     try {
       const { error } = await supabase
@@ -448,6 +469,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     } catch (err) {
       console.error('Error deleting lobby:', err)
       setError('Failed to delete lobby')
+    } finally {
+      setDeleteConfirmId(null)
     }
   }
 
@@ -571,6 +594,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </div>
             <div className="flex gap-2">
               <button
+                onClick={toggleFullscreen}
+                className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              >
+                {isFullscreen ? '⊡' : '⊞'}
+              </button>
+              <button
                 onClick={loadLobbies}
                 disabled={loading}
                 className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-border text-[9px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
@@ -671,7 +701,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           Enter
                         </button>
                         <button
-                          onClick={() => deleteLobby(lobby.id)}
+                          onClick={() => setDeleteConfirmId(lobby.id)}
                           className="px-3 py-2 border border-nier-red/40 text-nier-border text-[10px] hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
                           ×
@@ -754,6 +784,26 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </button>
             )}
           </section>
+
+          {/* Import Atrium (web only) */}
+          {!isDesktop && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Import from Desktop</span>
+                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              </div>
+              <button
+                onClick={() => setShowImport(true)}
+                disabled={!canCreateMore}
+                className="w-full py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                ◇ Import Atrium (.json)
+              </button>
+              {!canCreateMore && (
+                <p className="text-nier-red/60 text-[9px] tracking-wider mt-2">You have 3 atriums. Delete one to import.</p>
+              )}
+            </section>
+          )}
 
           {/* Public Atriums */}
           <section>
@@ -919,6 +969,45 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
+          <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+            
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ Delete Atrium</h3>
+            <p className="text-nier-border/60 text-xs tracking-wider mb-6">
+              Are you sure you want to delete this atrium? All traces will be lost.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => deleteLobby(deleteConfirmId)}
+                className="flex-1 py-2 bg-red-500/80 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Atrium Modal */}
+      {showImport && (
+        <ImportAtrium
+          onClose={() => setShowImport(false)}
+          onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
+        />
       )}
 
       {/* CSS for animations */}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 
 interface ProfileSettingsProps {
@@ -10,7 +10,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { userId, username, setUsername } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [actualUsername, setActualUsername] = useState('')
-  const [canChange, setCanChange] = useState(false)
+  const [canChange, setCanChange] = useState(isDesktop) // Desktop: always allowed
   const [daysUntilChange, setDaysUntilChange] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -41,15 +41,17 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       setActualUsername(data.username)
       setDisplayName(data.display_name || data.username)
       
-      // Check if user can change display name
-      const lastChanged = new Date(data.display_name_last_changed)
-      const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
-      
-      if (daysSinceChange >= 15) {
-        setCanChange(true)
-      } else {
-        setCanChange(false)
-        setDaysUntilChange(Math.ceil(15 - daysSinceChange))
+      // Desktop: no name change restrictions
+      if (!isDesktop) {
+        const lastChanged = new Date(data.display_name_last_changed)
+        const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
+        
+        if (daysSinceChange >= 15) {
+          setCanChange(true)
+        } else {
+          setCanChange(false)
+          setDaysUntilChange(Math.ceil(15 - daysSinceChange))
+        }
       }
     }
   }
@@ -62,40 +64,52 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
     if (!supabase || !userId) return
 
-    if (!canChange) {
+    if (!isDesktop && !canChange) {
       setError(`You can change your display name in ${daysUntilChange} days`)
       setLoading(false)
       return
     }
 
     if (displayName.length < 1 || displayName.length > 30) {
-      setError('Display name must be 1-30 characters')
+      setError('Name must be 1-30 characters')
       setLoading(false)
       return
     }
 
     try {
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      }
+
+      if (isDesktop) {
+        // Desktop: update both username and display_name, no cooldown
+        updateData.display_name = displayName
+        updateData.username = displayName
+      } else {
+        // Web: only update display_name with cooldown
+        updateData.display_name = displayName
+        updateData.display_name_last_changed = new Date().toISOString()
+      }
+
       const { error: updateError } = await (supabase
         .from('profiles') as any)
-        .update({
-          display_name: displayName,
-          display_name_last_changed: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', userId)
 
       if (updateError) throw updateError
 
       setUsername(displayName)
       setSuccess(true)
-      setCanChange(false)
-      setDaysUntilChange(15)
+      if (!isDesktop) {
+        setCanChange(false)
+        setDaysUntilChange(15)
+      }
       
       setTimeout(() => {
         onClose()
       }, 2000)
     } catch (err: any) {
-      setError(err.message || 'Failed to update display name')
+      setError(err.message || 'Failed to update name')
     } finally {
       setLoading(false)
     }
@@ -173,145 +187,161 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] p-4"
+      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000] p-4"
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <div className="bg-lobby-dark border-2 border-lobby-accent rounded-lg p-6 max-w-md w-full mx-4" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
+
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">Profile Settings</h2>
+          <div className="flex items-center gap-3">
+            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+            <h2 className="text-lg text-white tracking-[0.15em] uppercase">Profile Settings</h2>
+          </div>
           <button
             onClick={onClose}
-            className="text-white/60 hover:text-white text-2xl leading-none"
+            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
           >
             ×
           </button>
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-white/60 text-sm mb-1">Username (permanent)</label>
-            <div className="bg-black/50 border border-white/20 rounded px-3 py-2 text-white/60">
-              {actualUsername}
+          {/* Username (permanent) - only show on web */}
+          {!isDesktop && (
+            <div>
+              <label className="block text-nier-border/50 text-[9px] tracking-[0.15em] uppercase mb-2">Username (permanent)</label>
+              <div className="bg-nier-black border border-nier-border/20 px-3 py-2 text-nier-border/60 text-sm tracking-wide">
+                {actualUsername}
+              </div>
             </div>
-          </div>
+          )}
 
           <form onSubmit={handleUpdateDisplayName}>
-            <label className="block text-white/80 text-sm font-semibold mb-2">
-              Display Name
+            <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+              {isDesktop ? 'Username' : 'Display Name'}
             </label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-lobby-accent"
-              placeholder="Your display name"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+              placeholder={isDesktop ? 'Your username' : 'Your display name'}
               maxLength={30}
-              disabled={!canChange}
+              disabled={!isDesktop && !canChange}
             />
             
-            {!canChange && (
-              <p className="text-yellow-400 text-xs mt-2">
-                ⏰ You can change your display name in {daysUntilChange} days
+            {!isDesktop && !canChange && (
+              <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
+                ◇ You can change your display name in {daysUntilChange} days
               </p>
             )}
 
-            {canChange && (
-              <p className="text-green-400 text-xs mt-2">
+            {!isDesktop && canChange && (
+              <p className="text-nier-bg/60 text-[10px] tracking-wider mt-2">
                 ✓ You can change your display name now
               </p>
             )}
 
             {error && (
-              <div className="bg-red-500/20 border border-red-500 rounded px-3 py-2 text-red-200 text-sm mt-2">
+              <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider mt-2">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="bg-green-500/20 border border-green-500 rounded px-3 py-2 text-green-200 text-sm mt-2">
-                ✓ Display name updated successfully!
+              <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider mt-2">
+                ✓ {isDesktop ? 'Username' : 'Display name'} updated
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading || !canChange || displayName === username}
-              className="w-full mt-4 bg-lobby-accent hover:bg-lobby-accent/80 disabled:bg-lobby-accent/30 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
+              disabled={loading || (!isDesktop && !canChange) || displayName === username}
+              className="w-full mt-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {loading ? 'Updating...' : 'Update Display Name'}
+              {loading ? 'Updating...' : isDesktop ? 'Update Username' : 'Update Display Name'}
             </button>
           </form>
 
-          <hr className="border-white/20 my-4" />
+          <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
 
-          {/* Password Change Section */}
-          <div>
-            <button
-              onClick={() => setShowPasswordChange(!showPasswordChange)}
-              className="w-full text-left text-white/80 text-sm font-semibold mb-2 flex items-center justify-between hover:text-white transition-colors"
-            >
-              <span>Change Password</span>
-              <span className="text-white/40">{showPasswordChange ? '▼' : '▶'}</span>
-            </button>
-            
-            {showPasswordChange && (
-              <form onSubmit={handlePasswordChange} className="space-y-3 mt-3">
-                <div>
-                  <label className="block text-white/60 text-xs mb-1">New Password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-lobby-accent"
-                    placeholder="••••••••"
-                    minLength={6}
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-white/60 text-xs mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full bg-black/50 border border-white/20 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-lobby-accent"
-                    placeholder="••••••••"
-                    minLength={6}
-                    required
-                  />
-                </div>
-
-                {passwordError && (
-                  <div className="bg-red-500/20 border border-red-500 rounded px-3 py-2 text-red-200 text-xs">
-                    {passwordError}
-                  </div>
-                )}
-
-                {passwordSuccess && (
-                  <div className="bg-green-500/20 border border-green-500 rounded px-3 py-2 text-green-200 text-xs">
-                    ✓ Password updated successfully!
-                  </div>
-                )}
-
+          {/* Password Change Section - only show on web */}
+          {!isDesktop && (
+            <>
+              <div>
                 <button
-                  type="submit"
-                  disabled={passwordLoading || !newPassword || !confirmPassword}
-                  className="w-full bg-lobby-accent/80 hover:bg-lobby-accent disabled:bg-lobby-accent/30 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded text-sm transition-colors"
+                  onClick={() => setShowPasswordChange(!showPasswordChange)}
+                  className="w-full text-left text-nier-border text-[10px] tracking-[0.15em] uppercase flex items-center justify-between hover:text-nier-bg transition-colors"
                 >
-                  {passwordLoading ? 'Updating...' : 'Update Password'}
+                  <span>Change Password</span>
+                  <span className="text-nier-border/40">{showPasswordChange ? '▼' : '▶'}</span>
                 </button>
-              </form>
-            )}
-          </div>
+                
+                {showPasswordChange && (
+                  <form onSubmit={handlePasswordChange} className="space-y-3 mt-3">
+                    <div>
+                      <label className="block text-nier-border/60 text-[9px] tracking-[0.15em] uppercase mb-1">New Password</label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                        placeholder="••••••••"
+                        minLength={6}
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-nier-border/60 text-[9px] tracking-[0.15em] uppercase mb-1">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                        placeholder="••••••••"
+                        minLength={6}
+                        required
+                      />
+                    </div>
 
-          <hr className="border-white/20 my-4" />
+                    {passwordError && (
+                      <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider">
+                        {passwordError}
+                      </div>
+                    )}
+
+                    {passwordSuccess && (
+                      <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+                        ✓ Password updated
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={passwordLoading || !newPassword || !confirmPassword}
+                      className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      {passwordLoading ? 'Updating...' : 'Update Password'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
+            </>
+          )}
 
           <button
             onClick={handleLogout}
-            className="w-full bg-red-500/20 hover:bg-red-500/30 border border-red-500 text-red-200 font-semibold py-2 px-4 rounded transition-colors"
+            className="w-full py-2 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
           >
             Log Out
           </button>

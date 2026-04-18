@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
 interface TracePanelProps {
@@ -53,8 +53,17 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
       
       // Upload file if provided
       if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video')) {
-        if (supabase) {
-          // Upload to Supabase Storage
+        if (isDesktop && supabase) {
+          // Desktop: create blob URL instantly, write to disk in background
+          const fileExt = file.name.split('.').pop()
+          const fileName = `${userId}_${Date.now()}.${fileExt}`
+          const blobUrl = URL.createObjectURL(file)
+          const localUrl = `local://traces/${fileName}`
+          import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
+          supabase.storage.from('traces').upload(fileName, file)
+          uploadedUrl = localUrl
+        } else if (supabase) {
+          // Web: Upload to Supabase Storage
           const fileExt = file.name.split('.').pop()
           const fileName = `${userId}_${Date.now()}.${fileExt}`
           const { error } = await supabase.storage
@@ -135,6 +144,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
           scale: 1.0,
           rotation: 0.0,
           lobby_id: lobbyId,
+          show_description: false,
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
@@ -235,8 +245,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
             <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-3">
               Content Type
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['text', 'embed', 'shape'] as const).map((type) => (
+            <div className={`grid ${isDesktop ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-3'} gap-2`}>
+              {([
+                'text', 'embed', 'shape',
+                ...(isDesktop ? ['image', 'audio'] as const : []),
+              ] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
@@ -250,10 +263,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePan
                   {type === 'text' && '◇ Text'}
                   {type === 'embed' && '◇ Embed'}
                   {type === 'shape' && '◇ Shape'}
+                  {type === 'image' && '◇ Image'}
+                  {type === 'audio' && '◇ Audio'}
                 </button>
               ))}
             </div>
-            {/* Disabled trace types (kept for future use): image, audio, video */}
           </div>
 
           {/* Text Content */}

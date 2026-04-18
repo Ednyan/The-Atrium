@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { UserPresence, Trace } from '../types/database'
+import { isDesktop } from '../lib/supabase'
 
 export type CursorState = 'default' | 'pointer' | 'grab' | 'grabbing' | 'not-allowed'
 
@@ -227,6 +228,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   isLobbyFull: () => {
+    if (isDesktop) return false
     return get().getLobbySizeBytes() >= LOBBY_SIZE_LIMIT
   },
 }))

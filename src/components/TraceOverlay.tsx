@@ -4,8 +4,15 @@
 // Removed useEffectOnce, use standard useEffect
 import React, { useState, useRef, useEffect, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
+
+// Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
+async function resolveLocalUrl(url: string): Promise<string> {
+  const mod = await import('../lib/localDb')
+  return mod.resolveLocalUrl(url)
+}
+
 import ProfileCustomization from './ProfileCustomization'
 interface TraceOverlayProps {
   traces: Trace[]
@@ -67,6 +74,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
+  const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceId: string } | null>(null)
   const [playingMedia, setPlayingMedia] = useState<Set<string>>(new Set()) // Track traces with playing media
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
@@ -177,6 +185,32 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return
         }
         
+        // Local desktop files — resolve to blob URL
+        if (url.startsWith('local://')) {
+          resolveLocalUrl(url).then(resolvedUrl => {
+            const img = new Image()
+            img.onload = () => {
+              if (img.naturalWidth && img.naturalHeight) {
+                setImageDimensions(prev => ({
+                  ...prev,
+                  [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
+                }))
+              }
+              if (trace.type === 'embed') {
+                setConfirmedImageIds(prev => new Set(prev).add(trace.id))
+              }
+              setImageProxySources(prev => ({ ...prev, [trace.id]: resolvedUrl }))
+              setFailedImages(prev => { const next = new Set(prev); next.delete(trace.id); return next })
+              setImageRetryCount(prev => { const next = { ...prev }; delete next[trace.id]; return next })
+            }
+            img.onerror = () => {
+              setImageProxySources(prev => ({ ...prev, [trace.id]: resolvedUrl }))
+            }
+            img.src = resolvedUrl
+          })
+          return
+        }
+        
         // Always try loading as an image first (handles extensionless image URLs like Google Images)
         const img = new Image()
         
@@ -226,6 +260,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }
     })
     // No cleanup needed - each image's preflight is independent and tracked by ref
+  }, [traces])
+
+  // Resolve local:// URLs for audio/video traces in desktop mode
+  useEffect(() => {
+    if (!isDesktop) return
+    traces.forEach(trace => {
+      if ((trace.type === 'audio' || trace.type === 'video') && trace.mediaUrl?.startsWith('local://')) {
+        if (localMediaUrls[trace.id]) return
+        resolveLocalUrl(trace.mediaUrl).then(resolved => {
+          setLocalMediaUrls(prev => ({ ...prev, [trace.id]: resolved }))
+        })
+      }
+    })
   }, [traces])
 
   // ESC key to deselect trace and close menus
@@ -605,7 +652,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       border_opacity: trace.borderOpacity,
       fill_color: trace.fillColor,
       fill_opacity: trace.fillOpacity,
-      show_description: trace.showDescription ?? true,
+      show_description: trace.showDescription ?? false,
       show_filename: trace.showFilename ?? true,
       font_size: trace.fontSize ?? 16,
       font_family: trace.fontFamily ?? 'sans',
@@ -1352,7 +1399,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
         return { width: 200, height: 200 }
       case 'audio':
-        return { width: 120, height: 60 }
+        return { width: trace.width || 120, height: trace.height || 100 }
       case 'video':
         // Use detected dimensions if available
         if (imageDimensions[trace.id]) {
@@ -1602,7 +1649,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Apply customization defaults
         const showBorder = trace.showBorder ?? true
         const showBackground = trace.showBackground ?? true
-        const showDescription = trace.showDescription ?? true
+        const showDescription = trace.showDescription ?? false
         const showFilename = trace.showFilename ?? true
         const fontSize = trace.fontSize ?? 'medium'
         const fontFamily = trace.fontFamily ?? 'sans'
@@ -1884,8 +1931,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   >
               {/* Image Content */}
               {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
+                (() => {
+                  const rawUrl = trace.mediaUrl || trace.imageUrl || ''
+                  const isLocal = rawUrl.startsWith('local://')
+                  const resolvedSrc = imageProxySources[trace.id]
+                  // For local:// URLs, wait for resolved blob URL before rendering
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/30 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  return (
                 <img
-                  src={imageProxySources[trace.id] || trace.mediaUrl || trace.imageUrl}
+                  src={resolvedSrc || rawUrl}
                   alt=""
                   className="w-full h-full object-contain pointer-events-none select-none"
                   style={{ 
@@ -1929,6 +1983,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     }
                   }}
                 />
+                  )
+                })()
               )}
               
               {/* Image placeholder - shown when no URL or when image failed to load */}
@@ -1946,7 +2002,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Video Content */}
               {trace.type === 'video' && trace.mediaUrl && (
                 <video
-                  src={trace.mediaUrl}
+                  src={localMediaUrls[trace.id] || trace.mediaUrl}
                   controls={false}
                   className="w-full h-full pointer-events-none select-none"
                   style={{ 
@@ -1985,35 +2041,70 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {/* Audio Content */}
               {trace.type === 'audio' && trace.mediaUrl && (
-                <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
-                  <span className="text-2xl mb-2">🔊</span>
+                <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none px-3 pt-5 pb-4 gap-2">
+                  {/* Decorative waveform bars */}
+                  <div className="flex items-end justify-center gap-[2px] flex-1 w-full max-h-[60%] min-h-[24px]">
+                    {(() => {
+                      // Generate deterministic bar heights from trace id
+                      const bars = 24
+                      const heights: number[] = []
+                      for (let i = 0; i < bars; i++) {
+                        const hash = trace.id.charCodeAt(i % trace.id.length) + i * 7
+                        heights.push(0.18 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.82)
+                      }
+                      const isPlaying = playingMedia.has(trace.id)
+                      return heights.map((h, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 max-w-[6px] rounded-full"
+                          style={{
+                            height: `${h * 100}%`,
+                            minHeight: '3px',
+                            background: isPlaying
+                              ? `linear-gradient(to top, ${trace.borderColor || '#a78bfa'}, ${trace.borderColor ? trace.borderColor + '88' : '#c4b5fd'})`
+                              : 'linear-gradient(to top, rgba(255,255,255,0.25), rgba(255,255,255,0.08))',
+                            transition: 'background 0.3s ease',
+                            animation: isPlaying ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
+                          }}
+                        />
+                      ))
+                    })()}
+                  </div>
+                  {/* Hidden audio element + custom play button */}
                   <audio
-                    src={trace.mediaUrl}
-                    controls
-                    className="w-full pointer-events-auto"
-                    style={{ height: '30px' }}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                    onPlay={() => {
-                      setPlayingMedia(prev => new Set(prev).add(trace.id))
-                    }}
-                    onPause={() => {
-                      setPlayingMedia(prev => {
-                        const next = new Set(prev)
-                        next.delete(trace.id)
-                        return next
-                      })
-                    }}
-                    onEnded={() => {
-                      setPlayingMedia(prev => {
-                        const next = new Set(prev)
-                        next.delete(trace.id)
-                        return next
-                      })
-                    }}
+                    id={`audio-${trace.id}`}
+                    src={localMediaUrls[trace.id] || trace.mediaUrl}
+                    className="hidden"
+                    onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
+                    onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
+                    onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
                   />
+                  <button
+                    className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
+                    style={{
+                      background: playingMedia.has(trace.id)
+                        ? 'rgba(167, 139, 250, 0.25)'
+                        : 'rgba(255,255,255,0.08)',
+                      color: playingMedia.has(trace.id) ? '#c4b5fd' : 'rgba(255,255,255,0.6)',
+                      border: `1px solid ${playingMedia.has(trace.id) ? 'rgba(167,139,250,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                      backdropFilter: 'blur(8px)',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const el = document.getElementById(`audio-${trace.id}`) as HTMLAudioElement | null
+                      if (el) { el.paused ? el.play() : el.pause() }
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                  >
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
+                      {playingMedia.has(trace.id)
+                        ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
+                        : <polygon points="2,0.5 9,5 2,9.5"/>}
+                    </svg>
+                    {playingMedia.has(trace.id) ? 'Pause' : 'Play'}
+                  </button>
                   {showDescription && trace.content && (
-                    <p className="text-xs text-white/80 mt-1 text-center truncate w-full pointer-events-none select-none">
+                    <p className="text-[10px] text-white/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
                       {trace.content}
                     </p>
                   )}
@@ -2028,10 +2119,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 const isDirectImage = hasImageExtension || isConfirmedImage
                 
                 if (isDirectImage && !failedImages.has(trace.id)) {
+                  const isLocal = trace.mediaUrl.startsWith('local://')
+                  const resolvedSrc = imageProxySources[trace.id]
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/30 text-[10px] tracking-wider uppercase">Loading...</span></div>
                   // Render as image, not iframe
                   return (
                     <img
-                      src={imageProxySources[trace.id] || trace.mediaUrl}
+                      src={resolvedSrc || trace.mediaUrl}
                       alt=""
                       className="w-full h-full object-contain pointer-events-none select-none"
                       style={{ 
@@ -3510,12 +3604,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               <div className="space-y-3">
                 <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                    {(editingTrace.showDescription ?? true) && <span className="text-black text-[10px]">✓</span>}
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                    {(editingTrace.showDescription ?? false) && <span className="text-black text-[10px]">✓</span>}
                   </div>
                   <input
                     type="checkbox"
-                    checked={editingTrace.showDescription ?? true}
+                    checked={editingTrace.showDescription ?? false}
                     onChange={(e) => {
                       const updated = { ...editingTrace, showDescription: e.target.checked }
                       setEditingTrace(updated)
@@ -4596,7 +4690,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {modalTrace.type === 'video' && modalTrace.mediaUrl && (
                 <video
-                  src={modalTrace.mediaUrl}
+                  src={localMediaUrls[modalTrace.id] || modalTrace.mediaUrl}
                   controls
                   autoPlay
                   className="w-full max-h-96"
@@ -4604,9 +4698,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               )}
 
               {modalTrace.type === 'audio' && modalTrace.mediaUrl && (
-                <div className="flex flex-col items-center p-8 bg-gray-800/50">
-                  <span className="text-6xl mb-4">🎵</span>
-                  <audio src={modalTrace.mediaUrl} controls autoPlay className="w-full" />
+                <div className="flex flex-col items-center p-8 bg-gradient-to-b from-gray-800/60 to-gray-900/60 rounded-lg">
+                  {/* Large decorative waveform */}
+                  <div className="flex items-end justify-center gap-[3px] w-full h-24 mb-6 px-4">
+                    {(() => {
+                      const bars = 40
+                      const heights: number[] = []
+                      for (let i = 0; i < bars; i++) {
+                        const hash = modalTrace.id.charCodeAt(i % modalTrace.id.length) + i * 7
+                        heights.push(0.15 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.85)
+                      }
+                      return heights.map((h, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 max-w-[8px] rounded-full"
+                          style={{
+                            height: `${h * 100}%`,
+                            minHeight: '4px',
+                            background: 'linear-gradient(to top, #a78bfa, #7c3aed44)',
+                          }}
+                        />
+                      ))
+                    })()}
+                  </div>
+                  <audio src={localMediaUrls[modalTrace.id] || modalTrace.mediaUrl} controls autoPlay className="w-full max-w-md" style={{ filter: 'brightness(0.85) contrast(1.1)' }} />
                 </div>
               )}
 

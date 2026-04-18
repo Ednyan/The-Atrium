@@ -70,13 +70,14 @@ export function usePresence(lobbyId: string | null) {
         console.log('[Presence] Sync - all users:', Object.keys(state))
         
         Object.entries(state).forEach(([key, presences]) => {
+          const presenceArr = presences as any[]
           // Skip current user and filter out non-UUID keys (old pre-auth users)
-          if (key !== userId && presences && presences.length > 0) {
+          if (key !== userId && presenceArr && presenceArr.length > 0) {
             // Only show authenticated users (UUIDs start with hex characters and have dashes)
             const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
-            console.log('[Presence] User key:', key, 'isValidUUID:', isValidUUID, 'presences:', presences)
+            console.log('[Presence] User key:', key, 'isValidUUID:', isValidUUID, 'presences:', presenceArr)
             if (isValidUUID) {
-              const presence = presences[0] as any
+              const presence = presenceArr[0] as any
               console.log('[Presence] Updating other user:', key, presence.username)
               updateOtherUser(key, {
                 userId: key,
@@ -90,7 +91,7 @@ export function usePresence(lobbyId: string | null) {
           }
         })
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      .on('presence', { event: 'join' }, ({ key, newPresences }: { key: string; newPresences: any[] }) => {
         // Only track authenticated users (valid UUIDs)
         const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
         if (key !== userId && newPresences && newPresences.length > 0 && isValidUUID) {
@@ -105,12 +106,12 @@ export function usePresence(lobbyId: string | null) {
           })
         }
       })
-      .on('presence', { event: 'leave' }, ({ key }) => {
+      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
         if (key !== userId) {
           removeOtherUser(key)
         }
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({
             username,

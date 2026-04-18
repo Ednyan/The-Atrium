@@ -5,7 +5,10 @@ import AuthScreen from './components/AuthScreen'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
-import { supabase } from './lib/supabase'
+import { supabase, isDesktop } from './lib/supabase'
+
+// Local user ID constant (matches localDb.ts) — avoids importing Tauri dependencies in web mode
+const LOCAL_USER_ID = 'local-user'
 
 // Storage keys for persisting navigation state
 const STORAGE_KEYS = {
@@ -91,6 +94,14 @@ function App() {
       
       // If already verified for this lobby, skip
       if (verifiedLobbyId === route.lobbyId) return
+      
+      // In desktop mode, local user always has access — skip verification
+      if (isDesktop) {
+        setVerifiedLobbyId(route.lobbyId)
+        setCurrentLobbyId(route.lobbyId)
+        localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+        return
+      }
       
       setVerifyingAccess(true)
       setLobbyAccessError(null)
@@ -199,7 +210,7 @@ function App() {
       localStorage.removeItem('username')
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
       if (session?.user && supabase) {
         // Get user profile
         (supabase
@@ -235,6 +246,7 @@ function App() {
                 } else {
                   // Lobby exists - restore active_lobby_id and set current lobby
                   setCurrentLobbyId(lobbyIdToRestore)
+                  setVerifiedLobbyId(lobbyIdToRestore)
                   localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, lobbyIdToRestore)
                   navigate(`/atrium/${lobbyIdToRestore}`)
                   await (supabase
@@ -249,6 +261,10 @@ function App() {
                 navigate('/welcome')
               }
             }
+            setLoading(false)
+          })
+          .catch(() => {
+            setLoading(false)
           })
       } else {
         // Not authenticated - clear persisted navigation state
@@ -256,14 +272,14 @@ function App() {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
         setCurrentLobbyId(null)
         navigate('/')
+        setLoading(false)
       }
-      setLoading(false)
     })
 
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (session?.user && supabase) {
         (supabase
           .from('profiles') as any)
@@ -300,6 +316,11 @@ function App() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (supabase && currentLobbyId) {
+        // In desktop mode, just clear via the local adapter directly
+        if (isDesktop) {
+          supabase.from('profiles').update({ active_lobby_id: null }).eq('id', LOCAL_USER_ID)
+          return
+        }
         // Get stored session synchronously from localStorage
         const storageKey = `sb-${import.meta.env.VITE_SUPABASE_URL?.replace('https://', '').split('.')[0]}-auth-token`
         const storedSession = localStorage.getItem(storageKey)
@@ -445,6 +466,19 @@ function App() {
   
   // If not authenticated, only allow landing and login pages
   if (!isAuthenticated) {
+    // In desktop mode, never show auth/landing (auto-auth handles it)
+    if (isDesktop) {
+      return (
+        <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
+          <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
+            <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Initializing</p>
+            <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
+              <div className="h-full bg-white/80 animate-nier-slide" />
+            </div>
+          </div>
+        </div>
+      )
+    }
     if (currentPage === 'login') {
       return <AuthScreen onAuthSuccess={handleAuthSuccess} onBackToLanding={handleBackToLanding} />
     }
@@ -453,6 +487,11 @@ function App() {
   }
 
   // Authenticated user routing
+  // In desktop mode, skip landing page — go straight to welcome/browse
+  if (isDesktop && (currentPage === 'landing' || currentPage === 'login')) {
+    setTimeout(() => navigate('/welcome'), 0)
+  }
+
   // Allow authenticated users to see landing page (for logout/info)
   if (currentPage === 'landing') {
     return <LandingPage onGetStarted={() => navigate('/welcome')} isAuthenticated={true} />
