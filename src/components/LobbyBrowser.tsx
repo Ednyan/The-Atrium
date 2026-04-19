@@ -689,7 +689,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                         )}
                         <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
                           <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
-                          <span>{lobby.isPublic ? '◦ Public' : '◦ Private'}</span>
+                          <span>{lobby.isPublic ? (isDesktop ? '◦ Local Public' : '◦ Public') : (isDesktop ? '◦ Local Private' : '◦ Private')}</span>
                           {lobby.passwordHash && <span>◦ Secured</span>}
                         </div>
                       </div>
@@ -757,7 +757,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
                     className="hidden"
                   />
-                  <span className="tracking-wider uppercase text-[10px]">Public (visible in browser)</span>
+                  <span className="tracking-wider uppercase text-[10px]">{isDesktop ? 'Local Public (visible to others on this PC)' : 'Public (visible in browser)'}</span>
                 </label>
                 <div className="flex gap-3 pt-2">
                   <button
@@ -852,13 +852,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex-1">
                         <h4 className="text-nier-bg text-sm tracking-wide">
                           {lobby.name}
-                          {!lobby.isPublic && <span className="ml-2 text-nier-border/50 text-[9px]">[Private]</span>}
+                          {!lobby.isPublic && <span className="ml-2 text-nier-border/50 text-[9px]">{isDesktop ? '[Local Private]' : '[Private]'}</span>}
                         </h4>
                         <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
                           <span>Atrium by: ◇ {lobby.ownerUsername}</span>
                           <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
                           {lobby.passwordHash && <span>◦ Secured</span>}
-                          {!lobby.isPublic && <span>◦ Whitelisted</span>}
+                          {!lobby.isPublic && <span>{isDesktop ? '◦ Local Private' : '◦ Whitelisted'}</span>}
                         </div>
                       </div>
                       <button
