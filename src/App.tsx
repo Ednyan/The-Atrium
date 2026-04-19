@@ -487,8 +487,8 @@ function App() {
   }
 
   // Authenticated user routing
-  // In desktop mode, skip landing page — go straight to welcome/browse
-  if (isDesktop && (currentPage === 'landing' || currentPage === 'login')) {
+  // In desktop mode, skip login page — go straight to welcome/browse
+  if (isDesktop && currentPage === 'login') {
     setTimeout(() => navigate('/welcome'), 0)
   }
 

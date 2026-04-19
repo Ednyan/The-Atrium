@@ -201,6 +201,18 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <span className="relative z-10">◇ Profile Settings</span>
             </button>
 
+            {/* About button (desktop only) */}
+            {isDesktop && onBackToLanding && (
+              <button
+                onClick={onBackToLanding}
+                onMouseEnter={() => setIsHovered('about')}
+                onMouseLeave={() => setIsHovered(null)}
+                className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+              >
+                <span className="relative z-10">◇ About</span>
+              </button>
+            )}
+
             {/* Export Atrium button (desktop only) */}
             {isDesktop && (
               <button
