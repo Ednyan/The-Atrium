@@ -624,14 +624,14 @@ The result became what seems like a mix between pinterest, pureref and miro but 
             ].map((social, i) => (
               <a
                 key={i}
-                href={social.url}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={isDesktop ? '#' : social.url}
+                target={isDesktop ? undefined : '_blank'}
+                rel={isDesktop ? undefined : 'noopener noreferrer'}
                 onClick={isDesktop ? (e) => {
                   e.preventDefault()
                   import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
                 } : undefined}
-                className="text-nier-border/60 hover:text-nier-bg text-xs tracking-wider uppercase transition-colors"
+                className="text-nier-border/60 hover:text-nier-bg text-xs tracking-wider uppercase transition-colors cursor-pointer"
               >
                 ◇ {social.name}
               </a>
