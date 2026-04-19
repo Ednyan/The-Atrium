@@ -7,17 +7,19 @@ interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
   lobbyId: string
+  initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+  initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType }: TracePanelProps) {
   const [content, setContent] = useState('')
-  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>('text')
+  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   // Shape-specific state
-  const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>('rectangle')
+  const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
   const [shapeColor, setShapeColor] = useState('#3b82f6') // Default blue
   const [shapeOpacity, setShapeOpacity] = useState(1.0)
   const [cornerRadius, setCornerRadius] = useState(0)

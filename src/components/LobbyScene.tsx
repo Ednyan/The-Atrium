@@ -72,6 +72,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   
   const { username, position, otherUsers, traces, userId } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
+  const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | undefined>(undefined)
+  const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
+  const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
@@ -319,6 +322,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const handleCloseTracePanel = () => {
     setShowTracePanel(false)
     setClickedTracePosition(null)
+    setTracePanelInitialType(undefined)
+    setTracePanelInitialShapeType(undefined)
   }
   
   // Restore saved camera position for this lobby on mount
@@ -556,12 +561,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         }
       }
       
-      // Prevent context menu on right click
+      // Prevent context menu on right click - show custom map context menu instead
       const handleContextMenu = (e: MouseEvent) => {
         // Allow native browser context menu inside selectable text areas (modal preview)
         const target = e.target as HTMLElement
         if (target.closest('.selectable-text')) return
         e.preventDefault()
+        
+        // Only show map context menu if clicking on the canvas (not UI elements or trace overlays)
+        const isUI = target.closest('[data-ui-element], [data-trace-element], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
+        if (isUI) return
+        
+        // Convert screen coords to world coords
+        if (worldContainerRef.current) {
+          const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
+          const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
+          setMapContextMenu({ x: e.clientX, y: e.clientY, worldX, worldY })
+        }
       }
 
       // --- Touch handlers for mobile ---
@@ -2096,9 +2112,61 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </>
       )}
 
+      {/* Map Right-Click Context Menu */}
+      {mapContextMenu && (
+        <div
+          className="fixed inset-0 z-[9999]"
+          onClick={() => setMapContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setMapContextMenu(null) }}
+        >
+          <div
+            className="absolute bg-nier-blackLight border border-nier-border/40 py-1 min-w-[160px]"
+            style={{
+              left: Math.min(mapContextMenu.x, window.innerWidth - 180),
+              top: Math.min(mapContextMenu.y, window.innerHeight - (isDesktop ? 220 : 160)),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-border/60" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-border/60" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-border/60" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-border/60" />
+            
+            <div className="px-3 py-1.5 text-nier-border/50 text-[8px] tracking-[0.2em] uppercase select-none">
+              Place Trace
+            </div>
+            {([
+              { label: '◇ Text', type: 'text' as const, shape: undefined },
+              { label: '◇ Embed', type: 'embed' as const, shape: undefined },
+              { label: '◇ Shape', type: 'shape' as const, shape: 'rectangle' as const },
+              { label: '~ Path', type: 'shape' as const, shape: 'path' as const },
+              ...(isDesktop ? [
+                { label: '◇ Image', type: 'image' as const, shape: undefined },
+                { label: '◇ Sound', type: 'audio' as const, shape: undefined },
+              ] : []),
+            ]).map((item) => (
+              <button
+                key={item.label}
+                className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                onClick={() => {
+                  setClickedTracePosition({ x: mapContextMenu.worldX, y: mapContextMenu.worldY })
+                  setTracePanelInitialType(item.type)
+                  setTracePanelInitialShapeType(item.shape)
+                  setShowTracePanel(true)
+                  setMapContextMenu(null)
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} />
+        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} />
       )}
 
       {/* Layer Panel */}
