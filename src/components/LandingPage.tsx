@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { isDesktop } from '../lib/supabase'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -624,6 +625,12 @@ The result became what seems like a mix between pinterest, pureref and miro but 
               <a
                 key={i}
                 href={social.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={isDesktop ? (e) => {
+                  e.preventDefault()
+                  import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
+                } : undefined}
                 className="text-nier-border/60 hover:text-nier-bg text-xs tracking-wider uppercase transition-colors"
               >
                 ◇ {social.name}
