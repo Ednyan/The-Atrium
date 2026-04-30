@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
@@ -6,6 +6,226 @@ import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
+
+type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'ready'
+
+const ANIMATION_FPS = 40
+
+const LOADING_ANIMATION_FRAMES = Object.entries(
+  import.meta.glob('/loading_animation/*.jpg', { eager: true, import: 'default' }) as Record<string, string>
+)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, url]) => url)
+
+const ENTERING_ANIMATION_FRAMES = Object.entries(
+  import.meta.glob('/entering_animation/*.jpg', { eager: true, import: 'default' }) as Record<string, string>
+)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, url]) => url)
+
+function ImageSequencePlayer({
+  frames,
+  fps = ANIMATION_FPS,
+  loop = false,
+  bufferLeadFrames = 12,
+  nearCompleteLeadFrames = 0,
+  onNearComplete,
+  onComplete,
+  alt,
+  className,
+}: {
+  frames: string[]
+  fps?: number
+  loop?: boolean
+  bufferLeadFrames?: number
+  nearCompleteLeadFrames?: number
+  onNearComplete?: () => void
+  onComplete?: () => void
+  alt: string
+  className?: string
+}) {
+  const [frameIndex, setFrameIndex] = useState(0)
+  const [decodedFramesCount, setDecodedFramesCount] = useState(0)
+  const decodedFramesRef = useRef<boolean[]>([])
+  const frameIndexRef = useRef(0)
+  const completionFiredRef = useRef(false)
+  const nearCompletionFiredRef = useRef(false)
+
+  useEffect(() => {
+    setFrameIndex(0)
+    setDecodedFramesCount(0)
+    frameIndexRef.current = 0
+    decodedFramesRef.current = Array(frames.length).fill(false)
+    completionFiredRef.current = false
+    nearCompletionFiredRef.current = false
+  }, [frames, loop, nearCompleteLeadFrames, bufferLeadFrames])
+
+  // Pre-decode frames so playback doesn't hitch while decoding in real time.
+  useEffect(() => {
+    if (frames.length === 0) {
+      setDecodedFramesCount(0)
+      return
+    }
+
+    let cancelled = false
+
+    frames.forEach((src, idx) => {
+      const img = new Image()
+      img.decoding = 'async'
+
+      const markDecoded = () => {
+        if (cancelled) return
+        if (decodedFramesRef.current[idx]) return
+        decodedFramesRef.current[idx] = true
+        setDecodedFramesCount((count) => count + 1)
+      }
+
+      img.onload = () => {
+        // decode() improves chances of smooth handoff between frames.
+        img.decode().catch(() => {}).finally(markDecoded)
+      }
+      img.onerror = markDecoded
+      img.src = src
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [frames])
+
+  useEffect(() => {
+    if (frames.length === 0) {
+      if (!loop && onComplete && !completionFiredRef.current) {
+        completionFiredRef.current = true
+        onComplete()
+      }
+      return
+    }
+
+    const minimumBuffered = Math.min(Math.max(1, bufferLeadFrames), frames.length)
+    if (decodedFramesCount < minimumBuffered) return
+
+    let rafId = 0
+    const startTime = performance.now()
+
+    const tick = (now: number) => {
+      const elapsedSeconds = (now - startTime) / 1000
+      const rawIndex = Math.floor(elapsedSeconds * fps)
+
+      let nextIndex = loop ? rawIndex % frames.length : Math.min(rawIndex, frames.length - 1)
+
+      // If the desired frame isn't decoded yet, hold to the last decoded frame.
+      if (!decodedFramesRef.current[nextIndex]) {
+        let fallback = nextIndex
+        while (fallback > frameIndexRef.current && !decodedFramesRef.current[fallback]) {
+          fallback -= 1
+        }
+        nextIndex = decodedFramesRef.current[fallback] ? fallback : frameIndexRef.current
+      }
+
+      if (nextIndex !== frameIndexRef.current) {
+        frameIndexRef.current = nextIndex
+        setFrameIndex(nextIndex)
+      }
+
+      if (!loop && onNearComplete && !nearCompletionFiredRef.current) {
+        const nearCompleteAt = Math.max(0, frames.length - 1 - nearCompleteLeadFrames)
+        if (nextIndex >= nearCompleteAt) {
+          nearCompletionFiredRef.current = true
+          onNearComplete()
+        }
+      }
+
+      if (!loop && rawIndex >= frames.length - 1) {
+        if (onComplete && !completionFiredRef.current) {
+          completionFiredRef.current = true
+          onComplete()
+        }
+        return
+      }
+
+      rafId = window.requestAnimationFrame(tick)
+    }
+
+    rafId = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(rafId)
+  }, [
+    frames,
+    fps,
+    loop,
+    bufferLeadFrames,
+    decodedFramesCount,
+    nearCompleteLeadFrames,
+    onNearComplete,
+    onComplete,
+  ])
+
+  if (frames.length === 0) {
+    return <div className={className} aria-label={alt} role="img" />
+  }
+
+  return (
+    <div
+      className={className}
+      role="img"
+      aria-label={alt}
+      style={{
+        backgroundImage: `url("${frames[frameIndex]}")`,
+        backgroundSize: 'contain',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    />
+  )
+}
+
+function AtriumTransitionOverlay({
+  title,
+  subtitle,
+  frames,
+  loop,
+  nearCompleteLeadFrames,
+  onNearComplete,
+  onAnimationComplete,
+  progressClassName,
+}: {
+  title: string
+  subtitle: string
+  frames: string[]
+  loop: boolean
+  nearCompleteLeadFrames?: number
+  onNearComplete?: () => void
+  onAnimationComplete?: () => void
+  progressClassName: string
+}) {
+  return (
+    <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4 overflow-hidden">
+      <div className="w-full max-w-[1600px] flex flex-col items-center justify-center">
+        <p className="text-white text-[clamp(9px,2vw,15px)] tracking-[0.25em] uppercase mb-3 text-center">{title}</p>
+
+        <ImageSequencePlayer
+          frames={frames}
+          loop={loop}
+          nearCompleteLeadFrames={nearCompleteLeadFrames}
+          onNearComplete={onNearComplete}
+          onComplete={onAnimationComplete}
+          alt={title}
+          className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px]"
+        />
+
+        <div className="w-[60vw] sm:w-[420px] h-[3px] bg-white/10 overflow-hidden mx-auto mt-3">
+          <div className={progressClassName} />
+        </div>
+
+        <p className="text-gray-500 text-[clamp(7px,1.6vw,11px)] tracking-[0.2em] uppercase mt-3 text-center">{subtitle}</p>
+      </div>
+    </div>
+  )
+}
+
+function AtriumFlashOverlay({ onComplete }: { onComplete: () => void }) {
+  return <div className="fixed inset-0 z-50 atrium-flash-transition" onAnimationEnd={onComplete} />
+}
 
 // Local user ID constant (matches localDb.ts) — avoids importing Tauri dependencies in web mode
 const LOCAL_USER_ID = 'local-user'
@@ -74,6 +294,38 @@ function App() {
   const [verifiedLobbyId, setVerifiedLobbyId] = useState<string | null>(null)
   const [lobbyAccessError, setLobbyAccessError] = useState<string | null>(null)
   const [verifyingAccess, setVerifyingAccess] = useState(false)
+  const [atriumTransitionPhase, setAtriumTransitionPhase] = useState<AtriumTransitionPhase>('loading')
+  const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
+  const [enteringFramesReady, setEnteringFramesReady] = useState(ENTERING_ANIMATION_FRAMES.length === 0)
+
+  // Preload entering frames so they are ready as soon as loading completes.
+  useEffect(() => {
+    if (ENTERING_ANIMATION_FRAMES.length === 0) {
+      setEnteringFramesReady(true)
+      return
+    }
+
+    let cancelled = false
+    let loadedCount = 0
+
+    ENTERING_ANIMATION_FRAMES.forEach((src) => {
+      const img = new Image()
+      const markLoaded = () => {
+        loadedCount += 1
+        if (!cancelled && loadedCount >= ENTERING_ANIMATION_FRAMES.length) {
+          setEnteringFramesReady(true)
+        }
+      }
+
+      img.onload = markLoaded
+      img.onerror = markLoaded
+      img.src = src
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Listen for hash changes (browser back/forward)
   useEffect(() => {
@@ -85,6 +337,36 @@ function App() {
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
+
+  // Reset and track transition state for each atrium entry.
+  useEffect(() => {
+    if (route.page === 'atrium' && route.lobbyId) {
+      setTransitionLobbyId(route.lobbyId)
+      setAtriumTransitionPhase('loading')
+      return
+    }
+
+    setTransitionLobbyId(null)
+    setAtriumTransitionPhase('loading')
+  }, [route.page, route.lobbyId])
+
+  // Once access is verified, transition from loading loop to entering sequence.
+  useEffect(() => {
+    if (route.page !== 'atrium' || !route.lobbyId) return
+    if (verifiedLobbyId !== route.lobbyId) return
+    if (transitionLobbyId !== route.lobbyId) return
+    if (atriumTransitionPhase !== 'loading') return
+    if (!enteringFramesReady) return
+
+    setAtriumTransitionPhase('entering')
+  }, [
+    route.page,
+    route.lobbyId,
+    verifiedLobbyId,
+    transitionLobbyId,
+    atriumTransitionPhase,
+    enteringFramesReady,
+  ])
 
   // Verify lobby access when trying to access via URL
   useEffect(() => {
@@ -534,30 +816,13 @@ function App() {
     // Show loading while verifying access
     if (verifyingAccess) {
       return (
-        <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
-          <div className="flex flex-col items-center gap-6">
-            {/* Decorative brackets */}
-            <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-              <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-              <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-              <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-              <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
-
-              <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">
-                Verifying Access
-              </p>
-
-              {/* Loading bar */}
-              <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-                <div className="h-full bg-white/80 animate-nier-slide" />
-              </div>
-
-              <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">
-                ◇ Please wait
-              </p>
-            </div>
-          </div>
-        </div>
+        <AtriumTransitionOverlay
+          title="Verifying Access"
+          subtitle="◇ Calibrating threshold"
+          frames={LOADING_ANIMATION_FRAMES}
+          loop={true}
+          progressClassName="h-full bg-white/80 animate-nier-slide"
+        />
       )
     }
     
@@ -613,24 +878,49 @@ function App() {
     
     // Only render lobby scene if access is verified
     if (verifiedLobbyId === route.lobbyId) {
+      if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'entering') {
+        return (
+          <AtriumTransitionOverlay
+            title="Entering Atrium"
+            subtitle="◇ Crossing into another realm"
+            frames={ENTERING_ANIMATION_FRAMES}
+            loop={false}
+            onNearComplete={() => setAtriumTransitionPhase('flash')}
+            nearCompleteLeadFrames={1}
+            onAnimationComplete={() => setAtriumTransitionPhase('flash')}
+            progressClassName="h-full bg-white/80"
+          />
+        )
+      }
+
+      if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'flash') {
+        return <AtriumFlashOverlay onComplete={() => setAtriumTransitionPhase('ready')} />
+      }
+
+      if (transitionLobbyId === route.lobbyId && atriumTransitionPhase !== 'ready') {
+        return (
+          <AtriumTransitionOverlay
+            title="Entering Atrium"
+            subtitle={enteringFramesReady ? '◇ Aligning the gate' : '◇ Preparing passage'}
+            frames={LOADING_ANIMATION_FRAMES}
+            loop={true}
+            progressClassName="h-full bg-white/80 animate-nier-slide"
+          />
+        )
+      }
+
       return <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} />
     }
     
     // Still waiting for verification
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
-        <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
-          <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Entering Atrium</p>
-          <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-            <div className="h-full bg-white/80 animate-nier-slide" />
-          </div>
-          <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
-        </div>
-      </div>
+      <AtriumTransitionOverlay
+        title="Entering Atrium"
+        subtitle="◇ Tuning spatial resonance"
+        frames={LOADING_ANIMATION_FRAMES}
+        loop={true}
+        progressClassName="h-full bg-white/80 animate-nier-slide"
+      />
     )
   }
   

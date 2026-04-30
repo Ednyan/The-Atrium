@@ -104,6 +104,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const localShapePointsRef = useRef(localShapePoints)
   const zoomRef = useRef(zoom)
   const multiSelectedIdsRef = useRef(multiSelectedIds)
+  const transformModeRef = useRef<TransformMode>(transformMode)
+  const selectedTraceIdRef = useRef<string | null>(selectedTraceId)
   
   // Keep refs updated
   useEffect(() => { tracesRef.current = traces }, [traces])
@@ -111,6 +113,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
   useEffect(() => { zoomRef.current = zoom }, [zoom])
   useEffect(() => { multiSelectedIdsRef.current = multiSelectedIds }, [multiSelectedIds])
+  useEffect(() => { transformModeRef.current = transformMode }, [transformMode])
+  useEffect(() => { selectedTraceIdRef.current = selectedTraceId }, [selectedTraceId])
 
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
@@ -783,6 +787,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     
     setSelectedTraceId(trace.id)
     setTransformMode(mode)
+    selectedTraceIdRef.current = trace.id
+    transformModeRef.current = mode
     setCursorState('grabbing') // Change cursor to grabbing while dragging
     
     // Prevent text selection during drag
@@ -829,7 +835,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }
 
   const handleMouseMove = (e: MouseEvent) => {
-    if (transformMode === 'none' || !selectedTraceId) return
+    const activeTransformMode = transformModeRef.current
+    const activeSelectedTraceId = selectedTraceIdRef.current
+    if (activeTransformMode === 'none' || !activeSelectedTraceId) return
 
     // Use refs to get latest values (avoid stale closures)
     const currentTraces = tracesRef.current
@@ -837,11 +845,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const currentLocalShapePoints = localShapePointsRef.current
     const currentZoom = zoomRef.current
 
-    const trace = currentTraces.find(t => t.id === selectedTraceId)
+    const trace = currentTraces.find(t => t.id === activeSelectedTraceId)
     if (!trace) return
     
     // Use editingTrace if available for the most up-to-date data
-    const currentTrace = (currentEditingTrace && currentEditingTrace.id === selectedTraceId) ? currentEditingTrace : trace
+    const currentTrace = (currentEditingTrace && currentEditingTrace.id === activeSelectedTraceId) ? currentEditingTrace : trace
 
     const deltaX = e.clientX - startPosRef.current.x
     const deltaY = e.clientY - startPosRef.current.y
@@ -851,7 +859,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       justDraggedRef.current = true
     }
 
-  if (transformMode === 'move') {
+  if (activeTransformMode === 'move') {
       // Convert screen delta to world delta
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
@@ -889,15 +897,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           }
         })
         // Also move the main selected trace if not in multi-select
-        if (!currentMultiSelected.has(selectedTraceId)) {
-          updateTraceTransform(selectedTraceId, {
+        if (!currentMultiSelected.has(activeSelectedTraceId)) {
+          updateTraceTransform(activeSelectedTraceId, {
             x: startTransformRef.current.x + worldDeltaX,
             y: startTransformRef.current.y + worldDeltaY,
           })
         }
       } else {
         // Single trace move
-        updateTraceTransform(selectedTraceId, {
+        updateTraceTransform(activeSelectedTraceId, {
           x: startTransformRef.current.x + worldDeltaX,
           y: startTransformRef.current.y + worldDeltaY,
         })
@@ -963,7 +971,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         newCropHeight = startCrop.cropHeight + clampedDeltaY
       }
       
-      updateTraceCustomization(selectedTraceId, {
+      updateTraceCustomization(activeSelectedTraceId, {
         cropX: newCropX,
         cropY: newCropY,
         cropWidth: newCropWidth,
@@ -991,7 +999,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const scaleFactor = currentDist / startDist
         const newScale = Math.max(0.1, startScaleX * scaleFactor)
         
-        updateTraceTransform(selectedTraceId, { scaleX: newScale, scaleY: newScale })
+        updateTraceTransform(activeSelectedTraceId, { scaleX: newScale, scaleY: newScale })
       } else {
         // Non-uniform scaling for edges (horizontal/vertical only)
         const corner = startPosRef.current.corner
@@ -1010,9 +1018,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
         }
 
-        updateTraceTransform(selectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
+        updateTraceTransform(activeSelectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
       }
-    } else if (transformMode === 'rotate') {
+    } else if (activeTransformMode === 'rotate') {
       // Calculate rotation based on angle from center
       const startAngle = Math.atan2(
         startPosRef.current.y - centerRef.current.y,
@@ -1026,8 +1034,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const angleDelta = (currentAngle - startAngle) * (180 / Math.PI)
       const newRotation = (startTransformRef.current.rotation + angleDelta) % 360
       
-      updateTraceTransform(selectedTraceId, { rotation: newRotation })
-    } else if (transformMode === 'point') {
+      updateTraceTransform(activeSelectedTraceId, { rotation: newRotation })
+    } else if (activeTransformMode === 'point') {
       // Edit individual points for path shapes using world coordinates
       const pointIndex = parseInt(startPosRef.current.corner)
       if (isNaN(pointIndex)) return
@@ -1036,7 +1044,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const worldDeltaY = deltaY / currentZoom
       
       // Use local points if available, otherwise use currentTrace points (which uses editingTrace if available)
-      const currentPoints = currentLocalShapePoints[selectedTraceId] || currentTrace.shapePoints || []
+      const currentPoints = currentLocalShapePoints[activeSelectedTraceId] || currentTrace.shapePoints || []
       const newPoints = [...currentPoints]
       if (newPoints[pointIndex]) {
         // Store initial point if not already stored
@@ -1058,9 +1066,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           cp2y: initial.cp2y !== undefined ? initial.cp2y + worldDeltaY : undefined,
         }
         // Update local state for instant feedback, DB update on mouseup
-        setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
+        setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
       }
-    } else if (transformMode === 'control-in' || transformMode === 'control-out') {
+    } else if (activeTransformMode === 'control-in' || activeTransformMode === 'control-out') {
       // Edit control points for bezier curves using world coordinates
       const pointIndex = parseInt(startPosRef.current.corner)
       if (isNaN(pointIndex)) return
@@ -1068,13 +1076,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
       
-      const currentPoints = currentLocalShapePoints[selectedTraceId] || currentTrace.shapePoints || []
+      const currentPoints = currentLocalShapePoints[activeSelectedTraceId] || currentTrace.shapePoints || []
       const newPoints = [...currentPoints]
       if (newPoints[pointIndex]) {
         // Store initial control points if not already stored
         if (!startPosRef.current.initialCpx) {
           const point = currentPoints[pointIndex]
-          if (transformMode === 'control-in') {
+          if (activeTransformMode === 'control-in') {
             startPosRef.current.initialCpx = point.cp1x ?? point.x - 20
             startPosRef.current.initialCpy = point.cp1y ?? point.y
           } else {
@@ -1083,8 +1091,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           }
         }
         
-        const cpxKey = transformMode === 'control-in' ? 'cp1x' : 'cp2x'
-        const cpyKey = transformMode === 'control-in' ? 'cp1y' : 'cp2y'
+        const cpxKey = activeTransformMode === 'control-in' ? 'cp1x' : 'cp2x'
+        const cpyKey = activeTransformMode === 'control-in' ? 'cp1y' : 'cp2y'
         
         if (startPosRef.current.initialCpx !== undefined && startPosRef.current.initialCpy !== undefined) {
           newPoints[pointIndex] = {
@@ -1093,23 +1101,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             [cpyKey]: startPosRef.current.initialCpy + worldDeltaY
           }
           // Update local state for instant feedback, DB update on mouseup
-          setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
+          setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
         }
       }
-    } else if (transformMode === 'move-path') {
+    } else if (activeTransformMode === 'move-path') {
       // Move all points of a path shape together
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
       
       // Use local points if available (during drag), otherwise use currentTrace points
-      const currentPoints = currentLocalShapePoints[selectedTraceId] || currentTrace.shapePoints || []
+      const currentPoints = currentLocalShapePoints[activeSelectedTraceId] || currentTrace.shapePoints || []
       
       // Store initial points if not already stored
-      if (!startPosRef.current.initialPoints) {
-        startPosRef.current.initialPoints = currentPoints.map(p => ({ ...p }))
-      }
+      const initialPoints = startPosRef.current.initialPoints ?? currentPoints.map((p: any) => ({ ...p }))
+      startPosRef.current.initialPoints = initialPoints
       
-      const newPoints = startPosRef.current.initialPoints.map(p => ({
+      const newPoints = initialPoints.map((p: any) => ({
         x: p.x + worldDeltaX,
         y: p.y + worldDeltaY,
         cp1x: p.cp1x !== undefined ? p.cp1x + worldDeltaX : undefined,
@@ -1119,13 +1126,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }))
       
       // Update local state for instant feedback, DB update on mouseup
-      setLocalShapePoints(prev => ({ ...prev, [selectedTraceId]: newPoints }))
+      setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
       
       // Also move other multi-selected traces
       const currentMultiSelected = multiSelectedIdsRef.current
       if (currentMultiSelected.size > 0) {
         currentMultiSelected.forEach(id => {
-          if (id === selectedTraceId) return // Already handled above
+          if (id === activeSelectedTraceId) return // Already handled above
           const t = tracesRef.current.find(tr => tr.id === id)
           if (!t) return
           
@@ -1160,6 +1167,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }
 
   const handleMouseUp = async () => {
+    const activeTransformMode = transformModeRef.current
+    const activeSelectedTraceId = selectedTraceIdRef.current
+    transformModeRef.current = 'none'
+
     // Remove dragging class from body
     document.body.classList.remove('dragging')
     
@@ -1177,13 +1188,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const currentEditingTrace = editingTraceRef.current
     
     // Save local shape points to database if any
-    if (selectedTraceId && currentLocalShapePoints[selectedTraceId]) {
-      const pointsToSave = currentLocalShapePoints[selectedTraceId]
-      const trace = currentTraces.find(t => t.id === selectedTraceId)
+    if (activeSelectedTraceId && currentLocalShapePoints[activeSelectedTraceId]) {
+      const pointsToSave = currentLocalShapePoints[activeSelectedTraceId]
+      const trace = currentTraces.find(t => t.id === activeSelectedTraceId)
       
       // Update editingTrace immediately so it has the latest data
       if (trace) {
-        if (currentEditingTrace && currentEditingTrace.id === selectedTraceId) {
+        if (currentEditingTrace && currentEditingTrace.id === activeSelectedTraceId) {
           setEditingTrace({ ...currentEditingTrace, shapePoints: pointsToSave })
         }
         // Don't create a new editingTrace here - that would open the customize panel
@@ -1191,12 +1202,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }
       
       // Update database
-      await updateTraceCustomization(selectedTraceId, { shapePoints: pointsToSave })
+      await updateTraceCustomization(activeSelectedTraceId, { shapePoints: pointsToSave })
       
       // Clear local state after saving so new points can be added without interference
       setLocalShapePoints(prev => {
         const next = { ...prev }
-        delete next[selectedTraceId]
+        delete next[activeSelectedTraceId]
         return next
       })
     }
@@ -1219,12 +1230,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // If in crop mode, clear transform mode but keep isCropMode active for more adjustments
     // For point/control editing, keep the trace selected but clear transform mode
     // This allows clicking on control handles after dragging a point
-    if (transformMode === 'crop') {
+    if (activeTransformMode === 'crop') {
       setTransformMode('none')
       // isCropMode stays true so crop handles remain visible
-    } else if (transformMode !== 'point' && transformMode !== 'control-in' && transformMode !== 'control-out' && transformMode !== 'move-path') {
+    } else if (activeTransformMode !== 'point' && activeTransformMode !== 'control-in' && activeTransformMode !== 'control-out' && activeTransformMode !== 'move-path') {
       setTransformMode('none')
-    } else if (transformMode === 'point' || transformMode === 'control-in' || transformMode === 'control-out' || transformMode === 'move-path') {
+    } else if (activeTransformMode === 'point' || activeTransformMode === 'control-in' || activeTransformMode === 'control-out' || activeTransformMode === 'move-path') {
       // For path point editing, keep the point selected but clear transform mode
       // This allows clicking control handles after dragging
       setTransformMode('none')
@@ -1432,17 +1443,36 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const getBorderColor = useCallback((type: string) => {
     switch (type) {
       case 'text':
-        return '#ffffff'
+        return '#b9b39d'
       case 'image':
-        return '#e5e5e5'
+        return '#a8a287'
       case 'audio':
-        return '#d4d4d4'
+        return '#9f987c'
       case 'video':
-        return '#c4c4c4'
+        return '#958f75'
       case 'embed':
-        return '#b4b4b4'
+        return '#8e886f'
       default:
-        return '#ffffff'
+        return '#b9b39d'
+    }
+  }, [])
+
+  const getTraceTypeLabel = useCallback((type: string) => {
+    switch (type) {
+      case 'text':
+        return 'Text'
+      case 'image':
+        return 'Image'
+      case 'audio':
+        return 'Audio'
+      case 'video':
+        return 'Video'
+      case 'embed':
+        return 'Embed'
+      case 'shape':
+        return 'Shape'
+      default:
+        return 'Trace'
     }
   }, [])
 
@@ -1700,6 +1730,35 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return null
         }
 
+        // Path shapes are rendered entirely via the absolute SVG overlay below — skip the bounding box div
+        if (trace.type === 'shape' && trace.shapeType === 'path') {
+          if (!trace.illuminate) return null
+          return (
+            <div key={trace.id} className="contents">
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
+                  top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
+                  width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
+                  height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
+                  borderRadius: '50%',
+                  background: trace.lightColor ?? '#ffffff',
+                  opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+                  mixBlendMode: 'screen',
+                  filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
+                  animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
+                  transformOrigin: 'center center',
+                  marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
+                  marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
+                  willChange: 'transform, opacity',
+                  ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+                }}
+              />
+            </div>
+          )
+        }
+
         return (
           <div key={trace.id} className="contents">
             {/* Light overlay FIRST so it renders below the trace */}
@@ -1768,17 +1827,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Shape rendering - no border container */}
               {trace.type === 'shape' ? (
                 <div
-                  className="relative cursor-pointer"
+                  className="relative cursor-pointer trace-shape-frame-nier"
                   style={{
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     overflow: 'hidden',
-                    outline: isMultiSelected ? '3px solid #60a5fa' : 'none',
+                    outline: isMultiSelected ? '2px solid rgba(196, 190, 165, 0.9)' : 'none',
                     outlineOffset: '2px',
-                    boxShadow: isMultiSelected ? '0 0 20px rgba(96, 165, 250, 0.5)' : 'none',
+                    boxShadow: isMultiSelected ? '0 0 14px rgba(196, 190, 165, 0.4)' : 'none',
                   }}
                 >
+                  {(isSelected || isMultiSelected) && (
+                    <div className="trace-nier-type-badge">{trace.shapeType === 'path' ? 'Path' : 'Shape'}</div>
+                  )}
                   {(() => {
                     const shapeColor = trace.shapeColor || '#3b82f6'
                     const shapeOpacity = trace.shapeOpacity ?? 1.0
@@ -1878,24 +1940,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 /* Border container for non-shape traces - fixed size, doesn't scale with content */
                 <>
                 <div
-                  className="relative cursor-pointer transition-shadow"
+                  className="trace-frame-nier relative cursor-pointer transition-shadow"
                   style={{
                     boxSizing: 'content-box',
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `3px solid ${isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : isMultiSelected ? '#60a5fa' : borderColor}` : 'none',
+                    border: showBorder ? `2px solid ${isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#c4bea5' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? (() => {
-                      const fc = displayTrace.fillColor || '#1a1a2e';
+                      const fc = displayTrace.fillColor || '#1a1a18';
                       const fo = displayTrace.fillOpacity ?? 0.95;
                       // Convert hex to rgba
                       const r = parseInt(fc.slice(1, 3), 16) || 26;
                       const g = parseInt(fc.slice(3, 5), 16) || 26;
-                      const b = parseInt(fc.slice(5, 7), 16) || 46;
+                      const b = parseInt(fc.slice(5, 7), 16) || 24;
                       return `rgba(${r}, ${g}, ${b}, ${fo})`;
                     })() : 'transparent',
                     ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
-                      borderColor: isSelected && isCropMode ? '#9ca3af' : isSelected ? '#ffffff' : isMultiSelected ? '#60a5fa' : (() => {
+                      borderColor: isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#c4bea5' : (() => {
                         const bc = borderColor;
                         const bo = trace.borderOpacity;
                         const r = parseInt(bc.slice(1, 3), 16) || 255;
@@ -1906,16 +1968,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     } : {}),
                     padding: '0px',
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+                    backgroundImage: showBackground ? 'repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(218, 212, 187, 0.035) 2px, rgba(218, 212, 187, 0.035) 3px)' : 'none',
                     boxShadow: isSelected && isCropMode
-                      ? '0 0 20px rgba(156, 163, 175, 0.6)'
+                      ? '0 0 0 1px rgba(156, 150, 129, 0.9), 0 0 16px rgba(156, 150, 129, 0.45)'
                       : isSelected 
-                      ? '0 0 20px rgba(255, 255, 255, 0.5)' 
+                      ? '0 0 0 1px rgba(218, 212, 187, 0.85), 0 0 16px rgba(218, 212, 187, 0.35)' 
                       : isMultiSelected
-                      ? '0 0 20px rgba(96, 165, 250, 0.5)'
-                      : (showBackground ? '0 4px 12px rgba(0, 0, 0, 0.8)' : 'none'),
+                      ? '0 0 0 1px rgba(196, 190, 165, 0.8), 0 0 14px rgba(196, 190, 165, 0.35)'
+                      : (showBackground ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(218, 212, 187, 0.06)' : 'none'),
                     overflow: 'hidden',
                   }}
                 >
+                  {isSelected && <div className="trace-nier-type-badge">{getTraceTypeLabel(trace.type)}</div>}
+                  {showBorder && (
+                    <>
+                      <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
+                      <span className="absolute top-0 right-0 w-2 h-2 border-r border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
+                      <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
+                      <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
+                    </>
+                  )}
                   {/* Scaled content wrapper - text traces render at final pixel size to avoid distortion */}
                   <div
                     className="w-full h-full"
@@ -2061,8 +2133,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             height: `${h * 100}%`,
                             minHeight: '3px',
                             background: isPlaying
-                              ? `linear-gradient(to top, ${trace.borderColor || '#a78bfa'}, ${trace.borderColor ? trace.borderColor + '88' : '#c4b5fd'})`
-                              : 'linear-gradient(to top, rgba(255,255,255,0.25), rgba(255,255,255,0.08))',
+                              ? `linear-gradient(to top, ${trace.borderColor || '#9c9681'}, ${trace.borderColor ? trace.borderColor + '88' : '#dad4bb'})`
+                              : 'linear-gradient(to top, rgba(218,212,187,0.3), rgba(218,212,187,0.1))',
                             transition: 'background 0.3s ease',
                             animation: isPlaying ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
                           }}
@@ -2083,10 +2155,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
                     style={{
                       background: playingMedia.has(trace.id)
-                        ? 'rgba(167, 139, 250, 0.25)'
-                        : 'rgba(255,255,255,0.08)',
-                      color: playingMedia.has(trace.id) ? '#c4b5fd' : 'rgba(255,255,255,0.6)',
-                      border: `1px solid ${playingMedia.has(trace.id) ? 'rgba(167,139,250,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                        ? 'rgba(196, 190, 165, 0.25)'
+                        : 'rgba(218,212,187,0.08)',
+                      color: playingMedia.has(trace.id) ? '#dad4bb' : 'rgba(218,212,187,0.65)',
+                      border: `1px solid ${playingMedia.has(trace.id) ? 'rgba(196,190,165,0.45)' : 'rgba(218,212,187,0.2)'}`,
                       backdropFilter: 'blur(8px)',
                     }}
                     onClick={(e) => {
@@ -2477,7 +2549,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                                     {/* Control handle */}
                                     <div
                                       data-trace-element="true"
-                                      className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
+                                      className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-10"
                                       style={{
                                         left: `${cp2ScreenX}px`,
                                         top: `${cp2ScreenY}px`,
@@ -2524,7 +2596,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       return (
                         <div
                           data-trace-element="true"
-                          className="absolute w-6 h-6 border-2 border-white rounded-full cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform bg-green-500"
+                          className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-10"
                           style={{
                             left: `${screenX}px`,
                             top: `${screenY}px`,
@@ -2544,9 +2616,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setSelectedPointIndex(null)
                             handleTouchDown(e, trace, 'move-path', 'move-all')
                           }}
-                        >
-                          <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">⊕</div>
-                        </div>
+                        />
                       )
                     })()}
                   </>
@@ -2556,15 +2626,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
                 <button
                   data-trace-element="true"
-                  className={`absolute text-xs font-bold px-3 py-1.5 border-2 shadow-lg pointer-events-auto z-10 transition-all hover:scale-110 ${
-                    isCropMode 
-                      ? 'bg-gray-600 border-gray-400 text-white hover:bg-gray-500' 
-                      : 'bg-black border-white text-white hover:bg-gray-800'
-                  }`}
+                  className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-all hover:scale-105 tracking-[0.18em] uppercase"
                   style={{
                     left: `${screenX}px`,
                     top: `${screenY + (borderHeight / 2 + 30)}px`,
                     transform: 'translate(-50%, 0)',
+                    color: isCropMode ? 'rgba(218, 212, 187, 0.95)' : 'rgba(196, 190, 165, 0.9)',
+                    background: isCropMode ? 'rgba(42, 42, 38, 0.95)' : 'rgba(26, 26, 24, 0.94)',
+                    borderColor: isCropMode ? 'rgba(218, 212, 187, 0.8)' : 'rgba(156, 150, 129, 0.7)',
+                    boxShadow: isCropMode ? '0 0 10px rgba(218,212,187,0.22)' : '0 0 8px rgba(0,0,0,0.45)',
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -2589,8 +2659,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     top: `${screenY - (height * (transform as any).scaleY * zoom / 2)}px`,
                     width: `${width * (transform as any).scaleX * zoom}px`,
                     height: `${height * (transform as any).scaleY * zoom}px`,
-                    border: '2px dashed rgba(156, 163, 175, 0.9)',
-                    boxShadow: 'inset 0 0 0 9999px rgba(0, 0, 0, 0.4)',
+                    border: '1px dashed rgba(156, 150, 129, 0.95)',
+                    boxShadow: 'inset 0 0 0 9999px rgba(26, 26, 24, 0.4), 0 0 0 1px rgba(218, 212, 187, 0.2)',
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -2624,7 +2694,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <div
                       key={`crop-${corner}`}
                       data-trace-element="true"
-                      className="absolute w-4 h-4 bg-gray-400 border-2 border-black cursor-nwse-resize pointer-events-auto z-10"
+                      className="absolute trace-nier-handle trace-nier-handle-crop cursor-nwse-resize pointer-events-auto z-10"
                       style={{
                         left: `${handleX}px`,
                         top: `${handleY}px`,
@@ -2820,7 +2890,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <path
                       d={pathData}
                       fill="none"
-                      stroke="#60a5fa"
+                      stroke="#c4bea5"
                       strokeWidth={outlineWidth + 6}
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -2873,6 +2943,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
                     }}
                   />
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke="rgba(218, 212, 187, 0.22)"
+                    strokeWidth={outlineWidth + 4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+                  />
                   {/* Visible path */}
                   <path
                     d={pathData}
@@ -2894,7 +2973,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <polyline
                       points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
                       fill="none"
-                      stroke="#60a5fa"
+                      stroke="#c4bea5"
                       strokeWidth={outlineWidth + 6}
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -2946,6 +3025,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setSelectedTraceId(trace.id)
                       setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
                     }}
+                  />
+                  <polyline
+                    points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke="rgba(218, 212, 187, 0.22)"
+                    strokeWidth={outlineWidth + 4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
                   />
                   {/* Visible path */}
                   <polyline
@@ -2987,8 +3075,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     {/* Main point handle */}
                     <div
                       data-trace-element="true"
-                      className={`absolute w-4 h-4 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform ${
-                        isPointSelected ? 'bg-white' : 'bg-gray-400'
+                      className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[50] ${
+                        isPointSelected ? 'trace-nier-handle-active' : ''
                       }`}
                       style={{
                         left: `${screenX}px`,
@@ -3027,7 +3115,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
+                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[50]"
                                 style={{ left: `${cp1ScreenX}px`, top: `${cp1ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -3059,7 +3147,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform"
+                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[50]"
                                 style={{ left: `${cp2ScreenX}px`, top: `${cp2ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -3095,7 +3183,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <div
                     data-trace-element="true"
-                    className="absolute w-6 h-6 border-2 border-black cursor-move pointer-events-auto z-[50] hover:scale-125 transition-transform bg-white"
+                    className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[50]"
                     style={{ left: `${screenX}px`, top: `${screenY}px`, transform: 'translate(-50%, -50%)' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => {
@@ -3109,9 +3197,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setSelectedPointIndex(null)
                       handleTouchDown(e, trace, 'move-path', 'move-all')
                     }}
-                  >
-                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">⊕</div>
-                  </div>
+                  />
                 )
               })()}
             </>
@@ -3157,7 +3243,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     key={corner}
                     data-trace-element="true"
-                    className="absolute w-3 h-3 bg-white border-2 border-black cursor-nwse-resize pointer-events-auto z-[50]"
+                    className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[50]"
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -3192,7 +3278,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     key={edge}
                     data-trace-element="true"
-                    className={`absolute w-3 h-3 bg-gray-400 border-2 border-black pointer-events-auto z-[50] ${cursorClass}`}
+                    className={`absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[50] ${cursorClass}`}
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -3207,7 +3293,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Rotation handle at top */}
               <div
                 data-trace-element="true"
-                className="absolute w-3 h-3 bg-gray-600 border-2 border-white cursor-grab pointer-events-auto z-[50]"
+                className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[50]"
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY - (borderHeight / 2 + 20)}px`,
@@ -3419,7 +3505,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {editingTrace && (
         <>
           <div
-            className="customize-menu bg-black border border-gray-500 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
+            className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
             style={{ 
               position: 'fixed',
               right: '20px',
@@ -3429,22 +3515,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             }}
           >
             {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-400 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-400 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-400 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-400 pointer-events-none" />
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
             
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
-              <h2 className="text-lg text-white tracking-[0.15em] uppercase">Customize Trace</h2>
+              <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Customize Trace</h2>
             </div>
             
             <div className="space-y-5">
               {/* Toggle Options */}
               <div className="space-y-3">
-                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                    {(editingTrace.showBorder ?? true) && <span className="text-black text-[10px]">✓</span>}
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -3459,9 +3545,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Border</span>
                 </label>
 
-                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                    {(editingTrace.showBackground ?? true) && <span className="text-black text-[10px]">✓</span>}
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -3480,10 +3566,38 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Border & Fill Color Controls (for text and embed traces) */}
               {(editingTrace.type === 'text' || editingTrace.type === 'embed') && (
                 <>
+                  {/* NieR Presets */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-nier-border/60 text-[9px] tracking-[0.15em] uppercase">Quick Presets</span>
+                      <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        { label: 'Soft Sepia', border: '#9c9068', fill: '#1e1c15' },
+                        { label: 'Technical', border: '#6b8a6b', fill: '#111a11' },
+                        { label: 'Archive', border: '#7a7a6a', fill: '#141414' },
+                      ] as const).map(preset => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true })
+                          }}
+                          className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-border text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {/* Border Color & Opacity */}
                   {(editingTrace.showBorder ?? true) && (
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
@@ -3493,7 +3607,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated);
                             updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
                           }}
-                          className="w-10 h-10 border border-gray-600 cursor-pointer bg-transparent"
+                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
                         />
                         <input
                           type="text"
@@ -3505,7 +3619,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           onBlur={(e) => {
                             updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
                           }}
-                          className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                           placeholder="#ffffff"
                         />
                         <button
@@ -3514,13 +3628,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated);
                             updateTraceCustomization(editingTrace.id, { borderColor: undefined });
                           }}
-                          className="px-3 py-2 bg-gray-900 text-white border border-gray-600 hover:border-gray-400 text-xs"
+                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
                           title="Reset to default"
                         >
                           ↺
                         </button>
                       </div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-1">
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
                         Border Opacity: {Math.round((editingTrace.borderOpacity ?? 1) * 100)}%
                       </label>
                       <input
@@ -3535,7 +3649,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated);
                           updateTraceCustomization(editingTrace.id, { borderOpacity: value });
                         }}
-                        className="w-full accent-white"
+                        className="w-full accent-nier-bg"
                       />
                     </div>
                   )}
@@ -3543,7 +3657,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Fill Color & Opacity */}
                   {(editingTrace.showBackground ?? true) && (
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
@@ -3553,7 +3667,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated);
                             updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
                           }}
-                          className="w-10 h-10 border border-gray-600 cursor-pointer bg-transparent"
+                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
                         />
                         <input
                           type="text"
@@ -3565,7 +3679,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           onBlur={(e) => {
                             updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
                           }}
-                          className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                           placeholder="#1a1a2e"
                         />
                         <button
@@ -3574,13 +3688,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated);
                             updateTraceCustomization(editingTrace.id, { fillColor: undefined });
                           }}
-                          className="px-3 py-2 bg-gray-900 text-white border border-gray-600 hover:border-gray-400 text-xs"
+                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
                           title="Reset to default"
                         >
                           ↺
                         </button>
                       </div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-1">
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
                         Fill Opacity: {Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}%
                       </label>
                       <input
@@ -3595,7 +3709,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated);
                           updateTraceCustomization(editingTrace.id, { fillOpacity: value });
                         }}
-                        className="w-full accent-white"
+                        className="w-full accent-nier-bg"
                       />
                     </div>
                   )}
@@ -3603,9 +3717,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               )}
 
               <div className="space-y-3">
-                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                    {(editingTrace.showDescription ?? false) && <span className="text-black text-[10px]">✓</span>}
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -3620,9 +3734,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Description</span>
                 </label>
 
-                <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                    {(editingTrace.showFilename ?? true) && <span className="text-black text-[10px]">✓</span>}
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -3642,7 +3756,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'text' && (
                 <>
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Content</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Content</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -3652,7 +3766,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { content: e.target.value })
                       }}
-                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       placeholder="Your message..."
                       rows={4}
                       maxLength={256}
@@ -3660,7 +3774,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
 
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Font Size (px)</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Font Size (px)</label>
                     <input
                       type="number"
                       min={8}
@@ -3677,13 +3791,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           markTraceChanged(editingTrace.id);
                         }
                       }}
-                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       placeholder="Font size in px"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Font Family</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Font Family</label>
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
@@ -3691,7 +3805,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated);
                         updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value });
                       }}
-                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     >
                       <option value="sans">Sans-serif</option>
                       <option value="serif">Serif</option>
@@ -3712,7 +3826,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Text Formatting */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Style</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Style</label>
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
@@ -3722,8 +3836,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className={`flex-1 px-3 py-2 font-bold text-sm border transition-colors ${
                           editingTrace.textBold
-                            ? 'bg-white text-black border-white'
-                            : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
+                            : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
                         }`}
                       >
                         B
@@ -3736,8 +3850,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className={`flex-1 px-3 py-2 italic text-sm border transition-colors ${
                           editingTrace.textItalic
-                            ? 'bg-white text-black border-white'
-                            : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
+                            : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
                         }`}
                       >
                         I
@@ -3750,8 +3864,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className={`flex-1 px-3 py-2 underline text-sm border transition-colors ${
                           editingTrace.textUnderline
-                            ? 'bg-white text-black border-white'
-                            : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
+                            : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
                         }`}
                       >
                         U
@@ -3761,7 +3875,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Text Alignment */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Alignment</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Alignment</label>
                     <div className="flex gap-2">
                       {(['left', 'center', 'right', 'justify'] as const).map((align) => (
                         <button
@@ -3773,8 +3887,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className={`flex-1 px-2 py-2 text-xs border transition-colors ${
                             (editingTrace.textAlign ?? 'center') === align
-                              ? 'bg-white text-black border-white'
-                              : 'bg-gray-900 text-white border-gray-600 hover:border-gray-400'
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
                           }`}
                         >
                           {align === 'left' && '◀'}
@@ -3788,7 +3902,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Text Color */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Text Color</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Color</label>
                     <div className="flex gap-2 items-center">
                       <input
                         type="color"
@@ -3798,7 +3912,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated);
                           updateTraceCustomization(editingTrace.id, { textColor: e.target.value });
                         }}
-                        className="w-10 h-10 border border-gray-600 cursor-pointer bg-transparent"
+                        className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
                       />
                       <input
                         type="text"
@@ -3810,7 +3924,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         onBlur={(e) => {
                           updateTraceCustomization(editingTrace.id, { textColor: e.target.value });
                         }}
-                        className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                        className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                         placeholder="#ffffff"
                       />
                       <button
@@ -3819,7 +3933,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated);
                           updateTraceCustomization(editingTrace.id, { textColor: '#ffffff' });
                         }}
-                        className="px-3 py-2 bg-gray-900 text-white border border-gray-600 hover:border-gray-400 text-xs"
+                        className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
                         title="Reset to white"
                       >
                         ↺
@@ -3832,7 +3946,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Border Radius Customization (for non-shape traces) */}
               {editingTrace.type !== 'shape' && (
                 <div>
-                  <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                  <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                     Border Radius: {editingTrace.borderRadius ?? 8}px
                   </label>
                   <input
@@ -3847,9 +3961,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       setEditingTrace(updated)
                       updateTraceCustomization(editingTrace.id, { borderRadius: value })
                     }}
-                    className="w-full accent-white"
+                    className="w-full accent-nier-bg"
                   />
-                  <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                  <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                     Adjust the roundness of trace borders (0 = sharp corners)
                   </p>
                 </div>
@@ -3858,7 +3972,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Description/Caption for Media Traces */}
               {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
                 <div>
-                  <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Description / Caption</label>
+                  <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Description / Caption</label>
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
@@ -3868,7 +3982,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     onBlur={(e) => {
                       updateTraceCustomization(editingTrace.id, { content: e.target.value })
                     }}
-                    className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     placeholder="Optional description..."
                     rows={3}
                     maxLength={256}
@@ -3880,7 +3994,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'embed' && (
                 <>
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Embed URL or HTML</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Embed URL or HTML</label>
                     <textarea
                       value={editingTrace.mediaUrl ?? ''}
                       onChange={(e) => {
@@ -3890,17 +4004,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
                       }}
-                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       placeholder="URL or <iframe src='...'></iframe>"
                       rows={4}
                     />
-                    <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                    <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                       Direct URL or full embed code
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Description / Title</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Description / Title</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -3910,16 +4024,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onBlur={(e) => {
                         updateTraceCustomization(editingTrace.id, { content: e.target.value })
                       }}
-                      className="w-full bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       placeholder="Optional description..."
                       rows={3}
                       maxLength={256}
                     />
                   </div>
 
-                  <label className="flex items-center gap-3 text-white text-xs cursor-pointer mt-3 group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                      {(editingTrace.enableInteraction ?? false) && <span className="text-black text-[10px]">✓</span>}
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mt-3 group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
                     <input
                       type="checkbox"
@@ -3941,7 +4055,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <div className="space-y-4">
                   {/* Shape Type */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                         <button
@@ -3954,8 +4068,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.shapeType || 'rectangle') === type
-                              ? 'bg-white text-black border-white'
-                              : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'rectangle' && '⬛ '}
@@ -3970,7 +4084,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Color Picker */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
                     
                     {/* Color preset palette */}
                     <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -3985,7 +4099,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapeColor: color })
                           }}
-                          className="w-7 h-7 border border-gray-600 hover:border-white transition-all hover:scale-110"
+                          className="w-7 h-7 border border-nier-border/30 hover:border-nier-border/60 transition-all hover:scale-110"
                           style={{ backgroundColor: color }}
                           title={color}
                         />
@@ -4016,7 +4130,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             // User cancelled or error - silently ignore
                           }
                         }}
-                        className="p-2 border transition-all bg-gray-900 border-gray-600 text-white hover:border-gray-400"
+                        className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
                         title="Pick color from screen"
                       >
                         💧
@@ -4030,7 +4144,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
                         }}
-                        className="w-14 h-9 cursor-pointer bg-gray-900 border border-gray-600"
+                        className="w-14 h-9 cursor-pointer bg-nier-black border border-nier-border/30"
                       />
                       <input
                         type="text"
@@ -4043,14 +4157,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
                         }}
                         placeholder="#3b82f6"
-                        className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-gray-400 transition-colors font-mono text-sm"
+                        className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-border/40 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                       />
                     </div>
                   </div>
 
                   {/* Opacity Slider */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                       Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
                     </label>
                     <input
@@ -4065,15 +4179,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated)
                         updateTraceCustomization(editingTrace.id, { shapeOpacity: value })
                       }}
-                      className="w-full accent-white"
+                      className="w-full accent-nier-bg"
                     />
                   </div>
 
                   {/* Outline and Fill Options */}
                   <div className="space-y-2">
-                    <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-black text-[10px]">✓</span>}
+                    <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                       </div>
                       <input
                         type="checkbox"
@@ -4088,9 +4202,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       <span className="tracking-wider uppercase text-[10px]">Show Outline</span>
                     </label>
 
-                    <label className="flex items-center gap-3 text-white text-xs cursor-pointer group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeNoFill ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                        {(editingTrace.shapeNoFill ?? false) && <span className="text-black text-[10px]">✓</span>}
+                    <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeNoFill ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                        {(editingTrace.shapeNoFill ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                       </div>
                       <input
                         type="checkbox"
@@ -4109,7 +4223,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Outline Color (only show if outline is enabled) */}
                   {editingTrace.shapeOutlineOnly && (
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Outline Color</label>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Outline Color</label>
                       
                       {/* Color preset palette */}
                       <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -4124,7 +4238,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
                             }}
-                            className="w-7 h-7 border border-gray-600 hover:border-white transition-all hover:scale-110"
+                            className="w-7 h-7 border border-nier-border/30 hover:border-nier-border/60 transition-all hover:scale-110"
                             style={{ backgroundColor: color }}
                             title={color}
                           />
@@ -4155,7 +4269,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               // User cancelled or error - silently ignore
                             }
                           }}
-                          className="p-2 border transition-all bg-gray-900 border-gray-600 text-white hover:border-gray-400"
+                          className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
                           title="Pick color from screen"
                         >
                           💧
@@ -4169,7 +4283,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
                           }}
-                          className="w-14 h-9 cursor-pointer bg-gray-900 border border-gray-600"
+                          className="w-14 h-9 cursor-pointer bg-nier-black border border-nier-border/30"
                         />
                         <input
                           type="text"
@@ -4182,7 +4296,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
                           }}
                           placeholder="#3b82f6"
-                          className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-gray-400 transition-colors font-mono text-sm"
+                          className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-border/40 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                         />
                       </div>
                     </div>
@@ -4191,7 +4305,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Corner Radius (Rectangle only) */}
                   {(editingTrace.shapeType || 'rectangle') === 'rectangle' && (
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                         Corner Radius: {editingTrace.cornerRadius || 0}px
                       </label>
                       <input
@@ -4206,9 +4320,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { cornerRadius: value })
                         }}
-                        className="w-full accent-white"
+                        className="w-full accent-nier-bg"
                       />
-                      <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                      <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                         Rounds the corners of the rectangle
                       </p>
                     </div>
@@ -4217,9 +4331,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Outline Mode (hidden for path as it's always outline) */}
                   {editingTrace.shapeType !== 'path' && (
                   <div>
-                    <label className="flex items-center gap-3 text-white text-xs cursor-pointer mb-2 group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-black text-[10px]">✓</span>}
+                    <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-2 group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                       </div>
                       <input
                         type="checkbox"
@@ -4236,7 +4350,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     
                     {editingTrace.shapeOutlineOnly && (
                       <div className="ml-6">
-                        <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                        <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                           Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
                         </label>
                         <input
@@ -4253,7 +4367,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className="w-full"
                         />
-                        <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                        <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                           Adjust the thickness of the outline
                         </p>
                       </div>
@@ -4264,7 +4378,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Path Thickness Control */}
                   {editingTrace.shapeType === 'path' && (
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                       Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
                     </label>
                     <input
@@ -4279,9 +4393,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated)
                         updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
                       }}
-                      className="w-full accent-white"
+                      className="w-full accent-nier-bg"
                     />
-                    <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                    <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                       Adjust the thickness of the path
                     </p>
                   </div>
@@ -4291,7 +4405,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {editingTrace.shapeType === 'path' && (
                   <>
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Path Style</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Path Style</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['straight', 'bezier'] as const).map((type) => (
                         <button
@@ -4304,8 +4418,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathCurveType || 'straight') === type
-                              ? 'bg-white text-black border-white'
-                              : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'straight' && '━ Straight'}
@@ -4317,7 +4431,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Arrow Start */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Arrow Start</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Arrow Start</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['none', 'triangle', 'diamond'] as const).map((type) => (
                         <button
@@ -4330,8 +4444,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathArrowStart || 'none') === type
-                              ? 'bg-white text-black border-white'
-                              : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'none' && '— None'}
@@ -4344,7 +4458,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Arrow End */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Arrow End</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Arrow End</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['none', 'triangle', 'diamond'] as const).map((type) => (
                         <button
@@ -4357,8 +4471,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathArrowEnd || 'none') === type
-                              ? 'bg-white text-black border-white'
-                              : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400 hover:text-white'
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'none' && '— None'}
@@ -4370,7 +4484,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
                   
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                       Path Points ({(editingTrace.shapePoints || []).length})
                     </label>
                     <div className="flex gap-2">
@@ -4381,7 +4495,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
                           pathCreationMode
-                            ? 'bg-white text-black border-white'
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
                             : 'bg-transparent text-white border-gray-600 hover:border-gray-400'
                         }`}
                       >
@@ -4403,7 +4517,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         Remove
                       </button>
                     </div>
-                    <p className="text-gray-400 text-[9px] mt-2 tracking-wider">
+                    <p className="text-nier-border/60 text-[9px] mt-2 tracking-wider">
                       {pathCreationMode 
                         ? 'Click anywhere on the canvas to add points to your path' 
                         : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
@@ -4414,7 +4528,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Shape Label */}
                   <div>
-                    <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
                     <input
                       type="text"
                       value={editingTrace.content || ''}
@@ -4427,22 +4541,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       placeholder="Shape label..."
                       maxLength={50}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-gray-400 transition-colors font-mono text-sm"
+                      className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-border/40 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                     />
                   </div>
                 </div>
               )}
 
               {/* Lighting Controls */}
-              <div className="border-t border-gray-600 pt-4 mt-4">
+              <div className="border-t border-nier-border/20 pt-4 mt-4">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
-                  <h3 className="text-white text-[10px] tracking-[0.15em] uppercase">Lighting</h3>
+                  <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+                  <h3 className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Lighting</h3>
                 </div>
                 
-                <label className="flex items-center gap-3 text-white text-xs cursor-pointer mb-3 group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.illuminate ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                    {(editingTrace.illuminate ?? false) && <span className="text-black text-[10px]">✓</span>}
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-3 group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.illuminate ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.illuminate ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -4460,7 +4574,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Light Color</label>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Light Color</label>
                       <div className="flex gap-2 items-center">
                         <input
                           type="color"
@@ -4470,7 +4584,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { lightColor: e.target.value })
                           }}
-                          className="w-12 h-9 cursor-pointer bg-gray-900 border border-gray-600"
+                          className="w-12 h-9 cursor-pointer bg-nier-black border border-nier-border/30"
                         />
                         <input
                           type="text"
@@ -4482,14 +4596,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           onBlur={(e) => {
                             updateTraceCustomization(editingTrace.id, { lightColor: e.target.value })
                           }}
-                          className="flex-1 bg-gray-900 text-white border border-gray-600 px-3 py-2 font-mono text-sm focus:outline-none focus:border-gray-400"
+                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                           placeholder="#ffffff"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                         Intensity: {(editingTrace.lightIntensity ?? 1.0).toFixed(1)}x
                       </label>
                       <input
@@ -4504,12 +4618,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { lightIntensity: value })
                         }}
-                        className="w-full accent-white"
+                        className="w-full accent-nier-bg"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                         Radius: {editingTrace.lightRadius ?? 200}px
                       </label>
                       <input
@@ -4524,15 +4638,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { lightRadius: value })
                         }}
-                        className="w-full accent-white"
+                        className="w-full accent-nier-bg"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-white text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-gray-400 text-[9px] tracking-wider mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
+                          <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -4545,11 +4659,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { lightOffsetX: value })
                             }}
-                            className="w-full accent-white"
+                            className="w-full accent-nier-bg"
                           />
                         </div>
                         <div>
-                          <label className="block text-gray-400 text-[9px] tracking-wider mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
+                          <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -4562,19 +4676,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { lightOffsetY: value })
                             }}
-                            className="w-full accent-white"
+                            className="w-full accent-nier-bg"
                           />
                         </div>
                       </div>
-                      <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                      <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                         Adjust light source position relative to trace center
                       </p>
                     </div>
 
                     <div>
-                      <label className="flex items-center gap-3 text-white text-xs cursor-pointer mb-2 group">
-                        <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.lightPulse ?? false ? 'border-white bg-white' : 'border-gray-600 group-hover:border-gray-400'}`}>
-                          {(editingTrace.lightPulse ?? false) && <span className="text-black text-[10px]">✓</span>}
+                      <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-2 group">
+                        <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.lightPulse ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                          {(editingTrace.lightPulse ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                         </div>
                         <input
                           type="checkbox"
@@ -4591,7 +4705,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       
                       {editingTrace.lightPulse && (
                         <div className="ml-6">
-                          <label className="block text-gray-400 text-[9px] tracking-wider mb-1">
+                          <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">
                             Pulse Speed: {editingTrace.lightPulseSpeed ?? 2.0}s per cycle
                           </label>
                           <input
@@ -4606,9 +4720,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               setEditingTrace(updated)
                               updateTraceCustomization(editingTrace.id, { lightPulseSpeed: value })
                             }}
-                            className="w-full accent-white"
+                            className="w-full accent-nier-bg"
                           />
-                          <p className="text-gray-400 text-[9px] mt-1 tracking-wider">
+                          <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                             Lower = faster pulse, Higher = slower pulse
                           </p>
                         </div>
@@ -4626,7 +4740,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   }
                   setEditingTrace(null);
                 }}
-                className="w-full bg-white text-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-gray-200 transition-all border border-white mt-4"
+                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-bgDark transition-all border border-nier-bg mt-4"
               >
                 Done
               </button>

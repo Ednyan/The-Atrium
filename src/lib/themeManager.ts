@@ -173,7 +173,24 @@ export class ThemeManager {
     }
 
     const patternMode = this.config.groundPatternMode ?? 'grid'
-    const density = this.config.groundDensity / 10 // Adjusted density calculation
+    // Density slider is 0..3. Use an eased curve so low values are truly sparse.
+    const normalizedDensity = Math.max(0, Math.min(1, (this.config.groundDensity ?? 0) / 3))
+    const densityChance = Math.pow(normalizedDensity, 2.8)
+
+    // If density was lowered, remove already-created elements that no longer pass the density threshold.
+    // This makes slider changes feel immediate instead of keeping old clutter around.
+    for (let i = this.groundElements.length - 1; i >= 0; i--) {
+      const el = this.groundElements[i]
+      if (this.seededRandom(el.worldX, el.worldY) > densityChance) {
+        this.groundContainer.removeChild(el.sprite)
+        el.sprite.destroy()
+        this.groundElements.splice(i, 1)
+      }
+    }
+
+    if (densityChance <= 0) {
+      return
+    }
     const gridSize = this.config.gridSpacing ?? 100
     let created = 0
 
@@ -182,6 +199,11 @@ export class ThemeManager {
       const gridSize = this.config.gridSpacing ?? 100;
       for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
         for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+          // Apply density in grid mode too, so slider has effect.
+          const rand = this.seededRandom(x, y)
+          if (rand > densityChance) {
+            continue
+          }
           const exists = this.groundElements.some(
             el => el.worldX === x && el.worldY === y
           );
@@ -197,7 +219,7 @@ export class ThemeManager {
         for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
           // Use seeded random to determine if element should exist at this grid point
           const rand = this.seededRandom(x, y)
-          if (rand >= density) {
+          if (rand > densityChance) {
             continue
           }
           

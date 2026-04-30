@@ -289,6 +289,23 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return
       }
 
+      const softSepiaTheme = {
+        gridColor: '#9c9681',
+        gridOpacity: 0.24,
+        backgroundColor: '#1a1a18',
+        particlesEnabled: true,
+        particleColor: '#dad4bb',
+        particleOpacity: 0.45,
+        particleDensity: 0.8,
+        groundParticlesEnabled: false,
+        groundParticleOpacity: 0.82,
+        groundPatternMode: 'grid',
+        gridSpacing: 125,
+        groundElementScale: 0.06,
+        groundElementScaleRange: 0.02,
+        groundElementDensity: 0.55,
+      }
+
       const { data, error } = await (supabase!
         .from('lobbies') as any)
         .insert({
@@ -297,6 +314,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           password_hash: newLobbyPassword || null,
           is_public: newLobbyIsPublic,
           max_players: 50,
+          theme_settings: softSepiaTheme,
         })
         .select()
         .single()

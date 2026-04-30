@@ -8,6 +8,7 @@ interface ProfileSettingsProps {
 
 export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { userId, username, setUsername } = useGameStore()
+  const [zoomSensitivity, setZoomSensitivity] = useState(0.16)
   const [displayName, setDisplayName] = useState(username)
   const [actualUsername, setActualUsername] = useState('')
   const [canChange, setCanChange] = useState(isDesktop) // Desktop: always allowed
@@ -26,7 +27,29 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
   useEffect(() => {
     loadProfile()
+    try {
+      const stored = localStorage.getItem('lobby_zoomSensitivity')
+      if (stored) {
+        const parsed = parseFloat(stored)
+        if (Number.isFinite(parsed)) {
+          setZoomSensitivity(Math.max(0.04, Math.min(0.6, parsed)))
+        }
+      }
+    } catch {
+      // Ignore localStorage access failures
+    }
   }, [])
+
+  const handleZoomSensitivityChange = (value: number) => {
+    const clamped = Math.max(0.04, Math.min(0.6, value))
+    setZoomSensitivity(clamped)
+    try {
+      localStorage.setItem('lobby_zoomSensitivity', clamped.toString())
+    } catch {
+      // Ignore localStorage access failures
+    }
+    window.dispatchEvent(new CustomEvent('lobby-zoom-sensitivity-changed', { detail: clamped }))
+  }
 
   const loadProfile = async () => {
     if (!supabase || !userId) return
@@ -269,6 +292,24 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               {loading ? 'Updating...' : isDesktop ? 'Update Username' : 'Update Display Name'}
             </button>
           </form>
+
+          <div>
+            <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+              Zoom Sensitivity: {zoomSensitivity.toFixed(2)}
+            </label>
+            <input
+              type="range"
+              min="0.04"
+              max="0.6"
+              step="0.01"
+              value={zoomSensitivity}
+              onChange={(e) => handleZoomSensitivityChange(parseFloat(e.target.value))}
+              className="w-full accent-nier-bg"
+            />
+            <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
+              ◇ Higher values zoom faster for mouse wheel and trackpad.
+            </p>
+          </div>
 
           <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
 

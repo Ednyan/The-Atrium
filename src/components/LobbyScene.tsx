@@ -20,7 +20,21 @@ const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.15
-const ZOOM_SPEED = 0.1
+const DEFAULT_ZOOM_SENSITIVITY = 0.16
+
+const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
+
+const getStoredZoomSensitivity = () => {
+  try {
+    const raw = localStorage.getItem('lobby_zoomSensitivity')
+    if (!raw) return DEFAULT_ZOOM_SENSITIVITY
+    const parsed = parseFloat(raw)
+    if (!Number.isFinite(parsed)) return DEFAULT_ZOOM_SENSITIVITY
+    return clampZoomSensitivity(parsed)
+  } catch {
+    return DEFAULT_ZOOM_SENSITIVITY
+  }
+}
 
 interface LobbySceneProps {
   lobbyId: string
@@ -49,6 +63,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
   const worldOffsetRef = useRef({ x: 0, y: 0 })
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
+  const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
@@ -244,6 +259,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     loadLobby()
   }, [lobbyId, userId])
+
+  // Listen for zoom sensitivity changes from profile settings and keep value in sync
+  useEffect(() => {
+    const handleZoomSensitivityChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<number>
+      const detailValue = typeof customEvent.detail === 'number' ? customEvent.detail : undefined
+      if (detailValue !== undefined) {
+        zoomSensitivityRef.current = clampZoomSensitivity(detailValue)
+        return
+      }
+      zoomSensitivityRef.current = getStoredZoomSensitivity()
+    }
+
+    window.addEventListener('lobby-zoom-sensitivity-changed', handleZoomSensitivityChanged as EventListener)
+    return () => {
+      window.removeEventListener('lobby-zoom-sensitivity-changed', handleZoomSensitivityChanged as EventListener)
+    }
+  }, [])
   
   // Keep traces ref in sync
   useEffect(() => {
@@ -440,7 +473,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         
         e.preventDefault()
         const delta = -e.deltaY * 0.001
-        const newTargetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current + delta * ZOOM_SPEED))
+        const zoomSensitivity = zoomSensitivityRef.current
+        const newTargetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current + delta * zoomSensitivity))
         targetZoomRef.current = newTargetZoom
       }
       

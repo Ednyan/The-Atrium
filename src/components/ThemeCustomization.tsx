@@ -26,6 +26,68 @@ interface ThemeCustomizationProps {
   onUpdate: () => void
 }
 
+const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSettings }> = [
+  {
+    name: 'Soft Sepia',
+    description: 'Warm and calm NieR-like ambience',
+    values: {
+      gridColor: '#9c9681',
+      gridOpacity: 0.24,
+      backgroundColor: '#1a1a18',
+      particlesEnabled: true,
+      particleColor: '#dad4bb',
+      particleOpacity: 0.45,
+      particleDensity: 0.8,
+      groundParticlesEnabled: false,
+      groundParticleOpacity: 0.82,
+      groundPatternMode: 'grid',
+      gridSpacing: 125,
+      groundElementScale: 0.06,
+      groundElementScaleRange: 0.02,
+      groundElementDensity: 0.55,
+    },
+  },
+  {
+    name: 'Technical',
+    description: 'Cold scanning-room look',
+    values: {
+      gridColor: '#6f8a7d',
+      gridOpacity: 0.3,
+      backgroundColor: '#0f1311',
+      particlesEnabled: true,
+      particleColor: '#b9d6c9',
+      particleOpacity: 0.55,
+      particleDensity: 1.2,
+      groundParticlesEnabled: false,
+      groundParticleOpacity: 0.9,
+      groundPatternMode: 'grid',
+      gridSpacing: 90,
+      groundElementScale: 0.055,
+      groundElementScaleRange: 0.03,
+      groundElementDensity: 0.8,
+    },
+  },
+  {
+    name: 'Archive',
+    description: 'Dusty monochrome memory vault',
+    values: {
+      gridColor: '#7a7568',
+      gridOpacity: 0.16,
+      backgroundColor: '#151412',
+      particlesEnabled: true,
+      particleColor: '#cbc7ba',
+      particleOpacity: 0.35,
+      particleDensity: 0.5,
+      groundParticlesEnabled: false,
+      groundParticleOpacity: 0.68,
+      groundPatternMode: 'random',
+      groundElementScale: 0.07,
+      groundElementScaleRange: 0.05,
+      groundElementDensity: 0.45,
+    },
+  },
+]
+
 export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizationProps) {
   const [settings, setSettings] = useState<ThemeSettings>({
     gridColor: '#3b82f6',
@@ -122,6 +184,18 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
     })
   }
 
+  const applyThemePreset = (presetValues: ThemeSettings) => {
+    setSettings(prev => ({ ...prev, ...presetValues }))
+  }
+
+  const isPresetActive = (presetValues: ThemeSettings) => {
+    return (
+      (presetValues.gridColor === undefined || settings.gridColor === presetValues.gridColor) &&
+      (presetValues.backgroundColor === undefined || settings.backgroundColor === presetValues.backgroundColor) &&
+      (presetValues.particleColor === undefined || settings.particleColor === presetValues.particleColor)
+    )
+  }
+
   return (
     <div
       className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000] p-4"
@@ -152,6 +226,34 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
         {/* Content */}
         <div className="p-6 space-y-6">
+          {/* Theme Presets */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Theme Presets</span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {THEME_PRESETS.map((preset) => {
+                const active = isPresetActive(preset.values)
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    onClick={() => applyThemePreset(preset.values)}
+                    className={`text-left border px-3 py-2 transition-colors ${
+                      active
+                        ? 'border-nier-bg bg-nier-bg/15 text-nier-bg'
+                        : 'border-nier-border/30 bg-nier-black text-nier-border hover:border-nier-border/60 hover:text-nier-bg'
+                    }`}
+                  >
+                    <div className="text-[10px] tracking-[0.13em] uppercase">{preset.name}</div>
+                    <div className="text-[9px] tracking-wide opacity-75 mt-1">{preset.description}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Grid Settings */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-3">
@@ -497,14 +599,14 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     </label>
                     <input
                       type="range"
-                      min="0.1"
+                      min="0"
                       max="3.0"
                       step="0.1"
                       value={settings.groundElementDensity ?? 0.5}
                       onChange={(e) => setSettings({ ...settings, groundElementDensity: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-[10px] text-nier-border/40 tracking-wider">How many ground elements appear (0.1 = sparse, 3.0 = dense)</p>
+                    <p className="text-[10px] text-nier-border/40 tracking-wider">How many ground elements appear (0 = off, 3.0 = dense)</p>
                   </div>
                 </div>
               </div>
