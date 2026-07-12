@@ -35,6 +35,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [showImport, setShowImport] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [vaultPath, setVaultPath] = useState<string | null>(null)
+  const [vaultBusy, setVaultBusy] = useState(false)
+  const [vaultError, setVaultError] = useState<string | null>(null)
 
   const toggleFullscreen = async () => {
     if (isDesktop) {
@@ -95,6 +98,29 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     }
     
     clearAndLoad()
+  }, [])
+
+  useEffect(() => {
+    if (!isDesktop) return
+
+    let cancelled = false
+
+    import('../lib/localDb')
+      .then(async ({ getVaultBasePath }) => {
+        const path = await getVaultBasePath()
+        if (!cancelled) {
+          setVaultPath(path)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setVaultError(err instanceof Error ? err.message : 'Failed to load vault folder')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
   
   // Refresh player counts every 10 minutes
@@ -255,6 +281,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   const checkCanCreateLobby = async () => {
     if (!supabase) return
+
+    if (isDesktop) {
+      setCanCreateMore(true)
+      return
+    }
     
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -279,14 +310,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Check lobby count
-      const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
-        p_user_id: user.id
-      })
+      if (!isDesktop) {
+        const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
+          p_user_id: user.id
+        })
 
-      if (count && count >= 3) {
-        setError('You can only create up to 3 lobbies')
-        return
+        if (count && count >= 3) {
+          setError('You can only create up to 3 lobbies')
+          return
+        }
       }
 
       const softSepiaTheme = {
@@ -492,6 +524,35 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     }
   }
 
+  const chooseVaultFolder = async () => {
+    if (!isDesktop) return
+
+    setVaultError(null)
+    setVaultBusy(true)
+
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: vaultPath ?? undefined,
+        title: 'Choose Digital Atrium Vault Folder',
+      })
+
+      if (typeof selected !== 'string') {
+        return
+      }
+
+      const { setVaultBasePath } = await import('../lib/localDb')
+      const nextVaultPath = await setVaultBasePath(selected)
+      setVaultPath(nextVaultPath)
+    } catch (err) {
+      setVaultError(err instanceof Error ? err.message : 'Failed to update vault folder')
+    } finally {
+      setVaultBusy(false)
+    }
+  }
+
   const renameLobby = async (lobbyId: string, newName: string) => {
     if (!supabase || !newName.trim()) return
     
@@ -634,6 +695,31 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </button>
             </div>
           </div>
+          {isDesktop && (
+            <div className="mt-4 border border-nier-border/20 bg-nier-black/60 px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="text-nier-border text-[9px] tracking-[0.15em] uppercase mb-1">Desktop Vault</div>
+                  <p className="text-nier-border/75 text-[10px] tracking-wide break-all">
+                    {vaultPath || 'Preparing local atrium vault...'}
+                  </p>
+                  <p className="text-nier-border/45 text-[9px] tracking-wide mt-2">
+                    Each atrium is mirrored into its own folder with an atrium.json file and copied local media.
+                  </p>
+                </div>
+                <button
+                  onClick={chooseVaultFolder}
+                  disabled={vaultBusy}
+                  className="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-border text-[9px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
+                >
+                  {vaultBusy ? 'Syncing...' : 'Change Folder'}
+                </button>
+              </div>
+              {vaultError && (
+                <p className="text-nier-red/70 text-[9px] tracking-wide mt-3">{vaultError}</p>
+              )}
+            </div>
+          )}
           {error && (
             <div className="mt-4 text-nier-bg/80 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2">
               ⚠ {error}

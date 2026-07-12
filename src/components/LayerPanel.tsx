@@ -1,67 +1,76 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
 
+const TRACE_DRAG_DATA_KEY = 'application/x-atrium-trace-id'
+const UNGROUPED_DROP_TARGET = '__ungrouped__'
+const TRACE_LAYER_MULTIPLIER = 100
+
 interface LayerPanelProps {
+  lobbyId: string
   onClose: () => void
   selectedTraceId?: string | null
   onSelectTrace?: (traceId: string) => void
   onGoToTrace?: (traceId: string) => void
 }
 
-export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, onGoToTrace }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelectTrace, onGoToTrace }: LayerPanelProps) {
   const { traces, username, setPlayerZIndex, addTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   // Dialog state for create/rename/delete (replaces prompt/confirm which don't work in Tauri)
   const [dialogMode, setDialogMode] = useState<'create' | 'rename' | 'delete' | null>(null)
   const [dialogInput, setDialogInput] = useState('')
   const [dialogTargetId, setDialogTargetId] = useState<string | null>(null)
 
-  // Load layers from database
-  useEffect(() => {
-    const loadLayers = async () => {
-      if (!supabase) {
-        return
-      }
-
-      const { data, error } = await supabase
-        .from('layers')
-        .select('*')
-        .order('z_index', { ascending: false })
-
-      if (error) {
-        return
-      }
-
-      if (data) {
-        const mappedLayers: Layer[] = data.map((row: any) => ({
-          id: row.id,
-          createdAt: row.created_at,
-          name: row.name,
-          zIndex: row.z_index,
-          isGroup: row.is_group,
-          parentId: row.parent_id,
-          userId: row.user_id,
-        }))
-        setLayers(mappedLayers)
-      }
+  const loadLayers = useCallback(async () => {
+    if (!supabase) {
+      return
     }
 
+    const { data, error } = await supabase
+      .from('layers')
+      .select('*')
+      .eq('lobby_id', lobbyId)
+      .order('z_index', { ascending: false })
+
+    if (error || !data) {
+      return
+    }
+
+    const mappedLayers: Layer[] = data.map((row: any) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      name: row.name,
+      zIndex: row.z_index,
+      isGroup: row.is_group,
+      parentId: row.parent_id,
+      userId: row.user_id,
+      lobbyId: row.lobby_id,
+    }))
+
+    setLayers(mappedLayers)
+  }, [lobbyId])
+
+  // Load layers from database, scoped to this atrium only
+  useEffect(() => {
     loadLayers()
 
-    // Subscribe to layer changes
+    // Subscribe to layer changes for this atrium only
     if (!supabase) return
 
     const channel = supabase
-      .channel('layers-channel')
+      .channel(`layers-channel-${lobbyId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'layers',
+          filter: `lobby_id=eq.${lobbyId}`,
         },
                 () => {
           loadLayers()
@@ -72,7 +81,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     return () => {
       channel.unsubscribe()
     }
-  }, [])
+  }, [loadLayers, lobbyId])
 
   const createGroup = () => {
     if (!supabase) {
@@ -95,11 +104,15 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
       z_index: newZIndex,
       is_group: true,
       user_id: username,
+      lobby_id: lobbyId,
     })
 
     if (error) {
       alert(`Failed to create group: ${error.message}`)
+      return
     }
+
+    await loadLayers()
   }
 
   const fixDuplicateZIndexes = async () => {
@@ -111,18 +124,13 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
       const layer = sortedLayers[i]
       const newZIndex = i + 1
       await updateLayerZIndex(layer.id, newZIndex)
-      
-      // Update traces in this layer
-      const layerTraces = traces.filter(t => t.layerId === layer.id)
-      for (let j = 0; j < layerTraces.length; j++) {
-        const newTraceZIndex = newZIndex * 100 + j
-        await (supabase.from('traces') as any).update({ z_index: newTraceZIndex }).eq('id', layerTraces[j].id)
-      }
     }
     
     // Set player z-index to be on top (above all layers)
     const newPlayerZIndex = sortedLayers.length + 1
     setPlayerZIndex(newPlayerZIndex)
+
+    await loadLayers()
   }
 
   const deleteGroup = (layerId: string) => {
@@ -149,7 +157,10 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
     if (error) {
       console.error('Error deleting group:', error)
+      return
     }
+
+    await loadLayers()
   }
 
   const renameGroup = (layerId: string, currentName: string) => {
@@ -168,17 +179,23 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
     if (error) {
       console.error('Error renaming group:', error)
+      return
     }
+
+    await loadLayers()
   }
 
   const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
     if (!supabase) return
 
+    const currentLayerId = traces.find(t => t.id === traceId)?.layerId ?? null
+    if (currentLayerId === layerId) return
+
     // Calculate the z-index for this trace
     let newZIndex: number
     if (layerId === null) {
-      // Moving to ungrouped, set z-index to 0
-      newZIndex = 0
+      const ungroupedTraces = getTracesForLayer(null).filter(t => t.id !== traceId)
+      newZIndex = getTraceZIndexForOrder(null, ungroupedTraces.length, ungroupedTraces.length)
     } else {
       // Find the layer and calculate base z-index
       const targetLayer = layers.find(l => l.id === layerId)
@@ -187,11 +204,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
       // Get existing traces in this layer
       const layerTraces = traces.filter(t => t.layerId === layerId && t.id !== traceId)
       
-      // Base z-index is layer z-index * 100
-      // Each trace gets base + order (0, 1, 2, etc.)
-      const baseZIndex = targetLayer.zIndex * 100
-      const nextOrder = layerTraces.length
-      newZIndex = baseZIndex + nextOrder
+      newZIndex = getTraceZIndexForOrder(layerId, targetLayer.zIndex, layerTraces.length)
     }
 
     const { error } = await (supabase.from('traces') as any)
@@ -210,6 +223,96 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     }
   }
 
+  const getTraceBaseZIndex = (layerId: string | null, layerZIndex?: number) => {
+    if (layerId === null) return 0
+    const resolvedLayerZIndex = layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex
+    if (resolvedLayerZIndex === undefined) return 0
+    return resolvedLayerZIndex * TRACE_LAYER_MULTIPLIER
+  }
+
+  const getTraceZIndexForOrder = (layerId: string | null, layerZIndexOrLength: number, orderIndex: number) => {
+    if (layerId === null) {
+      return orderIndex + 1
+    }
+    return getTraceBaseZIndex(layerId, layerZIndexOrLength) + orderIndex + 1
+  }
+
+  const persistTraceOrder = async (layerId: string | null, orderedTraces: typeof traces, layerZIndex?: number) => {
+    if (!supabase) return
+
+    const total = orderedTraces.length
+    for (let index = 0; index < total; index++) {
+      const trace = orderedTraces[index]
+      const orderIndex = total - index - 1
+      const newZIndex = layerId === null
+        ? getTraceZIndexForOrder(null, 0, orderIndex)
+        : getTraceZIndexForOrder(layerId, layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex ?? 0, orderIndex)
+
+      await (supabase.from('traces') as any)
+        .update({ z_index: newZIndex })
+        .eq('id', trace.id)
+
+      addTrace({ ...trace, zIndex: newZIndex })
+    }
+  }
+
+  const moveTraceWithinLayer = async (traceId: string, layerId: string | null, direction: 'up' | 'down') => {
+    if (!supabase) return
+
+    const orderedTraces = getTracesForLayer(layerId)
+    const currentIndex = orderedTraces.findIndex(t => t.id === traceId)
+    if (currentIndex === -1) return
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (targetIndex < 0 || targetIndex >= orderedTraces.length) return
+
+    const reorderedTraces = [...orderedTraces]
+    ;[reorderedTraces[currentIndex], reorderedTraces[targetIndex]] = [reorderedTraces[targetIndex], reorderedTraces[currentIndex]]
+
+    const layerZIndex = layerId === null ? undefined : layers.find(l => l.id === layerId)?.zIndex
+    await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
+  }
+
+  const handleTraceDragStart = (e: React.DragEvent<HTMLDivElement>, traceId: string) => {
+    e.stopPropagation()
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData(TRACE_DRAG_DATA_KEY, traceId)
+    setDraggedTraceId(traceId)
+  }
+
+  const handleTraceDragEnd = () => {
+    setDraggedTraceId(null)
+    setDropTargetId(null)
+  }
+
+  const handleDropTargetDragOver = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
+    if (!draggedTraceId) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    if (dropTargetId !== targetId) {
+      setDropTargetId(targetId)
+    }
+  }
+
+  const handleDropTargetDrop = async (e: React.DragEvent<HTMLDivElement>, layerId: string | null) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const traceId = e.dataTransfer.getData(TRACE_DRAG_DATA_KEY) || draggedTraceId
+    setDropTargetId(null)
+    setDraggedTraceId(null)
+
+    if (!traceId) return
+    await moveTraceToLayer(traceId, layerId)
+  }
+
+  const handleDropTargetLeave = (targetId: string) => {
+    if (dropTargetId === targetId) {
+      setDropTargetId(null)
+    }
+  }
+
   const updateLayerZIndex = async (layerId: string, newZIndex: number) => {
     if (!supabase) return
 
@@ -223,15 +326,7 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
       return
     }
 
-    // Update all traces in this layer
-    const tracesInLayer = traces.filter(t => t.layerId === layerId)
-    for (let i = 0; i < tracesInLayer.length; i++) {
-      const trace = tracesInLayer[i]
-      const newTraceZIndex = newZIndex * 100 + i
-      await (supabase.from('traces') as any)
-        .update({ z_index: newTraceZIndex })
-        .eq('id', trace.id)
-    }
+    await persistTraceOrder(layerId, getTracesForLayer(layerId), newZIndex)
   }
 
   const toggleGroup = (groupId: string) => {
@@ -253,27 +348,17 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     if (currentIndex === 0) return // Already at top
 
     const layerAbove = sortedLayers[currentIndex - 1]
+    const currentLayerTraces = getTracesForLayer(layer.id)
+    const layerAboveTraces = getTracesForLayer(layerAbove.id)
     
     // Swap z-indexes of the layers
     const tempZIndex = layer.zIndex
     await updateLayerZIndex(layer.id, layerAbove.zIndex)
     await updateLayerZIndex(layerAbove.id, tempZIndex)
-    
-    // Update all traces in both layers to match new layer z-indexes
-    const tracesInCurrentLayer = traces.filter(t => t.layerId === layer.id)
-    const tracesInAboveLayer = traces.filter(t => t.layerId === layerAbove.id)
-    
-    // Update current layer's traces (now using layerAbove's z-index)
-    for (let i = 0; i < tracesInCurrentLayer.length; i++) {
-      const newZIndex = layerAbove.zIndex * 100 + i
-      await (supabase.from('traces') as any).update({ z_index: newZIndex }).eq('id', tracesInCurrentLayer[i].id)
-    }
-    
-    // Update above layer's traces (now using current layer's old z-index)
-    for (let i = 0; i < tracesInAboveLayer.length; i++) {
-      const newZIndex = tempZIndex * 100 + i
-      await (supabase.from('traces') as any).update({ z_index: newZIndex }).eq('id', tracesInAboveLayer[i].id)
-    }
+
+    await persistTraceOrder(layer.id, currentLayerTraces, layerAbove.zIndex)
+    await persistTraceOrder(layerAbove.id, layerAboveTraces, tempZIndex)
+    await loadLayers()
   }
 
   const moveLayerDown = async (layer: Layer) => {
@@ -286,27 +371,17 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
     }
 
     const layerBelow = sortedLayers[currentIndex + 1]
+    const currentLayerTraces = getTracesForLayer(layer.id)
+    const layerBelowTraces = getTracesForLayer(layerBelow.id)
     
     // Swap z-indexes of the layers
     const tempZIndex = layer.zIndex
     await updateLayerZIndex(layer.id, layerBelow.zIndex)
     await updateLayerZIndex(layerBelow.id, tempZIndex)
-    
-    // Update all traces in both layers to match new layer z-indexes
-    const tracesInCurrentLayer = traces.filter(t => t.layerId === layer.id)
-    const tracesInBelowLayer = traces.filter(t => t.layerId === layerBelow.id)
-    
-    // Update current layer's traces (now using layerBelow's z-index)
-    for (let i = 0; i < tracesInCurrentLayer.length; i++) {
-      const newZIndex = layerBelow.zIndex * 100 + i
-      await (supabase.from('traces') as any).update({ z_index: newZIndex }).eq('id', tracesInCurrentLayer[i].id)
-    }
-    
-    // Update below layer's traces (now using current layer's old z-index)
-    for (let i = 0; i < tracesInBelowLayer.length; i++) {
-      const newZIndex = tempZIndex * 100 + i
-      await (supabase.from('traces') as any).update({ z_index: newZIndex }).eq('id', tracesInBelowLayer[i].id)
-    }
+
+    await persistTraceOrder(layer.id, currentLayerTraces, layerBelow.zIndex)
+    await persistTraceOrder(layerBelow.id, layerBelowTraces, tempZIndex)
+    await loadLayers()
   }
 
   // Get traces for a specific layer
@@ -329,7 +404,8 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
   return (
     <div 
-      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[9999]" 
+      data-ui-element="true"
+      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[9999] pointer-events-auto" 
       style={{ 
         backgroundColor: 'rgba(20,20,20,0.98)',
         top: '80px',
@@ -394,8 +470,13 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
               className={`bg-gray-800/80 border transition-all ${
                 hasSelectedTrace 
                   ? 'border-blue-400 bg-blue-900/20' 
-                  : 'border-gray-600'
+                  : dropTargetId === layer.id
+                    ? 'border-emerald-400 bg-emerald-900/20'
+                    : 'border-gray-600'
               }`}
+              onDragOver={(e) => handleDropTargetDragOver(e, layer.id)}
+              onDrop={(e) => handleDropTargetDrop(e, layer.id)}
+              onDragLeave={() => handleDropTargetLeave(layer.id)}
             >
               {/* Group header */}
               <div className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer">
@@ -462,11 +543,14 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                   {layerTraces.map((trace) => (
                     <div
                       key={trace.id}
+                      draggable
                       className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                         trace.id === selectedTraceId
                           ? 'border-blue-400 bg-blue-900/30'
                           : 'border-gray-600'
                       }`}
+                      onDragStart={(e) => handleTraceDragStart(e, trace.id)}
+                      onDragEnd={handleTraceDragEnd}
                       onClick={() => {
                         onSelectTrace?.(trace.id)
                       }}
@@ -485,6 +569,28 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                         {trace.illuminate && <span className="text-yellow-400 text-[9px]" title="Emits light">★</span>}
                       </div>
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            moveTraceWithinLayer(trace.id, trace.layerId ?? null, 'up')
+                          }}
+                          disabled={layerTraces.findIndex(t => t.id === trace.id) === 0}
+                          className={`text-[10px] px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                          title="Move up in group"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            moveTraceWithinLayer(trace.id, trace.layerId ?? null, 'down')
+                          }}
+                          disabled={layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1}
+                          className={`text-[10px] px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                          title="Move down in group"
+                        >
+                          ▼
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -516,17 +622,25 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
 
         {/* Ungrouped traces */}
         {ungroupedTraces.length > 0 && (
-          <div className="bg-gray-900/50 border border-gray-600 p-2">
+          <div
+            className={`bg-gray-900/50 border p-2 transition-all ${dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-gray-600'}`}
+            onDragOver={(e) => handleDropTargetDragOver(e, UNGROUPED_DROP_TARGET)}
+            onDrop={(e) => handleDropTargetDrop(e, null)}
+            onDragLeave={() => handleDropTargetLeave(UNGROUPED_DROP_TARGET)}
+          >
             <div className="text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-2">Ungrouped</div>
             <div className="space-y-1">
               {ungroupedTraces.map((trace) => (
                 <div
                   key={trace.id}
+                  draggable
                   className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                     trace.id === selectedTraceId
                       ? 'border-blue-400 bg-blue-900/30'
                       : 'border-gray-600'
                   }`}
+                  onDragStart={(e) => handleTraceDragStart(e, trace.id)}
+                  onDragEnd={handleTraceDragEnd}
                   onClick={() => {
                     onSelectTrace?.(trace.id)
                   }}
@@ -545,6 +659,28 @@ export default function LayerPanel({ onClose, selectedTraceId, onSelectTrace, on
                     {trace.illuminate && <span className="text-yellow-400 text-[9px]" title="Emits light">★</span>}
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        moveTraceWithinLayer(trace.id, null, 'up')
+                      }}
+                      disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === 0}
+                      className={`text-[10px] px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                      title="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        moveTraceWithinLayer(trace.id, null, 'down')
+                      }}
+                      disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1}
+                      className={`text-[10px] px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                      title="Move down"
+                    >
+                      ▼
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()

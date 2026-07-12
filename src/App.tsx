@@ -6,8 +6,9 @@ import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
+import { useTraces } from './hooks/useTraces'
 
-type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'ready'
+type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | 'ready'
 
 const ANIMATION_FPS = 40
 
@@ -367,6 +368,30 @@ function App() {
     atriumTransitionPhase,
     enteringFramesReady,
   ])
+
+  // Start loading traces (and, on desktop, pre-resolving local media) as soon
+  // as access to the atrium is verified, so this overlaps with the
+  // entering/flash animation instead of only starting once LobbyScene mounts
+  // at the very end of the transition — that's what made traces (especially
+  // local images) visibly pop in after the loading screen finished.
+  const preloadLobbyId = (route.page === 'atrium' && route.lobbyId && verifiedLobbyId === route.lobbyId)
+    ? route.lobbyId
+    : null
+  const { isLoading: tracesLoading } = useTraces(preloadLobbyId)
+
+  // Flash always completes quickly on its own, but don't drop straight into
+  // the atrium until trace data (and pre-resolved local media) is actually
+  // ready — otherwise the flash just hides the same pop-in the user reported.
+  // A max wait keeps this from hanging if the fetch is slow or fails.
+  useEffect(() => {
+    if (atriumTransitionPhase !== 'finalizing') return
+    if (!tracesLoading) {
+      setAtriumTransitionPhase('ready')
+      return
+    }
+    const timeout = setTimeout(() => setAtriumTransitionPhase('ready'), 6000)
+    return () => clearTimeout(timeout)
+  }, [atriumTransitionPhase, tracesLoading])
 
   // Verify lobby access when trying to access via URL
   useEffect(() => {
@@ -894,7 +919,19 @@ function App() {
       }
 
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'flash') {
-        return <AtriumFlashOverlay onComplete={() => setAtriumTransitionPhase('ready')} />
+        return <AtriumFlashOverlay onComplete={() => setAtriumTransitionPhase('finalizing')} />
+      }
+
+      if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'finalizing') {
+        return (
+          <AtriumTransitionOverlay
+            title="Entering Atrium"
+            subtitle="◇ Finalizing atrium data"
+            frames={LOADING_ANIMATION_FRAMES}
+            loop={true}
+            progressClassName="h-full bg-white/80 animate-nier-slide"
+          />
+        )
       }
 
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase !== 'ready') {

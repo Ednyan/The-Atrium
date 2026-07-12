@@ -9,6 +9,8 @@ interface ProfileSettingsProps {
 export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { userId, username, setUsername } = useGameStore()
   const [zoomSensitivity, setZoomSensitivity] = useState(0.16)
+  const [autosaveEnabled, setAutosaveEnabled] = useState(false)
+  const [autosaveIntervalSeconds, setAutosaveIntervalSeconds] = useState(60)
   const [displayName, setDisplayName] = useState(username)
   const [actualUsername, setActualUsername] = useState('')
   const [canChange, setCanChange] = useState(isDesktop) // Desktop: always allowed
@@ -35,6 +37,19 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           setZoomSensitivity(Math.max(0.04, Math.min(0.6, parsed)))
         }
       }
+
+      const storedAutosaveEnabled = localStorage.getItem('lobby_autosaveEnabled')
+      if (storedAutosaveEnabled !== null) {
+        setAutosaveEnabled(storedAutosaveEnabled === 'true')
+      }
+
+      const storedAutosaveInterval = localStorage.getItem('lobby_autosaveIntervalSeconds')
+      if (storedAutosaveInterval) {
+        const parsed = parseInt(storedAutosaveInterval, 10)
+        if (Number.isFinite(parsed)) {
+          setAutosaveIntervalSeconds(Math.max(10, Math.min(600, parsed)))
+        }
+      }
     } catch {
       // Ignore localStorage access failures
     }
@@ -49,6 +64,19 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       // Ignore localStorage access failures
     }
     window.dispatchEvent(new CustomEvent('lobby-zoom-sensitivity-changed', { detail: clamped }))
+  }
+
+  const handleAutosaveSettingsChange = (enabled: boolean, intervalSeconds: number) => {
+    const clampedInterval = Math.max(10, Math.min(600, intervalSeconds))
+    setAutosaveEnabled(enabled)
+    setAutosaveIntervalSeconds(clampedInterval)
+    try {
+      localStorage.setItem('lobby_autosaveEnabled', String(enabled))
+      localStorage.setItem('lobby_autosaveIntervalSeconds', clampedInterval.toString())
+    } catch {
+      // Ignore localStorage access failures
+    }
+    window.dispatchEvent(new CustomEvent('lobby-autosave-settings-changed', { detail: { enabled, intervalSeconds: clampedInterval } }))
   }
 
   const loadProfile = async () => {
@@ -308,6 +336,46 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             />
             <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
               ◇ Higher values zoom faster for mouse wheel and trackpad.
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-border text-[9px] tracking-[0.15em] uppercase">
+                Autosave
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  autosaveEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {autosaveEnabled && <span className="text-nier-bg text-[10px]">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autosaveEnabled}
+                  onChange={() => handleAutosaveSettingsChange(!autosaveEnabled, autosaveIntervalSeconds)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            {autosaveEnabled && (
+              <div className="mt-3">
+                <label className="block text-nier-border/70 text-[9px] tracking-[0.15em] uppercase mb-2">
+                  Save Every: {autosaveIntervalSeconds}s
+                </label>
+                <input
+                  type="range"
+                  min="10"
+                  max="600"
+                  step="10"
+                  value={autosaveIntervalSeconds}
+                  onChange={(e) => handleAutosaveSettingsChange(autosaveEnabled, parseInt(e.target.value, 10))}
+                  className="w-full accent-nier-bg"
+                />
+              </div>
+            )}
+            <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
+              ◇ Automatically saves unsaved trace changes while you're in an atrium.
             </p>
           </div>
 

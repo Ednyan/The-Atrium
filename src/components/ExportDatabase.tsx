@@ -50,10 +50,10 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
         if (t.layer_id) layerIds.add(t.layer_id)
       }
 
-      // Get referenced layers
+      // Get referenced layers, scoped to this atrium
       setProgress('Reading layers...')
-      const { data: allLayers } = await localClient.from('layers').select('*')
-      const layers = (allLayers || []).filter((l: any) => layerIds.has(l.id))
+      const { data: lobbyLayers } = await localClient.from('layers').select('*').eq('lobby_id', selectedLobbyId)
+      const layers = (lobbyLayers || []).filter((l: any) => layerIds.has(l.id))
 
       // Embed local:// media as base64 data URLs
       setProgress('Embedding media files...')

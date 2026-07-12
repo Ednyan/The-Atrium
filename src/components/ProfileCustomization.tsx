@@ -4,7 +4,11 @@ import { useGameStore } from '../store/gameStore'
 
 interface ProfileCustomizationProps {
   onClose: () => void
+  lobbyId?: string
 }
+
+const DEFAULT_UNDO_DEPTH = 25
+const MAX_UNDO_DEPTH = 100
 
 const PRESET_COLORS = [
   '#ffffff', // White
@@ -19,8 +23,8 @@ const PRESET_COLORS = [
   '#89a4f4', // Blue
 ]
 
-export default function ProfileCustomization({ onClose }: ProfileCustomizationProps) {
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators } = useGameStore()
+export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -28,10 +32,33 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [undoDepth, setUndoDepth] = useState(DEFAULT_UNDO_DEPTH)
 
   useEffect(() => {
     loadProfile()
-  }, [])
+    if (!lobbyId) return
+    try {
+      const raw = localStorage.getItem(`lobby_${lobbyId}_undoDepth`)
+      const parsed = raw ? parseInt(raw, 10) : NaN
+      if (Number.isFinite(parsed)) {
+        setUndoDepth(Math.max(1, Math.min(MAX_UNDO_DEPTH, parsed)))
+      }
+    } catch {
+      // Ignore localStorage access failures
+    }
+  }, [lobbyId])
+
+  const handleUndoDepthChange = (value: number) => {
+    if (!lobbyId) return
+    const clamped = Math.max(1, Math.min(MAX_UNDO_DEPTH, value))
+    setUndoDepth(clamped)
+    try {
+      localStorage.setItem(`lobby_${lobbyId}_undoDepth`, clamped.toString())
+    } catch {
+      // Ignore localStorage access failures
+    }
+    window.dispatchEvent(new CustomEvent('lobby-undo-depth-changed', { detail: clamped }))
+  }
 
   const loadProfile = async () => {
     if (!supabase || !userId) return
@@ -224,6 +251,50 @@ export default function ProfileCustomization({ onClose }: ProfileCustomizationPr
           <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
             Show off-screen trace direction &amp; distance
           </p>
+
+          {/* Trace Type Labels Toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+              Trace Type Labels
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                showTraceTypeLabels ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+              }`}>
+                {showTraceTypeLabels && <span className="text-nier-bg text-[10px]">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={showTraceTypeLabels}
+                onChange={() => setShowTraceTypeLabels(!showTraceTypeLabels)}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+            Always show each trace's type without needing to select it
+          </p>
+
+          {/* Undo History Depth (per-atrium) */}
+          {lobbyId && (
+            <div>
+              <label className="block text-nier-border text-[10px] tracking-[0.1em] uppercase mb-2">
+                Undo History Depth: {undoDepth}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max={MAX_UNDO_DEPTH}
+                step="1"
+                value={undoDepth}
+                onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
+                className="w-full accent-nier-bg"
+              />
+              <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                How many Ctrl+Z steps to remember in this atrium. Kept only in this browser/session — never saved online.
+              </p>
+            </div>
+          )}
 
           {/* Display Name */}
           <div>

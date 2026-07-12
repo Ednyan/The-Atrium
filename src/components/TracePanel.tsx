@@ -3,6 +3,19 @@ import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
+const DEFAULT_SHAPE_COLOR = '#3b82f6'
+const DEFAULT_PATH_COLOR = '#9ca3af'
+const DEFAULT_PATH_HALF_LENGTH = 30
+
+const getDefaultShapeColor = (shapeType: 'rectangle' | 'circle' | 'triangle' | 'path') => (
+  shapeType === 'path' ? DEFAULT_PATH_COLOR : DEFAULT_SHAPE_COLOR
+)
+
+const getDefaultPathPoints = (position: { x: number; y: number }) => ([
+  { x: position.x - DEFAULT_PATH_HALF_LENGTH, y: position.y },
+  { x: position.x + DEFAULT_PATH_HALF_LENGTH, y: position.y },
+])
+
 interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
@@ -20,7 +33,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   
   // Shape-specific state
   const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
-  const [shapeColor, setShapeColor] = useState('#3b82f6') // Default blue
+  const [shapeColor, setShapeColor] = useState(getDefaultShapeColor(initialShapeType || 'rectangle'))
   const [shapeOpacity, setShapeOpacity] = useState(1.0)
   const [cornerRadius, setCornerRadius] = useState(0)
   const [shapeWidth, setShapeWidth] = useState(200)
@@ -31,6 +44,13 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   
   // Use trace position if provided, otherwise fall back to character position
   const finalPosition = tracePosition || position
+
+  const handleShapeTypeChange = (nextShapeType: 'rectangle' | 'circle' | 'triangle' | 'path') => {
+    if (shapeColor === getDefaultShapeColor(shapeType)) {
+      setShapeColor(getDefaultShapeColor(nextShapeType))
+    }
+    setShapeType(nextShapeType)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,6 +72,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
     try {
       let uploadedUrl = mediaUrl
+      const initialPathPoints = shapeType === 'path' ? getDefaultPathPoints(finalPosition) : undefined
       
       // Upload file if provided
       if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video')) {
@@ -59,10 +80,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           // Desktop: create blob URL instantly, write to disk in background
           const fileExt = file.name.split('.').pop()
           const fileName = `${userId}_${Date.now()}.${fileExt}`
+          const storagePath = `${lobbyId}/${fileName}`
           const blobUrl = URL.createObjectURL(file)
-          const localUrl = `local://traces/${fileName}`
+          const localUrl = `local://traces/${storagePath}`
           import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
-          supabase.storage.from('traces').upload(fileName, file)
+          supabase.storage.from('traces').upload(storagePath, file)
           uploadedUrl = localUrl
         } else if (supabase) {
           // Web: Upload to Supabase Storage
@@ -123,10 +145,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           showBackground: false,
           // Initialize points for path shapes
           ...(shapeType === 'path' && {
-            shapePoints: [
-              { x: finalPosition.x - 50, y: finalPosition.y },
-              { x: finalPosition.x + 50, y: finalPosition.y }
-            ],
+            shapePoints: initialPathPoints,
             pathCurveType: 'straight'
           }),
         }),
@@ -159,10 +178,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             show_background: false,
             // Initialize points for path shapes
             ...(shapeType === 'path' && {
-              shape_points: [
-                { x: finalPosition.x - 50, y: finalPosition.y },
-                { x: finalPosition.x + 50, y: finalPosition.y }
-              ],
+              shape_points: initialPathPoints,
               path_curve_type: 'straight'
             }),
           }),
@@ -198,6 +214,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               cornerRadius: dbTrace.corner_radius,
               width: dbTrace.width,
               height: dbTrace.height,
+              shapePoints: dbTrace.shape_points ?? initialPathPoints,
+              pathCurveType: dbTrace.path_curve_type ?? (shapeType === 'path' ? 'straight' : undefined),
             }
             // Add to local store with database ID
             addTrace(trace)
@@ -221,27 +239,28 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   }
 
   return (
-    <div className="absolute inset-0 bg-nier-black/90 backdrop-blur-sm flex items-center justify-center" style={{ zIndex: 1000 }}>
-      {/* Scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
-        }}
-      />
-      
-      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative max-h-[90vh] overflow-y-auto">
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
-        
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Leave a Trace</h2>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-5">
+    <div
+      className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
+      style={{
+        position: 'fixed',
+        right: '20px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 300,
+      }}
+    >
+      {/* Corner brackets */}
+      <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
+      <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
+      <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
+      <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
+
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+        <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Leave a Trace</h2>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
           {/* Trace Type Selector */}
           <div>
             <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-3">
@@ -367,7 +386,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     <button
                       key={type}
                       type="button"
-                      onClick={() => setShapeType(type)}
+                      onClick={() => handleShapeTypeChange(type)}
                       className={`px-3 py-2 text-[10px] tracking-wider uppercase capitalize transition-all ${
                         shapeType === type
                           ? 'bg-nier-bg text-nier-black'
@@ -512,8 +531,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : 'Leave Trace'}
             </button>
           </div>
-        </form>
-      </div>
+      </form>
     </div>
   )
 }

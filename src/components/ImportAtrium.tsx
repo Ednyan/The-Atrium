@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -87,16 +87,17 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Check lobby count
-      setProgress('Checking atrium limit...')
-      const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
-        p_user_id: user.id
-      })
+      if (!isDesktop) {
+        setProgress('Checking atrium limit...')
+        const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
+          p_user_id: user.id
+        })
 
-      if (count != null && count >= 3) {
-        setError('You already have 3 atriums. Delete one before importing.')
-        setStatus('preview')
-        return
+        if (count != null && count >= 3) {
+          setError('You already have 3 atriums. Delete one before importing.')
+          setStatus('preview')
+          return
+        }
       }
 
       // Create the lobby
@@ -130,6 +131,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               is_group: !!layer.is_group,
               parent_id: layer.parent_id ? layerIdMap[layer.parent_id] || null : null,
               user_id: user.id,
+              lobby_id: lobbyId,
             })
             .select()
             .single()

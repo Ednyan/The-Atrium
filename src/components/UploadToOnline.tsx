@@ -81,6 +81,13 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
       const layerIdMap: Record<string, string> = {}
       if (localLayers?.length) {
         for (const layer of localLayers) {
+          const mappedLobbyIdForLayer = layer.lobby_id ? lobbyIdMap[layer.lobby_id] : null
+          if (!mappedLobbyIdForLayer && layer.lobby_id) {
+            // Skip layers whose lobby failed to upload, or that were left
+            // orphaned (no lobby_id) by the cross-atrium layer leakage fix
+            continue
+          }
+
           const { data: inserted, error: layerErr } = await remote
             .from('layers')
             .insert({
@@ -89,6 +96,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
               is_group: layer.is_group,
               parent_id: layer.parent_id ? layerIdMap[layer.parent_id] || null : null,
               user_id: remoteUserId,
+              lobby_id: mappedLobbyIdForLayer,
             })
             .select()
             .single()

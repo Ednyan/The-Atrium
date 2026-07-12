@@ -3,7 +3,6 @@ import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { usePresence } from '../hooks/usePresence'
-import { useTraces } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
 import LayerPanel from './LayerPanel'
@@ -12,6 +11,8 @@ import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
+import { saveAllChanges } from '../lib/traceSave'
+import { convertEmbedToInternalImage } from '../lib/traceConvert'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -34,6 +35,171 @@ const getStoredZoomSensitivity = () => {
   } catch {
     return DEFAULT_ZOOM_SENSITIVITY
   }
+}
+
+const clampAutosaveInterval = (value: number) => Math.max(10, Math.min(600, value))
+
+const getStoredAutosaveSettings = () => {
+  try {
+    const enabled = localStorage.getItem('lobby_autosaveEnabled') === 'true'
+    const rawInterval = localStorage.getItem('lobby_autosaveIntervalSeconds')
+    const parsed = rawInterval ? parseInt(rawInterval, 10) : 60
+    const intervalSeconds = Number.isFinite(parsed) ? clampAutosaveInterval(parsed) : 60
+    return { enabled, intervalSeconds }
+  } catch {
+    return { enabled: false, intervalSeconds: 60 }
+  }
+}
+
+const inferFileExtension = (file: File) => {
+  const fromName = file.name.split('.').pop()?.trim().toLowerCase()
+  if (fromName) return fromName
+
+  const mimeToExtension: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+    'image/x-icon': 'ico',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/mp4': 'm4a',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/ogg': 'ogv',
+    'video/quicktime': 'mov',
+  }
+
+  return mimeToExtension[file.type] || 'bin'
+}
+
+const IMAGE_FILE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico', 'avif'])
+const AUDIO_FILE_EXTENSIONS = new Set(['mp3', 'wav', 'flac', 'aac', 'm4a'])
+const VIDEO_FILE_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'mov', 'm4v'])
+const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)(\?.*)?$/i
+const VIDEO_URL_PATTERN = /\.(mp4|webm|ogg|ogv|mov|m4v)(\?.*)?$/i
+const AUDIO_URL_PATTERN = /\.(mp3|wav|flac|aac|m4a)(\?.*)?$/i
+
+type DroppedUrlPayload = {
+  url: string
+  forceImage: boolean
+}
+
+const classifyDroppedFile = (file: File): 'image' | 'audio' | 'video' | 'text' => {
+  const mime = file.type.toLowerCase()
+  const extension = inferFileExtension(file)
+
+  if (mime.startsWith('image/') || IMAGE_FILE_EXTENSIONS.has(extension)) return 'image'
+  if (mime.startsWith('audio/') || AUDIO_FILE_EXTENSIONS.has(extension)) return 'audio'
+  if (mime.startsWith('video/') || VIDEO_FILE_EXTENSIONS.has(extension)) return 'video'
+  return 'text'
+}
+
+const classifyRemoteTraceType = (url: string): 'image' | 'video' | 'audio' | 'embed' => {
+  const lower = url.toLowerCase()
+
+  if (lower.startsWith('data:image/')) return 'image'
+  if (lower.startsWith('data:video/')) return 'video'
+  if (lower.startsWith('data:audio/')) return 'audio'
+  if (IMAGE_URL_PATTERN.test(lower)) return 'image'
+  if (VIDEO_URL_PATTERN.test(lower)) return 'video'
+  if (AUDIO_URL_PATTERN.test(lower)) return 'audio'
+  return 'embed'
+}
+
+const getDroppedUrlPayload = (value: string): DroppedUrlPayload | null => {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+
+  for (const line of lines) {
+    const firstColon = line.indexOf(':')
+    const secondColon = firstColon >= 0 ? line.indexOf(':', firstColon + 1) : -1
+
+    if (firstColon > 0 && secondColon > firstColon + 1) {
+      const mime = line.slice(0, firstColon).trim().toLowerCase()
+      const url = line.slice(secondColon + 1).trim()
+      if (/^https?:\/\//i.test(url) && mime.startsWith('image/')) {
+        return { url, forceImage: true }
+      }
+    }
+
+    const match = line.match(/https?:\/\/[^\s"'<>]+/i)
+    if (!match) continue
+
+    try {
+      const parsed = new URL(match[0])
+      const redirectedImageUrl = parsed.searchParams.get('imgurl') || parsed.searchParams.get('mediaurl')
+      if (redirectedImageUrl && /^https?:\/\//i.test(redirectedImageUrl)) {
+        return { url: redirectedImageUrl, forceImage: true }
+      }
+    } catch {
+      // Ignore malformed URLs and fall back to the original match.
+    }
+
+    return { url: match[0], forceImage: false }
+  }
+
+  return null
+}
+
+const extractImageUrlFromHtml = (html: string): DroppedUrlPayload | null => {
+  if (!html.trim()) return null
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const imageCandidates = [
+      ...Array.from(doc.querySelectorAll('img[src]')).map((img) => img.getAttribute('src')),
+      ...Array.from(doc.querySelectorAll('img[srcset]')).map((img) => img.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0] || null),
+      ...Array.from(doc.querySelectorAll('[data-src]')).map((node) => node.getAttribute('data-src')),
+      ...Array.from(doc.querySelectorAll('[data-image-url]')).map((node) => node.getAttribute('data-image-url')),
+      ...Array.from(doc.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]')).map((meta) => meta.getAttribute('content')),
+    ]
+
+    for (const candidate of imageCandidates) {
+      const payload = candidate ? getDroppedUrlPayload(candidate) : null
+      if (payload) {
+        return { url: payload.url, forceImage: true }
+      }
+    }
+
+    const linkCandidates = Array.from(doc.querySelectorAll('a[href]')).map((anchor) => anchor.getAttribute('href'))
+    for (const candidate of linkCandidates) {
+      const payload = candidate ? getDroppedUrlPayload(candidate) : null
+      if (!payload) continue
+      if (payload.forceImage || classifyRemoteTraceType(payload.url) === 'image') {
+        return { url: payload.url, forceImage: true }
+      }
+    }
+  } catch {
+    // Invalid HTML payloads should fall through to other drop handlers.
+  }
+
+  const redirectMatch = html.match(/(?:imgurl|mediaurl)=([^"'&\s>]+)/i)
+  if (!redirectMatch) return null
+
+  try {
+    const decoded = decodeURIComponent(redirectMatch[1])
+    if (/^https?:\/\//i.test(decoded)) {
+      return { url: decoded, forceImage: true }
+    }
+  } catch {
+    // Ignore invalid encodings and fall through.
+  }
+
+  return null
+}
+
+const isEditableTarget = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  return element.isContentEditable || element.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]') !== null
 }
 
 interface LobbySceneProps {
@@ -61,9 +227,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const cameraRestoredRef = useRef(false) // Whether we restored a saved camera position
   const isPanningRef = useRef(false)
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
+  const lastMouseScreenPositionRef = useRef<{ x: number; y: number } | null>(null)
+  const mouseDownScreenPosRef = useRef<{ x: number; y: number } | null>(null)
+  const showTracePanelRef = useRef(false)
   const worldOffsetRef = useRef({ x: 0, y: 0 })
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
+  const autosaveSettingsRef = useRef(getStoredAutosaveSettings())
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
@@ -85,8 +255,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
   const [onlinePlayerCount, setOnlinePlayerCount] = useState(1) // Start with 1 (self)
   
-  const { username, position, otherUsers, traces, userId } = useGameStore()
+  const { username, position, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
+  useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | undefined>(undefined)
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
@@ -97,10 +268,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
-  const [hudMinimized, setHudMinimized] = useState(false)
+  const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
-  const [controlsMinimized, setControlsMinimized] = useState(false)
+  const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [showCloseSaveDialog, setShowCloseSaveDialog] = useState(false)
+  const closeUnlistenRef = useRef<(() => void) | null>(null)
+  const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
+  const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -116,6 +291,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
+
+  const ensureLobbyHasSpace = () => {
+    if (!useGameStore.getState().isLobbyFull()) return true
+
+    const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
+    alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+    return false
+  }
+
+  const getWorldPositionFromScreen = (screenX: number, screenY: number) => {
+    if (!worldContainerRef.current) {
+      return { x: cameraPositionRef.current.x, y: cameraPositionRef.current.y }
+    }
+
+    return {
+      x: (screenX - worldContainerRef.current.x) / zoomRef.current,
+      y: (screenY - worldContainerRef.current.y) / zoomRef.current,
+    }
+  }
 
   // Reset PixiJS ticker when returning from Alt-Tab to prevent cursor sluggishness
   useEffect(() => {
@@ -151,6 +345,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const drawingWidthRef = useRef(3)
   const smoothedPointRef = useRef<{ x: number; y: number } | null>(null)
   const drawingSmoothingRef = useRef(30)
+  const brushCursorRef = useRef<HTMLDivElement>(null)
 
   // Keep drawing mode ref in sync
   useEffect(() => {
@@ -162,6 +357,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   useEffect(() => { drawingColorRef.current = drawingColor }, [drawingColor])
   useEffect(() => { drawingWidthRef.current = drawingWidth }, [drawingWidth])
   useEffect(() => { drawingSmoothingRef.current = drawingSmoothing }, [drawingSmoothing])
+
+  // Keep the brush/eraser size-preview circle in sync with the current size and mode.
+  // Position is updated directly via the ref in the canvas mouse handlers (not React
+  // state) to avoid a re-render on every pixel of mouse movement.
+  useEffect(() => {
+    const el = brushCursorRef.current
+    if (!el) return
+    el.style.width = `${drawingWidth}px`
+    el.style.height = `${drawingWidth}px`
+    el.style.borderColor = isEraserMode ? 'rgba(200,200,200,0.9)' : drawingColor
+    el.style.borderStyle = isEraserMode ? 'dashed' : 'solid'
+  }, [drawingWidth, isEraserMode, drawingColor])
   useEffect(() => {
     completedStrokesRef.current = completedStrokes
     renderDrawingCanvas()
@@ -277,7 +484,74 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       window.removeEventListener('lobby-zoom-sensitivity-changed', handleZoomSensitivityChanged as EventListener)
     }
   }, [])
-  
+
+  // Listen for autosave setting changes from profile settings and keep value in sync
+  useEffect(() => {
+    const handleAutosaveSettingsChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ enabled: boolean; intervalSeconds: number }>
+      if (customEvent.detail) {
+        autosaveSettingsRef.current = {
+          enabled: customEvent.detail.enabled,
+          intervalSeconds: clampAutosaveInterval(customEvent.detail.intervalSeconds),
+        }
+        return
+      }
+      autosaveSettingsRef.current = getStoredAutosaveSettings()
+    }
+
+    window.addEventListener('lobby-autosave-settings-changed', handleAutosaveSettingsChanged as EventListener)
+    return () => {
+      window.removeEventListener('lobby-autosave-settings-changed', handleAutosaveSettingsChanged as EventListener)
+    }
+  }, [])
+
+  // Autosave heartbeat - checks every 5s whether enough time has passed since the
+  // last save to trigger another one. A single slow-ticking interval (rather than
+  // tearing down/recreating a setInterval whenever the user drags the interval
+  // slider) keeps this simple and avoids timer churn.
+  useEffect(() => {
+    let lastAutosaveAt = Date.now()
+    const heartbeat = setInterval(() => {
+      const { enabled, intervalSeconds } = autosaveSettingsRef.current
+      if (!enabled) return
+      if (Date.now() - lastAutosaveAt < intervalSeconds * 1000) return
+      lastAutosaveAt = Date.now()
+      if (useGameStore.getState().hasPendingChanges() && !useGameStore.getState().isSavingChanges) {
+        saveAllChanges()
+      }
+    }, 5000)
+    return () => clearInterval(heartbeat)
+  }, [])
+
+  // Desktop only: intercept the native window close (title bar "X", Alt+F4, etc.)
+  // and prompt to save if there are unsaved trace changes, similar to native apps.
+  useEffect(() => {
+    if (!isDesktop) return
+    let cancelled = false
+
+    ;(async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      const unlisten = await win.onCloseRequested((event) => {
+        if (useGameStore.getState().hasPendingChanges()) {
+          event.preventDefault()
+          setShowCloseSaveDialog(true)
+        }
+      })
+      if (cancelled) {
+        unlisten()
+      } else {
+        closeUnlistenRef.current = unlisten
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      closeUnlistenRef.current?.()
+      closeUnlistenRef.current = null
+    }
+  }, [])
+
   // Keep traces ref in sync
   useEffect(() => {
     tracesDataRef.current = traces
@@ -358,6 +632,36 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     setTracePanelInitialType(undefined)
     setTracePanelInitialShapeType(undefined)
   }
+
+  // Bulk-convert every embed trace in this atrium into an internal image
+  // (reuses the same per-trace conversion used by the trace context menu).
+  // Runs sequentially rather than in parallel to avoid hammering the vault
+  // folder / remote host with many concurrent downloads at once.
+  const handleConvertAllEmbeds = async () => {
+    const embedTraces = useGameStore.getState().traces.filter(t => t.type === 'embed')
+    if (embedTraces.length === 0) {
+      alert('No embed traces in this atrium.')
+      return
+    }
+    setIsConvertingEmbeds(true)
+    let converted = 0
+    let skipped = 0
+    try {
+      for (let i = 0; i < embedTraces.length; i++) {
+        setConvertEmbedsProgress(`Converting ${i + 1}/${embedTraces.length}...`)
+        const result = await convertEmbedToInternalImage(embedTraces[i].id)
+        if (result.ok) converted++
+        else skipped++
+      }
+      if (converted > 0) {
+        await saveAllChanges()
+      }
+      alert(`Converted ${converted} embed(s) to internal images.${skipped > 0 ? ` Skipped ${skipped} (not direct images or failed to download).` : ''}`)
+    } finally {
+      setIsConvertingEmbeds(false)
+      setConvertEmbedsProgress('')
+    }
+  }
   
   // Restore saved camera position for this lobby on mount
   useEffect(() => {
@@ -382,9 +686,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }, [position])
   
-  // Initialize presence and traces for this lobby
+  // Initialize presence for this lobby. Traces are now loaded earlier, from
+  // App.tsx, so they're already in the store (and local media pre-resolved
+  // on desktop) by the time this scene mounts, instead of popping in after
+  // the atrium-entry loading screen finishes.
   const { updateCursorPosition } = usePresence(lobbyId)
-  useTraces(lobbyId)
 
   // Initialize Pixi.js with endless scrolling world
   useEffect(() => {
@@ -524,8 +830,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       // Mouse down - start panning or show context menu (using window event for better capture)
       const handleMouseDown = (e: MouseEvent) => {
+        lastMouseScreenPositionRef.current = { x: e.clientX, y: e.clientY }
+
         // Left mouse button (button 0) - start panning or drawing
         if (e.button === 0) {
+          mouseDownScreenPosRef.current = { x: e.clientX, y: e.clientY }
           // Close context menu if open
           // Check if we're clicking on a trace element in the overlay
           // If so, don't start panning - let the trace handle the click
@@ -558,6 +867,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       // Mouse move - handle panning and cursor tracking
       const handleMouseMove = (e: MouseEvent) => {
+        lastMouseScreenPositionRef.current = { x: e.clientX, y: e.clientY }
+
         // Always track cursor position in world coordinates
         // Convert screen coordinates to world coordinates
         const worldX = (e.clientX - worldContainerRef.current!.x) / zoomRef.current
@@ -592,6 +903,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const handleMouseUp = (e: MouseEvent) => {
         if (e.button === 0) {
           isPanningRef.current = false
+
+          // While the new-trace panel is open, a genuine click (not a pan-drag)
+          // on the map updates the pending placement position live.
+          if (showTracePanelRef.current && !isDrawingModeRef.current && mouseDownScreenPosRef.current) {
+            const dx = e.clientX - mouseDownScreenPosRef.current.x
+            const dy = e.clientY - mouseDownScreenPosRef.current.y
+            const dragDistance = Math.hypot(dx, dy)
+            if (dragDistance < 5) {
+              const target = e.target as HTMLElement
+              const isUI = target.closest('[data-ui-element], [data-trace-element], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto') !== null
+              if (!isUI && worldContainerRef.current) {
+                const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
+                const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
+                setClickedTracePosition({ x: worldX, y: worldY })
+              }
+            }
+          }
+          mouseDownScreenPosRef.current = null
         }
       }
       
@@ -1378,75 +1707,130 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     if (!worldContainerRef.current) return
 
-    // Check lobby size limit
-    if (useGameStore.getState().isLobbyFull()) {
-      const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-      alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
-      return
-    }
+    if (!ensureLobbyHasSpace()) return
 
-    // Convert screen coordinates to world coordinates
-    const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
-    const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
+    const { x: worldX, y: worldY } = getWorldPositionFromScreen(e.clientX, e.clientY)
 
-    const files = e.dataTransfer.files
-    const urlData = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || ''
-
-    // URL drops take priority (handles browser-to-app drags on both desktop and web)
-    if (urlData.trim()) {
-      const url = urlData.trim().split('\n')[0].trim()
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        const lower = url.toLowerCase()
-        let traceType: 'image' | 'video' | 'audio' | 'embed' = 'embed'
-        if (/\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/.test(lower)) traceType = 'image'
-        else if (/\.(mp4|webm|ogg|mov)(\?.*)?$/.test(lower)) traceType = 'video'
-        else if (/\.(mp3|wav|flac|aac|m4a)(\?.*)?$/.test(lower)) traceType = 'audio'
-
-        await insertDroppedTrace(traceType, url, url, worldX, worldY)
-        return
-      }
-    }
-
-    // File drops from filesystem (desktop only)
-    if (isDesktop && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        const mime = file.type
-        let traceType: 'image' | 'audio' | 'video' | 'text'
-        if (mime.startsWith('image/')) traceType = 'image'
-        else if (mime.startsWith('audio/')) traceType = 'audio'
-        else if (mime.startsWith('video/')) traceType = 'video'
-        else traceType = 'text'
-
-        // Offset multiple drops so they don't stack
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    const processDroppedFiles = async () => {
+      for (let i = 0; i < droppedFiles.length; i++) {
+        const file = droppedFiles[i]
+        const traceType = classifyDroppedFile(file)
         const dropX = worldX + i * 30
         const dropY = worldY + i * 30
 
         if (traceType === 'text') {
           const text = await file.text()
-          await insertDroppedTrace(traceType, text.slice(0, 5000), undefined, dropX, dropY)
-        } else {
-          const uploadedUrl = await uploadFile(file)
-          if (uploadedUrl) {
-            await insertDroppedTrace(traceType, `${traceType} drop`, uploadedUrl, dropX, dropY)
+          const extension = inferFileExtension(file)
+
+          if (file.type === 'text/html' || extension === 'html' || extension === 'htm') {
+            const htmlImagePayload = extractImageUrlFromHtml(text)
+            if (htmlImagePayload) {
+              await insertDroppedTrace('image', htmlImagePayload.url, htmlImagePayload.url, dropX, dropY)
+              continue
+            }
           }
+
+          const urlPayload = getDroppedUrlPayload(text)
+          if (urlPayload) {
+            const remoteTraceType = urlPayload.forceImage ? 'image' : classifyRemoteTraceType(urlPayload.url)
+            await insertDroppedTrace(remoteTraceType, urlPayload.url, urlPayload.url, dropX, dropY)
+            continue
+          }
+
+          await insertDroppedTrace('text', text.slice(0, 5000), undefined, dropX, dropY)
+          continue
+        }
+
+        const uploadedUrl = await uploadFile(file)
+        if (uploadedUrl) {
+          await insertDroppedTrace(traceType, `${traceType} drop`, uploadedUrl, dropX, dropY)
         }
       }
     }
+
+    const htmlImagePayload = extractImageUrlFromHtml(e.dataTransfer.getData('text/html') || '')
+    if (htmlImagePayload) {
+      await insertDroppedTrace('image', htmlImagePayload.url, htmlImagePayload.url, worldX, worldY)
+      return
+    }
+
+    const downloadUrlPayload = getDroppedUrlPayload(e.dataTransfer.getData('DownloadURL') || '')
+    if (downloadUrlPayload) {
+      const traceType = downloadUrlPayload.forceImage ? 'image' : classifyRemoteTraceType(downloadUrlPayload.url)
+      await insertDroppedTrace(traceType, downloadUrlPayload.url, downloadUrlPayload.url, worldX, worldY)
+      return
+    }
+
+    if (isDesktop && droppedFiles.length > 0) {
+      await processDroppedFiles()
+      return
+    }
+
+    const urlPayload = getDroppedUrlPayload(
+      e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || ''
+    )
+
+    if (urlPayload) {
+      const traceType = urlPayload.forceImage ? 'image' : classifyRemoteTraceType(urlPayload.url)
+      await insertDroppedTrace(traceType, urlPayload.url, urlPayload.url, worldX, worldY)
+      return
+    }
+
+    // File drops from filesystem (desktop only)
+    if (isDesktop && droppedFiles.length > 0) {
+      await processDroppedFiles()
+    }
   }
 
+  useEffect(() => {
+    if (!isDesktop) return
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      if (e.defaultPrevented || isEditableTarget(e.target)) return
+
+      const imageFiles = Array.from(e.clipboardData?.items ?? [])
+        .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+        .map(item => item.getAsFile())
+        .filter((file): file is File => file !== null)
+
+      if (imageFiles.length === 0) return
+
+      e.preventDefault()
+
+      if (!ensureLobbyHasSpace()) return
+
+      const pasteAnchor = lastMouseScreenPositionRef.current ?? {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      }
+      const { x: baseX, y: baseY } = getWorldPositionFromScreen(pasteAnchor.x, pasteAnchor.y)
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        const uploadedUrl = await uploadFile(imageFiles[i])
+        if (uploadedUrl) {
+          await insertDroppedTrace('image', imageFiles[i].name || 'pasted image', uploadedUrl, baseX + i * 30, baseY + i * 30)
+        }
+      }
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [lobbyId, userId, username])
+
   const uploadFile = async (file: File): Promise<string | undefined> => {
-    const fileExt = file.name.split('.').pop()
+    const fileExt = inferFileExtension(file)
     const fileName = `${userId}_${Date.now()}.${fileExt}`
+    const storagePath = `${lobbyId}/${fileName}`
 
     if (isDesktop && supabase) {
       // Desktop: create blob URL instantly, write to disk in background for persistence
       const blobUrl = URL.createObjectURL(file)
-      const localUrl = `local://traces/${fileName}`
+      const localUrl = `local://traces/${storagePath}`
       // Pre-seed cache so TraceOverlay resolves instantly
       import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
       // Write to local storage for persistence (fire-and-forget)
-      supabase.storage.from('traces').upload(fileName, file)
+      supabase.storage.from('traces').upload(storagePath, file)
       return localUrl
     }
 
@@ -1607,6 +1991,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <p className="text-gray-500 text-[8px] tracking-wider">
           ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
         </p>
+        {hasPendingChanges() && (
+          <button
+            onClick={() => saveAllChanges()}
+            disabled={isSavingChanges}
+            className={`w-full mt-1.5 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all ${
+              isSavingChanges
+                ? 'bg-gray-800 border-gray-600 text-gray-500 cursor-not-allowed'
+                : 'bg-gray-800 border-gray-600 hover:border-white text-white'
+            }`}
+          >
+            {isSavingChanges ? 'Saving…' : `Save Changes (${pendingChanges.size + deletedTraces.size})`}
+          </button>
+        )}
         <button
           onClick={() => {
             // Reset camera to center of map
@@ -1657,6 +2054,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             Copy ID
           </button>
         )}
+        <button
+          onClick={handleConvertAllEmbeds}
+          disabled={isConvertingEmbeds}
+          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Convert every embed trace in this atrium into an internal image"
+        >
+          {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
+        </button>
         <button
           onClick={() => setShowProfileCustomization(true)}
           className="w-full mt-1 bg-gray-700 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
@@ -1907,11 +2312,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                           offscreen.toBlob((b) => resolve(b!), 'image/png')
                         })
                         const fileName = `drawing_${userId}_${Date.now()}.png`
+                        const storagePath = `${lobbyId}/${fileName}`
                         
                         let imageUrl = ''
                         const { error: uploadError } = await supabase!.storage
                           .from('traces')
-                          .upload(fileName, blob, { contentType: 'image/png' })
+                          .upload(storagePath, blob, { contentType: 'image/png' })
                         
                         if (uploadError) {
                           console.error('Storage upload failed, falling back to data URL:', uploadError)
@@ -1919,7 +2325,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                         } else {
                           const { data: { publicUrl } } = supabase!.storage
                             .from('traces')
-                            .getPublicUrl(fileName)
+                            .getPublicUrl(storagePath)
                           imageUrl = publicUrl
                         }
 
@@ -2034,14 +2440,34 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             </div>
           </div>
 
+          {/* Brush/eraser size-preview circle - follows the cursor, sized to drawingWidth */}
+          <div
+            ref={brushCursorRef}
+            className="fixed rounded-full pointer-events-none z-[9999]"
+            style={{
+              width: `${drawingWidth}px`,
+              height: `${drawingWidth}px`,
+              border: `1px solid ${isEraserMode ? 'rgba(200,200,200,0.9)' : drawingColor}`,
+              borderStyle: isEraserMode ? 'dashed' : 'solid',
+              transform: 'translate(-50%, -50%)',
+              display: 'none',
+            }}
+          />
+
           {/* Drawing canvas overlay - below UI buttons, above traces */}
           <canvas
             ref={drawingCanvasRef}
             className="fixed inset-0 z-[9998]"
             style={{
-              cursor: isEraserMode ? 'cell' : 'crosshair',
+              cursor: 'none',
               width: '100vw',
               height: '100vh',
+            }}
+            onMouseEnter={() => {
+              if (brushCursorRef.current) brushCursorRef.current.style.display = 'block'
+            }}
+            onMouseLeave={() => {
+              if (brushCursorRef.current) brushCursorRef.current.style.display = 'none'
             }}
             onMouseDown={(e) => {
               if (e.button === 0) {
@@ -2061,6 +2487,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               }
             }}
             onMouseMove={(e) => {
+              if (brushCursorRef.current) {
+                brushCursorRef.current.style.left = `${e.clientX}px`
+                brushCursorRef.current.style.top = `${e.clientY}px`
+              }
               if (isDrawing) {
                 const raw = { x: e.clientX, y: e.clientY }
                 const smoothing = drawingSmoothingRef.current / 100
@@ -2205,7 +2635,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Layer Panel */}
       {showLayerPanel && (
-        <LayerPanel 
+        <LayerPanel
+          lobbyId={lobbyId}
           onClose={() => setShowLayerPanel(false)}
           selectedTraceId={selectedTraceId}
           onSelectTrace={(traceId) => {
@@ -2343,6 +2774,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {showProfileCustomization && (
         <ProfileCustomization
           onClose={() => setShowProfileCustomization(false)}
+          lobbyId={lobbyId}
         />
       )}
 
@@ -2375,54 +2807,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="flex flex-col gap-2">
               <button
                 onClick={async () => {
-                  // Save and leave
-                  const state = useGameStore.getState()
-                  if (supabase && state.hasPendingChanges()) {
+                  // Save and leave (shared with the HUD save button, autosave,
+                  // and the desktop close-with-unsaved-changes prompt)
+                  if (useGameStore.getState().hasPendingChanges()) {
                     try {
-                      // Delete traces
-                      for (const traceId of state.deletedTraces) {
-                        await (supabase.from('traces') as any).delete().eq('id', traceId)
-                      }
-                      // Update traces
-                      for (const traceId of state.pendingChanges) {
-                        const trace = state.traces.find(t => t.id === traceId)
-                        if (!trace) continue
-                        const updateData: any = {
-                          position_x: trace.x, position_y: trace.y,
-                          scale: ((trace.scaleX ?? 1) + (trace.scaleY ?? 1)) / 2,
-                          rotation: trace.rotation ?? 0,
-                          show_border: trace.showBorder, show_background: trace.showBackground,
-                          show_description: trace.showDescription, show_filename: trace.showFilename,
-                          font_size: trace.fontSize, font_family: trace.fontFamily,
-                          text_bold: trace.textBold, text_italic: trace.textItalic,
-                          text_underline: trace.textUnderline, text_align: trace.textAlign,
-                          text_color: trace.textColor, is_locked: trace.isLocked,
-                          border_radius: trace.borderRadius,
-                          crop_x: trace.cropX, crop_y: trace.cropY,
-                          crop_width: trace.cropWidth, crop_height: trace.cropHeight,
-                          illuminate: trace.illuminate, light_color: trace.lightColor,
-                          light_intensity: trace.lightIntensity, light_radius: trace.lightRadius,
-                          light_offset_x: trace.lightOffsetX, light_offset_y: trace.lightOffsetY,
-                          light_pulse: trace.lightPulse, light_pulse_speed: trace.lightPulseSpeed,
-                          enable_interaction: trace.enableInteraction, ignore_clicks: trace.ignoreClicks,
-                          z_index: trace.zIndex,
-                        }
-                        if (trace.mediaUrl !== undefined) updateData.media_url = trace.mediaUrl
-                        if (trace.content !== undefined) updateData.content = trace.content
-                        if (trace.type === 'shape') {
-                          if (trace.shapeType) updateData.shape_type = trace.shapeType
-                          if (trace.shapeColor) updateData.shape_color = trace.shapeColor
-                          if (trace.shapeOpacity !== undefined) updateData.shape_opacity = trace.shapeOpacity
-                          if (trace.shapePoints) updateData.shape_points = trace.shapePoints
-                          if (trace.pathCurveType) updateData.path_curve_type = trace.pathCurveType
-                          if (trace.pathArrowStart) updateData.path_arrow_start = trace.pathArrowStart
-                          if (trace.pathArrowEnd) updateData.path_arrow_end = trace.pathArrowEnd
-                          if (trace.width) updateData.width = trace.width
-                          if (trace.height) updateData.height = trace.height
-                        }
-                        await (supabase.from('traces') as any).update(updateData).eq('id', traceId)
-                      }
-                      state.clearPendingChanges()
+                      await saveAllChanges()
                     } catch {
                       // Continue leaving even if save fails
                     }
@@ -2455,6 +2844,63 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         )
       })()}
+
+      {/* Desktop close-with-unsaved-changes prompt */}
+      {showCloseSaveDialog && (
+        <div className="fixed inset-0 z-[10003] bg-black/70 flex items-center justify-center pointer-events-auto">
+          <div className="bg-gray-900 border border-gray-500 p-6 relative" style={{ maxWidth: '260px' }}>
+            {/* Corner brackets */}
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+
+            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-gray-400 mr-2">◇</span>Unsaved Changes
+            </h3>
+            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+              You have unsaved changes. Save before closing?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    await saveAllChanges()
+                  } catch {
+                    // Fall through and close even if save fails, matching the
+                    // "Save and Leave" button's behavior elsewhere in this file
+                  }
+                  closeUnlistenRef.current?.()
+                  closeUnlistenRef.current = null
+                  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+                  getCurrentWindow().close()
+                }}
+                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              >
+                ◇ Save and Close
+              </button>
+              <button
+                onClick={async () => {
+                  closeUnlistenRef.current?.()
+                  closeUnlistenRef.current = null
+                  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+                  getCurrentWindow().close()
+                }}
+                className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
+              >
+                Don't Save
+              </button>
+              <button
+                onClick={() => setShowCloseSaveDialog(false)}
+                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

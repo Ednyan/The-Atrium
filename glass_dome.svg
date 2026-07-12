@@ -1,0 +1,28 @@
+<svg id="Camada_1" data-name="Camada 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 2059.39 1158.41">
+  <defs>
+    <linearGradient id="Gradiente_sem_nome_104" data-name="Gradiente sem nome 104" x1="1029.44" y1="918.89" x2="1029.44" y2="318.89" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d16357"/>
+      <stop offset="0.07" stop-color="#cb5c51"/>
+      <stop offset="0.47" stop-color="#a9372f"/>
+      <stop offset="0.79" stop-color="#95201a"/>
+      <stop offset="1" stop-color="#8d1812"/>
+    </linearGradient>
+    <clipPath id="clip-path" transform="translate(729.69 318.89)">
+      <ellipse cx="299.75" cy="300.06" rx="300.25" ry="299.94" fill="none"/>
+    </clipPath>
+  </defs>
+  <title>glass_dome</title>
+  <rect x="729.19" y="318.89" width="600.5" height="600" rx="300" fill="url(#Gradiente_sem_nome_104)"/>
+  <g clip-path="url(#clip-path)">
+    <rect x="693.22" y="598.82" width="293.7" height="161.11" fill="#fff" opacity="0.23"/>
+    <rect x="1066.65" y="379.25" width="293.7" height="161.11" fill="#fff" opacity="0.23"/>
+  </g>
+  <image width="1920" height="1080" transform="translate(0) scale(1.07)" xlink:href="digital_dome.png"/>
+  <rect x="1065.34" y="753.15" width="146.85" height="80.55" fill="#fff" opacity="0.23"/>
+  <rect x="1075.21" y="757.79" width="45.62" height="11.17" fill="#fff" opacity="0.24"/>
+  <rect x="1075.21" y="772.64" width="91.72" height="11.17" fill="#fff" opacity="0.24"/>
+  <rect x="983.58" y="361.61" width="45.62" height="11.17" fill="#fff" opacity="0.15"/>
+  <rect x="983.58" y="376.46" width="74.52" height="11.17" fill="#fff" opacity="0.15"/>
+  <rect x="983.58" y="346.76" width="91.72" height="11.17" fill="#fff" opacity="0.15"/>
+  <rect x="976.94" y="340.76" width="146.85" height="80.55" fill="#fff" opacity="0.23"/>
+</svg>

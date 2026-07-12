@@ -37,6 +37,7 @@ interface GameState {
   playerZIndex: number
   playerColor: string
   showTraceIndicators: boolean
+  showTraceTypeLabels: boolean
   cursorState: CursorState
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
@@ -44,7 +45,8 @@ interface GameState {
   // Pending changes tracking - traces that have been modified but not saved to DB
   pendingChanges: Set<string>  // Set of trace IDs with unsaved changes
   deletedTraces: Set<string>   // Set of trace IDs that should be deleted on save
-  
+  isSavingChanges: boolean     // True while a saveAllChanges() call is in flight (prevents concurrent saves)
+
   // Server-reported lobby size (from Supabase RPC)
   serverLobbySize: number | null  // null = not yet fetched
   serverLobbySizeTraceCount: number // trace count when server size was fetched
@@ -55,6 +57,7 @@ interface GameState {
   setPlayerZIndex: (zIndex: number) => void
   setPlayerColor: (color: string) => void
   setShowTraceIndicators: (show: boolean) => void
+  setShowTraceTypeLabels: (show: boolean) => void
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   removeOtherUser: (userId: string) => void
@@ -67,9 +70,11 @@ interface GameState {
   // Pending changes management
   markTraceChanged: (traceId: string) => void
   markTraceDeleted: (traceId: string) => void
+  unmarkTraceDeleted: (traceId: string) => void
   clearPendingChanges: () => void
   hasPendingChanges: () => boolean
-  
+  setIsSavingChanges: (saving: boolean) => void
+
   // Size limit
   setServerLobbySize: (size: number, traceCount: number) => void
   getLobbySizeBytes: () => number
@@ -92,6 +97,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('showTraceIndicators')
     return stored !== null ? stored === 'true' : true
   })(),
+  showTraceTypeLabels: (() => {
+    const stored = localStorage.getItem('showTraceTypeLabels')
+    return stored !== null ? stored === 'true' : false
+  })(),
   cursorState: 'default',
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
@@ -99,7 +108,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Pending changes tracking
   pendingChanges: new Set<string>(),
   deletedTraces: new Set<string>(),
-  
+  isSavingChanges: false,
+
   // Server-reported lobby size
   serverLobbySize: null,
   serverLobbySizeTraceCount: 0,
@@ -118,6 +128,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setShowTraceIndicators: (show) => {
     localStorage.setItem('showTraceIndicators', String(show))
     set({ showTraceIndicators: show })
+  },
+  setShowTraceTypeLabels: (show) => {
+    localStorage.setItem('showTraceTypeLabels', String(show))
+    set({ showTraceTypeLabels: show })
   },
   setCursorState: (cursorState) => set({ cursorState }),
   
@@ -195,15 +209,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       newPending.delete(traceId)
       return { deletedTraces: newDeleted, pendingChanges: newPending }
     }),
-    
+
+  unmarkTraceDeleted: (traceId) =>
+    set((state) => {
+      const newDeleted = new Set(state.deletedTraces)
+      newDeleted.delete(traceId)
+      return { deletedTraces: newDeleted }
+    }),
+
   clearPendingChanges: () =>
     set({ pendingChanges: new Set<string>(), deletedTraces: new Set<string>() }),
-    
+
   hasPendingChanges: () => {
     const state = get()
     return state.pendingChanges.size > 0 || state.deletedTraces.size > 0
   },
-  
+
+  setIsSavingChanges: (saving) => set({ isSavingChanges: saving }),
+
   setServerLobbySize: (size, traceCount) => set({ serverLobbySize: size, serverLobbySizeTraceCount: traceCount }),
   
   getLobbySizeBytes: () => {

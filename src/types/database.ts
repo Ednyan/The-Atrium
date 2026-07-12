@@ -96,6 +96,9 @@ export interface Trace {
   scaleX?: number
   scaleY?: number
   rotation: number
+  // Mirroring (independent of scaleX/scaleY, applied as a CSS flip transform)
+  flipHorizontal?: boolean
+  flipVertical?: boolean
   // Customization options
   showBorder?: boolean
   showBackground?: boolean
@@ -148,6 +151,7 @@ export interface Layer {
   isGroup: boolean
   parentId?: string | null
   userId: string
+  lobbyId?: string | null
 }
 
 export interface Profile {
