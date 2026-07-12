@@ -13,10 +13,13 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'pixi': ['pixi.js'],
-          'supabase': ['@supabase/supabase-js'],
-          'react-vendor': ['react', 'react-dom'],
+        // Vite 8's Rolldown-based bundler requires manualChunks to be a
+        // function; the static object form (id -> chunk map) it replaced
+        // errored with "manualChunks is not a function".
+        manualChunks: (id: string) => {
+          if (id.includes('pixi.js')) return 'pixi'
+          if (id.includes('@supabase/supabase-js')) return 'supabase'
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) return 'react-vendor'
         },
       },
     },

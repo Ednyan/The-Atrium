@@ -38,6 +38,8 @@ interface GameState {
   playerColor: string
   showTraceIndicators: boolean
   showTraceTypeLabels: boolean
+  hideOwnNameTag: boolean
+  hideOtherNameTags: boolean
   cursorState: CursorState
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
@@ -58,6 +60,8 @@ interface GameState {
   setPlayerColor: (color: string) => void
   setShowTraceIndicators: (show: boolean) => void
   setShowTraceTypeLabels: (show: boolean) => void
+  setHideOwnNameTag: (hide: boolean) => void
+  setHideOtherNameTags: (hide: boolean) => void
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   removeOtherUser: (userId: string) => void
@@ -101,6 +105,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('showTraceTypeLabels')
     return stored !== null ? stored === 'true' : false
   })(),
+  hideOwnNameTag: (() => {
+    const stored = localStorage.getItem('hideOwnNameTag')
+    return stored !== null ? stored === 'true' : false
+  })(),
+  hideOtherNameTags: (() => {
+    const stored = localStorage.getItem('hideOtherNameTags')
+    return stored !== null ? stored === 'true' : false
+  })(),
   cursorState: 'default',
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
@@ -132,6 +144,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   setShowTraceTypeLabels: (show) => {
     localStorage.setItem('showTraceTypeLabels', String(show))
     set({ showTraceTypeLabels: show })
+  },
+  setHideOwnNameTag: (hide) => {
+    localStorage.setItem('hideOwnNameTag', String(hide))
+    set({ hideOwnNameTag: hide })
+  },
+  setHideOtherNameTags: (hide) => {
+    localStorage.setItem('hideOtherNameTags', String(hide))
+    set({ hideOtherNameTags: hide })
   },
   setCursorState: (cursorState) => set({ cursorState }),
   

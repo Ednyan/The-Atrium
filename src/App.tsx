@@ -459,7 +459,21 @@ function App() {
           return
         }
         
-        // Check if user is whitelisted (can bypass password)
+        // Check if lobby has a password. This applies even to whitelisted
+        // users -- a lobby can require both whitelist membership AND a
+        // password (see can_user_join_lobby), so whitelisting alone must not
+        // bypass it. Route through the lobby browser's password prompt,
+        // which records a verified session that RLS can check afterwards.
+        const { data: hasPassword } = await (supabase as any).rpc('lobby_has_password', {
+          p_lobby_id: route.lobbyId,
+        })
+
+        if (hasPassword) {
+          setLobbyAccessError('password_required')
+          setVerifyingAccess(false)
+          return
+        }
+
         if (accessStatus === 'whitelisted') {
           setVerifiedLobbyId(route.lobbyId)
           setCurrentLobbyId(route.lobbyId)
@@ -470,19 +484,7 @@ function App() {
           setVerifyingAccess(false)
           return
         }
-        
-        // Check if lobby has a password
-        const { data: hasPassword } = await (supabase as any).rpc('lobby_has_password', {
-          p_lobby_id: route.lobbyId,
-        })
-        
-        if (hasPassword) {
-          // Has password and user is not whitelisted - need to go through lobby browser
-          setLobbyAccessError('password_required')
-          setVerifyingAccess(false)
-          return
-        }
-        
+
         // Public lobby, no password - allow access
         setVerifiedLobbyId(route.lobbyId)
         setCurrentLobbyId(route.lobbyId)

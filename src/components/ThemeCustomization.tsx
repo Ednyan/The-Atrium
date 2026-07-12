@@ -5,6 +5,7 @@ import type { Lobby } from '../types/database'
 interface ThemeSettings {
   gridColor?: string
   gridOpacity?: number
+  gridEnabled?: boolean
   backgroundColor?: string
   particlesEnabled?: boolean
   particleColor?: string
@@ -92,6 +93,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
   const [settings, setSettings] = useState<ThemeSettings>({
     gridColor: '#3b82f6',
     gridOpacity: 0.2,
+    gridEnabled: true,
     backgroundColor: '#0a0a0f',
     particlesEnabled: true,
     particleColor: '#ffffff',
@@ -260,7 +262,25 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
               <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Grid Settings</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
-            
+
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                (settings.gridEnabled ?? true) ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+              }`}>
+                {(settings.gridEnabled ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                id="gridEnabled"
+                checked={settings.gridEnabled ?? true}
+                onChange={(e) => setSettings({ ...settings, gridEnabled: e.target.checked })}
+                className="hidden"
+              />
+              <span className="text-nier-border text-[10px] tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                Show grid
+              </span>
+            </label>
+
             <div className="space-y-2">
               <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase">Grid Color</label>
               <div className="flex gap-2 items-center">

@@ -36,7 +36,13 @@ export async function saveAllChanges(): Promise<void> {
         type: trace.type,
         position_x: trace.x,
         position_y: trace.y,
+        // scale_x/scale_y are authoritative and persisted independently so
+        // non-uniform (stretched) resizes survive a reload; `scale` is kept
+        // in sync as their average only for backward compatibility with any
+        // code still reading the legacy single-value column.
         scale: ((trace.scaleX ?? 1) + (trace.scaleY ?? 1)) / 2,
+        scale_x: trace.scaleX ?? 1,
+        scale_y: trace.scaleY ?? 1,
         rotation: trace.rotation ?? 0,
         flip_horizontal: trace.flipHorizontal ?? false,
         flip_vertical: trace.flipVertical ?? false,

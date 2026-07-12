@@ -56,6 +56,10 @@ export interface UserPresence {
   y: number
   timestamp: number
   playerColor?: string
+  // When this user's presence session in the current atrium started (epoch
+  // ms) -- fixed at connect time, not refreshed on every position broadcast,
+  // so "time in atrium" can be computed as Date.now() - joinedAt.
+  joinedAt?: number
 }
 
 export interface Trace {
@@ -169,6 +173,7 @@ export interface Profile {
 export interface ThemeSettings {
   gridColor?: string
   gridOpacity?: number
+  gridEnabled?: boolean
   backgroundColor?: string
   particlesEnabled?: boolean
   particleColor?: string

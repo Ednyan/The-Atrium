@@ -24,7 +24,7 @@ const PRESET_COLORS = [
 ]
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -273,6 +273,52 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           </div>
           <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
             Always show each trace's type without needing to select it
+          </p>
+
+          {/* Hide Own Name Tag Toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+              Hide My Name Tag
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                hideOwnNameTag ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+              }`}>
+                {hideOwnNameTag && <span className="text-nier-bg text-[10px]">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={hideOwnNameTag}
+                onChange={() => setHideOwnNameTag(!hideOwnNameTag)}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+            Hide your own username label above your cursor
+          </p>
+
+          {/* Hide Other Users' Name Tags Toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+              Hide Others' Name Tags
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                hideOtherNameTags ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+              }`}>
+                {hideOtherNameTags && <span className="text-nier-bg text-[10px]">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={hideOtherNameTags}
+                onChange={() => setHideOtherNameTags(!hideOtherNameTags)}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+            Hide username labels above other users' cursors
           </p>
 
           {/* Undo History Depth (per-atrium) */}

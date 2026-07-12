@@ -144,6 +144,8 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             image_url: imageUrl,
             media_url: mediaUrl,
             scale: trace.scale,
+            scale_x: trace.scale_x ?? trace.scale,
+            scale_y: trace.scale_y ?? trace.scale,
             rotation: trace.rotation,
             show_border: trace.show_border,
             show_background: trace.show_background,

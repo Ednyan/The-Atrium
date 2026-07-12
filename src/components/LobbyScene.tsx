@@ -5,7 +5,7 @@ import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { usePresence } from '../hooks/usePresence'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
-import LayerPanel from './LayerPanel'
+import LayerPanel, { TRACE_DRAG_DATA_KEY } from './LayerPanel'
 import { LobbyManagement } from './LobbyManagement'
 import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
@@ -13,6 +13,7 @@ import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { saveAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
+import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -24,6 +25,17 @@ const MAX_ZOOM = 1.15
 const DEFAULT_ZOOM_SENSITIVITY = 0.16
 
 const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
+
+const formatTimeInAtrium = (joinedAt: number | undefined) => {
+  if (!joinedAt) return '—'
+  const elapsedMs = Math.max(0, Date.now() - joinedAt)
+  const totalMinutes = Math.floor(elapsedMs / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m`
+  return '<1m'
+}
 
 const getStoredZoomSensitivity = () => {
   try {
@@ -254,6 +266,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
   const [onlinePlayerCount, setOnlinePlayerCount] = useState(1) // Start with 1 (self)
+  const [showOnlineUsersList, setShowOnlineUsersList] = useState(false)
+  // Forces the online-users list to re-render its "time in atrium" values
+  // periodically while open, rather than only on other state changes.
+  const [, setOnlineUsersListTick] = useState(0)
   
   const { username, position, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
@@ -268,6 +284,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  // The layer group new traces are created into (null = ungrouped). Set by
+  // clicking a group/Ungrouped header in the Layer panel.
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
+  // One-shot request for TraceOverlay to multi-select a set of trace ids,
+  // fired when the user clicks a group in the Layer panel. TraceOverlay owns
+  // its own selection state internally, so this is passed down rather than
+  // lifting that state up wholesale.
+  const [groupSelectRequest, setGroupSelectRequest] = useState<string[] | null>(null)
   const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
@@ -376,9 +400,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
   // Canvas drawing helpers
   const drawBezierStroke = (ctx: CanvasRenderingContext2D, points: Array<{x: number; y: number}>, color: string, width: number, isEraser: boolean) => {
-    if (points.length < 2) return
+    if (points.length === 0) return
     ctx.save()
     ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over'
+
+    if (points.length === 1) {
+      // A click with no movement -- draw a single dot instead of nothing,
+      // matching what most drawing apps do for a stationary tap/click.
+      ctx.fillStyle = isEraser ? 'rgba(0,0,0,1)' : color
+      ctx.beginPath()
+      ctx.arc(points[0].x, points[0].y, width / 2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+      return
+    }
+
     ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : color
     ctx.lineWidth = width
     ctx.lineCap = 'round'
@@ -416,7 +452,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       drawBezierStroke(ctx, stroke.points, stroke.color, stroke.width, stroke.isEraser)
     }
     // Draw current active stroke
-    if (currentStrokeRef.current.length >= 2) {
+    if (currentStrokeRef.current.length >= 1) {
       drawBezierStroke(ctx, currentStrokeRef.current, drawingColorRef.current, drawingWidthRef.current, isEraserModeRef.current)
     }
   }
@@ -522,6 +558,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }, 5000)
     return () => clearInterval(heartbeat)
   }, [])
+
+  // The brush/eraser cursor circle is only shown/hidden/moved via direct DOM
+  // mutations on mouse move/enter/leave (see brushCursorRef usage below), so
+  // it can get stuck visible at a stale position if the mouse leaves the
+  // canvas without a DOM mouseleave event -- e.g. clicking the native OS
+  // window close button. Force-hide it whenever the close-save dialog opens
+  // so it can't bleed through the dialog's semi-transparent backdrop.
+  useEffect(() => {
+    if (showCloseSaveDialog && brushCursorRef.current) {
+      brushCursorRef.current.style.display = 'none'
+    }
+  }, [showCloseSaveDialog])
 
   // Desktop only: intercept the native window close (title bar "X", Alt+F4, etc.)
   // and prompt to save if there are unsaved trace changes, similar to native apps.
@@ -690,7 +738,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // App.tsx, so they're already in the store (and local media pre-resolved
   // on desktop) by the time this scene mounts, instead of popping in after
   // the atrium-entry loading screen finishes.
-  const { updateCursorPosition } = usePresence(lobbyId)
+  const { updateCursorPosition, getJoinedAt } = usePresence(lobbyId)
+
+  // Refresh the online-users list's "time in atrium" values every 15s while open
+  useEffect(() => {
+    if (!showOnlineUsersList) return
+    const interval = setInterval(() => setOnlineUsersListTick(t => t + 1), 15000)
+    return () => clearInterval(interval)
+  }, [showOnlineUsersList])
 
   // Initialize Pixi.js with endless scrolling world
   useEffect(() => {
@@ -742,8 +797,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Function to redraw grid based on camera position
       const updateGrid = (cameraX: number, cameraY: number) => {
         grid.clear()
+        if (currentLobby?.themeSettings?.gridEnabled === false) return
         grid.lineStyle(1, gridColor, gridOpacity)
-        
+
         const gridSize = 50
         // Account for zoom: visible world area = viewport / zoom
         const currentZoom = zoomRef.current
@@ -1529,7 +1585,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     
     const newUpdateGrid = (cameraX: number, cameraY: number) => {
       grid.clear()
-      grid.lineStyle(1, gridColor, gridOpacity) 
+      if (currentLobby.themeSettings?.gridEnabled === false) return
+      grid.lineStyle(1, gridColor, gridOpacity)
       const gridSize = 50
       const currentZoom = zoomRef.current
       const visibleW = window.innerWidth / currentZoom
@@ -1687,6 +1744,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
   // Drag-and-drop trace creation
   const handleDragOver = (e: React.DragEvent) => {
+    // Ignore the Layer panel's internal trace-reorder drag -- its events
+    // bubble here through any gap in the panel without its own drop-target
+    // handler, which used to flash the "drop file to create trace" overlay
+    // while the user was just reordering layers.
+    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
     e.preventDefault()
     e.stopPropagation()
     e.dataTransfer.dropEffect = 'copy'
@@ -1694,6 +1756,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
     // Only hide overlay when actually leaving the container
     if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false)
@@ -1701,6 +1764,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }
 
   const handleDrop = async (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
@@ -1857,6 +1921,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     y: number,
   ) => {
     if (supabase) {
+      const layerFields = activeLayerId
+        ? {
+            layer_id: activeLayerId,
+            z_index: await computeZIndexForNewTraceInLayer(
+              activeLayerId,
+              traces.filter(t => t.layerId === activeLayerId).length
+            ),
+          }
+        : {}
+
       const { data, error } = await supabase.from('traces').insert({
         user_id: userId,
         username,
@@ -1869,6 +1943,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         rotation: 0.0,
         lobby_id: lobbyId,
         show_description: false,
+        show_filename: false,
+        ...layerFields,
       } as any).select()
 
       if (error) {
@@ -1891,6 +1967,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           scaleX: d.scale ?? 1.0,
           scaleY: d.scale ?? 1.0,
           rotation: d.rotation ?? 0.0,
+          layerId: d.layer_id ?? null,
+          zIndex: d.z_index ?? 0,
         }
         useGameStore.getState().addTrace(trace)
       }
@@ -1938,6 +2016,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             lobbyId={lobbyId}
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
+            groupSelectRequest={groupSelectRequest}
           />
         </div>
 
@@ -1968,10 +2047,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             {username}
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
+              className="flex items-center gap-1 hover:bg-white/10 px-1 py-0.5 -mx-1 transition-colors"
+              title="Show online users"
+            >
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               <span className="text-green-400 text-[8px]">{onlinePlayerCount}</span>
-            </div>
+            </button>
             <button
               onClick={() => setHudMinimized(!hudMinimized)}
               className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
@@ -1981,6 +2064,31 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             </button>
           </div>
         </div>
+
+        {/* Online users list */}
+        {showOnlineUsersList && (
+          <div
+            data-ui-element="true"
+            className="absolute left-0 top-full mt-1 w-48 bg-black border-2 border-white z-[10000] font-mono"
+            style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
+          >
+            <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-white text-[10px] tracking-wide truncate">{username} (you)</span>
+                <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
+              </div>
+              {Object.values(otherUsers).map(user => (
+                <div key={user.userId} className="flex items-center justify-between gap-2">
+                  <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
+                  <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
+                </div>
+              ))}
+              {Object.keys(otherUsers).length === 0 && (
+                <p className="text-gray-600 text-[9px] tracking-wide">No one else is here</p>
+              )}
+            </div>
+          </div>
+        )}
         {!hudMinimized && (
           <>
         {currentLobby && (
@@ -2231,7 +2339,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   <input
                     type="range"
                     min="0"
-                    max="80"
+                    max="100"
                     value={drawingSmoothing}
                     onChange={(e) => setDrawingSmoothing(Number(e.target.value))}
                     className="w-16 h-1 cursor-pointer accent-white"
@@ -2348,6 +2456,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                             setIsSavingDrawing(false)
                             return
                           }
+                          const layerFields = activeLayerId
+                            ? {
+                                layer_id: activeLayerId,
+                                z_index: await computeZIndexForNewTraceInLayer(
+                                  activeLayerId,
+                                  traces.filter(t => t.layerId === activeLayerId).length
+                                ),
+                              }
+                            : {}
+
                           const { data, error } = await supabase.from('traces').insert({
                             user_id: userId,
                             username,
@@ -2364,6 +2482,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                             show_border: false,
                             show_background: false,
                             show_description: false,
+                            show_filename: false,
+                            ...layerFields,
                           } as any).select()
 
                           if (!error && data && data[0]) {
@@ -2512,7 +2632,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               if (e.button === 0 && isDrawing) {
                 setIsDrawing(false)
                 const rawPoints = currentStrokeRef.current
-                if (rawPoints.length >= 2) {
+                if (rawPoints.length >= 1) {
                   setCompletedStrokes(prev => [...prev, {
                     points: [...rawPoints],
                     color: drawingColorRef.current,
@@ -2561,7 +2681,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 e.preventDefault()
                 setIsDrawing(false)
                 const rawPoints = currentStrokeRef.current
-                if (rawPoints.length >= 2) {
+                if (rawPoints.length >= 1) {
                   setCompletedStrokes(prev => [...prev, {
                     points: [...rawPoints],
                     color: drawingColorRef.current,
@@ -2630,7 +2750,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} />
+        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
       )}
 
       {/* Layer Panel */}
@@ -2644,6 +2764,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             setSelectedTraceId(traceId)
             // setSelectedTraceId called
           }}
+          activeLayerId={activeLayerId}
+          onSetActiveLayer={setActiveLayerId}
+          onSelectGroupTraces={(traceIds) => setGroupSelectRequest(traceIds)}
           onGoToTrace={(traceId) => {
             const trace = traces.find(t => t.id === traceId)
             if (trace) {
@@ -2679,25 +2802,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {!controlsMinimized && (
           <div className="space-y-1 mt-2">
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Pan : Left Click + Drag
+              <span className="text-gray-500">◇</span> Leave Trace : "T"
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Zoom : Mouse Wheel
+              <span className="text-gray-500">◇</span> Freehand Draw : "D"
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Leave Trace : "T" Key
+              <span className="text-gray-500">◇</span> Edit Trace : Right Click It
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Select Traces : Left Click Trace
+              <span className="text-gray-500">◇</span> Multi-select : Shift + Click Traces
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Move Traces : Left Click Trace + Drag
+              <span className="text-gray-500">◇</span> Undo / Redo : Ctrl+Z / Ctrl+Shift+Z
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Edit Traces : Select Trace + Right Click
+              <span className="text-gray-500">◇</span> Copy / Paste : Ctrl+C / Ctrl+V
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Freehand Draw : "D" Key
+              <span className="text-gray-500">◇</span> Delete Selected : Delete Key
+            </p>
+            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
+              <span className="text-gray-500">◇</span> Save Changes : Ctrl+S
             </p>
           </div>
         )}

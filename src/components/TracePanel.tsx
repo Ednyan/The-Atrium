@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
+import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
 import type { Trace } from '../types/database'
 
 const DEFAULT_SHAPE_COLOR = '#3b82f6'
@@ -22,9 +23,10 @@ interface TracePanelProps {
   lobbyId: string
   initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
   initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
+  activeLayerId?: string | null
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId }: TracePanelProps) {
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
   const [mediaUrl, setMediaUrl] = useState('')
@@ -39,7 +41,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   const [shapeWidth, setShapeWidth] = useState(200)
   const [shapeHeight, setShapeHeight] = useState(200)
   
-  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGameStore()
+  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes, traces } = useGameStore()
   const lobbyFull = isLobbyFull()
   
   // Use trace position if provided, otherwise fall back to character position
@@ -153,6 +155,16 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
       // Save to Supabase if available
       if (supabase) {
+        const layerFields = activeLayerId
+          ? {
+              layer_id: activeLayerId,
+              z_index: await computeZIndexForNewTraceInLayer(
+                activeLayerId,
+                traces.filter(t => t.layerId === activeLayerId).length
+              ),
+            }
+          : {}
+
         const { data, error} = await supabase.from('traces').insert({
           // Don't specify id - let database generate UUID
           user_id: userId,
@@ -166,6 +178,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           rotation: 0.0,
           lobby_id: lobbyId,
           show_description: false,
+          show_filename: false,
+          ...layerFields,
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
@@ -216,6 +230,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               height: dbTrace.height,
               shapePoints: dbTrace.shape_points ?? initialPathPoints,
               pathCurveType: dbTrace.path_curve_type ?? (shapeType === 'path' ? 'straight' : undefined),
+              layerId: dbTrace.layer_id ?? null,
+              zIndex: dbTrace.z_index ?? 0,
             }
             // Add to local store with database ID
             addTrace(trace)

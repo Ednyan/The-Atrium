@@ -657,6 +657,8 @@ export async function initLocalDb(): Promise<void> {
       image_url TEXT,
       media_url TEXT,
       scale REAL DEFAULT 1.0,
+      scale_x REAL DEFAULT 1.0,
+      scale_y REAL DEFAULT 1.0,
       rotation REAL DEFAULT 0.0,
       flip_horizontal INTEGER DEFAULT 0,
       flip_vertical INTEGER DEFAULT 0,
@@ -759,6 +761,22 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE traces ADD COLUMN flip_vertical INTEGER DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Ensure traces scale_x/scale_y exist (for DBs created before non-uniform
+  // stretch was persisted independently of the single `scale` column) and
+  // backfill them from the existing scale value so old rows keep their size.
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN scale_x REAL DEFAULT 1.0')
+    await db.execute('UPDATE traces SET scale_x = scale WHERE scale_x IS NULL')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN scale_y REAL DEFAULT 1.0')
+    await db.execute('UPDATE traces SET scale_y = scale WHERE scale_y IS NULL')
   } catch {
     // Column already exists — ignore
   }

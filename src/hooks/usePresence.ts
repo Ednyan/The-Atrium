@@ -8,6 +8,9 @@ export function usePresence(lobbyId: string | null) {
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
   const playerColorRef = useRef(playerColor)
+  // Fixed once per atrium connection (not refreshed on every position/color
+  // broadcast) so other users can compute "time in atrium" from it.
+  const joinedAtRef = useRef<number>(Date.now())
 
   // Keep position ref up to date
   useEffect(() => {
@@ -25,7 +28,7 @@ export function usePresence(lobbyId: string | null) {
         x: positionRef.current.x,
         y: positionRef.current.y,
         playerColor: playerColor,
-        online_at: new Date().toISOString(),
+        online_at: new Date(joinedAtRef.current).toISOString(),
       })
     }
   }, [playerColor, userId, username])
@@ -52,6 +55,7 @@ export function usePresence(lobbyId: string | null) {
     }
 
     // Connecting to lobby presence channel
+    joinedAtRef.current = Date.now()
 
     // Create lobby-specific presence channel
     const channelName = `lobby-${lobbyId}-presence`
@@ -86,6 +90,7 @@ export function usePresence(lobbyId: string | null) {
                 y: presence.y,
                 playerColor: presence.playerColor || '#ffffff',
                 timestamp: Date.now(),
+                joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
               })
             }
           }
@@ -103,6 +108,7 @@ export function usePresence(lobbyId: string | null) {
             y: presence.y,
             playerColor: presence.playerColor || '#ffffff',
             timestamp: Date.now(),
+            joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
           })
         }
       })
@@ -118,7 +124,7 @@ export function usePresence(lobbyId: string | null) {
             x: position.x,
             y: position.y,
             playerColor: playerColorRef.current,
-            online_at: new Date().toISOString(),
+            online_at: new Date(joinedAtRef.current).toISOString(),
           })
         }
       })
@@ -149,7 +155,7 @@ export function usePresence(lobbyId: string | null) {
             x: positionRef.current.x,
             y: positionRef.current.y,
             playerColor: playerColorRef.current,
-            online_at: new Date().toISOString(),
+            online_at: new Date(joinedAtRef.current).toISOString(),
           })
           lastBroadcastTime = now
           lastBroadcastX = positionRef.current.x
@@ -165,5 +171,5 @@ export function usePresence(lobbyId: string | null) {
     }
   }, [userId, username, lobbyId])
 
-  return { updateCursorPosition }
+  return { updateCursorPosition, getJoinedAt: () => joinedAtRef.current }
 }

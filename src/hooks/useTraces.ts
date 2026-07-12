@@ -16,8 +16,11 @@ function mapRowToTrace(row: any): Trace {
     mediaUrl: row.media_url || undefined,
     createdAt: row.created_at,
     scale: row.scale ?? 1.0,
-    scaleX: row.scale ?? 1.0,
-    scaleY: row.scale ?? 1.0,
+    // scale_x/scale_y are authoritative (support non-uniform stretch);
+    // fall back to the legacy averaged `scale` column for rows saved before
+    // they existed.
+    scaleX: row.scale_x ?? row.scale ?? 1.0,
+    scaleY: row.scale_y ?? row.scale ?? 1.0,
     rotation: row.rotation ?? 0.0,
     flipHorizontal: row.flip_horizontal ?? false,
     flipVertical: row.flip_vertical ?? false,

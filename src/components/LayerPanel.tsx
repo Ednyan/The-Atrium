@@ -2,10 +2,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
+import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
 
-const TRACE_DRAG_DATA_KEY = 'application/x-atrium-trace-id'
+// Exported so LobbyScene's canvas-wide file/URL drop handlers can recognize
+// (and ignore) this in-app drag, since native drag events bubble through the
+// DOM regardless of React component boundaries -- without this, reordering
+// traces between layers made the canvas's "drop file to create trace"
+// overlay flash on, since the trace row's drag bubbled past any gaps in the
+// panel that don't have their own onDragOver/stopPropagation.
+export const TRACE_DRAG_DATA_KEY = 'application/x-atrium-trace-id'
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
-const TRACE_LAYER_MULTIPLIER = 100
 
 interface LayerPanelProps {
   lobbyId: string
@@ -13,10 +19,16 @@ interface LayerPanelProps {
   selectedTraceId?: string | null
   onSelectTrace?: (traceId: string) => void
   onGoToTrace?: (traceId: string) => void
+  // The layer group new traces should be created into. Clicking a group
+  // header sets this (and selects all its traces); clicking it again, or the
+  // Ungrouped section, clears it back to null.
+  activeLayerId?: string | null
+  onSetActiveLayer?: (layerId: string | null) => void
+  onSelectGroupTraces?: (traceIds: string[]) => void
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelectTrace, onGoToTrace }: LayerPanelProps) {
-  const { traces, username, setPlayerZIndex, addTrace } = useGameStore()
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces }: LayerPanelProps) {
+  const { traces, username, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
@@ -52,8 +64,34 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
       lobbyId: row.lobby_id,
     }))
 
+    // Self-heal: duplicate z-indexes can only happen from legacy data (this
+    // atrium's layers used to be computed against every atrium's layers
+    // combined, before the cross-atrium leak fix scoped them by lobby_id) --
+    // silently renumber instead of requiring the user to find a manual "Fix"
+    // button.
+    const hasDuplicateZIndex = new Set(mappedLayers.map(l => l.zIndex)).size !== mappedLayers.length
+    if (hasDuplicateZIndex) {
+      await repairDuplicateZIndexes(mappedLayers)
+      return
+    }
+
     setLayers(mappedLayers)
   }, [lobbyId])
+
+  const repairDuplicateZIndexes = async (layersToFix: Layer[]) => {
+    if (!supabase) return
+
+    const sorted = [...layersToFix].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+
+    for (let i = 0; i < sorted.length; i++) {
+      await updateLayerZIndex(sorted[i].id, i + 1)
+    }
+
+    // Set player z-index to be on top (above all layers)
+    setPlayerZIndex(sorted.length + 1)
+
+    await loadLayers()
+  }
 
   // Load layers from database, scoped to this atrium only
   useEffect(() => {
@@ -115,24 +153,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
     await loadLayers()
   }
 
-  const fixDuplicateZIndexes = async () => {
-    if (!supabase) return
-    
-    const sortedLayers = [...layers].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    
-    for (let i = 0; i < sortedLayers.length; i++) {
-      const layer = sortedLayers[i]
-      const newZIndex = i + 1
-      await updateLayerZIndex(layer.id, newZIndex)
-    }
-    
-    // Set player z-index to be on top (above all layers)
-    const newPlayerZIndex = sortedLayers.length + 1
-    setPlayerZIndex(newPlayerZIndex)
-
-    await loadLayers()
-  }
-
   const deleteGroup = (layerId: string) => {
     if (!supabase) return
     setDialogMode('delete')
@@ -161,6 +181,22 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
     }
 
     await loadLayers()
+  }
+
+  // Deletes a single trace directly (grouped or ungrouped) -- previously the
+  // only way to remove a trace from the Layer panel was to delete its entire
+  // group, which took every other trace in it down too.
+  const doDeleteTrace = async (traceId: string) => {
+    if (!supabase) return
+
+    const { error } = await supabase.from('traces').delete().eq('id', traceId)
+
+    if (error) {
+      console.error('Error deleting trace:', error)
+      return
+    }
+
+    removeTrace(traceId)
   }
 
   const renameGroup = (layerId: string, currentName: string) => {
@@ -427,13 +463,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
         </div>
         <div className="flex gap-2">
           <button
-            onClick={fixDuplicateZIndexes}
-            className="px-2 py-1 border border-yellow-600 text-yellow-500 text-[9px] tracking-wider uppercase hover:bg-yellow-600/20 transition-colors"
-            title="Fix duplicate z-indexes (run once if layers won't move)"
-          >
-            Fix
-          </button>
-          <button
             onClick={createGroup}
             className="px-3 py-1 bg-white text-black text-[9px] tracking-wider uppercase hover:bg-gray-200 transition-colors"
             title="Create new group"
@@ -463,13 +492,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
           
           // Check if any trace in this group is selected
           const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId)
+          const isActiveLayer = activeLayerId === layer.id
 
           return (
-            <div 
-              key={layer.id} 
+            <div
+              key={layer.id}
               className={`bg-gray-800/80 border transition-all ${
-                hasSelectedTrace 
-                  ? 'border-blue-400 bg-blue-900/20' 
+                isActiveLayer
+                  ? 'border-amber-400 bg-amber-900/20'
+                  : hasSelectedTrace
+                  ? 'border-blue-400 bg-blue-900/20'
                   : dropTargetId === layer.id
                     ? 'border-emerald-400 bg-emerald-900/20'
                     : 'border-gray-600'
@@ -481,15 +513,34 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
               {/* Group header */}
               <div className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer">
                 <div
-                  className="flex items-center gap-2 flex-1"
-                  onClick={() => toggleGroup(layer.id)}
+                  className="flex items-center gap-1 flex-1"
+                  title="Click the arrow to expand/collapse. Click the name to select all traces in this group and set it as the target for new traces."
                 >
-                  <span className="text-gray-400 text-[10px]">
+                  <span
+                    className="text-gray-400 text-[10px] px-1 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleGroup(layer.id)
+                    }}
+                  >
                     {isExpanded ? '▼' : '▶'}
                   </span>
-                  <span className="text-gray-400 text-xs">◇</span>
-                  <span className="text-white text-xs tracking-wide">{layer.name}</span>
-                  <span className="text-gray-500 text-[10px]">({layerTraces.length})</span>
+                  <div
+                    className="flex items-center gap-2 flex-1 cursor-pointer"
+                    onClick={() => {
+                      onSelectGroupTraces?.(layerTraces.map(t => t.id))
+                      onSetActiveLayer?.(isActiveLayer ? null : layer.id)
+                    }}
+                  >
+                    <span className={`text-xs ${isActiveLayer ? 'text-amber-400' : 'text-gray-400'}`}>
+                      {isActiveLayer ? '◆' : '◇'}
+                    </span>
+                    <span className="text-white text-xs tracking-wide">{layer.name}</span>
+                    <span className="text-gray-500 text-[10px]">({layerTraces.length})</span>
+                    {isActiveLayer && (
+                      <span className="text-amber-400 text-[9px] tracking-wider uppercase">Target</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -611,6 +662,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                         >
                           ↗
                         </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            doDeleteTrace(trace.id)
+                          }}
+                          className="text-red-400/60 hover:text-red-400 text-[10px] px-1.5 py-0.5"
+                          title="Delete trace"
+                        >
+                          ×
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -623,12 +684,28 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
         {/* Ungrouped traces */}
         {ungroupedTraces.length > 0 && (
           <div
-            className={`bg-gray-900/50 border p-2 transition-all ${dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-gray-600'}`}
+            className={`bg-gray-900/50 border p-2 transition-all ${
+              !activeLayerId
+                ? 'border-amber-400 bg-amber-900/10'
+                : dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-gray-600'
+            }`}
             onDragOver={(e) => handleDropTargetDragOver(e, UNGROUPED_DROP_TARGET)}
             onDrop={(e) => handleDropTargetDrop(e, null)}
             onDragLeave={() => handleDropTargetLeave(UNGROUPED_DROP_TARGET)}
           >
-            <div className="text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-2">Ungrouped</div>
+            <div
+              className="flex items-center gap-2 mb-2 cursor-pointer"
+              title="Click to select all ungrouped traces and set 'Ungrouped' as the target for new traces"
+              onClick={() => {
+                onSelectGroupTraces?.(ungroupedTraces.map(t => t.id))
+                onSetActiveLayer?.(null)
+              }}
+            >
+              <span className="text-gray-400 text-[9px] tracking-[0.15em] uppercase">Ungrouped</span>
+              {!activeLayerId && (
+                <span className="text-amber-400 text-[9px] tracking-wider uppercase">Target</span>
+              )}
+            </div>
             <div className="space-y-1">
               {ungroupedTraces.map((trace) => (
                 <div
@@ -706,6 +783,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                         </option>
                       ))}
                     </select>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        doDeleteTrace(trace.id)
+                      }}
+                      className="text-red-400/60 hover:text-red-400 text-[10px] px-1.5 py-0.5"
+                      title="Delete trace"
+                    >
+                      ×
+                    </button>
                   </div>
                 </div>
               ))}

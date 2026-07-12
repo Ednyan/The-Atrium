@@ -25,6 +25,10 @@ interface TraceOverlayProps {
   lobbyId?: string
   selectedTraceId: string | null
   setSelectedTraceId: (id: string | null) => void
+  // One-shot request from the Layer panel to multi-select a group's traces.
+  // A new array reference is sent each time (even for the same group), so
+  // the effect that consumes it always fires.
+  groupSelectRequest?: string[] | null
 }
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path'
 
@@ -61,7 +65,7 @@ function parseTraceClipboardPayload(rawValue: string): TraceClipboardPayload | n
   }
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, groupSelectRequest }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
     // Load font files from public/fonts folder - only once, with cleanup
@@ -98,7 +102,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -151,6 +155,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => { transformModeRef.current = transformMode }, [transformMode])
   useEffect(() => { selectedTraceIdRef.current = selectedTraceId }, [selectedTraceId])
 
+  // Apply a group-select request from the Layer panel (clicking a group
+  // header selects all its traces so they're easier to move together).
+  useEffect(() => {
+    if (!groupSelectRequest) return
+    setMultiSelectedIds(new Set(groupSelectRequest))
+    setSelectedTraceId(groupSelectRequest[0] ?? null)
+  }, [groupSelectRequest, setSelectedTraceId])
+
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
     const traceIds = new Set(traces.map(t => t.id))
@@ -164,9 +176,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       return Object.keys(filtered).length === Object.keys(prev).length ? prev : filtered
     })
 
-    // Clean up processedImageIds ref
-    processedImageIds.current.forEach(id => {
-      if (!traceIds.has(id)) processedImageIds.current.delete(id)
+    // Clean up processedImageIds ref (keys are "traceId::type::url", see below)
+    processedImageIds.current.forEach(key => {
+      const id = key.split('::')[0]
+      if (!traceIds.has(id)) processedImageIds.current.delete(key)
     })
     
     // Clean up imageDimensions
@@ -214,9 +227,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       if ((trace.type === 'image' || trace.type === 'embed') && (trace.mediaUrl || trace.imageUrl)) {
         const url = trace.mediaUrl || trace.imageUrl
         
-        // Skip if already processed (using ref to avoid re-renders cancelling other preflights)
-        if (processedImageIds.current.has(trace.id) || !url) return
-        processedImageIds.current.add(trace.id)
+        // Skip if already processed (using ref to avoid re-renders cancelling other preflights).
+        // Keyed by id+type+url (not just id) so a trace whose type/URL changes later --
+        // e.g. an embed converted to an internal image via "Convert to Image" -- gets
+        // re-resolved instead of keeping its stale (and now wrong) imageProxySources entry,
+        // which otherwise left it stuck showing "Loading..." until the atrium was reloaded.
+        if (!url) return
+        const processKey = `${trace.id}::${trace.type}::${url}`
+        if (processedImageIds.current.has(processKey)) return
+        processedImageIds.current.add(processKey)
         
         // Data URLs (e.g. from freehand drawing) need no proxy
         if (url.startsWith('data:')) {
@@ -753,7 +772,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       content: trace.content,
       position_x: trace.x + offsetX,
       position_y: trace.y + offsetY,
-      scale: trace.scale ?? 1.0,
+      scale: ((trace.scaleX ?? trace.scale ?? 1) + (trace.scaleY ?? trace.scale ?? 1)) / 2,
+      scale_x: trace.scaleX ?? trace.scale ?? 1.0,
+      scale_y: trace.scaleY ?? trace.scale ?? 1.0,
       rotation: trace.rotation ?? 0,
       flip_horizontal: trace.flipHorizontal ?? false,
       flip_vertical: trace.flipVertical ?? false,
@@ -1920,25 +1941,27 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 >
                   {getCursorSvg()}
                   {/* Player label */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 20,
-                      left: 12,
-                      color: playerColor,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
-                      pointerEvents: 'none',
-                      textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
-                      letterSpacing: '0.5px',
-                      background: 'rgba(0,0,0,0.6)',
-                      padding: '2px 6px',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {username}
-                  </div>
+                  {!hideOwnNameTag && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 20,
+                        left: 12,
+                        color: playerColor,
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                        textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                        letterSpacing: '0.5px',
+                        background: 'rgba(0,0,0,0.6)',
+                        padding: '2px 6px',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {username}
+                    </div>
+                  )}
                 </div>
               )
             }
@@ -3643,25 +3666,27 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 />
               </svg>
               {/* User label */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 16 * zoom,
-                  left: 10 * zoom,
-                  color: userColor,
-                  fontSize: `${10 * zoom}px`,
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                  textShadow: `0 0 6px rgba(${rgb.r},${rgb.g},${rgb.b},0.4), 0 2px 4px rgba(0,0,0,0.8)`,
-                  letterSpacing: '0.5px',
-                  background: 'rgba(0,0,0,0.6)',
-                  padding: '2px 5px',
-                  borderRadius: '3px',
-                }}
-              >
-                {user.username}
-              </div>
+              {!hideOtherNameTags && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 16 * zoom,
+                    left: 10 * zoom,
+                    color: userColor,
+                    fontSize: `${10 * zoom}px`,
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none',
+                    textShadow: `0 0 6px rgba(${rgb.r},${rgb.g},${rgb.b},0.4), 0 2px 4px rgba(0,0,0,0.8)`,
+                    letterSpacing: '0.5px',
+                    background: 'rgba(0,0,0,0.6)',
+                    padding: '2px 5px',
+                    borderRadius: '3px',
+                  }}
+                >
+                  {user.username}
+                </div>
+              )}
             </div>
           )
         })}
