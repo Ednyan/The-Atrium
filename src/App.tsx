@@ -1015,7 +1015,9 @@ function CloseSaveDialog() {
         const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const win = getCurrentWindow()
         const unlisten = await win.onCloseRequested((event) => {
-          if (useGameStore.getState().hasPendingChanges()) {
+          const pending = useGameStore.getState().hasPendingChanges()
+          console.log('[CloseSaveDialog] close-requested received, hasPendingChanges =', pending)
+          if (pending) {
             event.preventDefault()
             setShowCloseSaveDialog(true)
           }
@@ -1024,9 +1026,10 @@ function CloseSaveDialog() {
           unlisten()
         } else {
           closeUnlistenRef.current = unlisten
+          console.log('[CloseSaveDialog] close-requested listener registered')
         }
       } catch (err) {
-        console.error('Failed to register close-requested listener:', err)
+        console.error('[CloseSaveDialog] Failed to register close-requested listener:', err)
       }
     })()
 

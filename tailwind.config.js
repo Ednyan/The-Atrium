@@ -49,11 +49,16 @@ export default {
         'nier-scan': 'nier-scan 3s ease-in-out infinite',
         'nier-flicker': 'nier-flicker 0.15s ease-in-out',
         'nier-slide': 'nier-slide 1.2s ease-in-out infinite',
+        'saving-fade': 'saving-fade 1.4s ease-in-out infinite',
       },
       keyframes: {
         'nier-pulse': {
           '0%, 100%': { opacity: '0.7' },
           '50%': { opacity: '1' },
+        },
+        'saving-fade': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.25' },
         },
         'nier-scan': {
           '0%': { transform: 'translateY(-100%)' },

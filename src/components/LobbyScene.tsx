@@ -2003,7 +2003,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Autosave indicator */}
       {isAutosaving && (
         <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
-          <p className="text-white text-[10px] tracking-[0.2em] uppercase animate-pulse">
+          <p className="text-white text-[10px] tracking-[0.2em] uppercase animate-saving-fade">
             ◇ Saving...
           </p>
         </div>
