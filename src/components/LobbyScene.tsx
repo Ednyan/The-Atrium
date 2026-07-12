@@ -536,7 +536,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       lastAutosaveAt = Date.now()
       if (useGameStore.getState().hasPendingChanges() && !useGameStore.getState().isSavingChanges) {
         setIsAutosaving(true)
-        saveAllChanges().finally(() => setIsAutosaving(false))
+        const savingStartedAt = Date.now()
+        const MIN_SAVING_INDICATOR_MS = 4000
+        saveAllChanges().finally(() => {
+          const elapsed = Date.now() - savingStartedAt
+          const remaining = MIN_SAVING_INDICATOR_MS - elapsed
+          if (remaining > 0) {
+            setTimeout(() => setIsAutosaving(false), remaining)
+          } else {
+            setIsAutosaving(false)
+          }
+        })
       }
     }, 5000)
     return () => clearInterval(heartbeat)

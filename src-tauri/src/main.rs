@@ -271,6 +271,19 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        // Defer every native window-close request (title bar "X", Alt+F4,
+        // etc.) to the frontend. Without this, the OS-level window closes
+        // immediately regardless of what the frontend's onCloseRequested
+        // listener decides -- Tauri only pauses the native close if the
+        // Rust side explicitly calls prevent_close() here; the frontend
+        // (see App.tsx's CloseSaveDialog) is then responsible for calling
+        // window.close() itself once it's ready (immediately if there's
+        // nothing unsaved, or after the user responds to the save prompt).
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_app_data_dir,
             get_vault_base_path,
