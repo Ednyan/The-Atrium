@@ -51,18 +51,6 @@ const getStoredZoomSensitivity = () => {
 
 const clampAutosaveInterval = (value: number) => Math.max(10, Math.min(600, value))
 
-const getStoredAutosaveSettings = () => {
-  try {
-    const enabled = localStorage.getItem('lobby_autosaveEnabled') === 'true'
-    const rawInterval = localStorage.getItem('lobby_autosaveIntervalSeconds')
-    const parsed = rawInterval ? parseInt(rawInterval, 10) : 60
-    const intervalSeconds = Number.isFinite(parsed) ? clampAutosaveInterval(parsed) : 60
-    return { enabled, intervalSeconds }
-  } catch {
-    return { enabled: false, intervalSeconds: 60 }
-  }
-}
-
 const inferFileExtension = (file: File) => {
   const fromName = file.name.split('.').pop()?.trim().toLowerCase()
   if (fromName) return fromName
@@ -245,7 +233,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const worldOffsetRef = useRef({ x: 0, y: 0 })
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
-  const autosaveSettingsRef = useRef(getStoredAutosaveSettings())
+  const autosaveSettingsRef = useRef({ enabled: false, intervalSeconds: 60 })
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
@@ -292,12 +280,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
   const [groupSelectRequest, setGroupSelectRequest] = useState<string[] | null>(null)
+  // True only while a save triggered by the autosave heartbeat is in flight
+  // (not manual Ctrl+S/HUD-button saves), so the "Saving..." indicator only
+  // appears when the atrium is auto-saving on the user's behalf.
+  const [isAutosaving, setIsAutosaving] = useState(false)
   const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
-  const [showCloseSaveDialog, setShowCloseSaveDialog] = useState(false)
-  const closeUnlistenRef = useRef<(() => void) | null>(null)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
   const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
@@ -494,6 +484,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           createdAt: data.created_at,
           updatedAt: data.updated_at,
           themeSettings: data.theme_settings,
+          autosaveEnabled: data.autosave_enabled,
+          autosaveIntervalSeconds: data.autosave_interval_seconds,
         }
         setCurrentLobby(lobby)
         setIsLobbyOwner(data.owner_user_id === userId)
@@ -521,25 +513,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }, [])
 
-  // Listen for autosave setting changes from profile settings and keep value in sync
+  // Autosave is an atrium-wide policy the owner sets in the Manage panel
+  // (currentLobby.autosaveEnabled/autosaveIntervalSeconds), not a per-browser
+  // preference -- keep the ref in sync whenever that lobby data changes.
   useEffect(() => {
-    const handleAutosaveSettingsChanged = (event: Event) => {
-      const customEvent = event as CustomEvent<{ enabled: boolean; intervalSeconds: number }>
-      if (customEvent.detail) {
-        autosaveSettingsRef.current = {
-          enabled: customEvent.detail.enabled,
-          intervalSeconds: clampAutosaveInterval(customEvent.detail.intervalSeconds),
-        }
-        return
-      }
-      autosaveSettingsRef.current = getStoredAutosaveSettings()
+    autosaveSettingsRef.current = {
+      enabled: currentLobby?.autosaveEnabled ?? false,
+      intervalSeconds: clampAutosaveInterval(currentLobby?.autosaveIntervalSeconds ?? 60),
     }
-
-    window.addEventListener('lobby-autosave-settings-changed', handleAutosaveSettingsChanged as EventListener)
-    return () => {
-      window.removeEventListener('lobby-autosave-settings-changed', handleAutosaveSettingsChanged as EventListener)
-    }
-  }, [])
+  }, [currentLobby])
 
   // Autosave heartbeat - checks every 5s whether enough time has passed since the
   // last save to trigger another one. A single slow-ticking interval (rather than
@@ -553,7 +535,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (Date.now() - lastAutosaveAt < intervalSeconds * 1000) return
       lastAutosaveAt = Date.now()
       if (useGameStore.getState().hasPendingChanges() && !useGameStore.getState().isSavingChanges) {
-        saveAllChanges()
+        setIsAutosaving(true)
+        saveAllChanges().finally(() => setIsAutosaving(false))
       }
     }, 5000)
     return () => clearInterval(heartbeat)
@@ -563,41 +546,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // mutations on mouse move/enter/leave (see brushCursorRef usage below), so
   // it can get stuck visible at a stale position if the mouse leaves the
   // canvas without a DOM mouseleave event -- e.g. clicking the native OS
-  // window close button. Force-hide it whenever the close-save dialog opens
-  // so it can't bleed through the dialog's semi-transparent backdrop.
+  // window close button. Force-hide it whenever the (now App-level, see
+  // App.tsx's CloseSaveDialog) close-save dialog opens so it can't bleed
+  // through the dialog's semi-transparent backdrop.
   useEffect(() => {
-    if (showCloseSaveDialog && brushCursorRef.current) {
-      brushCursorRef.current.style.display = 'none'
+    const handleClosePromptShown = () => {
+      if (brushCursorRef.current) brushCursorRef.current.style.display = 'none'
     }
-  }, [showCloseSaveDialog])
-
-  // Desktop only: intercept the native window close (title bar "X", Alt+F4, etc.)
-  // and prompt to save if there are unsaved trace changes, similar to native apps.
-  useEffect(() => {
-    if (!isDesktop) return
-    let cancelled = false
-
-    ;(async () => {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      const win = getCurrentWindow()
-      const unlisten = await win.onCloseRequested((event) => {
-        if (useGameStore.getState().hasPendingChanges()) {
-          event.preventDefault()
-          setShowCloseSaveDialog(true)
-        }
-      })
-      if (cancelled) {
-        unlisten()
-      } else {
-        closeUnlistenRef.current = unlisten
-      }
-    })()
-
-    return () => {
-      cancelled = true
-      closeUnlistenRef.current?.()
-      closeUnlistenRef.current = null
-    }
+    window.addEventListener('digital-atrium-close-prompt-shown', handleClosePromptShown)
+    return () => window.removeEventListener('digital-atrium-close-prompt-shown', handleClosePromptShown)
   }, [])
 
   // Keep traces ref in sync
@@ -853,7 +810,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Load theme assets asynchronously
       themeManager.loadTheme().then(() => {
         if (!cancelled) {
-          themeManager.createParticles(viewportWidth, viewportHeight)
+          themeManager.createParticles(viewportWidth, viewportHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
         }
       })
 
@@ -1632,7 +1589,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       })
 
       // Recreate particles with new settings
-      themeManagerRef.current.createParticles(viewportWidth, viewportHeight)
+      themeManagerRef.current.createParticles(viewportWidth, viewportHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
 
       // Handle ground elements
       if (themeSettings?.groundParticlesEnabled === false) {
@@ -2032,6 +1989,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           </div>
         )}
       </div>
+
+      {/* Autosave indicator */}
+      {isAutosaving && (
+        <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
+          <p className="text-white text-[10px] tracking-[0.2em] uppercase animate-pulse">
+            ◇ Saving...
+          </p>
+        </div>
+      )}
 
       {/* HUD */}
       <div ref={hudRef} data-ui-element="true" className="fixed top-4 left-4 bg-black px-3 py-2 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
@@ -2854,6 +2820,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   createdAt: data.created_at,
                   updatedAt: data.updated_at,
                   themeSettings: data.theme_settings,
+                  autosaveEnabled: data.autosave_enabled,
+                  autosaveIntervalSeconds: data.autosave_interval_seconds,
                 }
                 setCurrentLobby(lobby)
               }
@@ -2888,6 +2856,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       createdAt: data.created_at,
                       updatedAt: data.updated_at,
                       themeSettings: data.theme_settings,
+                      autosaveEnabled: data.autosave_enabled,
+                      autosaveIntervalSeconds: data.autosave_interval_seconds,
                     })
                   }
                 })
@@ -2971,62 +2941,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )
       })()}
 
-      {/* Desktop close-with-unsaved-changes prompt */}
-      {showCloseSaveDialog && (
-        <div className="fixed inset-0 z-[10003] bg-black/70 flex items-center justify-center pointer-events-auto">
-          <div className="bg-gray-900 border border-gray-500 p-6 relative" style={{ maxWidth: '260px' }}>
-            {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
-
-            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-gray-400 mr-2">◇</span>Unsaved Changes
-            </h3>
-            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
-              You have unsaved changes. Save before closing?
-            </p>
-
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    await saveAllChanges()
-                  } catch {
-                    // Fall through and close even if save fails, matching the
-                    // "Save and Leave" button's behavior elsewhere in this file
-                  }
-                  closeUnlistenRef.current?.()
-                  closeUnlistenRef.current = null
-                  const { getCurrentWindow } = await import('@tauri-apps/api/window')
-                  getCurrentWindow().close()
-                }}
-                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
-              >
-                ◇ Save and Close
-              </button>
-              <button
-                onClick={async () => {
-                  closeUnlistenRef.current?.()
-                  closeUnlistenRef.current = null
-                  const { getCurrentWindow } = await import('@tauri-apps/api/window')
-                  getCurrentWindow().close()
-                }}
-                className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
-              >
-                Don't Save
-              </button>
-              <button
-                onClick={() => setShowCloseSaveDialog(false)}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

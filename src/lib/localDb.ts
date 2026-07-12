@@ -640,7 +640,9 @@ export async function initLocalDb(): Promise<void> {
       is_public INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
-      theme_settings TEXT
+      theme_settings TEXT,
+      autosave_enabled INTEGER DEFAULT 0,
+      autosave_interval_seconds INTEGER DEFAULT 60
     )
   `)
 
@@ -657,8 +659,8 @@ export async function initLocalDb(): Promise<void> {
       image_url TEXT,
       media_url TEXT,
       scale REAL DEFAULT 1.0,
-      scale_x REAL DEFAULT 1.0,
-      scale_y REAL DEFAULT 1.0,
+      scale_x REAL,
+      scale_y REAL,
       rotation REAL DEFAULT 0.0,
       flip_horizontal INTEGER DEFAULT 0,
       flip_vertical INTEGER DEFAULT 0,
@@ -768,15 +770,49 @@ export async function initLocalDb(): Promise<void> {
   // Ensure traces scale_x/scale_y exist (for DBs created before non-uniform
   // stretch was persisted independently of the single `scale` column) and
   // backfill them from the existing scale value so old rows keep their size.
+  // No DEFAULT here (unlike the `scale` column) -- SQLite, unlike Postgres,
+  // immediately applies a column DEFAULT to existing rows on ADD COLUMN, which
+  // an earlier version of this migration used and it silently defeated the
+  // `WHERE scale_x IS NULL` backfill below (every row already had 1.0, never
+  // NULL), resetting every pre-existing trace's scale. New traces still get
+  // the correct size via mapRowToTrace's `row.scale_x ?? row.scale ?? 1.0`
+  // fallback, since every insert path already sets `scale` explicitly.
   try {
-    await db.execute('ALTER TABLE traces ADD COLUMN scale_x REAL DEFAULT 1.0')
+    await db.execute('ALTER TABLE traces ADD COLUMN scale_x REAL')
     await db.execute('UPDATE traces SET scale_x = scale WHERE scale_x IS NULL')
   } catch {
     // Column already exists — ignore
   }
   try {
-    await db.execute('ALTER TABLE traces ADD COLUMN scale_y REAL DEFAULT 1.0')
+    await db.execute('ALTER TABLE traces ADD COLUMN scale_y REAL')
     await db.execute('UPDATE traces SET scale_y = scale WHERE scale_y IS NULL')
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Repair for DBs that already went through the buggy version of the
+  // migration above: scale_x=1.0 AND scale_y=1.0 AND scale<>1.0 can't happen
+  // through normal use (saveAllChanges always writes `scale` as the average
+  // of scale_x/scale_y), so it's a safe signal a trace's size was reset by
+  // that bug -- recover it from the untouched `scale` column.
+  try {
+    await db.execute(
+      'UPDATE traces SET scale_x = scale, scale_y = scale ' +
+      'WHERE scale_x = 1.0 AND scale_y = 1.0 AND scale IS NOT NULL AND scale != 1.0'
+    )
+  } catch {
+    // Best-effort repair — ignore failures
+  }
+
+  // Ensure lobbies autosave columns exist (for DBs created before autosave
+  // was moved from a global browser preference to a per-atrium setting)
+  try {
+    await db.execute('ALTER TABLE lobbies ADD COLUMN autosave_enabled INTEGER DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE lobbies ADD COLUMN autosave_interval_seconds INTEGER DEFAULT 60')
   } catch {
     // Column already exists — ignore
   }
@@ -1085,7 +1121,7 @@ function convertRowFromSql(table: string, row: any): any {
       'text_bold', 'text_italic', 'text_underline', 'is_locked', 'illuminate',
       'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
       'flip_horizontal', 'flip_vertical'],
-    lobbies: ['is_public'],
+    lobbies: ['is_public', 'autosave_enabled'],
     layers: ['is_group'],
     profiles: [],
     lobby_access_lists: [],
@@ -1124,7 +1160,7 @@ function convertRowToSql(table: string, row: any): any {
       'text_bold', 'text_italic', 'text_underline', 'is_locked', 'illuminate',
       'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
       'flip_horizontal', 'flip_vertical'],
-    lobbies: ['is_public'],
+    lobbies: ['is_public', 'autosave_enabled'],
     layers: ['is_group'],
     profiles: [],
     lobby_access_lists: [],

@@ -12,6 +12,8 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
   const [lobbyName, setLobbyName] = useState(lobby.name)
   const [password, setPassword] = useState('')
   const [isPublic, setIsPublic] = useState(lobby.isPublic)
+  const [autosaveEnabled, setAutosaveEnabled] = useState(lobby.autosaveEnabled ?? false)
+  const [autosaveIntervalSeconds, setAutosaveIntervalSeconds] = useState(lobby.autosaveIntervalSeconds ?? 60)
   const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -107,6 +109,8 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
         is_public: isPublic,
         // Set password_hash to null if empty (makes lobby public), otherwise set the password
         password_hash: trimmedPassword || null,
+        autosave_enabled: autosaveEnabled,
+        autosave_interval_seconds: Math.max(10, Math.min(600, autosaveIntervalSeconds)),
       }
 
       const { error } = await (supabase!
@@ -281,6 +285,45 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
                   Public (visible in atrium browser)
                 </span>
               </label>
+
+              <div className="pt-2 border-t border-nier-border/20">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                    autosaveEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                  }`}>
+                    {autosaveEnabled && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autosaveEnabled}
+                    onChange={(e) => setAutosaveEnabled(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className="text-nier-border text-[10px] tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                    Autosave
+                  </span>
+                </label>
+                <p className="text-nier-border/40 text-[10px] tracking-wider mt-1">
+                  Periodically saves everyone's pending changes in this atrium
+                </p>
+
+                {autosaveEnabled && (
+                  <div className="mt-3">
+                    <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                      Save Every: {autosaveIntervalSeconds}s
+                    </label>
+                    <input
+                      type="range"
+                      min="10"
+                      max="600"
+                      step="10"
+                      value={autosaveIntervalSeconds}
+                      onChange={(e) => setAutosaveIntervalSeconds(parseInt(e.target.value, 10))}
+                      className="w-full accent-nier-bg"
+                    />
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={updateLobbySettings}

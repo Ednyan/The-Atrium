@@ -7,6 +7,7 @@ import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
+import { saveAllChanges } from './lib/traceSave'
 
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | 'ready'
 
@@ -46,27 +47,29 @@ function ImageSequencePlayer({
   className?: string
 }) {
   const [frameIndex, setFrameIndex] = useState(0)
-  const [decodedFramesCount, setDecodedFramesCount] = useState(0)
   const decodedFramesRef = useRef<boolean[]>([])
+  // Mirrors how many frames have decoded so far, without being React state --
+  // this is read inside the single persistent playback loop below rather
+  // than being an effect dependency, so background frames finishing decode
+  // mid-playback can't tear down and restart the loop (which used to reset
+  // its clock to zero, causing the animation to visibly jump back/freeze).
+  const decodedCountRef = useRef(0)
   const frameIndexRef = useRef(0)
   const completionFiredRef = useRef(false)
   const nearCompletionFiredRef = useRef(false)
 
   useEffect(() => {
     setFrameIndex(0)
-    setDecodedFramesCount(0)
     frameIndexRef.current = 0
     decodedFramesRef.current = Array(frames.length).fill(false)
+    decodedCountRef.current = 0
     completionFiredRef.current = false
     nearCompletionFiredRef.current = false
   }, [frames, loop, nearCompleteLeadFrames, bufferLeadFrames])
 
   // Pre-decode frames so playback doesn't hitch while decoding in real time.
   useEffect(() => {
-    if (frames.length === 0) {
-      setDecodedFramesCount(0)
-      return
-    }
+    if (frames.length === 0) return
 
     let cancelled = false
 
@@ -78,7 +81,7 @@ function ImageSequencePlayer({
         if (cancelled) return
         if (decodedFramesRef.current[idx]) return
         decodedFramesRef.current[idx] = true
-        setDecodedFramesCount((count) => count + 1)
+        decodedCountRef.current += 1
       }
 
       img.onload = () => {
@@ -104,12 +107,21 @@ function ImageSequencePlayer({
     }
 
     const minimumBuffered = Math.min(Math.max(1, bufferLeadFrames), frames.length)
-    if (decodedFramesCount < minimumBuffered) return
 
     let rafId = 0
-    const startTime = performance.now()
+    // Not captured until the buffering threshold is actually met (inside
+    // tick), so waiting for decode never eats into the animation's clock.
+    let startTime: number | null = null
 
     const tick = (now: number) => {
+      if (startTime === null) {
+        if (decodedCountRef.current < minimumBuffered) {
+          rafId = window.requestAnimationFrame(tick)
+          return
+        }
+        startTime = now
+      }
+
       const elapsedSeconds = (now - startTime) / 1000
       const rawIndex = Math.floor(elapsedSeconds * fps)
 
@@ -155,7 +167,6 @@ function ImageSequencePlayer({
     fps,
     loop,
     bufferLeadFrames,
-    decodedFramesCount,
     nearCompleteLeadFrames,
     onNearComplete,
     onComplete,
@@ -273,9 +284,9 @@ function navigate(path: string) {
   }
 }
 
-function App() {
+function AppInner() {
   const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
-  
+
   // URL-based routing state
   const [route, setRoute] = useState(parseRoute)
   
@@ -979,6 +990,124 @@ function App() {
         <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
       </div>
     </div>
+  )
+}
+
+// Desktop only: intercept the native window close (title bar "X", Alt+F4,
+// etc.) and prompt to save if there are unsaved trace changes, similar to
+// native apps. Mounted once at the App root (not inside LobbyScene) so it's
+// active regardless of which screen is showing -- previously this lived
+// inside LobbyScene, so closing from the lobby browser/landing page (i.e.
+// after leaving an atrium without saving) skipped the prompt entirely since
+// no listener was registered outside an active atrium.
+const CLOSE_PROMPT_SHOWN_EVENT = 'digital-atrium-close-prompt-shown'
+
+function CloseSaveDialog() {
+  const [showCloseSaveDialog, setShowCloseSaveDialog] = useState(false)
+  const closeUnlistenRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    if (!isDesktop) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        const win = getCurrentWindow()
+        const unlisten = await win.onCloseRequested((event) => {
+          if (useGameStore.getState().hasPendingChanges()) {
+            event.preventDefault()
+            setShowCloseSaveDialog(true)
+          }
+        })
+        if (cancelled) {
+          unlisten()
+        } else {
+          closeUnlistenRef.current = unlisten
+        }
+      } catch (err) {
+        console.error('Failed to register close-requested listener:', err)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      closeUnlistenRef.current?.()
+      closeUnlistenRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showCloseSaveDialog) {
+      window.dispatchEvent(new CustomEvent(CLOSE_PROMPT_SHOWN_EVENT))
+    }
+  }, [showCloseSaveDialog])
+
+  if (!showCloseSaveDialog) return null
+
+  return (
+    <div className="fixed inset-0 z-[10003] bg-black/70 flex items-center justify-center pointer-events-auto">
+      <div className="bg-gray-900 border border-gray-500 p-6 relative" style={{ maxWidth: '260px' }}>
+        {/* Corner brackets */}
+        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+
+        <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+          <span className="text-gray-400 mr-2">◇</span>Unsaved Changes
+        </h3>
+        <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+          You have unsaved changes. Save before closing?
+        </p>
+
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={async () => {
+              try {
+                await saveAllChanges()
+              } catch {
+                // Fall through and close even if save fails, matching the
+                // "Save and Leave" button's behavior elsewhere in the app
+              }
+              closeUnlistenRef.current?.()
+              closeUnlistenRef.current = null
+              const { getCurrentWindow } = await import('@tauri-apps/api/window')
+              getCurrentWindow().close()
+            }}
+            className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+          >
+            ◇ Save and Close
+          </button>
+          <button
+            onClick={async () => {
+              closeUnlistenRef.current?.()
+              closeUnlistenRef.current = null
+              const { getCurrentWindow } = await import('@tauri-apps/api/window')
+              getCurrentWindow().close()
+            }}
+            className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
+          >
+            Don't Save
+          </button>
+          <button
+            onClick={() => setShowCloseSaveDialog(false)}
+            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <>
+      <AppInner />
+      <CloseSaveDialog />
+    </>
   )
 }
 

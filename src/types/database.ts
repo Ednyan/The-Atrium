@@ -199,6 +199,10 @@ export interface Lobby {
   createdAt: string
   updatedAt: string
   themeSettings?: ThemeSettings | null
+  // Atrium-wide autosave policy, configured by the owner in the Manage
+  // panel. Every collaborator's client honors this while in the atrium.
+  autosaveEnabled?: boolean
+  autosaveIntervalSeconds?: number
 }
 
 export interface LobbyAccessList {

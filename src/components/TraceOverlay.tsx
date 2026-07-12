@@ -2137,13 +2137,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     outline: isSelected
                       ? '2px solid rgba(218, 212, 187, 0.9)'
                       : isMultiSelected
-                      ? '2px solid rgba(196, 190, 165, 0.9)'
+                      ? '2px solid rgba(134, 239, 172, 0.95)'
                       : 'none',
                     outlineOffset: '2px',
                     boxShadow: isSelected
                       ? '0 0 0 1px rgba(218, 212, 187, 0.85), 0 0 16px rgba(218, 212, 187, 0.35)'
                       : isMultiSelected
-                      ? '0 0 14px rgba(196, 190, 165, 0.4)'
+                      ? '0 0 0 2px rgba(134, 239, 172, 0.9), 0 0 22px rgba(134, 239, 172, 0.65), 0 0 34px rgba(134, 239, 172, 0.35)'
                       : 'none',
                   }}
                 >
@@ -2254,7 +2254,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     boxSizing: 'content-box',
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `2px solid ${isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#c4bea5' : borderColor}` : 'none',
+                    border: showBorder ? `2px solid ${isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? (() => {
                       const fc = displayTrace.fillColor || '#1a1a18';
@@ -2266,7 +2266,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       return `rgba(${r}, ${g}, ${b}, ${fo})`;
                     })() : 'transparent',
                     ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
-                      borderColor: isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#c4bea5' : (() => {
+                      borderColor: isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#86efac' : (() => {
                         const bc = borderColor;
                         const bo = trace.borderOpacity;
                         const r = parseInt(bc.slice(1, 3), 16) || 255;
@@ -2280,10 +2280,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     backgroundImage: showBackground ? 'repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(218, 212, 187, 0.035) 2px, rgba(218, 212, 187, 0.035) 3px)' : 'none',
                     boxShadow: isSelected && isCropMode
                       ? '0 0 0 1px rgba(156, 150, 129, 0.9), 0 0 16px rgba(156, 150, 129, 0.45)'
-                      : isSelected 
-                      ? '0 0 0 1px rgba(218, 212, 187, 0.85), 0 0 16px rgba(218, 212, 187, 0.35)' 
+                      : isSelected
+                      ? '0 0 0 1px rgba(218, 212, 187, 0.85), 0 0 16px rgba(218, 212, 187, 0.35)'
                       : isMultiSelected
-                      ? '0 0 0 1px rgba(196, 190, 165, 0.8), 0 0 14px rgba(196, 190, 165, 0.35)'
+                      ? '0 0 0 2px rgba(134, 239, 172, 0.95), 0 0 24px rgba(134, 239, 172, 0.7), 0 0 38px rgba(134, 239, 172, 0.4)'
                       : (showBackground ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(218, 212, 187, 0.06)' : 'none'),
                     overflow: 'hidden',
                   }}
@@ -3202,12 +3202,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <path
                       d={pathData}
                       fill="none"
-                      stroke="#c4bea5"
-                      strokeWidth={outlineWidth + 6}
+                      stroke="#86efac"
+                      strokeWidth={outlineWidth + 8}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      opacity={0.5}
-                      style={{ pointerEvents: 'none', filter: 'blur(3px)' }}
+                      opacity={0.75}
+                      style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
                     />
                   )}
                   {/* Invisible wider stroke for easier clicking */}
@@ -3285,12 +3285,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <polyline
                       points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
                       fill="none"
-                      stroke="#c4bea5"
-                      strokeWidth={outlineWidth + 6}
+                      stroke="#86efac"
+                      strokeWidth={outlineWidth + 8}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      opacity={0.5}
-                      style={{ pointerEvents: 'none', filter: 'blur(3px)' }}
+                      opacity={0.75}
+                      style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
                     />
                   )}
                   {/* Invisible wider stroke for easier clicking */}

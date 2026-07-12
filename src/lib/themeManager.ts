@@ -291,7 +291,7 @@ export class ThemeManager {
     });
   }
 
-  createParticles(viewportWidth: number, viewportHeight: number) {
+  createParticles(viewportWidth: number, viewportHeight: number, centerX: number = 0, centerY: number = 0) {
     // Clear existing particles
     this.particles.forEach(p => {
       this.particleContainer.removeChild(p.sprite)
@@ -324,9 +324,11 @@ export class ThemeManager {
       graphics.lineStyle(1, particleColor, 0.1)
       graphics.drawCircle(0, 0, size + 2)
       
-      // Random position in viewport
-      const worldX = (Math.random() - 0.5) * viewportWidth * 3
-      const worldY = (Math.random() - 0.5) * viewportHeight * 3
+      // Random position in viewport, centered on the camera rather than raw
+      // world origin -- otherwise particles all spawn around (0,0) and only
+      // reach a camera that started elsewhere once the wrap logic catches up.
+      const worldX = centerX + (Math.random() - 0.5) * viewportWidth * 3
+      const worldY = centerY + (Math.random() - 0.5) * viewportHeight * 3
       graphics.x = worldX
       graphics.y = worldY
       
@@ -384,22 +386,28 @@ export class ThemeManager {
         fadeOpacity = Math.max(0, 1 - fadeProgress)
       }
       
-      // Wrap around viewport bounds
+      // Wrap around viewport bounds. Each axis uses its own dimension --
+      // reusing viewportWidth for the Y axis made the vertical wrap distance
+      // wildly inconsistent with what's actually visible on non-square
+      // windows, so particles that drifted off the top/bottom could wander
+      // far out of view for a long time before ever wrapping back in,
+      // making the field look like it was slowly thinning out.
       const relX = particle.worldX - cameraX
       const relY = particle.worldY - cameraY
-      
-      const wrapDistance = viewportWidth * 1.5
-      
-      if (relX < -wrapDistance) {
-        particle.worldX = cameraX + wrapDistance
-      } else if (relX > wrapDistance) {
-        particle.worldX = cameraX - wrapDistance
+
+      const wrapDistanceX = viewportWidth * 1.5
+      const wrapDistanceY = viewportHeight * 1.5
+
+      if (relX < -wrapDistanceX) {
+        particle.worldX = cameraX + wrapDistanceX
+      } else if (relX > wrapDistanceX) {
+        particle.worldX = cameraX - wrapDistanceX
       }
-      
-      if (relY < -wrapDistance) {
-        particle.worldY = cameraY + wrapDistance
-      } else if (relY > wrapDistance) {
-        particle.worldY = cameraY - wrapDistance
+
+      if (relY < -wrapDistanceY) {
+        particle.worldY = cameraY + wrapDistanceY
+      } else if (relY > wrapDistanceY) {
+        particle.worldY = cameraY - wrapDistanceY
       }
       
       // Gentle pulsing opacity combined with distance fade
