@@ -64,6 +64,7 @@ interface GameState {
   setHideOtherNameTags: (hide: boolean) => void
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
+  updateOtherUserPosition: (userId: string, x: number, y: number) => void
   removeOtherUser: (userId: string) => void
   clearOtherUsers: () => void
   addTrace: (trace: Trace) => void
@@ -157,14 +158,29 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   updateOtherUser: (userId, presence) =>
     set((state) => {
-      return { 
-        otherUsers: { 
-          ...state.otherUsers, 
-          [userId]: presence 
-        } 
+      return {
+        otherUsers: {
+          ...state.otherUsers,
+          [userId]: presence
+        }
       }
     }),
-  
+
+  // Cheap position-only merge for high-frequency cursor broadcasts -- avoids
+  // clobbering username/color/joinedAt that only presence sync carries, and
+  // is a no-op if this user isn't tracked yet (presence hasn't arrived).
+  updateOtherUserPosition: (userId, x, y) =>
+    set((state) => {
+      const existing = state.otherUsers[userId]
+      if (!existing) return {}
+      return {
+        otherUsers: {
+          ...state.otherUsers,
+          [userId]: { ...existing, x, y, timestamp: Date.now() }
+        }
+      }
+    }),
+
   removeOtherUser: (userId) =>
     set((state) => {
       const { [userId]: removed, ...rest } = state.otherUsers

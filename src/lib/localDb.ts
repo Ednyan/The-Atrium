@@ -1356,6 +1356,10 @@ class MockChannel {
     return this
   }
 
+  send(_data: any): Promise<string> {
+    return Promise.resolve('ok')
+  }
+
   presenceState(): Record<string, any[]> {
     // Return empty — single user, no other players
     return {}

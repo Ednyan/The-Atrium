@@ -6,7 +6,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
 
 export function usePresence(lobbyId: string | null) {
-  const { userId, username, position, playerColor, updateOtherUser, removeOtherUser, setPosition } = useGameStore()
+  const { userId, username, position, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
   const playerColorRef = useRef(playerColor)
@@ -59,26 +59,39 @@ export function usePresence(lobbyId: string | null) {
     // Connecting to lobby presence channel
     joinedAtRef.current = Date.now()
 
-    // Create lobby-specific presence channel
+    // Create lobby-specific presence channel. Presence (track/sync/join/
+    // leave) is used only for the "who's here" roster -- username, color,
+    // join time -- which changes rarely. Live cursor position is sent
+    // separately over broadcast (see below): broadcast is a stateless
+    // fire-and-forget pub/sub that doesn't mutate the presence registry, so
+    // frequent position updates can't perturb (or be perturbed by) roster
+    // sync, and don't cost anything extra in presence-diff bookkeeping.
     const channelName = `lobby-${lobbyId}-presence`
     const channel = supabase.channel(channelName, {
       config: {
         presence: {
           key: userId,
         },
+        broadcast: {
+          self: false,
+          ack: false,
+        },
       },
     })
 
     // Applies the channel's current presence snapshot additively (adds/
     // updates, never removes). Used for the 'sync' event, which the SDK
-    // fires on nearly every presence change -- including our own throttled
-    // position broadcasts -- so it can't be trusted to always carry a fully
-    // settled snapshot. Removal on a momentarily-incomplete sync used to
-    // wipe out other users who had just been correctly added, making them
-    // vanish permanently instead of "sometimes" -- so removal is handled
-    // separately, only by the slower periodic reconciliation below.
+    // fires on every presence change -- so it can't be trusted to always
+    // carry a fully settled snapshot. Removal on a momentarily-incomplete
+    // sync used to wipe out other users who had just been correctly added,
+    // making them vanish permanently instead of "sometimes" -- so removal
+    // is handled separately, only by the slower periodic reconciliation
+    // below. Position is merged against whatever's already known rather
+    // than overwritten, since a cursor broadcast is almost always more
+    // current than the position last recorded at presence-track time.
     const applyPresenceState = () => {
       const state = channel.presenceState()
+      const otherUsers = useGameStore.getState().otherUsers
 
       Object.entries(state).forEach(([key, presences]) => {
         const presenceArr = presences as any[]
@@ -86,11 +99,12 @@ export function usePresence(lobbyId: string | null) {
         if (!isValidUserKey(key)) return
 
         const presence = presenceArr[0] as any
+        const existing = otherUsers[key]
         updateOtherUser(key, {
           userId: key,
           username: presence.username,
-          x: presence.x,
-          y: presence.y,
+          x: existing?.x ?? presence.x,
+          y: existing?.y ?? presence.y,
           playerColor: presence.playerColor || '#ffffff',
           timestamp: Date.now(),
           joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
@@ -121,11 +135,12 @@ export function usePresence(lobbyId: string | null) {
       .on('presence', { event: 'join' }, ({ key, newPresences }: { key: string; newPresences: any[] }) => {
         if (key !== userId && newPresences && newPresences.length > 0 && isValidUserKey(key)) {
           const presence = newPresences[0] as any
+          const existing = useGameStore.getState().otherUsers[key]
           updateOtherUser(key, {
             userId: key,
             username: presence.username,
-            x: presence.x,
-            y: presence.y,
+            x: existing?.x ?? presence.x,
+            y: existing?.y ?? presence.y,
             playerColor: presence.playerColor || '#ffffff',
             timestamp: Date.now(),
             joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
@@ -135,6 +150,11 @@ export function usePresence(lobbyId: string | null) {
       .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
         if (key !== userId) {
           removeOtherUser(key)
+        }
+      })
+      .on('broadcast', { event: 'cursor' }, ({ payload }: { payload: any }) => {
+        if (payload && payload.userId !== userId && isValidUserKey(payload.userId)) {
+          updateOtherUserPosition(payload.userId, payload.x, payload.y)
         }
       })
       .subscribe(async (status: string) => {
@@ -156,8 +176,10 @@ export function usePresence(lobbyId: string | null) {
 
     channelRef.current = channel
 
-    // Send position updates only when position actually changes
-    // Throttle to max 1 update per 2 seconds to reduce Realtime message usage
+    // Send position updates only when position actually changes. Throttled
+    // to max 1 update per 2 seconds to keep Realtime message usage minimal.
+    // Sent as a lightweight broadcast (not track()) -- see comment above the
+    // channel config for why position is kept out of the presence registry.
     let lastBroadcastTime = 0
     let lastBroadcastX = position.x
     let lastBroadcastY = position.y
@@ -170,17 +192,19 @@ export function usePresence(lobbyId: string | null) {
         const dx = Math.abs(positionRef.current.x - lastBroadcastX)
         const dy = Math.abs(positionRef.current.y - lastBroadcastY)
         const timeSinceLastBroadcast = now - lastBroadcastTime
-        
+
         // Only broadcast if:
         // 1. Enough time has passed (throttle), AND
         // 2. Player has moved significantly
         if (timeSinceLastBroadcast >= MIN_BROADCAST_INTERVAL && (dx >= MIN_MOVEMENT_DISTANCE || dy >= MIN_MOVEMENT_DISTANCE)) {
-          await channelRef.current.track({
-            username,
-            x: positionRef.current.x,
-            y: positionRef.current.y,
-            playerColor: playerColorRef.current,
-            online_at: new Date(joinedAtRef.current).toISOString(),
+          await channelRef.current.send({
+            type: 'broadcast',
+            event: 'cursor',
+            payload: {
+              userId,
+              x: positionRef.current.x,
+              y: positionRef.current.y,
+            },
           })
           lastBroadcastTime = now
           lastBroadcastX = positionRef.current.x
