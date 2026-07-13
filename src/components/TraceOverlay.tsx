@@ -37,11 +37,23 @@ const TRACE_CLIPBOARD_TEXT_SENTINEL = '__DIGITAL_ATRIUM_TRACE_CLIPBOARD__'
 
 // Trace z-index encodes layer*100 + order-within-layer (see layerZIndex.ts)
 // and is intentionally left uncapped so traces compare correctly across
-// layers. Selection handles (the `z-[1000000]` Tailwind classes below) and
-// other users' cursors need to stay above every trace regardless, so they
-// use fixed values far above any realistic trace z-index rather than a
-// small constant the traces have to stay under.
+// layers. Selection handles (the `z-[1000000]` Tailwind classes below),
+// other users' cursors, and the local player's own cursor all need to stay
+// above every trace regardless, so they use fixed values far above any
+// realistic trace z-index rather than a small constant the traces have to
+// stay under. Ordered handles < other users' cursors < own cursor, matching
+// this file's original (pre-uncapped-trace-zIndex) hardcoded values of 50,
+// 999, and 10003 respectively.
 const OTHER_USER_CURSOR_Z_INDEX = 2_000_000
+// Own-cursor z-index floor: playerZIndex*100 is meant to place the local
+// cursor above all layers (it's set to (layerCount+1)*100 -- see
+// LayerPanel's repairDuplicateZIndexes), but that's frequently far below the
+// handle/other-cursor z-index above (e.g. the default playerZIndex of 1000
+// is only 100,000) since it was never designed with editing UI in mind.
+// Flooring the value used for both sort position and the cursor's actual
+// rendered zIndex keeps the player's own cursor on top without touching the
+// stored playerZIndex value other code relies on.
+const OWN_CURSOR_MIN_Z_INDEX = 3_000_000
 
 type TraceClipboardPayload = {
   version: 1
@@ -1832,7 +1844,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const sortedItems = React.useMemo(() => {
     return [
       ...visibleTraces.map(trace => ({ type: 'trace' as const, trace, zIndex: trace.zIndex ?? 0 })),
-      { type: 'player' as const, trace: null, zIndex: playerZIndex * 100 }
+      { type: 'player' as const, trace: null, zIndex: Math.max(playerZIndex * 100, OWN_CURSOR_MIN_Z_INDEX) }
     ].sort((a, b) => a.zIndex - b.zIndex)
   }, [visibleTraces, playerZIndex])
 
@@ -2289,7 +2301,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     top: playerScreenY,
                     pointerEvents: 'none',
                     filter: `drop-shadow(0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6))`,
-                    zIndex: 10003,
+                    zIndex: item.zIndex,
                   }}
                 >
                   {getCursorSvg()}
