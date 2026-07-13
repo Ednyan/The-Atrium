@@ -7,24 +7,28 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Nier:Automata inspired palette
+        // Desaturated (grayscale) palette -- same lightness values as the
+        // original warm beige/gold "Nier:Automata" theme, with saturation
+        // removed. `red` is kept as the one semantic accent for
+        // errors/delete/danger, which is a deliberate exception, not an
+        // oversight.
         nier: {
-          bg: '#DAD4BB',        // Main beige/cream background
-          bgDark: '#C4BEA5',    // Darker beige
-          bgDarker: '#A8A28D',  // Even darker beige
-          text: '#4A4A42',      // Dark brown/gray text
-          textLight: '#6B6B5F', // Lighter text
-          textMuted: '#8A8A7D', // Muted text
-          accent: '#3D3D35',    // Dark accent
-          border: '#9C9681',    // Border color
+          bg: '#CBCBCB',        // Main background
+          bgDark: '#B5B5B5',    // Darker
+          bgDarker: '#9B9B9B',  // Even darker
+          text: '#464646',      // Dark text
+          textLight: '#656565', // Lighter text
+          textMuted: '#848484', // Muted text
+          accent: '#393939',    // Dark accent
+          border: '#8F8F8F',    // Border color
           highlight: '#FFFFFF', // White highlight
           shadow: 'rgba(0,0,0,0.15)', // Subtle shadow
           // Alternative darker theme for night mode
-          black: '#1A1A18',
-          blackLight: '#2A2A26',
-          blackMuted: '#3A3A34',
-          gold: '#C9B037',      // Accent gold
-          red: '#8B0000',       // Warning red
+          black: '#191919',
+          blackLight: '#282828',
+          blackMuted: '#373737',
+          gold: '#808080',      // Formerly gold accent; kept for compatibility, unused
+          red: '#8B0000',       // Warning red (kept as the one semantic accent)
         },
         // Keep old colors for compatibility
         lobby: {

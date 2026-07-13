@@ -3,6 +3,8 @@ import { useGameStore } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
+const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+
 export function usePresence(lobbyId: string | null) {
   const { userId, username, position, playerColor, updateOtherUser, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -67,39 +69,47 @@ export function usePresence(lobbyId: string | null) {
       },
     })
 
-    // Track presence
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState()
-        console.log('[Presence] Sync - all users:', Object.keys(state))
-        
-        Object.entries(state).forEach(([key, presences]) => {
-          const presenceArr = presences as any[]
-          // Skip current user and filter out non-UUID keys (old pre-auth users)
-          if (key !== userId && presenceArr && presenceArr.length > 0) {
-            // Only show authenticated users (UUIDs start with hex characters and have dashes)
-            const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
-            console.log('[Presence] User key:', key, 'isValidUUID:', isValidUUID, 'presences:', presenceArr)
-            if (isValidUUID) {
-              const presence = presenceArr[0] as any
-              console.log('[Presence] Updating other user:', key, presence.username)
-              updateOtherUser(key, {
-                userId: key,
-                username: presence.username,
-                x: presence.x,
-                y: presence.y,
-                playerColor: presence.playerColor || '#ffffff',
-                timestamp: Date.now(),
-                joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
-              })
-            }
-          }
+    // Reconciles local otherUsers against the channel's current presence
+    // state -- used for both the 'sync' event and a periodic safety-net
+    // (see below), since presence is eventually-consistent and a missed
+    // join/leave broadcast (e.g. two users connecting in close succession,
+    // or a brief reconnect) can otherwise leave a user permanently missing
+    // or stuck as a "ghost" until they leave and rejoin.
+    const reconcilePresenceState = () => {
+      const state = channel.presenceState()
+      const seenKeys = new Set<string>()
+
+      Object.entries(state).forEach(([key, presences]) => {
+        const presenceArr = presences as any[]
+        if (key === userId || !presenceArr || presenceArr.length === 0) return
+        if (!isValidUserKey(key)) return
+
+        seenKeys.add(key)
+        const presence = presenceArr[0] as any
+        updateOtherUser(key, {
+          userId: key,
+          username: presence.username,
+          x: presence.x,
+          y: presence.y,
+          playerColor: presence.playerColor || '#ffffff',
+          timestamp: Date.now(),
+          joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
         })
       })
+
+      // Drop any locally-tracked user the channel no longer reports --
+      // catches a missed 'leave' broadcast.
+      const currentOtherUsers = useGameStore.getState().otherUsers
+      Object.keys(currentOtherUsers).forEach(key => {
+        if (!seenKeys.has(key)) removeOtherUser(key)
+      })
+    }
+
+    // Track presence
+    channel
+      .on('presence', { event: 'sync' }, reconcilePresenceState)
       .on('presence', { event: 'join' }, ({ key, newPresences }: { key: string; newPresences: any[] }) => {
-        // Only track authenticated users (valid UUIDs)
-        const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
-        if (key !== userId && newPresences && newPresences.length > 0 && isValidUUID) {
+        if (key !== userId && newPresences && newPresences.length > 0 && isValidUserKey(key)) {
           const presence = newPresences[0] as any
           updateOtherUser(key, {
             userId: key,
@@ -128,6 +138,11 @@ export function usePresence(lobbyId: string | null) {
           })
         }
       })
+
+    // Safety-net: reconcile periodically in case a join/leave broadcast was
+    // ever missed, so a mismatch self-heals instead of persisting until the
+    // affected user leaves and rejoins.
+    const reconcileInterval = setInterval(reconcilePresenceState, 20000)
 
     channelRef.current = channel
 
@@ -167,6 +182,7 @@ export function usePresence(lobbyId: string | null) {
     return () => {
       // Disconnecting from presence channel
       clearInterval(updateInterval)
+      clearInterval(reconcileInterval)
       channel.unsubscribe()
     }
   }, [userId, username, lobbyId])

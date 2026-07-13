@@ -1990,7 +1990,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {/* Drop Zone Indicator */}
         {isDragOver && (
           <div className="absolute inset-0 z-[9998] pointer-events-none flex items-center justify-center"
-               style={{ backgroundColor: 'rgba(218, 212, 187, 0.08)', border: '2px dashed rgba(156, 150, 129, 0.5)' }}>
+               style={{ backgroundColor: 'rgba(203, 203, 203, 0.08)', border: '2px dashed rgba(143, 143, 143, 0.5)' }}>
             <div className="bg-black/80 border border-nier-border px-6 py-3">
               <p className="text-nier-bg text-sm tracking-[0.15em] uppercase font-mono">
                 {isDesktop ? 'DROP FILE TO CREATE TRACE' : 'DROP LINK TO CREATE TRACE'}
@@ -2138,14 +2138,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             Copy ID
           </button>
         )}
-        <button
-          onClick={handleConvertAllEmbeds}
-          disabled={isConvertingEmbeds}
-          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Convert every embed trace in this atrium into an internal image"
-        >
-          {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
-        </button>
+        {isDesktop && (
+          <button
+            onClick={handleConvertAllEmbeds}
+            disabled={isConvertingEmbeds}
+            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Convert every embed trace in this atrium into an internal image"
+          >
+            {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
+          </button>
+        )}
         <button
           onClick={() => setShowProfileCustomization(true)}
           className="w-full mt-1 bg-gray-700 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"

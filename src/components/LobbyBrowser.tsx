@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import ImportAtrium from './ImportAtrium'
+import { LobbyManagement } from './LobbyManagement'
 import type { Lobby } from '../types/database'
 
 interface LobbyWithOwner extends Lobby {
@@ -18,6 +19,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [userLobbies, setUserLobbies] = useState<LobbyWithOwner[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateLobby, setShowCreateLobby] = useState(false)
+  const [managingLobbyId, setManagingLobbyId] = useState<string | null>(null)
   const [showJoinById, setShowJoinById] = useState(false)
   const [lobbyIdInput, setLobbyIdInput] = useState('')
   const [newLobbyName, setNewLobbyName] = useState('')
@@ -271,6 +273,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         isPublic: lobby.is_public,
         createdAt: lobby.created_at,
         updatedAt: lobby.updated_at,
+        autosaveEnabled: lobby.autosave_enabled ?? false,
+        autosaveIntervalSeconds: lobby.autosave_interval_seconds,
         ownerUsername: profile?.username || 'Unknown',
         playerCount: count || 0,
       }
@@ -603,7 +607,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       {/* Scanline overlay */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
         style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
         }}
       />
 
@@ -612,8 +616,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         className="absolute inset-0 pointer-events-none opacity-10"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(218, 212, 187, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(218, 212, 187, 0.15) 1px, transparent 1px)
+            linear-gradient(rgba(203, 203, 203, 0.15) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(203, 203, 203, 0.15) 1px, transparent 1px)
           `,
           backgroundSize: '60px 60px',
         }}
@@ -729,6 +733,77 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          {/* Create Lobby */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Create New</span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              {!canCreateMore && (
+                <span className="text-nier-red/60 text-[10px] tracking-wider">Limit reached</span>
+              )}
+            </div>
+
+            {showCreateLobby ? (
+              <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
+                <div>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+                  <input
+                    type="text"
+                    value={newLobbyName}
+                    onChange={(e) => setNewLobbyName(e.target.value)}
+                    placeholder="Enter name..."
+                    className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                    maxLength={50}
+                  />
+                </div>
+                <div>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Password (Optional)</label>
+                  <input
+                    type="password"
+                    value={newLobbyPassword}
+                    onChange={(e) => setNewLobbyPassword(e.target.value)}
+                    placeholder="Leave empty for no password"
+                    className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                  />
+                </div>
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${newLobbyIsPublic ? 'border-nier-bg bg-nier-bg' : 'border-nier-border/40 group-hover:border-nier-border/60'}`}>
+                    {newLobbyIsPublic && <span className="text-nier-black text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newLobbyIsPublic}
+                    onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className="tracking-wider uppercase text-[10px]">{isDesktop ? 'Local Public (visible to others on this PC)' : 'Public (visible in browser)'}</span>
+                </label>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={createLobby}
+                    className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                  >
+                    Create Atrium
+                  </button>
+                  <button
+                    onClick={() => setShowCreateLobby(false)}
+                    className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCreateLobby(true)}
+                disabled={!canCreateMore}
+                className="w-full py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                ◇ Create New Atrium
+              </button>
+            )}
+          </section>
+
           {/* Your Atriums */}
           {userLobbies.length > 0 && (
             <section>
@@ -805,6 +880,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           Enter
                         </button>
                         <button
+                          onClick={() => setManagingLobbyId(lobby.id)}
+                          className="px-3 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          title="Manage access, password, and autosave without entering"
+                        >
+                          Manage
+                        </button>
+                        <button
                           onClick={() => setDeleteConfirmId(lobby.id)}
                           className="px-3 py-2 border border-nier-red/40 text-nier-border text-[10px] hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
@@ -817,77 +899,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </div>
             </section>
           )}
-
-          {/* Create Lobby */}
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Create New</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              {!canCreateMore && (
-                <span className="text-nier-red/60 text-[10px] tracking-wider">Limit reached</span>
-              )}
-            </div>
-            
-            {showCreateLobby ? (
-              <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
-                <div>
-                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
-                  <input
-                    type="text"
-                    value={newLobbyName}
-                    onChange={(e) => setNewLobbyName(e.target.value)}
-                    placeholder="Enter name..."
-                    className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
-                    maxLength={50}
-                  />
-                </div>
-                <div>
-                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Password (Optional)</label>
-                  <input
-                    type="password"
-                    value={newLobbyPassword}
-                    onChange={(e) => setNewLobbyPassword(e.target.value)}
-                    placeholder="Leave empty for no password"
-                    className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
-                  />
-                </div>
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${newLobbyIsPublic ? 'border-nier-bg bg-nier-bg' : 'border-nier-border/40 group-hover:border-nier-border/60'}`}>
-                    {newLobbyIsPublic && <span className="text-nier-black text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={newLobbyIsPublic}
-                    onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">{isDesktop ? 'Local Public (visible to others on this PC)' : 'Public (visible in browser)'}</span>
-                </label>
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={createLobby}
-                    className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
-                  >
-                    Create Atrium
-                  </button>
-                  <button
-                    onClick={() => setShowCreateLobby(false)}
-                    className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowCreateLobby(true)}
-                disabled={!canCreateMore}
-                className="w-full py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                ◇ Create New Atrium
-              </button>
-            )}
-          </section>
 
           {/* Import Atrium (web only) */}
           {!isDesktop && (
@@ -979,6 +990,19 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           </section>
         </div>
       </div>
+
+      {/* Manage Atrium (access/password/autosave, without entering) */}
+      {managingLobbyId && (() => {
+        const managedLobby = userLobbies.find(l => l.id === managingLobbyId)
+        if (!managedLobby) return null
+        return (
+          <LobbyManagement
+            lobby={managedLobby}
+            onClose={() => setManagingLobbyId(null)}
+            onUpdate={loadLobbies}
+          />
+        )
+      })()}
 
       {/* Password Modal */}
       {selectedLobbyId && (

@@ -140,7 +140,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
     <div className="fixed inset-0 bg-nier-black/90 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
         style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
         }}
       />
 

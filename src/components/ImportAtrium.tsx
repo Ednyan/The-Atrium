@@ -59,7 +59,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         return
       }
 
-      if (data.version !== 2) {
+      // Accept version 1 exports too (from older desktop builds) -- the
+      // import logic below already tolerates missing/extra fields via
+      // spreads and `||`/`??` fallbacks, so there's no real reason to hard-
+      // reject anything except a genuinely unrecognized/future format.
+      if (typeof data.version !== 'number' || data.version < 1 || data.version > 2) {
         setError('Unsupported export version. Please use a newer desktop app to export.')
         return
       }

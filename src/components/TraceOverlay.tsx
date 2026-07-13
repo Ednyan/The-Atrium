@@ -110,6 +110,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const justDraggedRef = useRef(false)
   const [imageDimensions, setImageDimensions] = useState<Record<string, { width: number; height: number }>>({})
   const [modalTrace, setModalTrace] = useState<Trace | null>(null)
+  const [copiedModalText, setCopiedModalText] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
@@ -2135,13 +2136,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     overflow: 'hidden',
                     outline: isSelected
-                      ? '2px solid rgba(218, 212, 187, 0.9)'
+                      ? '2px solid rgba(203, 203, 203, 0.9)'
                       : isMultiSelected
                       ? '2px solid rgba(134, 239, 172, 0.95)'
                       : 'none',
                     outlineOffset: '2px',
                     boxShadow: isSelected
-                      ? '0 0 0 1px rgba(218, 212, 187, 0.85), 0 0 16px rgba(218, 212, 187, 0.35)'
+                      ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
                       : isMultiSelected
                       ? '0 0 0 2px rgba(134, 239, 172, 0.9), 0 0 22px rgba(134, 239, 172, 0.65), 0 0 34px rgba(134, 239, 172, 0.35)'
                       : 'none',
@@ -2254,10 +2255,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     boxSizing: 'content-box',
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `2px solid ${isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
+                    border: showBorder ? `2px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 8}px`,
                     backgroundColor: showBackground ? (() => {
-                      const fc = displayTrace.fillColor || '#1a1a18';
+                      const fc = displayTrace.fillColor || '#191919';
                       const fo = displayTrace.fillOpacity ?? 0.95;
                       // Convert hex to rgba
                       const r = parseInt(fc.slice(1, 3), 16) || 26;
@@ -2266,7 +2267,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       return `rgba(${r}, ${g}, ${b}, ${fo})`;
                     })() : 'transparent',
                     ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
-                      borderColor: isSelected && isCropMode ? '#9c9681' : isSelected ? '#dad4bb' : isMultiSelected ? '#86efac' : (() => {
+                      borderColor: isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : (() => {
                         const bc = borderColor;
                         const bo = trace.borderOpacity;
                         const r = parseInt(bc.slice(1, 3), 16) || 255;
@@ -2277,24 +2278,27 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     } : {}),
                     padding: '0px',
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
-                    backgroundImage: showBackground ? 'repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(218, 212, 187, 0.035) 2px, rgba(218, 212, 187, 0.035) 3px)' : 'none',
+                    // No backgroundImage scanline texture here -- a fine 2-3px
+                    // repeating-linear-gradient on a container whose pixel size
+                    // varies continuously with zoom caused visible moire/
+                    // shimmer artifacting as traces were panned or zoomed.
                     boxShadow: isSelected && isCropMode
-                      ? '0 0 0 1px rgba(156, 150, 129, 0.9), 0 0 16px rgba(156, 150, 129, 0.45)'
+                      ? '0 0 0 1px rgba(143, 143, 143, 0.9), 0 0 16px rgba(143, 143, 143, 0.45)'
                       : isSelected
-                      ? '0 0 0 1px rgba(218, 212, 187, 0.85), 0 0 16px rgba(218, 212, 187, 0.35)'
+                      ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
                       : isMultiSelected
                       ? '0 0 0 2px rgba(134, 239, 172, 0.95), 0 0 24px rgba(134, 239, 172, 0.7), 0 0 38px rgba(134, 239, 172, 0.4)'
-                      : (showBackground ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(218, 212, 187, 0.06)' : 'none'),
+                      : (showBackground ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(203, 203, 203, 0.06)' : 'none'),
                     overflow: 'hidden',
                   }}
                 >
                   {(isSelected || showTraceTypeLabels) && <div className="trace-nier-type-badge">{getTraceTypeLabel(trace.type)}</div>}
                   {showBorder && (
                     <>
-                      <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
-                      <span className="absolute top-0 right-0 w-2 h-2 border-r border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
-                      <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
-                      <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(218,212,187,0.9)' : 'rgba(156,150,129,0.75)' }} />
+                      <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+                      <span className="absolute top-0 right-0 w-2 h-2 border-r border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+                      <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+                      <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
                     </>
                   )}
                   {/* Scaled content wrapper - text traces render at final pixel size to avoid distortion */}
@@ -2442,8 +2446,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             height: `${h * 100}%`,
                             minHeight: '3px',
                             background: isPlaying
-                              ? `linear-gradient(to top, ${trace.borderColor || '#9c9681'}, ${trace.borderColor ? trace.borderColor + '88' : '#dad4bb'})`
-                              : 'linear-gradient(to top, rgba(218,212,187,0.3), rgba(218,212,187,0.1))',
+                              ? `linear-gradient(to top, ${trace.borderColor || '#8f8f8f'}, ${trace.borderColor ? trace.borderColor + '88' : '#cbcbcb'})`
+                              : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))',
                             transition: 'background 0.3s ease',
                             animation: isPlaying ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
                           }}
@@ -2464,10 +2468,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
                     style={{
                       background: playingMedia.has(trace.id)
-                        ? 'rgba(196, 190, 165, 0.25)'
-                        : 'rgba(218,212,187,0.08)',
-                      color: playingMedia.has(trace.id) ? '#dad4bb' : 'rgba(218,212,187,0.65)',
-                      border: `1px solid ${playingMedia.has(trace.id) ? 'rgba(196,190,165,0.45)' : 'rgba(218,212,187,0.2)'}`,
+                        ? 'rgba(181, 181, 181, 0.25)'
+                        : 'rgba(203, 203, 203,0.08)',
+                      color: playingMedia.has(trace.id) ? '#cbcbcb' : 'rgba(203, 203, 203,0.65)',
+                      border: `1px solid ${playingMedia.has(trace.id) ? 'rgba(181, 181, 181,0.45)' : 'rgba(203, 203, 203,0.2)'}`,
                       backdropFilter: 'blur(8px)',
                     }}
                     onClick={(e) => {
@@ -2940,10 +2944,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     left: `${screenX}px`,
                     top: `${screenY + (borderHeight / 2 + 30)}px`,
                     transform: 'translate(-50%, 0)',
-                    color: isCropMode ? 'rgba(218, 212, 187, 0.95)' : 'rgba(196, 190, 165, 0.9)',
-                    background: isCropMode ? 'rgba(42, 42, 38, 0.95)' : 'rgba(26, 26, 24, 0.94)',
-                    borderColor: isCropMode ? 'rgba(218, 212, 187, 0.8)' : 'rgba(156, 150, 129, 0.7)',
-                    boxShadow: isCropMode ? '0 0 10px rgba(218,212,187,0.22)' : '0 0 8px rgba(0,0,0,0.45)',
+                    color: isCropMode ? 'rgba(203, 203, 203, 0.95)' : 'rgba(181, 181, 181, 0.9)',
+                    background: isCropMode ? 'rgba(40, 40, 40, 0.95)' : 'rgba(25, 25, 25, 0.94)',
+                    borderColor: isCropMode ? 'rgba(203, 203, 203, 0.8)' : 'rgba(143, 143, 143, 0.7)',
+                    boxShadow: isCropMode ? '0 0 10px rgba(203, 203, 203,0.22)' : '0 0 8px rgba(0,0,0,0.45)',
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -2968,8 +2972,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     top: `${screenY - (height * (transform as any).scaleY * zoom / 2)}px`,
                     width: `${width * (transform as any).scaleX * zoom}px`,
                     height: `${height * (transform as any).scaleY * zoom}px`,
-                    border: '1px dashed rgba(156, 150, 129, 0.95)',
-                    boxShadow: 'inset 0 0 0 9999px rgba(26, 26, 24, 0.4), 0 0 0 1px rgba(218, 212, 187, 0.2)',
+                    border: '1px dashed rgba(143, 143, 143, 0.95)',
+                    boxShadow: 'inset 0 0 0 9999px rgba(25, 25, 25, 0.4), 0 0 0 1px rgba(203, 203, 203, 0.2)',
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -3258,7 +3262,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <path
                     d={pathData}
                     fill="none"
-                    stroke="rgba(218, 212, 187, 0.22)"
+                    stroke="rgba(203, 203, 203, 0.22)"
                     strokeWidth={outlineWidth + 4}
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -3341,7 +3345,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <polyline
                     points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
                     fill="none"
-                    stroke="rgba(218, 212, 187, 0.22)"
+                    stroke="rgba(203, 203, 203, 0.22)"
                     strokeWidth={outlineWidth + 4}
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -3715,6 +3719,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             >
               <span className="text-gray-400 text-[10px]">◇</span> Customize
             </button>
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace || trace.type !== 'text') return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(trace.content)
+                    } catch {
+                      // Ignore clipboard access failures
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  <span className="text-gray-400 text-[10px]">◇</span> Copy Text
+                </button>
+              )
+            })()}
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
@@ -3815,7 +3838,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             })()}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
-              if (!trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
+              if (!isDesktop || !trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
               return (
                 <button
                   className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
@@ -5221,6 +5244,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <p className="text-white text-lg whitespace-pre-wrap font-mono">
                     {modalTrace.content}
                   </p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(modalTrace.content)
+                        setCopiedModalText(true)
+                        setTimeout(() => setCopiedModalText(false), 1500)
+                      } catch {
+                        // Ignore clipboard access failures
+                      }
+                    }}
+                    className="mt-4 px-4 py-2 border border-gray-500 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-gray-700 transition-colors"
+                  >
+                    {copiedModalText ? '✓ Copied' : '◇ Copy Text'}
+                  </button>
                 </div>
               )}
             </div>
@@ -5262,7 +5299,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           {/* Scanline overlay */}
           <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
             style={{
-              backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+              backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
             }}
           />
           
@@ -5281,7 +5318,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               <h2 className="text-lg text-red-400 tracking-[0.15em] uppercase">Delete Trace</h2>
             </div>
             <p className="text-white mb-6 text-sm tracking-wide">
-              Are you sure you want to delete this trace? This action cannot be undone.
+              Are you sure you want to delete this trace? This can be undone with Ctrl+Z, but only until you save.
             </p>
             <p className="text-gray-400 text-[10px] tracking-wider uppercase mb-6">
               ◇ Tip: Press <kbd className="px-2 py-1 bg-gray-800 border border-gray-600 text-gray-300 text-[9px] tracking-wider">Delete</kbd> key for quick deletion

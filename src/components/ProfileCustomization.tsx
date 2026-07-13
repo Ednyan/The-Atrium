@@ -9,6 +9,7 @@ interface ProfileCustomizationProps {
 
 const DEFAULT_UNDO_DEPTH = 25
 const MAX_UNDO_DEPTH = 100
+const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
 const PRESET_COLORS = [
   '#ffffff', // White
@@ -33,9 +34,21 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [undoDepth, setUndoDepth] = useState(DEFAULT_UNDO_DEPTH)
+  const [zoomSensitivity, setZoomSensitivity] = useState(0.16)
 
   useEffect(() => {
     loadProfile()
+    try {
+      const stored = localStorage.getItem('lobby_zoomSensitivity')
+      if (stored) {
+        const parsed = parseFloat(stored)
+        if (Number.isFinite(parsed)) {
+          setZoomSensitivity(clampZoomSensitivity(parsed))
+        }
+      }
+    } catch {
+      // Ignore localStorage access failures
+    }
     if (!lobbyId) return
     try {
       const raw = localStorage.getItem(`lobby_${lobbyId}_undoDepth`)
@@ -47,6 +60,17 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
       // Ignore localStorage access failures
     }
   }, [lobbyId])
+
+  const handleZoomSensitivityChange = (value: number) => {
+    const clamped = clampZoomSensitivity(value)
+    setZoomSensitivity(clamped)
+    try {
+      localStorage.setItem('lobby_zoomSensitivity', clamped.toString())
+    } catch {
+      // Ignore localStorage access failures
+    }
+    window.dispatchEvent(new CustomEvent('lobby-zoom-sensitivity-changed', { detail: clamped }))
+  }
 
   const handleUndoDepthChange = (value: number) => {
     if (!lobbyId) return
@@ -227,6 +251,25 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               onChange={(e) => setSelectedColor(e.target.value)}
               className="w-full h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
             />
+          </div>
+
+          {/* Zoom Sensitivity */}
+          <div>
+            <label className="block text-nier-border text-[10px] tracking-[0.1em] uppercase mb-2">
+              Zoom Sensitivity: {zoomSensitivity.toFixed(2)}
+            </label>
+            <input
+              type="range"
+              min="0.04"
+              max="0.6"
+              step="0.01"
+              value={zoomSensitivity}
+              onChange={(e) => handleZoomSensitivityChange(parseFloat(e.target.value))}
+              className="w-full accent-nier-bg"
+            />
+            <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+              Higher values zoom faster for mouse wheel and trackpad.
+            </p>
           </div>
 
           {/* Trace Distance Indicators Toggle */}

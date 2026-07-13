@@ -47,8 +47,8 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
         className="absolute inset-0 pointer-events-none opacity-10"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(218, 212, 187, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(218, 212, 187, 0.15) 1px, transparent 1px)
+            linear-gradient(rgba(203, 203, 203, 0.15) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(203, 203, 203, 0.15) 1px, transparent 1px)
           `,
           backgroundSize: '60px 60px',
         }}
@@ -291,7 +291,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
         {/* Scanline overlay */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
           style={{
-            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
           }}
         />
         
@@ -329,7 +329,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
         {/* Scanline overlay */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
           style={{
-            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
           }}
         />
         
@@ -365,7 +365,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
       {/* Scanline overlay */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
         style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
         }}
       />
       

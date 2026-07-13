@@ -98,7 +98,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* Scanline overlay */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.02] z-50"
         style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(218, 212, 187, 0.1) 2px, rgba(218, 212, 187, 0.1) 4px)',
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
         }}
       />
 
@@ -107,8 +107,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         className="fixed inset-0 pointer-events-none opacity-10"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(218, 212, 187, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(218, 212, 187, 0.15) 1px, transparent 1px)
+            linear-gradient(rgba(203, 203, 203, 0.15) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(203, 203, 203, 0.15) 1px, transparent 1px)
           `,
           backgroundSize: '60px 60px',
           transform: `translate(${mousePos.x * 0.01}px, ${mousePos.y * 0.01}px)`,

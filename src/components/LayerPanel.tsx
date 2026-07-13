@@ -528,8 +528,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                   <div
                     className="flex items-center gap-2 flex-1 cursor-pointer"
                     onClick={() => {
-                      onSelectGroupTraces?.(layerTraces.map(t => t.id))
-                      onSetActiveLayer?.(isActiveLayer ? null : layer.id)
+                      if (isActiveLayer) {
+                        // Deselecting the group -- clear the multi-selection
+                        // too, otherwise it stuck around and dragging any one
+                        // of those traces kept moving the whole former group.
+                        onSelectGroupTraces?.([])
+                        onSetActiveLayer?.(null)
+                      } else {
+                        onSelectGroupTraces?.(layerTraces.map(t => t.id))
+                        onSetActiveLayer?.(layer.id)
+                      }
                     }}
                   >
                     <span className={`text-xs ${isActiveLayer ? 'text-amber-400' : 'text-gray-400'}`}>

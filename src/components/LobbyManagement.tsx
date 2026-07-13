@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby, LobbyAccessList, Profile } from '../types/database'
+
+// Web autosaves hit the shared Supabase project, so keep a floor high enough
+// to not be abusable; desktop autosaves only touch the local SQLite file, so
+// it can be as frequent as the user likes.
+const AUTOSAVE_MIN_SECONDS = isDesktop ? 10 : 600
+const AUTOSAVE_MAX_SECONDS = isDesktop ? 600 : 1800
+const clampAutosaveInterval = (value: number) => Math.max(AUTOSAVE_MIN_SECONDS, Math.min(AUTOSAVE_MAX_SECONDS, value))
 
 interface LobbyManagementProps {
   lobby: Lobby
@@ -11,15 +18,36 @@ interface LobbyManagementProps {
 export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementProps) {
   const [lobbyName, setLobbyName] = useState(lobby.name)
   const [password, setPassword] = useState('')
+  const [showPasswordField, setShowPasswordField] = useState(false)
+  const hasPassword = !!lobby.passwordHash
   const [isPublic, setIsPublic] = useState(lobby.isPublic)
   const [autosaveEnabled, setAutosaveEnabled] = useState(lobby.autosaveEnabled ?? false)
-  const [autosaveIntervalSeconds, setAutosaveIntervalSeconds] = useState(lobby.autosaveIntervalSeconds ?? 60)
+  const [autosaveIntervalSeconds, setAutosaveIntervalSeconds] = useState(
+    clampAutosaveInterval(lobby.autosaveIntervalSeconds ?? AUTOSAVE_MIN_SECONDS)
+  )
   const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Profile[]>([])
   const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist'>('settings')
   const [error, setError] = useState<string | null>(null)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+
+  const isDirty = (
+    lobbyName !== lobby.name ||
+    isPublic !== lobby.isPublic ||
+    autosaveEnabled !== (lobby.autosaveEnabled ?? false) ||
+    autosaveIntervalSeconds !== clampAutosaveInterval(lobby.autosaveIntervalSeconds ?? AUTOSAVE_MIN_SECONDS) ||
+    (showPasswordField && password.trim() !== '')
+  )
+
+  const requestClose = () => {
+    if (isDirty) {
+      setShowCloseConfirm(true)
+    } else {
+      onClose()
+    }
+  }
 
   useEffect(() => {
     loadAccessLists()
@@ -99,18 +127,23 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
     }
   }
 
-  const updateLobbySettings = async () => {
-    if (!supabase) return
+  const updateLobbySettings = async (): Promise<boolean> => {
+    if (!supabase) return false
 
     try {
-      const trimmedPassword = password.trim()
       const updates: any = {
         name: lobbyName,
         is_public: isPublic,
-        // Set password_hash to null if empty (makes lobby public), otherwise set the password
-        password_hash: trimmedPassword || null,
         autosave_enabled: autosaveEnabled,
-        autosave_interval_seconds: Math.max(10, Math.min(600, autosaveIntervalSeconds)),
+        autosave_interval_seconds: clampAutosaveInterval(autosaveIntervalSeconds),
+      }
+
+      // Only touch password_hash if the user explicitly opened the
+      // set/change-password field -- otherwise saving other settings (name,
+      // autosave, etc.) would silently wipe out an existing password every
+      // time, since the field always rendered empty.
+      if (showPasswordField) {
+        updates.password_hash = password.trim() || null
       }
 
       const { error } = await (supabase!
@@ -122,10 +155,15 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
       onUpdate()
       setError(null)
+      setShowPasswordField(false)
+      setPassword('')
+      setShowCloseConfirm(false)
       alert('Atrium settings updated!')
+      return true
     } catch (err: any) {
       console.error('Error updating lobby:', err)
       setError(err.message || 'Failed to update lobby')
+      return false
     }
   }
 
@@ -135,6 +173,16 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
+
+      // A user can't be both whitelisted and blacklisted at once -- drop
+      // them from the other list first so adding here is a clean move.
+      const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
+      await (supabase
+        .from('lobby_access_lists')
+        .delete()
+        .eq('lobby_id', lobby.id)
+        .eq('user_id', userId)
+        .eq('list_type', oppositeListType) as any)
 
       const { error } = await (supabase!
         .from('lobby_access_lists') as any)
@@ -196,7 +244,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
               <h2 className="text-lg text-white tracking-[0.15em] uppercase">Manage Atrium</h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={requestClose}
               className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
             >
               ×
@@ -259,14 +307,40 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
               </div>
 
               <div>
-                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Password (leave empty to remove)</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="New password..."
-                  className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
-                />
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Password</label>
+                {!showPasswordField ? (
+                  <button
+                    onClick={() => setShowPasswordField(true)}
+                    className="w-full py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  >
+                    {hasPassword ? 'Change Password' : 'Set Password'}
+                  </button>
+                ) : (
+                  <>
+                    <input
+                      autoFocus
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={hasPassword ? 'New password (leave empty to remove)' : 'New password...'}
+                      className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                    />
+                    <button
+                      onClick={() => {
+                        setShowPasswordField(false)
+                        setPassword('')
+                      }}
+                      className="w-full mt-2 py-1.5 border border-nier-border/20 text-nier-border/60 text-[9px] tracking-[0.15em] uppercase hover:text-nier-bg hover:border-nier-border/50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                      {hasPassword
+                        ? 'Leave empty and save to remove the password entirely.'
+                        : 'Takes effect once you save settings below.'}
+                    </p>
+                  </>
+                )}
               </div>
 
               <label className="flex items-center gap-3 cursor-pointer group">
@@ -310,12 +384,12 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
                 {autosaveEnabled && (
                   <div className="mt-3">
                     <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
-                      Save Every: {autosaveIntervalSeconds}s
+                      Save Every: {Math.floor(autosaveIntervalSeconds / 60)}m {autosaveIntervalSeconds % 60}s
                     </label>
                     <input
                       type="range"
-                      min="10"
-                      max="600"
+                      min={AUTOSAVE_MIN_SECONDS}
+                      max={AUTOSAVE_MAX_SECONDS}
                       step="10"
                       value={autosaveIntervalSeconds}
                       onChange={(e) => setAutosaveIntervalSeconds(parseInt(e.target.value, 10))}
@@ -324,13 +398,6 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
                   </div>
                 )}
               </div>
-
-              <button
-                onClick={updateLobbySettings}
-                className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
-              >
-                Save Settings
-              </button>
             </div>
           )}
 
@@ -409,7 +476,64 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
             </div>
           )}
         </div>
+
+        {/* Save Settings -- visible on every tab so switching to Whitelist/
+            Blacklist doesn't strand unsaved Settings-tab edits */}
+        <div className="p-4 border-t border-nier-border/20">
+          <button
+            onClick={updateLobbySettings}
+            className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+          >
+            Save Settings
+          </button>
+        </div>
       </div>
+
+      {/* Unsaved-changes confirmation */}
+      {showCloseConfirm && (
+        <div className="fixed inset-0 z-[10001] bg-black/70 flex items-center justify-center">
+          <div className="bg-nier-blackLight border border-nier-border/40 p-6 relative" style={{ maxWidth: '320px' }}>
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
+
+            <h3 className="text-white text-sm tracking-[0.15em] uppercase mb-3 text-center">
+              <span className="text-nier-border/60 mr-2">◇</span>Unsaved Changes
+            </h3>
+            <p className="text-nier-border/70 text-xs tracking-wider text-center mb-6">
+              You have unsaved changes to this atrium's settings. Save before closing?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={async () => {
+                  const saved = await updateLobbySettings()
+                  if (saved) onClose()
+                }}
+                className="w-full bg-nier-bg hover:bg-nier-bgDark text-nier-black text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              >
+                Save and Close
+              </button>
+              <button
+                onClick={() => {
+                  setShowCloseConfirm(false)
+                  onClose()
+                }}
+                className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60"
+              >
+                Discard Changes
+              </button>
+              <button
+                onClick={() => setShowCloseConfirm(false)}
+                className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-border text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
