@@ -25,6 +25,54 @@ const ENTERING_ANIMATION_FRAMES = Object.entries(
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([, url]) => url)
 
+// Module-level (not component state) so decoded frames stay warm for the
+// life of the page -- both sequences get reused across multiple overlay
+// phases per atrium entry (the loading loop shows during verifying/
+// finalizing/waiting) and across every atrium entered in the session, so
+// without this every remount of ImageSequencePlayer would re-decode from
+// scratch. Bounded concurrency avoids firing ~119 full-frame decode() calls
+// at once, which was contending hard enough for CPU/memory to stutter the
+// entering cinematic while its fixed-fps clock was already running.
+const decodedFrameUrls = new Set<string>()
+const pendingFrameDecodes = new Map<string, Promise<void>>()
+const MAX_CONCURRENT_FRAME_DECODES = 6
+let activeFrameDecodes = 0
+const frameDecodeQueue: (() => void)[] = []
+
+function runNextQueuedDecode() {
+  if (activeFrameDecodes >= MAX_CONCURRENT_FRAME_DECODES) return
+  const next = frameDecodeQueue.shift()
+  if (next) {
+    activeFrameDecodes += 1
+    next()
+  }
+}
+
+function decodeFrame(src: string): Promise<void> {
+  if (decodedFrameUrls.has(src)) return Promise.resolve()
+  const existing = pendingFrameDecodes.get(src)
+  if (existing) return existing
+
+  const promise = new Promise<void>((resolve) => {
+    frameDecodeQueue.push(() => {
+      const img = new Image()
+      img.decoding = 'async'
+      const finish = () => {
+        decodedFrameUrls.add(src)
+        activeFrameDecodes -= 1
+        runNextQueuedDecode()
+        resolve()
+      }
+      img.onload = () => { img.decode().catch(() => {}).finally(finish) }
+      img.onerror = finish
+      img.src = src
+    })
+    runNextQueuedDecode()
+  })
+  pendingFrameDecodes.set(src, promise)
+  return promise
+}
+
 function ImageSequencePlayer({
   frames,
   fps = ANIMATION_FPS,
@@ -68,28 +116,27 @@ function ImageSequencePlayer({
   }, [frames, loop, nearCompleteLeadFrames, bufferLeadFrames])
 
   // Pre-decode frames so playback doesn't hitch while decoding in real time.
+  // Routes through the shared, page-lifetime decode cache: if a frame was
+  // already decoded (by an earlier phase, or an earlier atrium entry this
+  // session), it's marked synchronously here instead of being decoded again.
   useEffect(() => {
     if (frames.length === 0) return
 
     let cancelled = false
 
     frames.forEach((src, idx) => {
-      const img = new Image()
-      img.decoding = 'async'
+      if (decodedFrameUrls.has(src)) {
+        decodedFramesRef.current[idx] = true
+        decodedCountRef.current += 1
+        return
+      }
 
-      const markDecoded = () => {
+      decodeFrame(src).then(() => {
         if (cancelled) return
         if (decodedFramesRef.current[idx]) return
         decodedFramesRef.current[idx] = true
         decodedCountRef.current += 1
-      }
-
-      img.onload = () => {
-        // decode() improves chances of smooth handoff between frames.
-        img.decode().catch(() => {}).finally(markDecoded)
-      }
-      img.onerror = markDecoded
-      img.src = src
+      })
     })
 
     return () => {
@@ -310,7 +357,12 @@ function AppInner() {
   const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
   const [enteringFramesReady, setEnteringFramesReady] = useState(ENTERING_ANIMATION_FRAMES.length === 0)
 
-  // Preload entering frames so they are ready as soon as loading completes.
+  // Preload (fully decode, not just fetch) entering frames as early as
+  // possible -- as soon as the app boots, well before the entering overlay
+  // itself mounts -- so the fixed-40fps cinematic never has to race live
+  // decode work. Gating the 'loading' -> 'entering' phase transition on this
+  // (see the effect below) means the wait for decode is absorbed by the
+  // already-present loading loop instead of showing up as stutter later.
   useEffect(() => {
     if (ENTERING_ANIMATION_FRAMES.length === 0) {
       setEnteringFramesReady(true)
@@ -318,20 +370,15 @@ function AppInner() {
     }
 
     let cancelled = false
-    let loadedCount = 0
+    let decodedCount = 0
 
     ENTERING_ANIMATION_FRAMES.forEach((src) => {
-      const img = new Image()
-      const markLoaded = () => {
-        loadedCount += 1
-        if (!cancelled && loadedCount >= ENTERING_ANIMATION_FRAMES.length) {
+      decodeFrame(src).then(() => {
+        decodedCount += 1
+        if (!cancelled && decodedCount >= ENTERING_ANIMATION_FRAMES.length) {
           setEnteringFramesReady(true)
         }
-      }
-
-      img.onload = markLoaded
-      img.onerror = markLoaded
-      img.src = src
+      })
     })
 
     return () => {
