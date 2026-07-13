@@ -35,6 +35,14 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 const TRACE_CLIPBOARD_MIME = 'application/x-digital-atrium-traces'
 const TRACE_CLIPBOARD_TEXT_SENTINEL = '__DIGITAL_ATRIUM_TRACE_CLIPBOARD__'
 
+// Trace z-index encodes layer*100 + order-within-layer (see layerZIndex.ts)
+// and is intentionally left uncapped so traces compare correctly across
+// layers. Selection handles (the `z-[1000000]` Tailwind classes below) and
+// other users' cursors need to stay above every trace regardless, so they
+// use fixed values far above any realistic trace z-index rather than a
+// small constant the traces have to stay under.
+const OTHER_USER_CURSOR_Z_INDEX = 2_000_000
+
 type TraceClipboardPayload = {
   version: 1
   lobbyId?: string
@@ -1828,6 +1836,350 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     ].sort((a, b) => a.zIndex - b.zIndex)
   }, [visibleTraces, playerZIndex])
 
+  // Renders a path/polyline shape's visible SVG. Called inline from within
+  // the main sortedItems render (below) at the trace's own sorted position,
+  // rather than as a separate trailing pass over all path traces -- a
+  // separate pass always paints after every other trace in DOM order
+  // regardless of z-index, so paths appeared to sit on top of everything
+  // else whenever z-index was tied (e.g. two ungrouped traces both at the
+  // default 0), which is a very common case.
+  const renderPathSvg = (trace: Trace) => {
+    // Use editingTrace if this is the trace being edited (for instant updates)
+    const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
+
+    // Use local shape points during drag for instant feedback, otherwise use trace points
+    const points = localShapePoints[displayTrace.id] || displayTrace.shapePoints || []
+    if (points.length < 2) return null // Need at least 2 points to draw
+
+    const curveType = displayTrace.pathCurveType || 'straight'
+    const shapeColor = displayTrace.shapeColor || '#3b82f6'
+    const shapeOpacity = displayTrace.shapeOpacity ?? 1.0
+    const outlineWidth = displayTrace.shapeOutlineWidth ?? 2
+    const arrowStart = displayTrace.pathArrowStart || 'none'
+    const arrowEnd = displayTrace.pathArrowEnd || 'none'
+
+    // Generate unique marker IDs for this trace
+    const markerId = `path-marker-${trace.id}`
+
+    // Convert world coordinates to screen coordinates
+    const screenPoints = points.map(p => {
+      const { screenX, screenY } = getScreenPosition(p.x, p.y)
+      const result: any = { x: screenX, y: screenY }
+      if (p.cp1x !== undefined && p.cp1y !== undefined) {
+        const cp1 = getScreenPosition(p.cp1x, p.cp1y)
+        result.cp1x = cp1.screenX
+        result.cp1y = cp1.screenY
+      }
+      if (p.cp2x !== undefined && p.cp2y !== undefined) {
+        const cp2 = getScreenPosition(p.cp2x, p.cp2y)
+        result.cp2x = cp2.screenX
+        result.cp2y = cp2.screenY
+      }
+      return result
+    })
+
+    // Generate SVG path
+    let pathData = ''
+    if (curveType === 'bezier' && screenPoints.length >= 2) {
+      pathData = `M ${screenPoints[0].x} ${screenPoints[0].y}`
+
+      if (screenPoints.length === 2) {
+        const p0 = screenPoints[0]
+        const p1 = screenPoints[1]
+
+        if (p0.cp2x !== undefined && p0.cp2y !== undefined) {
+          const cp1x = p0.cp2x
+          const cp1y = p0.cp2y
+          const cp2x = p1.cp1x !== undefined ? p1.cp1x : cp1x
+          const cp2y = p1.cp1y !== undefined ? p1.cp1y : cp1y
+          pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`
+        } else {
+          const midX = (p0.x + p1.x) / 2
+          const midY = (p0.y + p1.y) / 2
+          pathData += ` Q ${midX} ${midY}, ${p1.x} ${p1.y}`
+        }
+      } else {
+        for (let i = 0; i < screenPoints.length - 1; i++) {
+          const p0 = i > 0 ? screenPoints[i - 1] : screenPoints[i]
+          const p1 = screenPoints[i]
+          const p2 = screenPoints[i + 1]
+          const p3 = i + 2 < screenPoints.length ? screenPoints[i + 2] : p2
+
+          let cp1x, cp1y, cp2x, cp2y
+
+          if (p1.cp2x !== undefined && p1.cp2y !== undefined) {
+            cp1x = p1.cp2x
+            cp1y = p1.cp2y
+          } else {
+            const tension = 0.5
+            cp1x = p1.x + (p2.x - p0.x) / 6 * tension
+            cp1y = p1.y + (p2.y - p0.y) / 6 * tension
+          }
+
+          if (p2.cp1x !== undefined && p2.cp1y !== undefined) {
+            cp2x = p2.cp1x
+            cp2y = p2.cp1y
+          } else {
+            const tension = 0.5
+            cp2x = p2.x - (p3.x - p1.x) / 6 * tension
+            cp2y = p2.y - (p3.y - p1.y) / 6 * tension
+          }
+
+          pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`
+        }
+      }
+    }
+
+    // Show the selection glow whether this path is the single selected
+    // trace or part of a multi-selection (previously only multi-select
+    // showed any highlight at all, so a singly-selected path had none).
+    const isPathMultiSelected = selectedTraceId === trace.id || multiSelectedIds.has(trace.id)
+
+    return (
+      <svg
+        className="absolute select-none"
+        style={{
+          left: 0,
+          top: 0,
+          width: '100%',
+          height: '100%',
+          overflow: 'visible',
+          zIndex: trace.zIndex ?? 0,
+          pointerEvents: 'none'
+        }}
+      >
+        {/* Arrow marker definitions */}
+        <defs>
+          {/* Triangle markers - size in screen pixels (userSpaceOnUse) */}
+          <marker
+            id={`${markerId}-triangle-start`}
+            markerWidth={outlineWidth * 3.5}
+            markerHeight={outlineWidth * 3.5}
+            refX={outlineWidth * 3.5}
+            refY={outlineWidth * 1.75}
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
+            <polygon
+              points={`${outlineWidth * 3.5},0 ${outlineWidth * 3.5},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
+              fill={shapeColor}
+            />
+          </marker>
+          <marker
+            id={`${markerId}-triangle-end`}
+            markerWidth={outlineWidth * 3.5}
+            markerHeight={outlineWidth * 3.5}
+            refX={0}
+            refY={outlineWidth * 1.75}
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
+            <polygon
+              points={`0,0 ${outlineWidth * 3.5},${outlineWidth * 1.75} 0,${outlineWidth * 3.5}`}
+              fill={shapeColor}
+            />
+          </marker>
+          {/* Diamond (Nier-style) markers - size in screen pixels */}
+          <marker
+            id={`${markerId}-diamond-start`}
+            markerWidth={outlineWidth * 3.5}
+            markerHeight={outlineWidth * 3.5}
+            refX={outlineWidth * 1.75}
+            refY={outlineWidth * 1.75}
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
+            <polygon
+              points={`${outlineWidth * 1.75},0 ${outlineWidth * 3.5},${outlineWidth * 1.75} ${outlineWidth * 1.75},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
+              fill={shapeColor}
+            />
+          </marker>
+          <marker
+            id={`${markerId}-diamond-end`}
+            markerWidth={outlineWidth * 3.5}
+            markerHeight={outlineWidth * 3.5}
+            refX={outlineWidth * 1.75}
+            refY={outlineWidth * 1.75}
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
+            <polygon
+              points={`${outlineWidth * 1.75},0 ${outlineWidth * 3.5},${outlineWidth * 1.75} ${outlineWidth * 1.75},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
+              fill={shapeColor}
+            />
+          </marker>
+        </defs>
+        {curveType === 'bezier' ? (
+          <>
+            {/* Multi-selection glow effect */}
+            {isPathMultiSelected && (
+              <path
+                d={pathData}
+                fill="none"
+                stroke="#86efac"
+                strokeWidth={outlineWidth + 8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.75}
+                style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
+              />
+            )}
+            {/* Invisible wider stroke for easier clicking */}
+            <path
+              d={pathData}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={outlineWidth + 10}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              data-trace-element="true"
+              style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (e.shiftKey) {
+                  // Toggle multi-selection - same logic as handleMouseDown
+                  setMultiSelectedIds(prev => {
+                    const next = new Set(prev)
+                    if (next.has(trace.id)) {
+                      next.delete(trace.id)
+                    } else {
+                      next.add(trace.id)
+                    }
+                    // Also add the currently selected trace if not already in selection
+                    if (selectedTraceId && !next.has(selectedTraceId)) {
+                      next.add(selectedTraceId)
+                    }
+                    return next
+                  })
+                  setSelectedTraceId(trace.id)
+                } else {
+                  setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
+                  setSelectedTraceId(trace.id)
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                const t = traces.find(tr => tr.id === trace.id)
+                if (t) setEditingTrace(t)
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setSelectedTraceId(trace.id)
+                setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+              }}
+            />
+            <path
+              d={pathData}
+              fill="none"
+              stroke="rgba(203, 203, 203, 0.22)"
+              strokeWidth={outlineWidth + 4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+            />
+            {/* Visible path */}
+            <path
+              d={pathData}
+              fill="none"
+              stroke={shapeColor}
+              strokeWidth={outlineWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={shapeOpacity}
+              markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
+              markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
+              style={{ pointerEvents: 'none' }}
+            />
+          </>
+        ) : (
+          <>
+            {/* Multi-selection glow effect for polyline */}
+            {isPathMultiSelected && (
+              <polyline
+                points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#86efac"
+                strokeWidth={outlineWidth + 8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.75}
+                style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
+              />
+            )}
+            {/* Invisible wider stroke for easier clicking */}
+            <polyline
+              points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={outlineWidth + 10}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              data-trace-element="true"
+              style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (e.shiftKey) {
+                  // Toggle multi-selection - same logic as handleMouseDown
+                  setMultiSelectedIds(prev => {
+                    const next = new Set(prev)
+                    if (next.has(trace.id)) {
+                      next.delete(trace.id)
+                    } else {
+                      next.add(trace.id)
+                    }
+                    // Also add the currently selected trace if not already in selection
+                    if (selectedTraceId && !next.has(selectedTraceId)) {
+                      next.add(selectedTraceId)
+                    }
+                    return next
+                  })
+                  setSelectedTraceId(trace.id)
+                } else {
+                  setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
+                  setSelectedTraceId(trace.id)
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                const t = traces.find(tr => tr.id === trace.id)
+                if (t) setEditingTrace(t)
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setSelectedTraceId(trace.id)
+                setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+              }}
+            />
+            <polyline
+              points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="rgba(203, 203, 203, 0.22)"
+              strokeWidth={outlineWidth + 4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+            />
+            {/* Visible path */}
+            <polyline
+              points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke={shapeColor}
+              strokeWidth={outlineWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={shapeOpacity}
+              markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
+              markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
+              style={{ pointerEvents: 'none' }}
+            />
+          </>
+        )}
+      </svg>
+    )
+  }
+
   return (
     <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
       {/* Render traces AND player in z-index order */}
@@ -2032,31 +2384,37 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           return null
         }
 
-        // Path shapes are rendered entirely via the absolute SVG overlay below — skip the bounding box div
+        // Path shapes render their visible line inline here (via
+        // renderPathSvg), at this trace's own sorted DOM position, instead
+        // of in a separate trailing pass over all paths -- see the comment
+        // on renderPathSvg's definition for why that used to make paths
+        // appear to always paint on top of everything else.
         if (trace.type === 'shape' && trace.shapeType === 'path') {
-          if (!trace.illuminate) return null
           return (
             <div key={trace.id} className="contents">
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
-                  top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
-                  width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-                  height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-                  borderRadius: '50%',
-                  background: trace.lightColor ?? '#ffffff',
-                  opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
-                  mixBlendMode: 'screen',
-                  filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
-                  animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
-                  transformOrigin: 'center center',
-                  marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                  marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                  willChange: 'transform, opacity',
-                  ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
-                }}
-              />
+              {trace.illuminate && (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
+                    top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
+                    width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
+                    height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
+                    borderRadius: '50%',
+                    background: trace.lightColor ?? '#ffffff',
+                    opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+                    mixBlendMode: 'screen',
+                    filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
+                    animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
+                    transformOrigin: 'center center',
+                    marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
+                    marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
+                    willChange: 'transform, opacity',
+                    ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+                  }}
+                />
+              )}
+              {renderPathSvg(trace)}
             </div>
           )
         }
@@ -2091,8 +2449,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             {/* position+zIndex here too (not just the inner container):
                 CSS opacity < 1 establishes its own stacking context, which
                 would otherwise isolate the inner z-index from comparing
-                correctly against other traces once this fades with distance. */}
-            <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: Math.min(trace.zIndex ?? 0, 40) }}>
+                correctly against other traces once this fades with distance.
+                Not capped: a trace's z_index encodes layer*100 + order
+                (see layerZIndex.ts), so any trace in a non-first layer
+                already exceeds a small cap -- capping collapsed all of them
+                to the same value, which then had to fall back to DOM order
+                (see HANDLE_Z_INDEX below for how handles stay on top instead). */}
+            <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: trace.zIndex ?? 0 }}>
             {/* Container for positioning - doesn't scale */}
             <div
               data-trace-element="true"
@@ -2100,14 +2463,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               style={{
                 left: `${screenX}px`,
                 top: `${screenY}px`,
-                // Explicit z-index (matching the same cap used by the
-                // separate path-shape SVG block below) so ordinary traces
-                // and path shapes compare on equal terms. Without this, a
-                // path's explicit z-index always painted above every
-                // non-path trace regardless of value, since a positioned
-                // element with a set z-index paints above siblings that
-                // rely on implicit DOM-order stacking.
-                zIndex: Math.min(trace.zIndex ?? 0, 40),
+                // Explicit z-index so ordinary traces and path shapes
+                // compare on equal terms. Without this, a path's explicit
+                // z-index always painted above every non-path trace
+                // regardless of value, since a positioned element with a
+                // set z-index paints above siblings that rely on implicit
+                // DOM-order stacking.
+                zIndex: trace.zIndex ?? 0,
                 transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${trace.flipHorizontal ? -1 : 1}) scaleY(${trace.flipVertical ? -1 : 1})`,
                 willChange: 'transform',
                 transformOrigin: 'center center',
@@ -3043,345 +3405,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         )
         })}
 
-        {/* Render path shapes as absolute SVG overlay */}
-        {traces.filter(t => t.type === 'shape' && t.shapeType === 'path').map(trace => {
-          // Use editingTrace if this is the trace being edited (for instant updates)
-          const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
-          
-          // Use local shape points during drag for instant feedback, otherwise use trace points
-          const points = localShapePoints[displayTrace.id] || displayTrace.shapePoints || []
-          if (points.length < 2) return null // Need at least 2 points to draw
-          
-          const curveType = displayTrace.pathCurveType || 'straight'
-          const shapeColor = displayTrace.shapeColor || '#3b82f6'
-          const shapeOpacity = displayTrace.shapeOpacity ?? 1.0
-          const outlineWidth = displayTrace.shapeOutlineWidth ?? 2
-          const arrowStart = displayTrace.pathArrowStart || 'none'
-          const arrowEnd = displayTrace.pathArrowEnd || 'none'
-          
-          // Generate unique marker IDs for this trace
-          const markerId = `path-marker-${trace.id}`
-          
-          // Convert world coordinates to screen coordinates
-          const screenPoints = points.map(p => {
-            const { screenX, screenY } = getScreenPosition(p.x, p.y)
-            const result: any = { x: screenX, y: screenY }
-            if (p.cp1x !== undefined && p.cp1y !== undefined) {
-              const cp1 = getScreenPosition(p.cp1x, p.cp1y)
-              result.cp1x = cp1.screenX
-              result.cp1y = cp1.screenY
-            }
-            if (p.cp2x !== undefined && p.cp2y !== undefined) {
-              const cp2 = getScreenPosition(p.cp2x, p.cp2y)
-              result.cp2x = cp2.screenX
-              result.cp2y = cp2.screenY
-            }
-            return result
-          })
-          
-          // Generate SVG path
-          let pathData = ''
-          if (curveType === 'bezier' && screenPoints.length >= 2) {
-            pathData = `M ${screenPoints[0].x} ${screenPoints[0].y}`
-            
-            if (screenPoints.length === 2) {
-              const p0 = screenPoints[0]
-              const p1 = screenPoints[1]
-              
-              if (p0.cp2x !== undefined && p0.cp2y !== undefined) {
-                const cp1x = p0.cp2x
-                const cp1y = p0.cp2y
-                const cp2x = p1.cp1x !== undefined ? p1.cp1x : cp1x
-                const cp2y = p1.cp1y !== undefined ? p1.cp1y : cp1y
-                pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`
-              } else {
-                const midX = (p0.x + p1.x) / 2
-                const midY = (p0.y + p1.y) / 2
-                pathData += ` Q ${midX} ${midY}, ${p1.x} ${p1.y}`
-              }
-            } else {
-              for (let i = 0; i < screenPoints.length - 1; i++) {
-                const p0 = i > 0 ? screenPoints[i - 1] : screenPoints[i]
-                const p1 = screenPoints[i]
-                const p2 = screenPoints[i + 1]
-                const p3 = i + 2 < screenPoints.length ? screenPoints[i + 2] : p2
-                
-                let cp1x, cp1y, cp2x, cp2y
-                
-                if (p1.cp2x !== undefined && p1.cp2y !== undefined) {
-                  cp1x = p1.cp2x
-                  cp1y = p1.cp2y
-                } else {
-                  const tension = 0.5
-                  cp1x = p1.x + (p2.x - p0.x) / 6 * tension
-                  cp1y = p1.y + (p2.y - p0.y) / 6 * tension
-                }
-                
-                if (p2.cp1x !== undefined && p2.cp1y !== undefined) {
-                  cp2x = p2.cp1x
-                  cp2y = p2.cp1y
-                } else {
-                  const tension = 0.5
-                  cp2x = p2.x - (p3.x - p1.x) / 6 * tension
-                  cp2y = p2.y - (p3.y - p1.y) / 6 * tension
-                }
-                
-                pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`
-              }
-            }
-          }
-          
-          // Show the selection glow whether this path is the single selected
-          // trace or part of a multi-selection (previously only multi-select
-          // showed any highlight at all, so a singly-selected path had none).
-          const isPathMultiSelected = selectedTraceId === trace.id || multiSelectedIds.has(trace.id)
-
-          return (
-            <svg
-              key={`path-${trace.id}`}
-              className="absolute select-none"
-              style={{
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
-                overflow: 'visible',
-                zIndex: Math.min(trace.zIndex ?? 0, 40), // Cap at 40 to stay below handles (z-50)
-                pointerEvents: 'none'
-              }}
-            >
-              {/* Arrow marker definitions */}
-              <defs>
-                {/* Triangle markers - size in screen pixels (userSpaceOnUse) */}
-                <marker
-                  id={`${markerId}-triangle-start`}
-                  markerWidth={outlineWidth * 3.5}
-                  markerHeight={outlineWidth * 3.5}
-                  refX={outlineWidth * 3.5}
-                  refY={outlineWidth * 1.75}
-                  orient="auto"
-                  markerUnits="userSpaceOnUse"
-                >
-                  <polygon
-                    points={`${outlineWidth * 3.5},0 ${outlineWidth * 3.5},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
-                    fill={shapeColor}
-                  />
-                </marker>
-                <marker
-                  id={`${markerId}-triangle-end`}
-                  markerWidth={outlineWidth * 3.5}
-                  markerHeight={outlineWidth * 3.5}
-                  refX={0}
-                  refY={outlineWidth * 1.75}
-                  orient="auto"
-                  markerUnits="userSpaceOnUse"
-                >
-                  <polygon
-                    points={`0,0 ${outlineWidth * 3.5},${outlineWidth * 1.75} 0,${outlineWidth * 3.5}`}
-                    fill={shapeColor}
-                  />
-                </marker>
-                {/* Diamond (Nier-style) markers - size in screen pixels */}
-                <marker
-                  id={`${markerId}-diamond-start`}
-                  markerWidth={outlineWidth * 3.5}
-                  markerHeight={outlineWidth * 3.5}
-                  refX={outlineWidth * 1.75}
-                  refY={outlineWidth * 1.75}
-                  orient="auto"
-                  markerUnits="userSpaceOnUse"
-                >
-                  <polygon
-                    points={`${outlineWidth * 1.75},0 ${outlineWidth * 3.5},${outlineWidth * 1.75} ${outlineWidth * 1.75},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
-                    fill={shapeColor}
-                  />
-                </marker>
-                <marker
-                  id={`${markerId}-diamond-end`}
-                  markerWidth={outlineWidth * 3.5}
-                  markerHeight={outlineWidth * 3.5}
-                  refX={outlineWidth * 1.75}
-                  refY={outlineWidth * 1.75}
-                  orient="auto"
-                  markerUnits="userSpaceOnUse"
-                >
-                  <polygon
-                    points={`${outlineWidth * 1.75},0 ${outlineWidth * 3.5},${outlineWidth * 1.75} ${outlineWidth * 1.75},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
-                    fill={shapeColor}
-                  />
-                </marker>
-              </defs>
-              {curveType === 'bezier' ? (
-                <>
-                  {/* Multi-selection glow effect */}
-                  {isPathMultiSelected && (
-                    <path
-                      d={pathData}
-                      fill="none"
-                      stroke="#86efac"
-                      strokeWidth={outlineWidth + 8}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      opacity={0.75}
-                      style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
-                    />
-                  )}
-                  {/* Invisible wider stroke for easier clicking */}
-                  <path
-                    d={pathData}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={outlineWidth + 10}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    data-trace-element="true"
-                    style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (e.shiftKey) {
-                        // Toggle multi-selection - same logic as handleMouseDown
-                        setMultiSelectedIds(prev => {
-                          const next = new Set(prev)
-                          if (next.has(trace.id)) {
-                            next.delete(trace.id)
-                          } else {
-                            next.add(trace.id)
-                          }
-                          // Also add the currently selected trace if not already in selection
-                          if (selectedTraceId && !next.has(selectedTraceId)) {
-                            next.add(selectedTraceId)
-                          }
-                          return next
-                        })
-                        setSelectedTraceId(trace.id)
-                      } else {
-                        setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
-                        setSelectedTraceId(trace.id)
-                      }
-                    }}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation()
-                      const t = traces.find(tr => tr.id === trace.id)
-                      if (t) setEditingTrace(t)
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setSelectedTraceId(trace.id)
-                      setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
-                    }}
-                  />
-                  <path
-                    d={pathData}
-                    fill="none"
-                    stroke="rgba(203, 203, 203, 0.22)"
-                    strokeWidth={outlineWidth + 4}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
-                  />
-                  {/* Visible path */}
-                  <path
-                    d={pathData}
-                    fill="none"
-                    stroke={shapeColor}
-                    strokeWidth={outlineWidth}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={shapeOpacity}
-                    markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
-                    markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
-                    style={{ pointerEvents: 'none' }}
-                  />
-                </>
-              ) : (
-                <>
-                  {/* Multi-selection glow effect for polyline */}
-                  {isPathMultiSelected && (
-                    <polyline
-                      points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                      fill="none"
-                      stroke="#86efac"
-                      strokeWidth={outlineWidth + 8}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      opacity={0.75}
-                      style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
-                    />
-                  )}
-                  {/* Invisible wider stroke for easier clicking */}
-                  <polyline
-                    points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={outlineWidth + 10}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    data-trace-element="true"
-                    style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (e.shiftKey) {
-                        // Toggle multi-selection - same logic as handleMouseDown
-                        setMultiSelectedIds(prev => {
-                          const next = new Set(prev)
-                          if (next.has(trace.id)) {
-                            next.delete(trace.id)
-                          } else {
-                            next.add(trace.id)
-                          }
-                          // Also add the currently selected trace if not already in selection
-                          if (selectedTraceId && !next.has(selectedTraceId)) {
-                            next.add(selectedTraceId)
-                          }
-                          return next
-                        })
-                        setSelectedTraceId(trace.id)
-                      } else {
-                        setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
-                        setSelectedTraceId(trace.id)
-                      }
-                    }}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation()
-                      const t = traces.find(tr => tr.id === trace.id)
-                      if (t) setEditingTrace(t)
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setSelectedTraceId(trace.id)
-                      setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
-                    }}
-                  />
-                  <polyline
-                    points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke="rgba(203, 203, 203, 0.22)"
-                    strokeWidth={outlineWidth + 4}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
-                  />
-                  {/* Visible path */}
-                  <polyline
-                    points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke={shapeColor}
-                    strokeWidth={outlineWidth}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={shapeOpacity}
-                    markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
-                    markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
-                    style={{ pointerEvents: 'none' }}
-                  />
-                </>
-              )}
-            </svg>
-          )
-        })}
-
         {/* Render path point handles as absolute overlay (only for selected path) */}
         {selectedTraceId && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
@@ -3403,7 +3426,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     {/* Main point handle */}
                     <div
                       data-trace-element="true"
-                      className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[50] ${
+                      className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[1000000] ${
                         isPointSelected ? 'trace-nier-handle-active' : ''
                       }`}
                       style={{
@@ -3443,7 +3466,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[50]"
+                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
                                 style={{ left: `${cp1ScreenX}px`, top: `${cp1ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -3475,7 +3498,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[50]"
+                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
                                 style={{ left: `${cp2ScreenX}px`, top: `${cp2ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -3511,7 +3534,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <div
                     data-trace-element="true"
-                    className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[50]"
+                    className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[1000000]"
                     style={{ left: `${screenX}px`, top: `${screenY}px`, transform: 'translate(-50%, -50%)' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => {
@@ -3571,7 +3594,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     key={corner}
                     data-trace-element="true"
-                    className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[50]"
+                    className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000000]"
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -3606,7 +3629,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <div
                     key={edge}
                     data-trace-element="true"
-                    className={`absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[50] ${cursorClass}`}
+                    className={`absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[1000000] ${cursorClass}`}
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -3621,7 +3644,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Rotation handle at top */}
               <div
                 data-trace-element="true"
-                className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[50]"
+                className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000000]"
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY - (borderHeight / 2 + 20)}px`,
@@ -3661,7 +3684,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 pointerEvents: 'none',
                 transition: 'left 0.15s ease-out, top 0.15s ease-out',
                 filter: `drop-shadow(0 0 6px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5))`,
-                zIndex: 999,
+                zIndex: OTHER_USER_CURSOR_Z_INDEX,
               }}
             >
               {/* Cursor pointer SVG */}

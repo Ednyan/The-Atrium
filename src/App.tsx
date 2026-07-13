@@ -409,7 +409,25 @@ function AppInner() {
     setAtriumTransitionPhase('loading')
   }, [route.page, route.lobbyId])
 
-  // Once access is verified, transition from loading loop to entering sequence.
+  // Start loading traces (and, on desktop, pre-resolving local media) as soon
+  // as access to the atrium is verified, so this overlaps with the loading
+  // screen instead of only starting once LobbyScene mounts at the very end
+  // of the transition — that's what made traces (especially local images)
+  // visibly pop in after the loading screen finished.
+  const preloadLobbyId = (route.page === 'atrium' && route.lobbyId && verifiedLobbyId === route.lobbyId)
+    ? route.lobbyId
+    : null
+  const { isLoading: tracesLoading } = useTraces(preloadLobbyId)
+
+  // Once access is verified, the entering cinematic's frames are decoded,
+  // AND trace/local-media loading has finished, transition from the loading
+  // loop to the entering sequence. Waiting on trace loading here (not just
+  // frame decode) matters: that loading work runs on the same main thread as
+  // the cinematic's fixed-rate playback clock, so letting it run out during
+  // the already variable-length loading loop -- instead of overlapping it
+  // with the entering animation -- keeps it from contending with (and
+  // stuttering) the animation. Capped at 6s so a slow/hung request can't
+  // block entry indefinitely.
   useEffect(() => {
     if (route.page !== 'atrium' || !route.lobbyId) return
     if (verifiedLobbyId !== route.lobbyId) return
@@ -417,7 +435,12 @@ function AppInner() {
     if (atriumTransitionPhase !== 'loading') return
     if (!enteringFramesReady) return
 
-    setAtriumTransitionPhase('entering')
+    if (!tracesLoading) {
+      setAtriumTransitionPhase('entering')
+      return
+    }
+    const timeout = setTimeout(() => setAtriumTransitionPhase('entering'), 6000)
+    return () => clearTimeout(timeout)
   }, [
     route.page,
     route.lobbyId,
@@ -425,17 +448,8 @@ function AppInner() {
     transitionLobbyId,
     atriumTransitionPhase,
     enteringFramesReady,
+    tracesLoading,
   ])
-
-  // Start loading traces (and, on desktop, pre-resolving local media) as soon
-  // as access to the atrium is verified, so this overlaps with the
-  // entering/flash animation instead of only starting once LobbyScene mounts
-  // at the very end of the transition — that's what made traces (especially
-  // local images) visibly pop in after the loading screen finished.
-  const preloadLobbyId = (route.page === 'atrium' && route.lobbyId && verifiedLobbyId === route.lobbyId)
-    ? route.lobbyId
-    : null
-  const { isLoading: tracesLoading } = useTraces(preloadLobbyId)
 
   // Flash always completes quickly on its own, but don't drop straight into
   // the atrium until trace data (and pre-resolved local media) is actually
