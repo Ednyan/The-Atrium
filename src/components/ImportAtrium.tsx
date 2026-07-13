@@ -149,9 +149,22 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // Import traces
       setProgress('Importing traces...')
       let imported = 0
+      let skipped = 0
+      let failed = 0
       const total = parsed.traces.length
 
       for (const trace of parsed.traces) {
+        // Traces referencing desktop-local vault storage (not embeds, not
+        // data: URLs, not remote http(s) links) can't be resolved outside
+        // the machine that made them -- skip rather than import broken.
+        const needsLocalStorage = (url: any) =>
+          typeof url === 'string' && url.startsWith('local://')
+
+        if (needsLocalStorage(trace.media_url) || needsLocalStorage(trace.image_url)) {
+          skipped++
+          continue
+        }
+
         // Handle base64 data URLs — upload to Supabase Storage
         let mediaUrl = trace.media_url
         if (mediaUrl && mediaUrl.startsWith('data:')) {
@@ -201,8 +214,15 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           }
         }
 
-        // Strip local-only fields and remap IDs
-        const { _local_layer_id, layer_id, ...rest } = trace
+        // Strip local-only fields and remap IDs. `vault_media_path` /
+        // `vault_image_path` come from the desktop's auto-synced vault
+        // mirror file (not the manual "Export Atrium" format) and aren't
+        // real trace columns -- including them makes the insert fail.
+        const {
+          _local_layer_id, layer_id, id: _id, created_at: _createdAt,
+          vault_media_path, vault_image_path,
+          ...rest
+        } = trace
         const mappedLayerId = _local_layer_id ? layerIdMap[_local_layer_id] || null : null
 
         const traceData: Record<string, any> = {
@@ -214,19 +234,22 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           image_url: imageUrl || null,
         }
 
-        // Remove any keys that shouldn't be sent
-        delete traceData.id
-        delete traceData.created_at
-
-        await (supabase.from('traces') as any).insert(traceData)
-        imported++
-        if (imported % 10 === 0 || imported === total) {
-          setProgress(`Importing traces... ${imported}/${total}`)
+        const { error: insertErr } = await (supabase.from('traces') as any).insert(traceData)
+        if (insertErr) {
+          failed++
+        } else {
+          imported++
+        }
+        if ((imported + failed + skipped) % 10 === 0 || imported + failed + skipped === total) {
+          setProgress(`Importing traces... ${imported + failed + skipped}/${total}`)
         }
       }
 
       setStatus('done')
-      setProgress(`Imported "${atriumName}" — ${imported} traces, ${Object.keys(layerIdMap).length} layers`)
+      const summary = [`${imported} traces`]
+      if (skipped > 0) summary.push(`${skipped} skipped (local-only media)`)
+      if (failed > 0) summary.push(`${failed} failed`)
+      setProgress(`Imported "${atriumName}" — ${summary.join(', ')}, ${Object.keys(layerIdMap).length} layers`)
     } catch (e: any) {
       setError(e.message || String(e))
       setStatus('error')
@@ -235,8 +258,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
   const traceCount = parsed?.traces.length ?? 0
   const layerCount = parsed?.layers.length ?? 0
-  const mediaCount = parsed?.traces.filter(t => 
+  const mediaCount = parsed?.traces.filter(t =>
     t.media_url?.startsWith('data:') || t.image_url?.startsWith('data:')
+  ).length ?? 0
+  const localOnlyCount = parsed?.traces.filter(t =>
+    t.media_url?.startsWith('local://') || t.image_url?.startsWith('local://')
   ).length ?? 0
 
   return (
@@ -288,6 +314,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               <div className="text-[9px] text-nier-border/40 tracking-wider">
                 Exported {new Date(parsed.exportedAt).toLocaleDateString()}
               </div>
+              {localOnlyCount > 0 && (
+                <div className="text-[9px] text-nier-red/70 tracking-wider">
+                  {localOnlyCount} trace{localOnlyCount === 1 ? '' : 's'} reference local files on the source machine and will be skipped.
+                </div>
+              )}
             </div>
 
             <div className="mb-4">

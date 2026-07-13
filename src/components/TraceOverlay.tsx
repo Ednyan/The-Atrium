@@ -2088,7 +2088,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             )}
             
             {/* The trace itself */}
-            <div style={{ opacity: traceOpacity, willChange: 'transform' }}>
+            {/* position+zIndex here too (not just the inner container):
+                CSS opacity < 1 establishes its own stacking context, which
+                would otherwise isolate the inner z-index from comparing
+                correctly against other traces once this fades with distance. */}
+            <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: Math.min(trace.zIndex ?? 0, 40) }}>
             {/* Container for positioning - doesn't scale */}
             <div
               data-trace-element="true"
@@ -2096,6 +2100,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               style={{
                 left: `${screenX}px`,
                 top: `${screenY}px`,
+                // Explicit z-index (matching the same cap used by the
+                // separate path-shape SVG block below) so ordinary traces
+                // and path shapes compare on equal terms. Without this, a
+                // path's explicit z-index always painted above every
+                // non-path trace regardless of value, since a positioned
+                // element with a set z-index paints above siblings that
+                // rely on implicit DOM-order stacking.
+                zIndex: Math.min(trace.zIndex ?? 0, 40),
                 transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${trace.flipHorizontal ? -1 : 1}) scaleY(${trace.flipVertical ? -1 : 1})`,
                 willChange: 'transform',
                 transformOrigin: 'center center',

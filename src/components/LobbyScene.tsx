@@ -2591,7 +2591,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               }
               if (isDrawing) {
                 const raw = { x: e.clientX, y: e.clientY }
-                const smoothing = drawingSmoothingRef.current / 100
+                // Cap below 1.0 -- at exactly 100% alpha becomes 0 and the
+                // smoothed point never moves from its starting position,
+                // turning the stroke into a pile of coincident points.
+                const smoothing = Math.min(drawingSmoothingRef.current / 100, 0.95)
                 if (smoothing > 0 && smoothedPointRef.current) {
                   // Exponential moving average: lerp from smoothed toward raw
                   const alpha = 1 - smoothing
@@ -2640,7 +2643,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 e.preventDefault()
                 const touch = e.touches[0]
                 const raw = { x: touch.clientX, y: touch.clientY }
-                const smoothing = drawingSmoothingRef.current / 100
+                const smoothing = Math.min(drawingSmoothingRef.current / 100, 0.95)
                 if (smoothing > 0 && smoothedPointRef.current) {
                   const alpha = 1 - smoothing
                   const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha

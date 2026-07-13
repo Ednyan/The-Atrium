@@ -69,22 +69,22 @@ export function usePresence(lobbyId: string | null) {
       },
     })
 
-    // Reconciles local otherUsers against the channel's current presence
-    // state -- used for both the 'sync' event and a periodic safety-net
-    // (see below), since presence is eventually-consistent and a missed
-    // join/leave broadcast (e.g. two users connecting in close succession,
-    // or a brief reconnect) can otherwise leave a user permanently missing
-    // or stuck as a "ghost" until they leave and rejoin.
-    const reconcilePresenceState = () => {
+    // Applies the channel's current presence snapshot additively (adds/
+    // updates, never removes). Used for the 'sync' event, which the SDK
+    // fires on nearly every presence change -- including our own throttled
+    // position broadcasts -- so it can't be trusted to always carry a fully
+    // settled snapshot. Removal on a momentarily-incomplete sync used to
+    // wipe out other users who had just been correctly added, making them
+    // vanish permanently instead of "sometimes" -- so removal is handled
+    // separately, only by the slower periodic reconciliation below.
+    const applyPresenceState = () => {
       const state = channel.presenceState()
-      const seenKeys = new Set<string>()
 
       Object.entries(state).forEach(([key, presences]) => {
         const presenceArr = presences as any[]
         if (key === userId || !presenceArr || presenceArr.length === 0) return
         if (!isValidUserKey(key)) return
 
-        seenKeys.add(key)
         const presence = presenceArr[0] as any
         updateOtherUser(key, {
           userId: key,
@@ -96,9 +96,19 @@ export function usePresence(lobbyId: string | null) {
           joinedAt: presence.online_at ? new Date(presence.online_at).getTime() : Date.now(),
         })
       })
+    }
 
-      // Drop any locally-tracked user the channel no longer reports --
-      // catches a missed 'leave' broadcast.
+    // Full reconcile: additive pass plus dropping any locally-tracked user
+    // the channel no longer reports -- catches a missed 'leave' broadcast.
+    // Only run on a slow interval (see below), where the snapshot is much
+    // less likely to be transiently incomplete than on a live 'sync' event.
+    const reconcilePresenceState = () => {
+      applyPresenceState()
+
+      const state = channel.presenceState()
+      const seenKeys = new Set(
+        Object.keys(state).filter(key => key !== userId && isValidUserKey(key) && state[key]?.length > 0)
+      )
       const currentOtherUsers = useGameStore.getState().otherUsers
       Object.keys(currentOtherUsers).forEach(key => {
         if (!seenKeys.has(key)) removeOtherUser(key)
@@ -107,7 +117,7 @@ export function usePresence(lobbyId: string | null) {
 
     // Track presence
     channel
-      .on('presence', { event: 'sync' }, reconcilePresenceState)
+      .on('presence', { event: 'sync' }, applyPresenceState)
       .on('presence', { event: 'join' }, ({ key, newPresences }: { key: string; newPresences: any[] }) => {
         if (key !== userId && newPresences && newPresences.length > 0 && isValidUserKey(key)) {
           const presence = newPresences[0] as any
