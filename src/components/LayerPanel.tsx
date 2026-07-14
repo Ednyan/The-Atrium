@@ -441,7 +441,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
   return (
     <div 
       data-ui-element="true"
-      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[9999] pointer-events-auto" 
+      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
       style={{ 
         backgroundColor: 'rgba(20,20,20,0.98)',
         top: '80px',

@@ -203,7 +203,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 z-[10000] bg-nier-black/80 flex items-center justify-center p-4" 
+        className="fixed inset-0 z-[10000100] bg-nier-black/80 flex items-center justify-center p-4"
         onClick={onClose}
         style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
         onTouchMove={(e) => e.stopPropagation()}

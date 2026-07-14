@@ -2697,11 +2697,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           />
 
           {/* Shift+drag area-selection rectangle -- position/size mutated
-              directly on mousemove (see handleMouseMove), not React state */}
+              directly on mousemove (see handleMouseMove), not React state.
+              z-index has to clear TraceOverlay's own scale (traces/handles/
+              cursors run up into the millions -- see TraceOverlay.tsx), since
+              this needs to stay visible while dragging directly over traces;
+              a z-[9999] rectangle was being drawn but invisibly buried
+              underneath, making the drag look like it did nothing. */}
           <div
             ref={areaSelectRectRef}
-            className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none z-[9999]"
-            style={{ display: 'none' }}
+            className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none"
+            style={{ display: 'none', zIndex: 5_000_000 }}
           />
 
           {/* Drawing canvas overlay - below UI buttons, above traces */}
@@ -2832,7 +2837,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Map Right-Click Context Menu */}
       {mapContextMenu && (
         <div
-          className="fixed inset-0 z-[9999]"
+          className="fixed inset-0 z-[10000100]"
           onClick={() => setMapContextMenu(null)}
           onContextMenu={(e) => { e.preventDefault(); setMapContextMenu(null) }}
         >
@@ -3046,7 +3051,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const hudBottom = hudRef.current ? hudRef.current.getBoundingClientRect().bottom : 200
         return (
         <div
-          className="fixed inset-0 z-[10002] pointer-events-auto"
+          className="fixed inset-0 z-[10000100] pointer-events-auto"
           onClick={() => setShowLeaveDialog(false)}
         >
           <div

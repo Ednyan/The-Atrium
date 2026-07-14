@@ -246,7 +246,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         right: '20px',
         top: '50%',
         transform: 'translateY(-50%)',
-        zIndex: 300,
+        zIndex: 10_000_100,
       }}
     >
       {/* Corner brackets */}
