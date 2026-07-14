@@ -224,7 +224,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
   return (
     <div
-      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] p-4"
+      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000] p-4"
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}

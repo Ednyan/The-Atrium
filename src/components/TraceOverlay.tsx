@@ -56,20 +56,6 @@ const OTHER_USER_CURSOR_Z_INDEX = 2_000_000
 // stored playerZIndex value other code relies on.
 const OWN_CURSOR_MIN_Z_INDEX = 3_000_000
 
-// Menus/panels/dialogs (context menu, Customize/Batch Edit panels, delete
-// confirmation, full-view modal) must stay above canvas content -- traces,
-// handles, and cursors -- regardless of how those scale. They previously
-// used small values (50-300) left over from before trace z-index was
-// uncapped, which put the handle/cursor z-index bumps above (in front of)
-// these menus once a trace's own z-index or a handle exceeded ~300.
-// MENU_PANEL_Z_INDEX is for the actual menu/dialog content; menus that have
-// a separate click-outside-to-close backdrop element (Customize, Batch
-// Edit) use MENU_BACKDROP_Z_INDEX for that, which must stay below the panel
-// itself. Single self-contained overlays (context menu, delete confirm,
-// full-view modal) just use MENU_PANEL_Z_INDEX for the whole thing.
-const MENU_BACKDROP_Z_INDEX = 10_000_000
-const MENU_PANEL_Z_INDEX = 10_000_100
-
 type TraceClipboardPayload = {
   version: 1
   lobbyId?: string
@@ -727,35 +713,27 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [traces, pushAddOp])
 
-  // Deletion is immediate (fire-and-forget from the caller's side -- local
-  // state already reflects the change), matching how trace creation already
-  // commits to the database right away for real-time visibility to other
-  // users. Deletion used to be deferred to Save (a soft "markTraceDeleted"
-  // only actually removed the row on the next saveAllChanges), which meant a
-  // trace you deleted without saving was still in the database and could
-  // silently reappear on reload/leave-and-rejoin.
-  //
-  // Must actually be awaited (even though callers don't await it) --
-  // Supabase's query builders are lazy thenables that only send the request
-  // once something calls .then()/awaits them. Just constructing
-  // `.delete().eq(...)` without that never fires the network request at
-  // all, which was the actual bug: the row was never removed, so it was
-  // always still there to reappear.
-  const deleteTraceFromDb = useCallback(async (traceId: string) => {
+  // Deletion is immediate (fire-and-forget -- local state already reflects
+  // the change), matching how trace creation already commits to the
+  // database right away for real-time visibility to other users. Deletion
+  // used to be deferred to Save (a soft "markTraceDeleted" only actually
+  // removed the row on the next saveAllChanges), which meant a trace you
+  // deleted without saving was still in the database and could silently
+  // reappear on reload/leave-and-rejoin.
+  const deleteTraceFromDb = useCallback((traceId: string) => {
     if (!supabase) return
-    await (supabase.from('traces') as any).delete().eq('id', traceId)
+    ;(supabase.from('traces') as any).delete().eq('id', traceId)
   }, [])
 
   // Undo of a delete (or redo of an add-undo) needs to actually re-insert
   // the row, since it's now genuinely gone from the database rather than
   // just hidden pending a save. Keeps the original id/created_at (unlike
   // duplicateTrace, which intentionally gets a fresh id) so it's a true
-  // restore, not a new trace. Same "must be awaited to actually fire" note
-  // as deleteTraceFromDb applies here.
-  const reinsertTraceFromSnapshot = useCallback(async (trace: Trace) => {
+  // restore, not a new trace.
+  const reinsertTraceFromSnapshot = useCallback((trace: Trace) => {
     if (!supabase) return
     const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0), id: trace.id, created_at: trace.createdAt }
-    await (supabase.from('traces') as any).insert(row)
+    ;(supabase.from('traces') as any).insert(row)
   }, [lobbyId, userId, username])
 
   const applyUndoOp = useCallback((op: UndoOp, direction: 'undo' | 'redo') => {
@@ -3833,7 +3811,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         <>
           {/* Menu */}
           <div
-            className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
+            className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[200] pointer-events-auto max-h-[80vh] overflow-y-auto"
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
             {/* Corner brackets */}
@@ -4037,12 +4015,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         <>
           <div
             className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
-            style={{
+            style={{ 
               position: 'fixed',
               right: '20px',
               top: '50%',
               transform: 'translateY(-50%)',
-              zIndex: MENU_PANEL_Z_INDEX
+              zIndex: 300
             }}
           >
             {/* Corner brackets */}
@@ -5281,7 +5259,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-transparent pointer-events-auto"
-            style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
+            style={{ zIndex: 250 }}
             onClick={() => setEditingTrace(null)}
           />
         </>
@@ -5307,7 +5285,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 right: '20px',
                 top: '50%',
                 transform: 'translateY(-50%)',
-                zIndex: MENU_PANEL_Z_INDEX
+                zIndex: 300
               }}
             >
               {/* Corner brackets */}
@@ -5448,7 +5426,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             {/* Backdrop */}
             <div
               className="fixed inset-0 bg-transparent pointer-events-auto"
-              style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
+              style={{ zIndex: 250 }}
               onClick={() => setShowBatchEditPanel(false)}
             />
           </>
@@ -5458,7 +5436,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {/* Full view modal */}
       {modalTrace && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 pointer-events-auto"
           onClick={() => setModalTrace(null)}
         >
           <div
@@ -5611,7 +5589,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {/* Delete Confirmation Dialog */}
       {deleteConfirmDialog && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[250] pointer-events-auto"
           onClick={() => setDeleteConfirmDialog(null)}
         >
           {/* Scanline overlay */}
