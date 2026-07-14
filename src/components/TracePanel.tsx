@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
+import { mapRowToTrace } from '../hooks/useTraces'
 import type { Trace } from '../types/database'
 
 const DEFAULT_SHAPE_COLOR = '#3b82f6'
@@ -203,35 +204,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           alert(`Failed to save trace: ${error.message}`)
           return // Don't add to local store if database fails
         } else {
-          // Use the database-generated trace
+          // Use the database-generated trace. mapRowToTrace is the same
+          // mapper the initial load/realtime paths use -- previously this
+          // built a trace object by hand with only ~15 of the ~45 fields
+          // (showBorder/showBackground/cropWidth/illuminate/etc. were all
+          // missing), so a freshly-created trace could render with wrong
+          // defaults until the next full reload re-fetched it correctly.
           if (data && data[0]) {
             const dbTrace = data[0] as any
             const trace: Trace = {
-              id: dbTrace.id,
-              userId: dbTrace.user_id,
-              username: dbTrace.username,
-              type: dbTrace.type,
-              content: dbTrace.content,
-              x: dbTrace.position_x,
-              y: dbTrace.position_y,
-              imageUrl: dbTrace.image_url || undefined,
-              mediaUrl: dbTrace.media_url || undefined,
-              createdAt: dbTrace.created_at,
-              scale: dbTrace.scale ?? 1.0,
-              scaleX: dbTrace.scale ?? 1.0,
-              scaleY: dbTrace.scale ?? 1.0,
-              rotation: dbTrace.rotation ?? 0.0,
-              // Shape properties
-              shapeType: dbTrace.shape_type,
-              shapeColor: dbTrace.shape_color,
-              shapeOpacity: dbTrace.shape_opacity,
-              cornerRadius: dbTrace.corner_radius,
-              width: dbTrace.width,
-              height: dbTrace.height,
+              ...mapRowToTrace(dbTrace),
               shapePoints: dbTrace.shape_points ?? initialPathPoints,
               pathCurveType: dbTrace.path_curve_type ?? (shapeType === 'path' ? 'straight' : undefined),
-              layerId: dbTrace.layer_id ?? null,
-              zIndex: dbTrace.z_index ?? 0,
             }
             // Add to local store with database ID
             addTrace(trace)

@@ -3,6 +3,7 @@ import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { usePresence } from '../hooks/usePresence'
+import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
 import LayerPanel, { TRACE_DRAG_DATA_KEY } from './LayerPanel'
@@ -1982,25 +1983,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         return
       }
       if (data && data[0]) {
-        const d = data[0] as any
-        const trace: Trace = {
-          id: d.id,
-          userId: d.user_id,
-          username: d.username,
-          type: d.type,
-          content: d.content,
-          x: d.position_x,
-          y: d.position_y,
-          mediaUrl: d.media_url || undefined,
-          createdAt: d.created_at,
-          scale: d.scale ?? 1.0,
-          scaleX: d.scale ?? 1.0,
-          scaleY: d.scale ?? 1.0,
-          rotation: d.rotation ?? 0.0,
-          layerId: d.layer_id ?? null,
-          zIndex: d.z_index ?? 0,
-        }
-        useGameStore.getState().addTrace(trace)
+        // Same mapper the initial load/realtime paths use, so a freshly
+        // dropped trace gets the full field set (showBorder/showBackground/
+        // cropWidth/illuminate/etc.) instead of only ~15 of ~45 fields.
+        useGameStore.getState().addTrace(mapRowToTrace(data[0]))
       }
     } else {
       const trace: Trace = {

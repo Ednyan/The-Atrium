@@ -3,7 +3,7 @@ import { useGameStore } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
-function mapRowToTrace(row: any): Trace {
+export function mapRowToTrace(row: any): Trace {
   return {
     id: row.id,
     userId: row.user_id,
