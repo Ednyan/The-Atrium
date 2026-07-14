@@ -150,7 +150,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const hasEyeDropperSupport = typeof window !== 'undefined' && 'EyeDropper' in window
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
-  
+  const [showBatchEditPanel, setShowBatchEditPanel] = useState(false) // Batch-edit shared properties across multiSelectedIds
+
   const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
   const startCropRef = useRef({ cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 })
@@ -1053,6 +1054,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     markTraceChanged(traceId)
   }
 
+  // Applies the same property updates to every trace in a set at once (used
+  // by the batch-edit panel). Each trace still gets its own undo entry via
+  // updateTraceCustomization -- undoing a batch edit takes one Ctrl+Z per
+  // trace rather than a single combined step, which keeps this on the
+  // existing per-trace undo model instead of adding a new "batch" op kind.
+  const updateTraceCustomizationForMany = (traceIds: Iterable<string>, updates: Partial<Trace>) => {
+    for (const traceId of traceIds) {
+      updateTraceCustomization(traceId, updates)
+    }
+  }
+
   // Touch adapter: converts a TouchEvent into a fake React.MouseEvent for handleMouseDown
   const handleTouchDown = (e: React.TouchEvent, trace: Trace, mode: TransformMode, corner?: string) => {
     if (e.touches.length !== 1) return
@@ -1689,6 +1701,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
     // Don't sync on traces updates - let editingTrace be the source of truth during editing
   }, [selectedTraceId, editingTrace])
+
+  // Close the batch-edit panel if the multi-selection it applies to drops
+  // below 2 traces (e.g. the user clicked away to deselect while it was open)
+  useEffect(() => {
+    if (showBatchEditPanel && multiSelectedIds.size < 2) {
+      setShowBatchEditPanel(false)
+    }
+  }, [showBatchEditPanel, multiSelectedIds])
 
   // Disable path creation mode when selection is cleared
   // Note: We don't check editingTrace here to avoid disabling mode when updating points
@@ -3761,11 +3781,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               onClick={() => {
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) setEditingTrace(trace)
+                setShowBatchEditPanel(false)
                 setContextMenu(null)
               }}
             >
               <span className="text-gray-400 text-[10px]">◇</span> Customize
             </button>
+            {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId) && (
+              <button
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                onClick={() => {
+                  setEditingTrace(null)
+                  setShowBatchEditPanel(true)
+                  setContextMenu(null)
+                }}
+              >
+                <span className="text-gray-400 text-[10px]">◇</span> Batch Edit ({multiSelectedIds.size})
+              </button>
+            )}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!trace || trace.type !== 'text') return null
@@ -5183,6 +5216,174 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           />
         </>
       )}
+
+      {/* Batch Edit panel: shared border/background properties applied to every
+          trace in multiSelectedIds at once. Reads its displayed values from
+          whichever selected trace happens to be `traces.find`'s first match --
+          there's no per-field "mixed values" indicator, changing a control
+          just overwrites that field on every selected trace immediately. */}
+      {showBatchEditPanel && multiSelectedIds.size > 1 && (() => {
+        const batchIds = Array.from(multiSelectedIds)
+        const seedTrace = traces.find(t => t.id === selectedTraceId && multiSelectedIds.has(t.id))
+          || traces.find(t => multiSelectedIds.has(t.id))
+        if (!seedTrace) return null
+
+        return (
+          <>
+            <div
+              className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
+              style={{
+                position: 'fixed',
+                right: '20px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 300
+              }}
+            >
+              {/* Corner brackets */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
+
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+                <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Batch Edit ({batchIds.length})</h2>
+              </div>
+
+              <div className="space-y-5">
+                {/* Toggle Options */}
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(seedTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={seedTrace.showBorder ?? true}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBorder: e.target.checked })}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]">Show Border</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(seedTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={seedTrace.showBackground ?? true}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBackground: e.target.checked })}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]">Show Background</span>
+                  </label>
+                </div>
+
+                {/* Border Color & Opacity */}
+                {(seedTrace.showBorder ?? true) && (
+                  <div>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
+                    <div className="flex gap-2 items-center mb-2">
+                      <input
+                        type="color"
+                        value={seedTrace.borderColor || getBorderColor(seedTrace.type)}
+                        onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderColor: e.target.value })}
+                        className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                      />
+                      <input
+                        type="text"
+                        defaultValue={seedTrace.borderColor || getBorderColor(seedTrace.type)}
+                        onBlur={(e) => updateTraceCustomizationForMany(batchIds, { borderColor: e.target.value })}
+                        className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                        placeholder="#ffffff"
+                      />
+                      <button
+                        onClick={() => updateTraceCustomizationForMany(batchIds, { borderColor: undefined })}
+                        className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                        title="Reset to default"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
+                      Border Opacity: {Math.round((seedTrace.borderOpacity ?? 1) * 100)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round((seedTrace.borderOpacity ?? 1) * 100)}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderOpacity: parseInt(e.target.value) / 100 })}
+                      className="w-full accent-nier-bg"
+                    />
+                  </div>
+                )}
+
+                {/* Fill Color & Opacity */}
+                {(seedTrace.showBackground ?? true) && (
+                  <div>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                    <div className="flex gap-2 items-center mb-2">
+                      <input
+                        type="color"
+                        value={seedTrace.fillColor || '#1a1a2e'}
+                        onChange={(e) => updateTraceCustomizationForMany(batchIds, { fillColor: e.target.value })}
+                        className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                      />
+                      <input
+                        type="text"
+                        defaultValue={seedTrace.fillColor || '#1a1a2e'}
+                        onBlur={(e) => updateTraceCustomizationForMany(batchIds, { fillColor: e.target.value })}
+                        className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                        placeholder="#1a1a2e"
+                      />
+                      <button
+                        onClick={() => updateTraceCustomizationForMany(batchIds, { fillColor: undefined })}
+                        className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                        title="Reset to default"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
+                      Fill Opacity: {Math.round((seedTrace.fillOpacity ?? 0.95) * 100)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round((seedTrace.fillOpacity ?? 0.95) * 100)}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { fillOpacity: parseInt(e.target.value) / 100 })}
+                      className="w-full accent-nier-bg"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  batchIds.forEach(id => markTraceChanged(id))
+                  setShowBatchEditPanel(false)
+                }}
+                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-bgDark transition-all border border-nier-bg mt-4"
+              >
+                Done
+              </button>
+            </div>
+
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-transparent pointer-events-auto"
+              style={{ zIndex: 250 }}
+              onClick={() => setShowBatchEditPanel(false)}
+            />
+          </>
+        )
+      })()}
 
       {/* Full view modal */}
       {modalTrace && (
