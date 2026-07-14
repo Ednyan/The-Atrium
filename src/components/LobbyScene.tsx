@@ -14,6 +14,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { saveAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
+import { packBoxesAroundCenter, getDefaultTraceBoxSize } from '../lib/binPack'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -98,6 +99,34 @@ const classifyDroppedFile = (file: File): 'image' | 'audio' | 'video' | 'text' =
   if (mime.startsWith('audio/') || AUDIO_FILE_EXTENSIONS.has(extension)) return 'audio'
   if (mime.startsWith('video/') || VIDEO_FILE_EXTENSIONS.has(extension)) return 'video'
   return 'text'
+}
+
+// Reads a dropped/pasted image file's real dimensions from a throwaway blob
+// URL (fast, local, no network) so a multi-item batch can be bin-packed
+// against actual aspect ratios rather than a flat default box. Falls back to
+// null on failure/timeout so the caller can use a default size instead.
+const probeImageFileDimensions = (file: File, timeoutMs = 1500): Promise<{ width: number; height: number } | null> => {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    let settled = false
+    const finish = (result: { width: number; height: number } | null) => {
+      if (settled) return
+      settled = true
+      URL.revokeObjectURL(url)
+      resolve(result)
+    }
+    const timeout = setTimeout(() => finish(null), timeoutMs)
+    const img = new Image()
+    img.onload = () => {
+      clearTimeout(timeout)
+      finish(img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null)
+    }
+    img.onerror = () => {
+      clearTimeout(timeout)
+      finish(null)
+    }
+    img.src = url
+  })
 }
 
 const classifyRemoteTraceType = (url: string): 'image' | 'video' | 'audio' | 'embed' => {
@@ -1744,11 +1773,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     const droppedFiles = Array.from(e.dataTransfer.files)
     const processDroppedFiles = async () => {
-      for (let i = 0; i < droppedFiles.length; i++) {
-        const file = droppedFiles[i]
+      // Phase 1: classify every dropped file and estimate its box size
+      // without uploading or inserting anything yet, so the whole batch can
+      // be bin-packed into one layout instead of just cascading diagonally
+      // from the drop point. Real dimensions are probed for actual image
+      // files (fast, local); everything else uses a type-based default.
+      type PendingDrop = {
+        traceType: string
+        content: string
+        mediaUrl?: string
+        file?: File
+        size: { width: number; height: number }
+      }
+      const pending: PendingDrop[] = []
+
+      for (const file of droppedFiles) {
         const traceType = classifyDroppedFile(file)
-        const dropX = worldX + i * 30
-        const dropY = worldY + i * 30
 
         if (traceType === 'text') {
           const text = await file.text()
@@ -1757,7 +1797,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           if (file.type === 'text/html' || extension === 'html' || extension === 'htm') {
             const htmlImagePayload = extractImageUrlFromHtml(text)
             if (htmlImagePayload) {
-              await insertDroppedTrace('image', htmlImagePayload.url, htmlImagePayload.url, dropX, dropY)
+              pending.push({ traceType: 'image', content: htmlImagePayload.url, mediaUrl: htmlImagePayload.url, size: getDefaultTraceBoxSize('image') })
               continue
             }
           }
@@ -1765,17 +1805,35 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const urlPayload = getDroppedUrlPayload(text)
           if (urlPayload) {
             const remoteTraceType = urlPayload.forceImage ? 'image' : classifyRemoteTraceType(urlPayload.url)
-            await insertDroppedTrace(remoteTraceType, urlPayload.url, urlPayload.url, dropX, dropY)
+            pending.push({ traceType: remoteTraceType, content: urlPayload.url, mediaUrl: urlPayload.url, size: getDefaultTraceBoxSize(remoteTraceType) })
             continue
           }
 
-          await insertDroppedTrace('text', text.slice(0, 5000), undefined, dropX, dropY)
+          pending.push({ traceType: 'text', content: text.slice(0, 5000), size: getDefaultTraceBoxSize('text') })
           continue
         }
 
-        const uploadedUrl = await uploadFile(file)
-        if (uploadedUrl) {
-          await insertDroppedTrace(traceType, `${traceType} drop`, uploadedUrl, dropX, dropY)
+        const size = traceType === 'image'
+          ? (await probeImageFileDimensions(file)) || getDefaultTraceBoxSize('image')
+          : getDefaultTraceBoxSize(traceType)
+        pending.push({ traceType, content: `${traceType} drop`, file, size })
+      }
+
+      // Phase 2: pack the batch around the drop point, then upload/insert.
+      const offsets = packBoxesAroundCenter(pending.map(p => p.size))
+
+      for (let i = 0; i < pending.length; i++) {
+        const item = pending[i]
+        const dropX = worldX + offsets[i].x
+        const dropY = worldY + offsets[i].y
+
+        if (item.file) {
+          const uploadedUrl = await uploadFile(item.file)
+          if (uploadedUrl) {
+            await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY)
+          }
+        } else {
+          await insertDroppedTrace(item.traceType, item.content, item.mediaUrl, dropX, dropY)
         }
       }
     }
@@ -1837,10 +1895,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
       const { x: baseX, y: baseY } = getWorldPositionFromScreen(pasteAnchor.x, pasteAnchor.y)
 
+      // Bin-pack the pasted batch around the paste point instead of
+      // cascading diagonally -- same approach as the multi-file drop handler.
+      const sizes = await Promise.all(imageFiles.map(f => probeImageFileDimensions(f)))
+      const offsets = packBoxesAroundCenter(sizes.map(s => s || getDefaultTraceBoxSize('image')))
+
       for (let i = 0; i < imageFiles.length; i++) {
         const uploadedUrl = await uploadFile(imageFiles[i])
         if (uploadedUrl) {
-          await insertDroppedTrace('image', imageFiles[i].name || 'pasted image', uploadedUrl, baseX + i * 30, baseY + i * 30)
+          await insertDroppedTrace('image', imageFiles[i].name || 'pasted image', uploadedUrl, baseX + offsets[i].x, baseY + offsets[i].y)
         }
       }
     }
