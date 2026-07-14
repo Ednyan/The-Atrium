@@ -18,6 +18,20 @@ export interface PackedOffset {
 
 type TraceKindForSizing = 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | string
 
+// Matches getTraceSize's image case: the longest edge is capped at 300
+// world units, scaled down proportionally, once a real image is detected.
+// Real probed dimensions (e.g. a 4000x3000 photo) must be run through this
+// before packing -- packing at raw pixel dimensions lays boxes out many
+// times larger than the trace will ever actually render at, which is what
+// made a packed batch look sparse/far apart once on the canvas.
+const IMAGE_DISPLAY_MAX_EDGE = 300
+
+export function scaleToDisplayBox(box: PackBox, maxEdge = IMAGE_DISPLAY_MAX_EDGE): PackBox {
+  const longest = Math.max(box.width, box.height)
+  const scale = longest > maxEdge ? maxEdge / longest : 1
+  return { width: Math.round(box.width * scale), height: Math.round(box.height * scale) }
+}
+
 // Mirrors TraceOverlay's getTraceSize default (pre-aspect-ratio-detection)
 // dimensions, so a freshly-placed batch is packed against roughly the same
 // footprint each trace will actually render at.

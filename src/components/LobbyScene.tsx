@@ -15,7 +15,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { saveAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
-import { packBoxesAroundCenter, getDefaultTraceBoxSize } from '../lib/binPack'
+import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox } from '../lib/binPack'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -1814,9 +1814,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           continue
         }
 
-        const size = traceType === 'image'
-          ? (await probeImageFileDimensions(file)) || getDefaultTraceBoxSize('image')
-          : getDefaultTraceBoxSize(traceType)
+        const probed = traceType === 'image' ? await probeImageFileDimensions(file) : null
+        const size = probed ? scaleToDisplayBox(probed) : getDefaultTraceBoxSize(traceType)
         pending.push({ traceType, content: `${traceType} drop`, file, size })
       }
 
@@ -1899,7 +1898,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Bin-pack the pasted batch around the paste point instead of
       // cascading diagonally -- same approach as the multi-file drop handler.
       const sizes = await Promise.all(imageFiles.map(f => probeImageFileDimensions(f)))
-      const offsets = packBoxesAroundCenter(sizes.map(s => s || getDefaultTraceBoxSize('image')))
+      const offsets = packBoxesAroundCenter(sizes.map(s => s ? scaleToDisplayBox(s) : getDefaultTraceBoxSize('image')))
 
       for (let i = 0; i < imageFiles.length; i++) {
         const uploadedUrl = await uploadFile(imageFiles[i])
