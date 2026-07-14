@@ -259,10 +259,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
   const lastMouseScreenPositionRef = useRef<{ x: number; y: number } | null>(null)
   const mouseDownScreenPosRef = useRef<{ x: number; y: number } | null>(null)
+  // Shift+drag on empty canvas draws a selection rectangle instead of
+  // panning; areaSelectRectRef is the visual box, mutated directly on
+  // mousemove (like brushCursorRef) to avoid re-rendering on every pixel.
+  const isAreaSelectingRef = useRef(false)
+  const areaSelectRectRef = useRef<HTMLDivElement>(null)
   const showTracePanelRef = useRef(false)
   const worldOffsetRef = useRef({ x: 0, y: 0 })
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
+  // Per-atrium: how a multi-item drop/paste batch gets arranged (see the
+  // Profile panel's "Batch Placement" setting and binPack.ts).
+  const packingShapeRef = useRef<'square' | 'circle'>('square')
   const autosaveSettingsRef = useRef({ enabled: false, intervalSeconds: 60 })
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
@@ -309,7 +317,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // fired when the user clicks a group in the Layer panel. TraceOverlay owns
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
-  const [groupSelectRequest, setGroupSelectRequest] = useState<string[] | null>(null)
+  const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
   // True only while a save triggered by the autosave heartbeat is in flight
   // (not manual Ctrl+S/HUD-button saves), so the "Saving..." indicator only
   // appears when the atrium is auto-saving on the user's behalf.
@@ -542,6 +550,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       window.removeEventListener('lobby-zoom-sensitivity-changed', handleZoomSensitivityChanged as EventListener)
     }
   }, [])
+
+  // Load the per-atrium batch-placement shape and keep it in sync with the
+  // Profile panel's setting.
+  useEffect(() => {
+    if (!lobbyId) return
+    try {
+      const raw = localStorage.getItem(`lobby_${lobbyId}_packingShape`)
+      if (raw === 'circle' || raw === 'square') packingShapeRef.current = raw
+    } catch {
+      // Ignore localStorage access failures
+    }
+
+    const handlePackingShapeChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ lobbyId: string; shape: 'square' | 'circle' }>
+      if (customEvent.detail?.lobbyId !== lobbyId) return
+      packingShapeRef.current = customEvent.detail.shape
+    }
+
+    window.addEventListener('lobby-packing-shape-changed', handlePackingShapeChanged as EventListener)
+    return () => {
+      window.removeEventListener('lobby-packing-shape-changed', handlePackingShapeChanged as EventListener)
+    }
+  }, [lobbyId])
 
   // Autosave is an atrium-wide policy the owner sets in the Manage panel
   // (currentLobby.autosaveEnabled/autosaveIntervalSeconds), not a per-browser
@@ -906,8 +937,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           if (!isClickingTrace && !isClickingUI) {
             // Don't start panning if in drawing mode
             if (isDrawingModeRef.current) return
-            isPanningRef.current = true
-            lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
+            if (e.shiftKey) {
+              // Shift+drag on empty canvas draws a selection rectangle instead of panning
+              isAreaSelectingRef.current = true
+              if (areaSelectRectRef.current) {
+                areaSelectRectRef.current.style.display = 'block'
+                areaSelectRectRef.current.style.left = `${e.clientX}px`
+                areaSelectRectRef.current.style.top = `${e.clientY}px`
+                areaSelectRectRef.current.style.width = '0px'
+                areaSelectRectRef.current.style.height = '0px'
+              }
+            } else {
+              isPanningRef.current = true
+              lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
+            }
           }
           return
         }
@@ -947,15 +990,68 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           // Move the camera (not the player)
           cameraPositionRef.current.x -= worldDeltaX
           cameraPositionRef.current.y -= worldDeltaY
-          
+
           lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
         }
+
+        if (isAreaSelectingRef.current && mouseDownScreenPosRef.current && areaSelectRectRef.current) {
+          const startX = mouseDownScreenPosRef.current.x
+          const startY = mouseDownScreenPosRef.current.y
+          areaSelectRectRef.current.style.left = `${Math.min(startX, e.clientX)}px`
+          areaSelectRectRef.current.style.top = `${Math.min(startY, e.clientY)}px`
+          areaSelectRectRef.current.style.width = `${Math.abs(e.clientX - startX)}px`
+          areaSelectRectRef.current.style.height = `${Math.abs(e.clientY - startY)}px`
+        }
       }
-      
+
       // Mouse up - stop panning
       const handleMouseUp = (e: MouseEvent) => {
         if (e.button === 0) {
           isPanningRef.current = false
+
+          if (isAreaSelectingRef.current) {
+            isAreaSelectingRef.current = false
+            if (areaSelectRectRef.current) areaSelectRectRef.current.style.display = 'none'
+
+            if (mouseDownScreenPosRef.current && worldContainerRef.current) {
+              const startX = mouseDownScreenPosRef.current.x
+              const startY = mouseDownScreenPosRef.current.y
+              const dragDistance = Math.hypot(e.clientX - startX, e.clientY - startY)
+
+              // Ignore a shift+click with no real drag, so an accidental tiny
+              // movement doesn't clear the existing selection.
+              if (dragDistance >= 5) {
+                const zoom = zoomRef.current
+                const wx1 = (Math.min(startX, e.clientX) - worldContainerRef.current.x) / zoom
+                const wy1 = (Math.min(startY, e.clientY) - worldContainerRef.current.y) / zoom
+                const wx2 = (Math.max(startX, e.clientX) - worldContainerRef.current.x) / zoom
+                const wy2 = (Math.max(startY, e.clientY) - worldContainerRef.current.y) / zoom
+
+                // Approximate each trace's footprint (real per-type rendered
+                // size isn't available here -- that's computed inside
+                // TraceOverlay -- but the same default-size table used for
+                // bin-packing is a reasonable stand-in for hit-testing).
+                const matchedIds = tracesDataRef.current
+                  .filter(trace => {
+                    const size = (trace.width && trace.height) ? { width: trace.width, height: trace.height } : getDefaultTraceBoxSize(trace.type)
+                    const scaleX = trace.scaleX ?? trace.scale ?? 1
+                    const scaleY = trace.scaleY ?? trace.scale ?? 1
+                    const halfW = (size.width * scaleX) / 2
+                    const halfH = (size.height * scaleY) / 2
+                    const left = trace.x - halfW
+                    const right = trace.x + halfW
+                    const top = trace.y - halfH
+                    const bottom = trace.y + halfH
+                    return left < wx2 && right > wx1 && top < wy2 && bottom > wy1
+                  })
+                  .map(trace => trace.id)
+
+                setMultiSelectRequest(matchedIds)
+              }
+            }
+            mouseDownScreenPosRef.current = null
+            return
+          }
 
           // While the new-trace panel is open, a genuine click (not a pan-drag)
           // on the map updates the pending placement position live.
@@ -1820,7 +1916,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
 
       // Phase 2: pack the batch around the drop point, then upload/insert.
-      const offsets = packBoxesAroundCenter(pending.map(p => p.size))
+      const offsets = packBoxesAroundCenter(pending.map(p => p.size), 24, packingShapeRef.current)
 
       for (let i = 0; i < pending.length; i++) {
         const item = pending[i]
@@ -1898,7 +1994,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Bin-pack the pasted batch around the paste point instead of
       // cascading diagonally -- same approach as the multi-file drop handler.
       const sizes = await Promise.all(imageFiles.map(f => probeImageFileDimensions(f)))
-      const offsets = packBoxesAroundCenter(sizes.map(s => s ? scaleToDisplayBox(s) : getDefaultTraceBoxSize('image')))
+      const offsets = packBoxesAroundCenter(sizes.map(s => s ? scaleToDisplayBox(s) : getDefaultTraceBoxSize('image')), 24, packingShapeRef.current)
 
       for (let i = 0; i < imageFiles.length; i++) {
         const uploadedUrl = await uploadFile(imageFiles[i])
@@ -2031,7 +2127,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             lobbyId={lobbyId}
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
-            groupSelectRequest={groupSelectRequest}
+            multiSelectRequest={multiSelectRequest}
           />
         </div>
 
@@ -2600,6 +2696,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             }}
           />
 
+          {/* Shift+drag area-selection rectangle -- position/size mutated
+              directly on mousemove (see handleMouseMove), not React state */}
+          <div
+            ref={areaSelectRectRef}
+            className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none z-[9999]"
+            style={{ display: 'none' }}
+          />
+
           {/* Drawing canvas overlay - below UI buttons, above traces */}
           <canvas
             ref={drawingCanvasRef}
@@ -2795,7 +2899,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           }}
           activeLayerId={activeLayerId}
           onSetActiveLayer={setActiveLayerId}
-          onSelectGroupTraces={(traceIds) => setGroupSelectRequest(traceIds)}
+          onSelectGroupTraces={(traceIds) => setMultiSelectRequest(traceIds)}
           onGoToTrace={(traceId) => {
             const trace = traces.find(t => t.id === traceId)
             if (trace) {

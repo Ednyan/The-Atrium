@@ -25,10 +25,11 @@ interface TraceOverlayProps {
   lobbyId?: string
   selectedTraceId: string | null
   setSelectedTraceId: (id: string | null) => void
-  // One-shot request from the Layer panel to multi-select a group's traces.
-  // A new array reference is sent each time (even for the same group), so
+  // One-shot request to multi-select a set of traces -- from the Layer
+  // panel (a group's traces) or from a canvas area/rubber-band selection.
+  // A new array reference is sent each time (even for the same set), so
   // the effect that consumes it always fires.
-  groupSelectRequest?: string[] | null
+  multiSelectRequest?: string[] | null
 }
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path'
 
@@ -85,7 +86,91 @@ function parseTraceClipboardPayload(rawValue: string): TraceClipboardPayload | n
   }
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, groupSelectRequest }: TraceOverlayProps) {
+// Builds a DB-ready insert row from a Trace snapshot. Shared by duplicate
+// (new id, offset position) and by undo/redo's delete<->reinsert round-trip
+// (original id/created_at, no offset) -- module-level (not a useCallback) so
+// it has no hook-ordering dependency on where it's used in the component.
+function buildTraceInsertRow(
+  trace: Trace,
+  userId: string,
+  username: string,
+  lobbyId: string | undefined,
+  offsetX: number,
+  offsetY: number,
+): Record<string, any> {
+  const newTrace: any = {
+    user_id: userId,
+    username,
+    type: trace.type,
+    content: trace.content,
+    position_x: trace.x + offsetX,
+    position_y: trace.y + offsetY,
+    scale: ((trace.scaleX ?? trace.scale ?? 1) + (trace.scaleY ?? trace.scale ?? 1)) / 2,
+    scale_x: trace.scaleX ?? trace.scale ?? 1.0,
+    scale_y: trace.scaleY ?? trace.scale ?? 1.0,
+    rotation: trace.rotation ?? 0,
+    flip_horizontal: trace.flipHorizontal ?? false,
+    flip_vertical: trace.flipVertical ?? false,
+    show_border: trace.showBorder ?? true,
+    show_background: trace.showBackground ?? true,
+    border_color: trace.borderColor,
+    border_opacity: trace.borderOpacity,
+    fill_color: trace.fillColor,
+    fill_opacity: trace.fillOpacity,
+    show_description: trace.showDescription ?? false,
+    show_filename: trace.showFilename ?? true,
+    font_size: trace.fontSize ?? 16,
+    font_family: trace.fontFamily ?? 'sans',
+    text_bold: trace.textBold ?? false,
+    text_italic: trace.textItalic ?? false,
+    text_underline: trace.textUnderline ?? false,
+    text_align: trace.textAlign ?? 'center',
+    text_color: trace.textColor ?? '#ffffff',
+    is_locked: false,
+    border_radius: trace.borderRadius ?? 8,
+    crop_x: trace.cropX ?? 0,
+    crop_y: trace.cropY ?? 0,
+    crop_width: trace.cropWidth ?? 1,
+    crop_height: trace.cropHeight ?? 1,
+    illuminate: trace.illuminate ?? false,
+    light_color: trace.lightColor ?? '#ffffff',
+    light_intensity: trace.lightIntensity ?? 1.0,
+    light_radius: trace.lightRadius ?? 200,
+    light_offset_x: trace.lightOffsetX ?? 0,
+    light_offset_y: trace.lightOffsetY ?? 0,
+    z_index: trace.zIndex ?? 0,
+    ignore_clicks: trace.ignoreClicks ?? false,
+  }
+
+  if (trace.imageUrl) newTrace.image_url = trace.imageUrl
+  if (trace.mediaUrl) newTrace.media_url = trace.mediaUrl
+  if (trace.lightPulse !== undefined) newTrace.light_pulse = trace.lightPulse
+  if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
+  if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
+  if (trace.layerId) newTrace.layer_id = trace.layerId
+  if (lobbyId) newTrace.lobby_id = lobbyId
+
+  if (trace.type === 'shape') {
+    if (trace.shapeType) newTrace.shape_type = trace.shapeType
+    if (trace.shapeColor) newTrace.shape_color = trace.shapeColor
+    if (trace.shapeOpacity !== undefined) newTrace.shape_opacity = trace.shapeOpacity
+    if (trace.cornerRadius !== undefined) newTrace.corner_radius = trace.cornerRadius
+    if (trace.shapeOutlineOnly !== undefined) newTrace.shape_outline_only = trace.shapeOutlineOnly
+    if (trace.shapeNoFill !== undefined) newTrace.shape_no_fill = trace.shapeNoFill
+    if (trace.shapeOutlineColor) newTrace.shape_outline_color = trace.shapeOutlineColor
+    if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
+    if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
+    if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
+    if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
+    if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd
+    if (trace.width) newTrace.width = trace.width
+    if (trace.height) newTrace.height = trace.height
+  }
+
+  return newTrace
+}
+
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
     // Load font files from public/fonts folder - only once, with cleanup
@@ -122,7 +207,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -135,7 +220,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
-  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceId: string } | null>(null)
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceIds: string[] } | null>(null)
   const [playingMedia, setPlayingMedia] = useState<Set<string>>(new Set()) // Track traces with playing media
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
   const [imageRetryCount, setImageRetryCount] = useState<Record<string, number>>({}) // Track retry attempts per trace
@@ -180,10 +265,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // Apply a group-select request from the Layer panel (clicking a group
   // header selects all its traces so they're easier to move together).
   useEffect(() => {
-    if (!groupSelectRequest) return
-    setMultiSelectedIds(new Set(groupSelectRequest))
-    setSelectedTraceId(groupSelectRequest[0] ?? null)
-  }, [groupSelectRequest, setSelectedTraceId])
+    if (!multiSelectRequest) return
+    setMultiSelectedIds(new Set(multiSelectRequest))
+    setSelectedTraceId(multiSelectRequest[0] ?? null)
+  }, [multiSelectRequest, setSelectedTraceId])
 
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
@@ -628,27 +713,48 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [traces, pushAddOp])
 
+  // Deletion is immediate (fire-and-forget -- local state already reflects
+  // the change), matching how trace creation already commits to the
+  // database right away for real-time visibility to other users. Deletion
+  // used to be deferred to Save (a soft "markTraceDeleted" only actually
+  // removed the row on the next saveAllChanges), which meant a trace you
+  // deleted without saving was still in the database and could silently
+  // reappear on reload/leave-and-rejoin.
+  const deleteTraceFromDb = useCallback((traceId: string) => {
+    if (!supabase) return
+    ;(supabase.from('traces') as any).delete().eq('id', traceId)
+  }, [])
+
+  // Undo of a delete (or redo of an add-undo) needs to actually re-insert
+  // the row, since it's now genuinely gone from the database rather than
+  // just hidden pending a save. Keeps the original id/created_at (unlike
+  // duplicateTrace, which intentionally gets a fresh id) so it's a true
+  // restore, not a new trace.
+  const reinsertTraceFromSnapshot = useCallback((trace: Trace) => {
+    if (!supabase) return
+    const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0), id: trace.id, created_at: trace.createdAt }
+    ;(supabase.from('traces') as any).insert(row)
+  }, [lobbyId, userId, username])
+
   const applyUndoOp = useCallback((op: UndoOp, direction: 'undo' | 'redo') => {
     const store = useGameStore.getState()
     if (op.kind === 'add') {
       if (direction === 'undo') {
         store.removeTrace(op.traceId)
-        store.markTraceDeleted(op.traceId)
+        deleteTraceFromDb(op.traceId)
         if (editingTraceRef.current?.id === op.traceId) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.traceId) setSelectedTraceId(null)
       } else {
         store.addTrace(cloneTraceSnapshot(op.trace))
-        store.unmarkTraceDeleted(op.traceId)
-        store.markTraceChanged(op.traceId)
+        reinsertTraceFromSnapshot(op.trace)
       }
     } else if (op.kind === 'delete') {
       if (direction === 'undo') {
         store.addTrace(cloneTraceSnapshot(op.trace))
-        store.unmarkTraceDeleted(op.trace.id)
-        store.markTraceChanged(op.trace.id)
+        reinsertTraceFromSnapshot(op.trace)
       } else {
         store.removeTrace(op.trace.id)
-        store.markTraceDeleted(op.trace.id)
+        deleteTraceFromDb(op.trace.id)
         if (editingTraceRef.current?.id === op.trace.id) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.trace.id) setSelectedTraceId(null)
       }
@@ -670,7 +776,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
       }
     }
-  }, [])
+  }, [deleteTraceFromDb, reinsertTraceFromSnapshot])
 
   const undo = useCallback(() => {
     const op = undoStackRef.current.pop()
@@ -787,76 +893,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [])
 
   const buildDuplicateInsert = useCallback((trace: Trace, offsetX: number, offsetY: number) => {
-    const newTrace: any = {
-      user_id: userId,
-      username,
-      type: trace.type,
-      content: trace.content,
-      position_x: trace.x + offsetX,
-      position_y: trace.y + offsetY,
-      scale: ((trace.scaleX ?? trace.scale ?? 1) + (trace.scaleY ?? trace.scale ?? 1)) / 2,
-      scale_x: trace.scaleX ?? trace.scale ?? 1.0,
-      scale_y: trace.scaleY ?? trace.scale ?? 1.0,
-      rotation: trace.rotation ?? 0,
-      flip_horizontal: trace.flipHorizontal ?? false,
-      flip_vertical: trace.flipVertical ?? false,
-      show_border: trace.showBorder ?? true,
-      show_background: trace.showBackground ?? true,
-      border_color: trace.borderColor,
-      border_opacity: trace.borderOpacity,
-      fill_color: trace.fillColor,
-      fill_opacity: trace.fillOpacity,
-      show_description: trace.showDescription ?? false,
-      show_filename: trace.showFilename ?? true,
-      font_size: trace.fontSize ?? 16,
-      font_family: trace.fontFamily ?? 'sans',
-      text_bold: trace.textBold ?? false,
-      text_italic: trace.textItalic ?? false,
-      text_underline: trace.textUnderline ?? false,
-      text_align: trace.textAlign ?? 'center',
-      text_color: trace.textColor ?? '#ffffff',
-      is_locked: false,
-      border_radius: trace.borderRadius ?? 8,
-      crop_x: trace.cropX ?? 0,
-      crop_y: trace.cropY ?? 0,
-      crop_width: trace.cropWidth ?? 1,
-      crop_height: trace.cropHeight ?? 1,
-      illuminate: trace.illuminate ?? false,
-      light_color: trace.lightColor ?? '#ffffff',
-      light_intensity: trace.lightIntensity ?? 1.0,
-      light_radius: trace.lightRadius ?? 200,
-      light_offset_x: trace.lightOffsetX ?? 0,
-      light_offset_y: trace.lightOffsetY ?? 0,
-      z_index: trace.zIndex ?? 0,
-      ignore_clicks: trace.ignoreClicks ?? false,
-    }
-
-    if (trace.imageUrl) newTrace.image_url = trace.imageUrl
-    if (trace.mediaUrl) newTrace.media_url = trace.mediaUrl
-    if (trace.lightPulse !== undefined) newTrace.light_pulse = trace.lightPulse
-    if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
-    if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
-    if (trace.layerId) newTrace.layer_id = trace.layerId
-    if (lobbyId) newTrace.lobby_id = lobbyId
-
-    if (trace.type === 'shape') {
-      if (trace.shapeType) newTrace.shape_type = trace.shapeType
-      if (trace.shapeColor) newTrace.shape_color = trace.shapeColor
-      if (trace.shapeOpacity !== undefined) newTrace.shape_opacity = trace.shapeOpacity
-      if (trace.cornerRadius !== undefined) newTrace.corner_radius = trace.cornerRadius
-      if (trace.shapeOutlineOnly !== undefined) newTrace.shape_outline_only = trace.shapeOutlineOnly
-      if (trace.shapeNoFill !== undefined) newTrace.shape_no_fill = trace.shapeNoFill
-      if (trace.shapeOutlineColor) newTrace.shape_outline_color = trace.shapeOutlineColor
-      if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
-      if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
-      if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
-      if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
-      if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd
-      if (trace.width) newTrace.width = trace.width
-      if (trace.height) newTrace.height = trace.height
-    }
-
-    return newTrace
+    return buildTraceInsertRow(trace, userId, username, lobbyId, offsetX, offsetY)
   }, [lobbyId, userId, username])
 
   const duplicateTraces = useCallback(async (sourceTraces: Trace[]) => {
@@ -995,32 +1032,38 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [duplicateTraces, getSelectedTraceSnapshots, lobbyId])
 
-  const deleteTrace = async (traceId: string) => {
+  const deleteTraces = (traceIds: string[]) => {
+    if (traceIds.length === 0) return
     const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
-    
+
     if (!dontAskAgain) {
       // Show custom confirmation dialog
-      setDeleteConfirmDialog({ traceId })
+      setDeleteConfirmDialog({ traceIds })
       return
     }
-    
+
     // Execute deletion
-    executeDelete(traceId)
+    executeDelete(traceIds)
   }
-  
-  const executeDelete = (traceId: string) => {
-    const traceBeingDeleted = traces.find(t => t.id === traceId)
 
-    // Immediately remove from local state for instant UI update
-    removeTrace(traceId)
+  const executeDelete = (traceIds: string[]) => {
     setContextMenu(null)
-    setSelectedTraceId(null)
     setDeleteConfirmDialog(null)
+    setMultiSelectedIds(new Set())
 
-    // Mark for deletion (will be deleted on save)
-    markTraceDeleted(traceId)
+    for (const traceId of traceIds) {
+      const traceBeingDeleted = traces.find(t => t.id === traceId)
 
-    if (traceBeingDeleted) pushDeleteOp(traceBeingDeleted)
+      // Immediately remove from local state for instant UI update
+      removeTrace(traceId)
+      if (selectedTraceId === traceId) setSelectedTraceId(null)
+
+      // Delete immediately -- see the comment on deleteTraceFromDb for why
+      // this can't be deferred to Save the way trace edits are.
+      deleteTraceFromDb(traceId)
+
+      if (traceBeingDeleted) pushDeleteOp(traceBeingDeleted)
+    }
   }
 
   const duplicateTrace = async (traceId: string) => {
@@ -1651,10 +1694,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
     
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete key to delete selected trace
-      if (e.key === 'Delete' && selectedTraceId) {
+      // Delete key to delete the whole multi-selection if there is one,
+      // otherwise just the single selected trace.
+      if (e.key === 'Delete' && (selectedTraceId || multiSelectedIds.size > 0)) {
         e.preventDefault()
-        deleteTrace(selectedTraceId)
+        deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
       }
     }
     
@@ -1664,7 +1708,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       window.removeEventListener('click', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedTraceId, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode])
+  }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode])
 
   useEffect(() => {
     if (transformMode !== 'none') {
@@ -3946,10 +3990,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <button
               className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
-                deleteTrace(contextMenu.traceId)
+                const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+                deleteTraces(inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId])
               }}
             >
-              <span className="text-red-500 text-[10px]">◇</span> Delete
+              <span className="text-red-500 text-[10px]">◇</span>
+              {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+                ? `Delete Selected (${multiSelectedIds.size})`
+                : 'Delete'}
             </button>
           </div>
 
@@ -5563,10 +5611,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             
             <div className="flex items-center gap-3 mb-4">
               <div className="w-1.5 h-1.5 rotate-45 border border-red-500/60" />
-              <h2 className="text-lg text-red-400 tracking-[0.15em] uppercase">Delete Trace</h2>
+              <h2 className="text-lg text-red-400 tracking-[0.15em] uppercase">
+                {deleteConfirmDialog.traceIds.length > 1 ? `Delete ${deleteConfirmDialog.traceIds.length} Traces` : 'Delete Trace'}
+              </h2>
             </div>
             <p className="text-white mb-6 text-sm tracking-wide">
-              Are you sure you want to delete this trace? This can be undone with Ctrl+Z, but only until you save.
+              {deleteConfirmDialog.traceIds.length > 1
+                ? `Are you sure you want to delete these ${deleteConfirmDialog.traceIds.length} traces? This can be undone with Ctrl+Z, but only until you save.`
+                : 'Are you sure you want to delete this trace? This can be undone with Ctrl+Z, but only until you save.'}
             </p>
             <p className="text-gray-400 text-[10px] tracking-wider uppercase mb-6">
               ◇ Tip: Press <kbd className="px-2 py-1 bg-gray-800 border border-gray-600 text-gray-300 text-[9px] tracking-wider">Delete</kbd> key for quick deletion
@@ -5595,7 +5647,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </button>
               <button
                 className="flex-1 py-3 border border-red-500/40 bg-red-500/20 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
-                onClick={() => executeDelete(deleteConfirmDialog.traceId)}
+                onClick={() => executeDelete(deleteConfirmDialog.traceIds)}
               >
                 Delete
               </button>

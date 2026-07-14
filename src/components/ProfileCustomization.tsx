@@ -35,6 +35,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
   const [success, setSuccess] = useState(false)
   const [undoDepth, setUndoDepth] = useState(DEFAULT_UNDO_DEPTH)
   const [zoomSensitivity, setZoomSensitivity] = useState(0.16)
+  const [packingShape, setPackingShapeState] = useState<'square' | 'circle'>('square')
 
   useEffect(() => {
     loadProfile()
@@ -56,6 +57,12 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
       if (Number.isFinite(parsed)) {
         setUndoDepth(Math.max(1, Math.min(MAX_UNDO_DEPTH, parsed)))
       }
+    } catch {
+      // Ignore localStorage access failures
+    }
+    try {
+      const rawShape = localStorage.getItem(`lobby_${lobbyId}_packingShape`)
+      if (rawShape === 'circle' || rawShape === 'square') setPackingShapeState(rawShape)
     } catch {
       // Ignore localStorage access failures
     }
@@ -82,6 +89,17 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
       // Ignore localStorage access failures
     }
     window.dispatchEvent(new CustomEvent('lobby-undo-depth-changed', { detail: clamped }))
+  }
+
+  const handlePackingShapeChange = (shape: 'square' | 'circle') => {
+    if (!lobbyId) return
+    setPackingShapeState(shape)
+    try {
+      localStorage.setItem(`lobby_${lobbyId}_packingShape`, shape)
+    } catch {
+      // Ignore localStorage access failures
+    }
+    window.dispatchEvent(new CustomEvent('lobby-packing-shape-changed', { detail: { lobbyId, shape } }))
   }
 
   const loadProfile = async () => {
@@ -381,6 +399,34 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
               <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
                 How many Ctrl+Z steps to remember in this atrium. Kept only in this browser/session — never saved online.
+              </p>
+            </div>
+          )}
+
+          {/* Batch Placement Shape (per-atrium) */}
+          {lobbyId && (
+            <div>
+              <label className="block text-nier-border text-[10px] tracking-[0.1em] uppercase mb-2">
+                Batch Placement
+              </label>
+              <div className="flex gap-2">
+                {(['square', 'circle'] as const).map(shape => (
+                  <button
+                    key={shape}
+                    type="button"
+                    onClick={() => handlePackingShapeChange(shape)}
+                    className={`flex-1 py-2 border text-[10px] tracking-[0.15em] uppercase transition-colors ${
+                      packingShape === shape
+                        ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
+                        : 'border-nier-border/40 text-nier-border hover:border-nier-border/60'
+                    }`}
+                  >
+                    {shape}
+                  </button>
+                ))}
+              </div>
+              <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                How dropping or pasting multiple files at once gets arranged in this atrium.
               </p>
             </div>
           )}
