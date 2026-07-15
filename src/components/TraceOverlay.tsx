@@ -713,27 +713,49 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [traces, pushAddOp])
 
-  // Deletion is immediate (fire-and-forget -- local state already reflects
-  // the change), matching how trace creation already commits to the
-  // database right away for real-time visibility to other users. Deletion
-  // used to be deferred to Save (a soft "markTraceDeleted" only actually
-  // removed the row on the next saveAllChanges), which meant a trace you
-  // deleted without saving was still in the database and could silently
-  // reappear on reload/leave-and-rejoin.
-  const deleteTraceFromDb = useCallback((traceId: string) => {
+  // Deletion is immediate (fire-and-forget from the caller's side -- local
+  // state already reflects the change), matching how trace creation already
+  // commits to the database right away for real-time visibility to other
+  // users. Deletion used to be deferred to Save (a soft "markTraceDeleted"
+  // only actually removed the row on the next saveAllChanges), which meant a
+  // trace you deleted without saving was still in the database and could
+  // silently reappear on reload/leave-and-rejoin.
+  //
+  // This must actually be awaited (even though callers don't await the
+  // returned promise) -- both the real Supabase client and the desktop
+  // SQLite shim (localDb.ts's QueryBuilder) only run the query inside their
+  // then() method, so building `.delete().eq(...)` without awaiting or
+  // .then()-ing it never executes the query at all. That was the original
+  // bug: the row was never removed, so it was always still there to
+  // reappear. Errors are logged (not swallowed) so a *different* cause of
+  // failure -- e.g. an RLS policy silently matching zero rows on web --
+  // is visible in the console instead of looking identical to "it worked."
+  const deleteTraceFromDb = useCallback(async (traceId: string) => {
     if (!supabase) return
-    ;(supabase.from('traces') as any).delete().eq('id', traceId)
+    // .select() so a delete that matches zero rows (e.g. silently blocked by
+    // an RLS policy -- that's not an "error" as far as Postgrest is
+    // concerned, just zero affected rows) is still detectable below.
+    const { data, error } = await (supabase.from('traces') as any).delete().eq('id', traceId).select()
+    if (error) {
+      console.error('[deleteTraceFromDb] delete failed, trace was not removed from the database:', traceId, error)
+    } else if (!data || data.length === 0) {
+      console.warn('[deleteTraceFromDb] delete matched zero rows -- trace was not actually removed from the database:', traceId)
+    }
   }, [])
 
   // Undo of a delete (or redo of an add-undo) needs to actually re-insert
   // the row, since it's now genuinely gone from the database rather than
   // just hidden pending a save. Keeps the original id/created_at (unlike
   // duplicateTrace, which intentionally gets a fresh id) so it's a true
-  // restore, not a new trace.
-  const reinsertTraceFromSnapshot = useCallback((trace: Trace) => {
+  // restore, not a new trace. Same "must actually be awaited" note as
+  // deleteTraceFromDb applies here.
+  const reinsertTraceFromSnapshot = useCallback(async (trace: Trace) => {
     if (!supabase) return
     const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0), id: trace.id, created_at: trace.createdAt }
-    ;(supabase.from('traces') as any).insert(row)
+    const { error } = await (supabase.from('traces') as any).insert(row)
+    if (error) {
+      console.error('[reinsertTraceFromSnapshot] insert failed, trace was not restored:', trace.id, error)
+    }
   }, [lobbyId, userId, username])
 
   const applyUndoOp = useCallback((op: UndoOp, direction: 'undo' | 'redo') => {

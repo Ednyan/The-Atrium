@@ -1076,6 +1076,15 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
         if (whereClauses) sql += ` WHERE ${whereClauses}`
         await db!.execute(sql, params)
         void handleVaultSyncAfterMutation(opts, previousRows)
+
+        if (opts.selectColumns) {
+          // Rows can't be re-queried post-delete (they're gone); the rows
+          // fetched above (before deleting, for the vault-sync diff) are
+          // exactly what was deleted, so reuse them here too.
+          const mapped = previousRows.map(r => convertRowFromSql(opts.table, r))
+          if (opts.isSingle) return { data: mapped[0] || null, error: null }
+          return { data: mapped, error: null }
+        }
         return { data: null, error: null }
       }
     }
