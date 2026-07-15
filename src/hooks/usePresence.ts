@@ -5,7 +5,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
 
-export function usePresence(lobbyId: string | null) {
+export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void) {
   const { userId, username, position, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
@@ -13,6 +13,13 @@ export function usePresence(lobbyId: string | null) {
   // Fixed once per atrium connection (not refreshed on every position/color
   // broadcast) so other users can compute "time in atrium" from it.
   const joinedAtRef = useRef<number>(Date.now())
+  // Ref (not a channel effect dependency) so a new onKicked identity from the
+  // caller on every render doesn't force the presence channel to tear down
+  // and resubscribe.
+  const onKickedRef = useRef(onKicked)
+  useEffect(() => {
+    onKickedRef.current = onKicked
+  }, [onKicked])
 
   // Keep position ref up to date
   useEffect(() => {
@@ -157,6 +164,11 @@ export function usePresence(lobbyId: string | null) {
           updateOtherUserPosition(payload.userId, payload.x, payload.y)
         }
       })
+      .on('broadcast', { event: 'kicked' }, ({ payload }: { payload: any }) => {
+        if (payload && payload.targetUserId === userId) {
+          onKickedRef.current?.(!!payload.blacklisted)
+        }
+      })
       .subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({
@@ -221,5 +233,17 @@ export function usePresence(lobbyId: string | null) {
     }
   }, [userId, username, lobbyId])
 
-  return { updateCursorPosition, getJoinedAt: () => joinedAtRef.current }
+  // Fire-and-forget: there's no server-side session control to force-close
+  // another client's connection, so "kicking" is a broadcast the target's
+  // own (well-behaved) client acts on -- see the 'kicked' listener above.
+  // Reuses this already-open presence channel instead of opening a new one.
+  const kickUser = useCallback(async (targetUserId: string, blacklisted: boolean) => {
+    await channelRef.current?.send({
+      type: 'broadcast',
+      event: 'kicked',
+      payload: { targetUserId, blacklisted },
+    })
+  }, [])
+
+  return { updateCursorPosition, getJoinedAt: () => joinedAtRef.current, kickUser }
 }

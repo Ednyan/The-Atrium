@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -326,6 +326,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
+  const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
   const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
@@ -773,7 +775,52 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // App.tsx, so they're already in the store (and local media pre-resolved
   // on desktop) by the time this scene mounts, instead of popping in after
   // the atrium-entry loading screen finishes.
-  const { updateCursorPosition, getJoinedAt } = usePresence(lobbyId)
+  const handleKicked = useCallback((blacklisted: boolean) => {
+    alert(blacklisted
+      ? 'You have been kicked from this atrium and blacklisted -- you can no longer rejoin.'
+      : 'You have been kicked from this atrium.')
+    onLeaveLobby()
+  }, [onLeaveLobby])
+  const { updateCursorPosition, getJoinedAt, kickUser } = usePresence(lobbyId, handleKicked)
+
+  const executeKick = async (targetUserId: string, blacklist: boolean) => {
+    setIsKicking(true)
+    try {
+      if (blacklist && supabase) {
+        const { data: { user } } = await supabase.auth.getUser()
+        // A user can't be both whitelisted and blacklisted at once -- drop
+        // them from the whitelist first, same as LobbyManagement's addToList.
+        await (supabase
+          .from('lobby_access_lists')
+          .delete()
+          .eq('lobby_id', lobbyId)
+          .eq('user_id', targetUserId)
+          .eq('list_type', 'whitelist') as any)
+
+        const { error } = await (supabase
+          .from('lobby_access_lists') as any)
+          .insert({
+            lobby_id: lobbyId,
+            user_id: targetUserId,
+            list_type: 'blacklist',
+            added_by: user?.id,
+          })
+
+        if (error) throw error
+      }
+
+      // Broadcast regardless of whether blacklisting succeeded -- kicking
+      // someone out right now shouldn't be blocked by the (separate)
+      // persistent-ban bookkeeping failing.
+      await kickUser(targetUserId, blacklist)
+    } catch (err: any) {
+      console.error('Error kicking user:', err)
+      alert(err.message || 'Failed to kick user')
+    } finally {
+      setIsKicking(false)
+      setKickTarget(null)
+    }
+  }
 
   // Refresh the online-users list's "time in atrium" values every 15s while open
   useEffect(() => {
@@ -2205,9 +2252,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
               </div>
               {Object.values(otherUsers).map(user => (
-                <div key={user.userId} className="flex items-center justify-between gap-2">
-                  <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
-                  <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
+                <div key={user.userId}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
+                    <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
+                  </div>
+                  {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
+                    <button
+                      onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
+                      className="text-red-500 hover:text-red-400 text-[9px] tracking-wider uppercase transition-colors"
+                    >
+                      Kick
+                    </button>
+                  )}
                 </div>
               ))}
               {Object.keys(otherUsers).length === 0 && (
@@ -3121,6 +3178,56 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         )
       })()}
+
+      {/* Kick User Confirmation */}
+      {kickTarget && (
+        <div
+          className="fixed inset-0 z-[10000100] bg-black/70 flex items-center justify-center pointer-events-auto"
+          onClick={() => !isKicking && setKickTarget(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-500 p-6 relative"
+            style={{ maxWidth: '320px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+
+            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-gray-400 mr-2">◇</span>Kick User
+            </h3>
+            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+              Remove <span className="text-white">{kickTarget.username}</span> from this atrium?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => executeKick(kickTarget.userId, false)}
+                disabled={isKicking}
+                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
+              >
+                {isKicking ? 'Kicking...' : 'Kick'}
+              </button>
+              <button
+                onClick={() => executeKick(kickTarget.userId, true)}
+                disabled={isKicking}
+                className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600 disabled:opacity-50"
+              >
+                {isKicking ? 'Kicking...' : 'Kick + Blacklist'}
+              </button>
+              <button
+                onClick={() => setKickTarget(null)}
+                disabled={isKicking}
+                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
