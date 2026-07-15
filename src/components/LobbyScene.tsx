@@ -1101,6 +1101,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   .map(trace => trace.id)
 
                 setMultiSelectRequest(matchedIds)
+
+                // This mouseup is immediately followed by a native 'click'
+                // event (mousedown and mouseup both landed on/near the same
+                // empty-canvas element), which TraceOverlay's own "click
+                // outside a trace" listener treats as "deselect everything" --
+                // wiping out the selection just set above one tick later.
+                // Swallow that one click in the capture phase, before it ever
+                // reaches TraceOverlay's bubble-phase listener.
+                const suppressClick = (ce: MouseEvent) => {
+                  ce.stopPropagation()
+                  ce.preventDefault()
+                }
+                window.addEventListener('click', suppressClick, { capture: true, once: true })
               }
             }
             mouseDownScreenPosRef.current = null

@@ -83,6 +83,12 @@ export async function saveAllChanges(): Promise<void> {
       // Add optional fields
       if (trace.mediaUrl !== undefined) updateData.media_url = trace.mediaUrl
       if (trace.content !== undefined) updateData.content = trace.content
+      // width/height apply to every trace type that can be resized (text,
+      // image, embed, video, shape) -- this used to be gated to shape only,
+      // which silently dropped every other type's resize (manual or
+      // auto-fit) on save, reverting to its creation-time size on reload.
+      if (trace.width !== undefined) updateData.width = trace.width
+      if (trace.height !== undefined) updateData.height = trace.height
 
       // Shape properties
       if (trace.type === 'shape') {
@@ -98,8 +104,6 @@ export async function saveAllChanges(): Promise<void> {
         if (trace.pathCurveType !== undefined) updateData.path_curve_type = trace.pathCurveType
         if (trace.pathArrowStart !== undefined) updateData.path_arrow_start = trace.pathArrowStart
         if (trace.pathArrowEnd !== undefined) updateData.path_arrow_end = trace.pathArrowEnd
-        if (trace.width !== undefined) updateData.width = trace.width
-        if (trace.height !== undefined) updateData.height = trace.height
       }
 
       await (db.from('traces') as any).update(updateData).eq('id', traceId)
