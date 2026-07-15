@@ -275,6 +275,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         updatedAt: lobby.updated_at,
         autosaveEnabled: lobby.autosave_enabled ?? false,
         autosaveIntervalSeconds: lobby.autosave_interval_seconds,
+        adminUserIds: lobby.admin_user_ids ?? [],
         ownerUsername: profile?.username || 'Unknown',
         playerCount: count || 0,
       }

@@ -28,7 +28,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
   )
   const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
-  const [admins, setAdmins] = useState<(LobbyAccessList & { username?: string })[]>([])
+  const [admins, setAdmins] = useState<{ userId: string; username: string }[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Profile[]>([])
   const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist' | 'admins'>('settings')
@@ -58,6 +58,31 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     loadAccessLists()
   }, [])
 
+  // admin_user_ids lives on the lobby row itself (not lobby_access_lists --
+  // see fix_lobby_admin_recursion_v2.sql), so it just needs a username
+  // lookup, not a separate access-list query.
+  useEffect(() => {
+    loadAdmins()
+  }, [lobby.adminUserIds?.join(',')])
+
+  const loadAdmins = async () => {
+    if (!supabase || !lobby.adminUserIds || lobby.adminUserIds.length === 0) {
+      setAdmins([])
+      return
+    }
+    try {
+      const { data, error } = await (supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', lobby.adminUserIds) as any)
+
+      if (error) throw error
+      setAdmins((data || []).map((p: any) => ({ userId: p.id, username: p.username || 'Unknown' })))
+    } catch (err) {
+      console.error('Error loading admins:', err)
+    }
+  }
+
   const loadAccessLists = async () => {
     if (!supabase) return
 
@@ -80,23 +105,12 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
       if (blacklistError) throw blacklistError
 
-      // Load admins
-      const { data: adminData, error: adminError } = await (supabase
-        .from('lobby_access_lists')
-        .select('*')
-        .eq('lobby_id', lobby.id)
-        .eq('list_type', 'admin') as any)
-
-      if (adminError) throw adminError
-
       // Enrich with usernames
       const enrichWhitelist = await enrichWithUsernames(whitelistData || [])
       const enrichBlacklist = await enrichWithUsernames(blacklistData || [])
-      const enrichAdmins = await enrichWithUsernames(adminData || [])
 
       setWhitelist(enrichWhitelist)
       setBlacklist(enrichBlacklist)
-      setAdmins(enrichAdmins)
     } catch (err) {
       console.error('Error loading access lists:', err)
     }
@@ -183,7 +197,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     }
   }
 
-  const addToList = async (userId: string, listType: 'whitelist' | 'blacklist' | 'admin') => {
+  const addToList = async (userId: string, listType: 'whitelist' | 'blacklist') => {
     if (!supabase) return
 
     try {
@@ -192,17 +206,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
       // A user can't be both whitelisted and blacklisted at once -- drop
       // them from the other list first so adding here is a clean move.
-      // Admin is independent of whitelist/blacklist, so it's not part of
-      // this mutual-exclusion pass.
-      if (listType === 'whitelist' || listType === 'blacklist') {
-        const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
-        await (supabase
-          .from('lobby_access_lists')
-          .delete()
-          .eq('lobby_id', lobby.id)
-          .eq('user_id', userId)
-          .eq('list_type', oppositeListType) as any)
-      }
+      const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
+      await (supabase
+        .from('lobby_access_lists')
+        .delete()
+        .eq('lobby_id', lobby.id)
+        .eq('user_id', userId)
+        .eq('list_type', oppositeListType) as any)
 
       const { error } = await (supabase!
         .from('lobby_access_lists') as any)
@@ -221,6 +231,50 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     } catch (err: any) {
       console.error('Error adding to list:', err)
       setError(err.message || 'Failed to add user')
+    }
+  }
+
+  // Admins live in lobbies.admin_user_ids (a plain array column), not
+  // lobby_access_lists -- see fix_lobby_admin_recursion_v2.sql for why.
+  const promoteToAdmin = async (userId: string) => {
+    if (!supabase) return
+
+    try {
+      const current = lobby.adminUserIds ?? []
+      if (current.includes(userId)) return
+
+      const { error } = await (supabase
+        .from('lobbies') as any)
+        .update({ admin_user_ids: [...current, userId] })
+        .eq('id', lobby.id)
+
+      if (error) throw error
+
+      setSearchQuery('')
+      setSearchResults([])
+      onUpdate()
+    } catch (err: any) {
+      console.error('Error promoting admin:', err)
+      setError(err.message || 'Failed to promote user')
+    }
+  }
+
+  const demoteAdmin = async (userId: string) => {
+    if (!supabase) return
+
+    try {
+      const current = lobby.adminUserIds ?? []
+      const { error } = await (supabase
+        .from('lobbies') as any)
+        .update({ admin_user_ids: current.filter(id => id !== userId) })
+        .eq('id', lobby.id)
+
+      if (error) throw error
+
+      onUpdate()
+    } catch (err: any) {
+      console.error('Error demoting admin:', err)
+      setError(err.message || 'Failed to demote user')
     }
   }
 
@@ -459,9 +513,9 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
             </div>
           )}
 
-          {(activeTab === 'whitelist' || activeTab === 'blacklist' || activeTab === 'admins') && (() => {
-            const currentList = activeTab === 'whitelist' ? whitelist : activeTab === 'blacklist' ? blacklist : admins
-            const listLabel = activeTab === 'whitelist' ? 'Whitelisted Users' : activeTab === 'blacklist' ? 'Blacklisted Users' : 'Admins'
+          {(activeTab === 'whitelist' || activeTab === 'blacklist') && (() => {
+            const currentList = activeTab === 'whitelist' ? whitelist : blacklist
+            const listLabel = activeTab === 'whitelist' ? 'Whitelisted Users' : 'Blacklisted Users'
             return (
             <div className="space-y-4">
               {/* Search Users */}
@@ -494,7 +548,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                       >
                         <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
                         <button
-                          onClick={() => addToList(user.id, activeTab === 'admins' ? 'admin' : activeTab)}
+                          onClick={() => addToList(user.id, activeTab)}
                           className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
                           Add
@@ -523,23 +577,97 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                         className="flex justify-between items-center bg-nier-black border border-nier-border/20 px-3 py-2"
                       >
                         <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
+                        <button
+                          onClick={() => removeFromList(entry.id)}
+                          className="px-3 py-1 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+            )
+          })()}
+
+          {activeTab === 'admins' && (
+            <div className="space-y-4">
+              {/* Search Users */}
+              <div>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Add User</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
+                    placeholder="Search username..."
+                    className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                  />
+                  <button
+                    onClick={searchUsers}
+                    className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                  >
+                    Search
+                  </button>
+                </div>
+
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <div className="mt-2 bg-nier-black border border-nier-border/20 max-h-40 overflow-y-auto">
+                    {searchResults.map(user => (
+                      <div
+                        key={user.id}
+                        className="flex justify-between items-center px-3 py-2 hover:bg-nier-bg/5 transition-colors"
+                      >
+                        <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
+                        <button
+                          onClick={() => promoteToAdmin(user.id)}
+                          className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Current Admins */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
+                    Admins
+                  </span>
+                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                </div>
+                <div className="space-y-2">
+                  {admins.length === 0 ? (
+                    <div className="text-nier-border/40 text-[10px] tracking-wider uppercase text-center py-4">No admins yet</div>
+                  ) : (
+                    admins.map(entry => (
+                      <div
+                        key={entry.userId}
+                        className="flex justify-between items-center bg-nier-black border border-nier-border/20 px-3 py-2"
+                      >
+                        <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
                         <div className="flex items-center gap-2">
-                          {activeTab === 'admins' && (
-                            <button
-                              onClick={() => {
-                                setTransferTargetUserId(entry.userId)
-                                setTransferTargetUsername(entry.username || 'this user')
-                              }}
-                              className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-                            >
-                              Make Owner
-                            </button>
-                          )}
                           <button
-                            onClick={() => removeFromList(entry.id)}
+                            onClick={() => {
+                              setTransferTargetUserId(entry.userId)
+                              setTransferTargetUsername(entry.username || 'this user')
+                            }}
+                            className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                          >
+                            Make Owner
+                          </button>
+                          <button
+                            onClick={() => demoteAdmin(entry.userId)}
                             className="px-3 py-1 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                           >
-                            {activeTab === 'admins' ? 'Demote' : 'Remove'}
+                            Demote
                           </button>
                         </div>
                       </div>
@@ -548,14 +676,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 </div>
               </div>
 
-              {activeTab === 'admins' && (
-                <p className="text-nier-border/40 text-[10px] tracking-wider">
-                  Admins get full access to atrium settings, whitelist, and blacklist. Only the owner can promote/demote admins or transfer ownership.
-                </p>
-              )}
+              <p className="text-nier-border/40 text-[10px] tracking-wider">
+                Admins get full access to atrium settings, whitelist, and blacklist. Only the owner can promote/demote admins or transfer ownership.
+              </p>
             </div>
-            )
-          })()}
+          )}
         </div>
 
         {/* Save Settings -- visible on every tab so switching to Whitelist/

@@ -203,13 +203,19 @@ export interface Lobby {
   // panel. Every collaborator's client honors this while in the atrium.
   autosaveEnabled?: boolean
   autosaveIntervalSeconds?: number
+  // User ids promoted to admin by the owner (full Manage Atrium access, but
+  // can't promote/demote other admins or transfer ownership). Stored
+  // directly on the lobby row rather than as lobby_access_lists rows so
+  // checking it from that table's own RLS policy can't recurse -- see
+  // fix_lobby_admin_recursion_v2.sql.
+  adminUserIds?: string[]
 }
 
 export interface LobbyAccessList {
   id: string
   lobbyId: string
   userId: string
-  listType: 'whitelist' | 'blacklist' | 'admin'
+  listType: 'whitelist' | 'blacklist'
   addedAt: string
   addedBy?: string | null
 }

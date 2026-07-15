@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -309,7 +309,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
-  const [isLobbyAdmin, setIsLobbyAdmin] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   // The layer group new traces are created into (null = ungrouped). Set by
   // clicking a group/Ungrouped header in the Layer panel.
@@ -525,6 +524,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           themeSettings: data.theme_settings,
           autosaveEnabled: data.autosave_enabled,
           autosaveIntervalSeconds: data.autosave_interval_seconds,
+          adminUserIds: data.admin_user_ids ?? [],
         }
         setCurrentLobby(lobby)
         setIsLobbyOwner(data.owner_user_id === userId)
@@ -534,25 +534,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     loadLobby()
   }, [lobbyId, userId])
 
-  // Check whether the current user has been promoted to admin for this lobby
-  const refreshLobbyAdminStatus = useCallback(async () => {
-    if (!supabase || !lobbyId || !userId) {
-      setIsLobbyAdmin(false)
-      return
-    }
-    const { data } = await (supabase
-      .from('lobby_access_lists')
-      .select('id')
-      .eq('lobby_id', lobbyId)
-      .eq('user_id', userId)
-      .eq('list_type', 'admin')
-      .maybeSingle() as any)
-    setIsLobbyAdmin(!!data)
-  }, [lobbyId, userId])
-
-  useEffect(() => {
-    refreshLobbyAdminStatus()
-  }, [refreshLobbyAdminStatus])
+  // Derived from currentLobby (already loaded/refreshed above) rather than a
+  // separate query -- admin status now lives on the lobby row itself
+  // (admin_user_ids), not a lobby_access_lists row, see
+  // fix_lobby_admin_recursion_v2.sql.
+  const isLobbyAdmin = !!(currentLobby?.adminUserIds?.includes(userId))
 
   // Listen for zoom sensitivity changes from profile settings and keep value in sync
   useEffect(() => {
@@ -3013,6 +2999,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   themeSettings: data.theme_settings,
                   autosaveEnabled: data.autosave_enabled,
                   autosaveIntervalSeconds: data.autosave_interval_seconds,
+                  adminUserIds: data.admin_user_ids ?? [],
                 }
                 setCurrentLobby(lobby)
               }
@@ -3050,12 +3037,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       themeSettings: data.theme_settings,
                       autosaveEnabled: data.autosave_enabled,
                       autosaveIntervalSeconds: data.autosave_interval_seconds,
+                      adminUserIds: data.admin_user_ids ?? [],
                     })
                     setIsLobbyOwner(data.owner_user_id === userId)
                   }
                 })
             }
-            refreshLobbyAdminStatus()
           }}
         />
       )}

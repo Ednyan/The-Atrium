@@ -642,7 +642,8 @@ export async function initLocalDb(): Promise<void> {
       updated_at TEXT DEFAULT (datetime('now')),
       theme_settings TEXT,
       autosave_enabled INTEGER DEFAULT 0,
-      autosave_interval_seconds INTEGER DEFAULT 60
+      autosave_interval_seconds INTEGER DEFAULT 60,
+      admin_user_ids TEXT
     )
   `)
 
@@ -813,6 +814,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE lobbies ADD COLUMN autosave_interval_seconds INTEGER DEFAULT 60')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE lobbies ADD COLUMN admin_user_ids TEXT')
   } catch {
     // Column already exists — ignore
   }
@@ -1150,6 +1156,9 @@ function convertRowFromSql(table: string, row: any): any {
   if (table === 'lobbies' && out.theme_settings) {
     out.theme_settings = parseJsonField(out.theme_settings)
   }
+  if (table === 'lobbies') {
+    out.admin_user_ids = out.admin_user_ids ? parseJsonField(out.admin_user_ids) : []
+  }
 
   // Convert font_size to numeric if it's a number string
   if (table === 'traces' && out.font_size) {
@@ -1188,6 +1197,9 @@ function convertRowToSql(table: string, row: any): any {
   }
   if (table === 'lobbies' && out.theme_settings && typeof out.theme_settings !== 'string') {
     out.theme_settings = JSON.stringify(out.theme_settings)
+  }
+  if (table === 'lobbies' && out.admin_user_ids && typeof out.admin_user_ids !== 'string') {
+    out.admin_user_ids = JSON.stringify(out.admin_user_ids)
   }
 
   return out
