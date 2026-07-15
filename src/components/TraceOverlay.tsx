@@ -207,7 +207,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -713,70 +713,50 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [traces, pushAddOp])
 
-  // Deletion is immediate (fire-and-forget from the caller's side -- local
-  // state already reflects the change), matching how trace creation already
-  // commits to the database right away for real-time visibility to other
-  // users. Deletion used to be deferred to Save (a soft "markTraceDeleted"
-  // only actually removed the row on the next saveAllChanges), which meant a
-  // trace you deleted without saving was still in the database and could
-  // silently reappear on reload/leave-and-rejoin.
-  //
-  // This must actually be awaited (even though callers don't await the
-  // returned promise) -- both the real Supabase client and the desktop
-  // SQLite shim (localDb.ts's QueryBuilder) only run the query inside their
-  // then() method, so building `.delete().eq(...)` without awaiting or
-  // .then()-ing it never executes the query at all. That was the original
-  // bug: the row was never removed, so it was always still there to
-  // reappear. Errors are logged (not swallowed) so a *different* cause of
-  // failure -- e.g. an RLS policy silently matching zero rows on web --
-  // is visible in the console instead of looking identical to "it worked."
-  const deleteTraceFromDb = useCallback(async (traceId: string) => {
-    if (!supabase) return
-    // .select() so a delete that matches zero rows (e.g. silently blocked by
-    // an RLS policy -- that's not an "error" as far as Postgrest is
-    // concerned, just zero affected rows) is still detectable below.
-    const { data, error } = await (supabase.from('traces') as any).delete().eq('id', traceId).select()
-    if (error) {
-      console.error('[deleteTraceFromDb] delete failed, trace was not removed from the database:', traceId, error)
-    } else if (!data || data.length === 0) {
-      console.warn('[deleteTraceFromDb] delete matched zero rows -- trace was not actually removed from the database:', traceId)
-    }
-  }, [])
-
-  // Undo of a delete (or redo of an add-undo) needs to actually re-insert
-  // the row, since it's now genuinely gone from the database rather than
-  // just hidden pending a save. Keeps the original id/created_at (unlike
-  // duplicateTrace, which intentionally gets a fresh id) so it's a true
-  // restore, not a new trace. Same "must actually be awaited" note as
-  // deleteTraceFromDb applies here.
-  const reinsertTraceFromSnapshot = useCallback(async (trace: Trace) => {
-    if (!supabase) return
-    const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0), id: trace.id, created_at: trace.createdAt }
-    const { error } = await (supabase.from('traces') as any).insert(row)
-    if (error) {
-      console.error('[reinsertTraceFromSnapshot] insert failed, trace was not restored:', trace.id, error)
-    }
-  }, [lobbyId, userId, username])
-
+  // Deletion is deferred to Save (like edits): removeTrace() gives an
+  // instant local UI update, and markTraceDeleted() queues the actual
+  // database delete for the next saveAllChanges(), which is what makes an
+  // undo cheap (unmarkTraceDeleted() below is enough to fully cancel it,
+  // no database round-trip needed) at the cost of the delete only becoming
+  // permanent once you save.
   const applyUndoOp = useCallback((op: UndoOp, direction: 'undo' | 'redo') => {
     const store = useGameStore.getState()
     if (op.kind === 'add') {
       if (direction === 'undo') {
         store.removeTrace(op.traceId)
-        deleteTraceFromDb(op.traceId)
+        store.markTraceDeleted(op.traceId)
+        // Synchronously drop from the known-ids set the "detect new traces"
+        // effect uses (below) -- see the matching comment in the redo branch
+        // for why this matters on the restoring side; harmless here too.
+        knownTraceIdsRef.current?.delete(op.traceId)
         if (editingTraceRef.current?.id === op.traceId) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.traceId) setSelectedTraceId(null)
       } else {
         store.addTrace(cloneTraceSnapshot(op.trace))
-        reinsertTraceFromSnapshot(op.trace)
+        store.unmarkTraceDeleted(op.traceId)
+        store.markTraceChanged(op.traceId)
+        // Must happen synchronously, in the same tick as addTrace: the
+        // "detect new traces" effect below diffs the traces prop against
+        // this set on every traces change, and a restored trace's id was
+        // already pruned from it when the trace was originally deleted.
+        // Without marking it known again here, that effect sees the
+        // restore as a brand-new trace and pushes a spurious 'add' op on
+        // top of the undo stack -- which then undoes the very restore that
+        // just happened on the *next* Ctrl+Z, instead of moving on to
+        // whatever should actually be undone next.
+        knownTraceIdsRef.current?.add(op.traceId)
       }
     } else if (op.kind === 'delete') {
       if (direction === 'undo') {
         store.addTrace(cloneTraceSnapshot(op.trace))
-        reinsertTraceFromSnapshot(op.trace)
+        store.unmarkTraceDeleted(op.trace.id)
+        store.markTraceChanged(op.trace.id)
+        // See the matching comment in the 'add' redo branch above.
+        knownTraceIdsRef.current?.add(op.trace.id)
       } else {
         store.removeTrace(op.trace.id)
-        deleteTraceFromDb(op.trace.id)
+        store.markTraceDeleted(op.trace.id)
+        knownTraceIdsRef.current?.delete(op.trace.id)
         if (editingTraceRef.current?.id === op.trace.id) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.trace.id) setSelectedTraceId(null)
       }
@@ -798,7 +778,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
       }
     }
-  }, [deleteTraceFromDb, reinsertTraceFromSnapshot])
+  }, [])
 
   const undo = useCallback(() => {
     const op = undoStackRef.current.pop()
@@ -1080,9 +1060,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       removeTrace(traceId)
       if (selectedTraceId === traceId) setSelectedTraceId(null)
 
-      // Delete immediately -- see the comment on deleteTraceFromDb for why
-      // this can't be deferred to Save the way trace edits are.
-      deleteTraceFromDb(traceId)
+      // Mark for deletion (will be deleted on save)
+      markTraceDeleted(traceId)
+      // Keep the "detect new traces" effect's known-ids set (below) in sync
+      // synchronously, so an undo restoring this trace isn't mistaken for a
+      // brand-new one -- see the comments in applyUndoOp's delete/add
+      // branches for the full explanation.
+      knownTraceIdsRef.current?.delete(traceId)
 
       if (traceBeingDeleted) pushDeleteOp(traceBeingDeleted)
     }
