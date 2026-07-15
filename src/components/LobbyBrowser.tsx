@@ -998,6 +998,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return (
           <LobbyManagement
             lobby={managedLobby}
+            isOwner={true}
             onClose={() => setManagingLobbyId(null)}
             onUpdate={loadLobbies}
           />

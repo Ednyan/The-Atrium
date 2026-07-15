@@ -209,7 +209,7 @@ export interface LobbyAccessList {
   id: string
   lobbyId: string
   userId: string
-  listType: 'whitelist' | 'blacklist'
+  listType: 'whitelist' | 'blacklist' | 'admin'
   addedAt: string
   addedBy?: string | null
 }

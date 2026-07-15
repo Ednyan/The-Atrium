@@ -733,7 +733,7 @@ export async function initLocalDb(): Promise<void> {
       id TEXT PRIMARY KEY,
       lobby_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      list_type TEXT NOT NULL CHECK(list_type IN ('whitelist','blacklist')),
+      list_type TEXT NOT NULL CHECK(list_type IN ('whitelist','blacklist','admin')),
       added_at TEXT DEFAULT (datetime('now')),
       added_by TEXT,
       UNIQUE(lobby_id, user_id, list_type)

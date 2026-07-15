@@ -40,6 +40,7 @@ interface GameState {
   showTraceTypeLabels: boolean
   hideOwnNameTag: boolean
   hideOtherNameTags: boolean
+  hideOtherCursors: boolean
   cursorState: CursorState
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
@@ -62,6 +63,7 @@ interface GameState {
   setShowTraceTypeLabels: (show: boolean) => void
   setHideOwnNameTag: (hide: boolean) => void
   setHideOtherNameTags: (hide: boolean) => void
+  setHideOtherCursors: (hide: boolean) => void
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   updateOtherUserPosition: (userId: string, x: number, y: number) => void
@@ -77,10 +79,6 @@ interface GameState {
   markTraceDeleted: (traceId: string) => void
   unmarkTraceDeleted: (traceId: string) => void
   clearPendingChanges: () => void
-  // Clears only the given ids from pendingChanges/deletedTraces, leaving
-  // anything else (e.g. an item whose save failed) still marked pending so
-  // it isn't silently forgotten and gets retried on the next save.
-  clearSavedTraceIds: (updatedIds: string[], deletedIds: string[]) => void
   hasPendingChanges: () => boolean
   setIsSavingChanges: (saving: boolean) => void
 
@@ -116,6 +114,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   })(),
   hideOtherNameTags: (() => {
     const stored = localStorage.getItem('hideOtherNameTags')
+    return stored !== null ? stored === 'true' : false
+  })(),
+  hideOtherCursors: (() => {
+    const stored = localStorage.getItem('hideOtherCursors')
     return stored !== null ? stored === 'true' : false
   })(),
   cursorState: 'default',
@@ -157,6 +159,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setHideOtherNameTags: (hide) => {
     localStorage.setItem('hideOtherNameTags', String(hide))
     set({ hideOtherNameTags: hide })
+  },
+  setHideOtherCursors: (hide) => {
+    localStorage.setItem('hideOtherCursors', String(hide))
+    set({ hideOtherCursors: hide })
   },
   setCursorState: (cursorState) => set({ cursorState }),
   
@@ -259,15 +265,6 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   clearPendingChanges: () =>
     set({ pendingChanges: new Set<string>(), deletedTraces: new Set<string>() }),
-
-  clearSavedTraceIds: (updatedIds, deletedIds) =>
-    set((state) => {
-      const newPending = new Set(state.pendingChanges)
-      updatedIds.forEach(id => newPending.delete(id))
-      const newDeleted = new Set(state.deletedTraces)
-      deletedIds.forEach(id => newDeleted.delete(id))
-      return { pendingChanges: newPending, deletedTraces: newDeleted }
-    }),
 
   hasPendingChanges: () => {
     const state = get()

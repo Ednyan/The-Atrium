@@ -16,6 +16,7 @@ async function resolveLocalUrl(url: string): Promise<string> {
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
+import { computeAutoFitTextSize } from '../lib/textFit'
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -55,6 +56,20 @@ const OTHER_USER_CURSOR_Z_INDEX = 2_000_000
 // rendered zIndex keeps the player's own cursor on top without touching the
 // stored playerZIndex value other code relies on.
 const OWN_CURSOR_MIN_Z_INDEX = 3_000_000
+
+// Menus/panels/dialogs (context menu, Customize/Batch Edit panels, delete
+// confirmation, full-view/text-preview modal) must stay above canvas
+// content -- traces, handles, and cursors -- regardless of how those scale.
+// They previously used small values (50-300) left over from before trace
+// z-index was uncapped, which put the handle/cursor z-index bumps above (in
+// front of) these menus once a trace's own z-index or a handle exceeded
+// ~300. MENU_PANEL_Z_INDEX is for the actual menu/dialog content; menus
+// that have a separate click-outside-to-close backdrop element (Customize,
+// Batch Edit) use MENU_BACKDROP_Z_INDEX for that, which must stay below the
+// panel itself. Single self-contained overlays (context menu, delete
+// confirm, full-view modal) just use MENU_PANEL_Z_INDEX for the whole thing.
+const MENU_BACKDROP_Z_INDEX = 10_000_000
+const MENU_PANEL_Z_INDEX = 10_000_100
 
 type TraceClipboardPayload = {
   version: 1
@@ -207,7 +222,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -3104,7 +3119,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => setInlineEditText(e.target.value)}
                       onBlur={() => {
                         if (inlineEditText !== trace.content) {
-                          updateTraceCustomization(trace.id, { content: inlineEditText })
+                          const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize)
+                          updateTraceCustomization(trace.id, { content: inlineEditText, width: textSize.width, height: textSize.height })
                         }
                         setInlineEditingTraceId(null)
                         setInlineEditText('')
@@ -3116,7 +3132,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         } else if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault()
                           if (inlineEditText !== trace.content) {
-                            updateTraceCustomization(trace.id, { content: inlineEditText })
+                            const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize)
+                            updateTraceCustomization(trace.id, { content: inlineEditText, width: textSize.width, height: textSize.height })
                           }
                           setInlineEditingTraceId(null)
                           setInlineEditText('')
@@ -3129,9 +3146,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       style={textStyles}
                     />
                   ) : (
-                    /* Normal display - text wraps and conforms to box */
-                    <p 
-                      className="w-full break-words whitespace-pre-wrap overflow-hidden"
+                    /* Normal display - text wraps and conforms to box.
+                       min-w-0 matters here: as a flex child (the parent is
+                       flex flex-col), this would otherwise default to
+                       min-width: auto and refuse to shrink below its
+                       content's intrinsic width, silently defeating
+                       break-words for a long unbroken string (e.g. a URL). */
+                    <p
+                      className="w-full min-w-0 break-words whitespace-pre-wrap overflow-hidden"
                       style={textStyles}
                     >
                       {trace.content}
@@ -3740,7 +3762,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         })()}
 
         {/* Render other users' cursors */}
-        {Object.entries(otherUsers).map(([odUserId, user]) => {
+        {!hideOtherCursors && Object.entries(otherUsers).map(([odUserId, user]) => {
           const userScreenX = user.x * zoom + worldOffset.x
           const userScreenY = user.y * zoom + worldOffset.y
           const userColor = user.playerColor || '#ffffff'
@@ -3817,7 +3839,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         <>
           {/* Menu */}
           <div
-            className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[200] pointer-events-auto max-h-[80vh] overflow-y-auto"
+            className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
             {/* Corner brackets */}
@@ -4021,12 +4043,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         <>
           <div
             className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
-            style={{ 
+            style={{
               position: 'fixed',
               right: '20px',
               top: '50%',
               transform: 'translateY(-50%)',
-              zIndex: 300
+              zIndex: MENU_PANEL_Z_INDEX
             }}
           >
             {/* Corner brackets */}
@@ -5265,7 +5287,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-transparent pointer-events-auto"
-            style={{ zIndex: 250 }}
+            style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
             onClick={() => setEditingTrace(null)}
           />
         </>
@@ -5291,7 +5313,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 right: '20px',
                 top: '50%',
                 transform: 'translateY(-50%)',
-                zIndex: 300
+                zIndex: MENU_PANEL_Z_INDEX
               }}
             >
               {/* Corner brackets */}
@@ -5432,17 +5454,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             {/* Backdrop */}
             <div
               className="fixed inset-0 bg-transparent pointer-events-auto"
-              style={{ zIndex: 250 }}
+              style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
               onClick={() => setShowBatchEditPanel(false)}
             />
           </>
         )
       })()}
 
-      {/* Full view modal */}
+      {/* Full view modal (also the text-trace preview) */}
       {modalTrace && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 pointer-events-auto"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setModalTrace(null)}
         >
           <div
@@ -5543,7 +5565,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {modalTrace.type === 'text' && (
                 <div className="bg-gray-800/50 p-6 selectable-text">
-                  <p className="text-white text-lg whitespace-pre-wrap font-mono">
+                  <p className="text-white text-lg whitespace-pre-wrap break-words font-mono">
                     {modalTrace.content}
                   </p>
                   <button
@@ -5595,7 +5617,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {/* Delete Confirmation Dialog */}
       {deleteConfirmDialog && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[250] pointer-events-auto"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setDeleteConfirmDialog(null)}
         >
           {/* Scanline overlay */}

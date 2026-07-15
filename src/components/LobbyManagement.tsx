@@ -11,11 +11,12 @@ const clampAutosaveInterval = (value: number) => Math.max(AUTOSAVE_MIN_SECONDS, 
 
 interface LobbyManagementProps {
   lobby: Lobby
+  isOwner: boolean
   onClose: () => void
   onUpdate: () => void
 }
 
-export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementProps) {
+export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyManagementProps) {
   const [lobbyName, setLobbyName] = useState(lobby.name)
   const [password, setPassword] = useState('')
   const [showPasswordField, setShowPasswordField] = useState(false)
@@ -27,11 +28,15 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
   )
   const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
+  const [admins, setAdmins] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Profile[]>([])
-  const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist' | 'admins'>('settings')
   const [error, setError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [transferTargetUserId, setTransferTargetUserId] = useState<string | null>(null)
+  const [transferTargetUsername, setTransferTargetUsername] = useState<string | null>(null)
+  const [isTransferring, setIsTransferring] = useState(false)
 
   const isDirty = (
     lobbyName !== lobby.name ||
@@ -75,12 +80,23 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
       if (blacklistError) throw blacklistError
 
+      // Load admins
+      const { data: adminData, error: adminError } = await (supabase
+        .from('lobby_access_lists')
+        .select('*')
+        .eq('lobby_id', lobby.id)
+        .eq('list_type', 'admin') as any)
+
+      if (adminError) throw adminError
+
       // Enrich with usernames
       const enrichWhitelist = await enrichWithUsernames(whitelistData || [])
       const enrichBlacklist = await enrichWithUsernames(blacklistData || [])
+      const enrichAdmins = await enrichWithUsernames(adminData || [])
 
       setWhitelist(enrichWhitelist)
       setBlacklist(enrichBlacklist)
+      setAdmins(enrichAdmins)
     } catch (err) {
       console.error('Error loading access lists:', err)
     }
@@ -167,7 +183,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
     }
   }
 
-  const addToList = async (userId: string, listType: 'whitelist' | 'blacklist') => {
+  const addToList = async (userId: string, listType: 'whitelist' | 'blacklist' | 'admin') => {
     if (!supabase) return
 
     try {
@@ -176,13 +192,17 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
 
       // A user can't be both whitelisted and blacklisted at once -- drop
       // them from the other list first so adding here is a clean move.
-      const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
-      await (supabase
-        .from('lobby_access_lists')
-        .delete()
-        .eq('lobby_id', lobby.id)
-        .eq('user_id', userId)
-        .eq('list_type', oppositeListType) as any)
+      // Admin is independent of whitelist/blacklist, so it's not part of
+      // this mutual-exclusion pass.
+      if (listType === 'whitelist' || listType === 'blacklist') {
+        const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
+        await (supabase
+          .from('lobby_access_lists')
+          .delete()
+          .eq('lobby_id', lobby.id)
+          .eq('user_id', userId)
+          .eq('list_type', oppositeListType) as any)
+      }
 
       const { error } = await (supabase!
         .from('lobby_access_lists') as any)
@@ -222,9 +242,35 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
     }
   }
 
+  const transferOwnership = async () => {
+    if (!supabase || !transferTargetUserId) return
+
+    setIsTransferring(true)
+    try {
+      const { error } = await supabase.rpc('transfer_lobby_ownership', {
+        p_lobby_id: lobby.id,
+        p_new_owner_user_id: transferTargetUserId,
+      })
+
+      if (error) throw error
+
+      setTransferTargetUserId(null)
+      setTransferTargetUsername(null)
+      onUpdate()
+      onClose()
+    } catch (err: any) {
+      console.error('Error transferring ownership:', err)
+      setError(err.message || 'Failed to transfer ownership')
+      setTransferTargetUserId(null)
+      setTransferTargetUsername(null)
+    } finally {
+      setIsTransferring(false)
+    }
+  }
+
   return (
     <div
-      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000] p-4"
+      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] p-4"
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
@@ -289,6 +335,18 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
           >
             Blacklist ({blacklist.length})
           </button>
+          {isOwner && (
+            <button
+              onClick={() => setActiveTab('admins')}
+              className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+                activeTab === 'admins'
+                  ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
+                  : 'text-nier-border/60 hover:text-nier-bg hover:bg-nier-bg/5'
+              }`}
+            >
+              Admins ({admins.length})
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -401,7 +459,10 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
             </div>
           )}
 
-          {(activeTab === 'whitelist' || activeTab === 'blacklist') && (
+          {(activeTab === 'whitelist' || activeTab === 'blacklist' || activeTab === 'admins') && (() => {
+            const currentList = activeTab === 'whitelist' ? whitelist : activeTab === 'blacklist' ? blacklist : admins
+            const listLabel = activeTab === 'whitelist' ? 'Whitelisted Users' : activeTab === 'blacklist' ? 'Blacklisted Users' : 'Admins'
+            return (
             <div className="space-y-4">
               {/* Search Users */}
               <div>
@@ -411,7 +472,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
+                    onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
                     placeholder="Search username..."
                     className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
                   />
@@ -433,7 +494,7 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
                       >
                         <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
                         <button
-                          onClick={() => addToList(user.id, activeTab)}
+                          onClick={() => addToList(user.id, activeTab === 'admins' ? 'admin' : activeTab)}
                           className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
                           Add
@@ -448,33 +509,53 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
-                    {activeTab === 'whitelist' ? 'Whitelisted Users' : 'Blacklisted Users'}
+                    {listLabel}
                   </span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
                 <div className="space-y-2">
-                  {(activeTab === 'whitelist' ? whitelist : blacklist).length === 0 ? (
+                  {currentList.length === 0 ? (
                     <div className="text-nier-border/40 text-[10px] tracking-wider uppercase text-center py-4">No users in this list</div>
                   ) : (
-                    (activeTab === 'whitelist' ? whitelist : blacklist).map(entry => (
+                    currentList.map(entry => (
                       <div
                         key={entry.id}
                         className="flex justify-between items-center bg-nier-black border border-nier-border/20 px-3 py-2"
                       >
                         <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
-                        <button
-                          onClick={() => removeFromList(entry.id)}
-                          className="px-3 py-1 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
-                        >
-                          Remove
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {activeTab === 'admins' && (
+                            <button
+                              onClick={() => {
+                                setTransferTargetUserId(entry.userId)
+                                setTransferTargetUsername(entry.username || 'this user')
+                              }}
+                              className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                            >
+                              Make Owner
+                            </button>
+                          )}
+                          <button
+                            onClick={() => removeFromList(entry.id)}
+                            className="px-3 py-1 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                          >
+                            {activeTab === 'admins' ? 'Demote' : 'Remove'}
+                          </button>
+                        </div>
                       </div>
                     ))
                   )}
                 </div>
               </div>
+
+              {activeTab === 'admins' && (
+                <p className="text-nier-border/40 text-[10px] tracking-wider">
+                  Admins get full access to atrium settings, whitelist, and blacklist. Only the owner can promote/demote admins or transfer ownership.
+                </p>
+              )}
             </div>
-          )}
+            )
+          })()}
         </div>
 
         {/* Save Settings -- visible on every tab so switching to Whitelist/
@@ -527,6 +608,45 @@ export function LobbyManagement({ lobby, onClose, onUpdate }: LobbyManagementPro
               <button
                 onClick={() => setShowCloseConfirm(false)}
                 className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-border text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ownership transfer confirmation */}
+      {transferTargetUserId && (
+        <div className="fixed inset-0 z-[10001] bg-black/70 flex items-center justify-center">
+          <div className="bg-nier-blackLight border border-nier-border/40 p-6 relative" style={{ maxWidth: '340px' }}>
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
+
+            <h3 className="text-white text-sm tracking-[0.15em] uppercase mb-3 text-center">
+              <span className="text-nier-border/60 mr-2">◇</span>Transfer Ownership
+            </h3>
+            <p className="text-nier-border/70 text-xs tracking-wider text-center mb-6">
+              Make <span className="text-nier-bg">{transferTargetUsername}</span> the owner of this atrium? You will be demoted to admin and can no longer manage admins or transfer ownership back yourself.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={transferOwnership}
+                disabled={isTransferring}
+                className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60 disabled:opacity-50"
+              >
+                {isTransferring ? 'Transferring...' : 'Transfer Ownership'}
+              </button>
+              <button
+                onClick={() => {
+                  setTransferTargetUserId(null)
+                  setTransferTargetUsername(null)
+                }}
+                disabled={isTransferring}
+                className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-border text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
               >
                 Cancel
               </button>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -309,6 +309,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
+  const [isLobbyAdmin, setIsLobbyAdmin] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   // The layer group new traces are created into (null = ungrouped). Set by
   // clicking a group/Ungrouped header in the Layer panel.
@@ -532,6 +533,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     loadLobby()
   }, [lobbyId, userId])
+
+  // Check whether the current user has been promoted to admin for this lobby
+  const refreshLobbyAdminStatus = useCallback(async () => {
+    if (!supabase || !lobbyId || !userId) {
+      setIsLobbyAdmin(false)
+      return
+    }
+    const { data } = await (supabase
+      .from('lobby_access_lists')
+      .select('id')
+      .eq('lobby_id', lobbyId)
+      .eq('user_id', userId)
+      .eq('list_type', 'admin')
+      .maybeSingle() as any)
+    setIsLobbyAdmin(!!data)
+  }, [lobbyId, userId])
+
+  useEffect(() => {
+    refreshLobbyAdminStatus()
+  }, [refreshLobbyAdminStatus])
 
   // Listen for zoom sensitivity changes from profile settings and keep value in sync
   useEffect(() => {
@@ -2213,7 +2234,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <>
         {currentLobby && (
           <p className="text-gray-300 text-[8px] tracking-wider truncate">
-            {currentLobby.name} {isLobbyOwner && '(Owner)'}
+            {currentLobby.name} {isLobbyOwner && '(Owner)'}{!isLobbyOwner && isLobbyAdmin && '(Admin)'}
           </p>
         )}
         <p className="text-gray-500 text-[8px] tracking-wider">
@@ -2262,7 +2283,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           >
             Leave
           </button>
-          {isLobbyOwner && currentLobby && (
+          {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
               className="flex-1 bg-white hover:bg-gray-200 text-black px-1 py-0.5 text-[8px] tracking-wider uppercase transition-all"
@@ -2298,7 +2319,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         >
           Profile
         </button>
-        {isLobbyOwner && (
+        {(isLobbyOwner || isLobbyAdmin) && (
           <button
             onClick={() => setShowThemeCustomization(true)}
             className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
@@ -2697,11 +2718,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           />
 
           {/* Shift+drag area-selection rectangle -- position/size mutated
-              directly on mousemove (see handleMouseMove), not React state */}
+              directly on mousemove (see handleMouseMove), not React state.
+              z-index has to clear TraceOverlay's own scale (traces/handles
+              run up into the millions -- see TraceOverlay.tsx), since this
+              needs to stay visible while dragging directly over traces. */}
           <div
             ref={areaSelectRectRef}
-            className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none z-[9999]"
-            style={{ display: 'none' }}
+            className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none"
+            style={{ display: 'none', zIndex: 1_500_000 }}
           />
 
           {/* Drawing canvas overlay - below UI buttons, above traces */}
@@ -2832,7 +2856,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Map Right-Click Context Menu */}
       {mapContextMenu && (
         <div
-          className="fixed inset-0 z-[9999]"
+          className="fixed inset-0 z-[10000100]"
           onClick={() => setMapContextMenu(null)}
           onContextMenu={(e) => { e.preventDefault(); setMapContextMenu(null) }}
         >
@@ -3003,6 +3027,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {showLobbyManagement && currentLobby && (
         <LobbyManagement
           lobby={currentLobby}
+          isOwner={isLobbyOwner}
           onClose={() => setShowLobbyManagement(false)}
           onUpdate={() => {
             // Reload lobby info
@@ -3026,9 +3051,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       autosaveEnabled: data.autosave_enabled,
                       autosaveIntervalSeconds: data.autosave_interval_seconds,
                     })
+                    setIsLobbyOwner(data.owner_user_id === userId)
                   }
                 })
             }
+            refreshLobbyAdminStatus()
           }}
         />
       )}
@@ -3046,7 +3073,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const hudBottom = hudRef.current ? hudRef.current.getBoundingClientRect().bottom : 200
         return (
         <div
-          className="fixed inset-0 z-[10002] pointer-events-auto"
+          className="fixed inset-0 z-[10000100] pointer-events-auto"
           onClick={() => setShowLeaveDialog(false)}
         >
           <div

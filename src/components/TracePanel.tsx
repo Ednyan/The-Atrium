@@ -3,7 +3,13 @@ import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
 import { mapRowToTrace } from '../hooks/useTraces'
+import { computeAutoFitTextSize } from '../lib/textFit'
 import type { Trace } from '../types/database'
+
+// Matches the on-canvas text box's default effective font size (see
+// TraceOverlay's textStyles) for a trace that hasn't had its font size
+// customized yet -- there's no font-size control at creation time.
+const DEFAULT_TEXT_FONT_SIZE = 12
 
 const DEFAULT_SHAPE_COLOR = '#3b82f6'
 const DEFAULT_PATH_COLOR = '#9ca3af'
@@ -76,6 +82,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     try {
       let uploadedUrl = mediaUrl
       const initialPathPoints = shapeType === 'path' ? getDefaultPathPoints(finalPosition) : undefined
+      const textSize = traceType === 'text' ? computeAutoFitTextSize(content, DEFAULT_TEXT_FONT_SIZE) : null
       
       // Upload file if provided
       if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video')) {
@@ -136,6 +143,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         scaleX: 1.0,
         scaleY: 1.0,
         rotation: 0.0,
+        // Auto-fit the box to the content so long text isn't clipped
+        // and doesn't require a manual resize right after creating it.
+        ...(textSize && { width: textSize.width, height: textSize.height }),
         // Shape properties
         ...(traceType === 'shape' && {
           shapeType,
@@ -181,6 +191,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           show_description: false,
           show_filename: false,
           ...layerFields,
+          // Auto-fit the box to the content -- see the comment on newTrace above.
+          ...(textSize && { width: textSize.width, height: textSize.height }),
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
@@ -246,7 +258,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         right: '20px',
         top: '50%',
         transform: 'translateY(-50%)',
-        zIndex: 300,
+        zIndex: 10_000_100,
       }}
     >
       {/* Corner brackets */}
