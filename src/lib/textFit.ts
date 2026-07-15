@@ -24,6 +24,11 @@ function getMeasureContext(): CanvasRenderingContext2D | null {
   return measureCtx
 }
 
+// Simulates the on-canvas text box's `whitespace-pre-wrap break-words`
+// wrapping char-by-char, not just word-by-word: a single word/URL longer
+// than the box's own width still has to break-words mid-word in the real
+// CSS, so a word-only simulation would report far fewer lines than what
+// actually renders (and the box would come out too short).
 function countWrappedLines(ctx: CanvasRenderingContext2D, content: string, boxWidth: number): number {
   const availableWidth = Math.max(1, boxWidth - PADDING * 2)
   let totalLines = 0
@@ -35,32 +40,62 @@ function countWrappedLines(ctx: CanvasRenderingContext2D, content: string, boxWi
     const words = paragraph.split(' ')
     let lineWidth = 0
     let linesForParagraph = 1
-    for (const word of words) {
-      const wordWidth = ctx.measureText(`${word} `).width
-      if (lineWidth > 0 && lineWidth + wordWidth > availableWidth) {
-        linesForParagraph += 1
-        lineWidth = wordWidth
-      } else {
-        lineWidth += wordWidth
+    words.forEach((word, i) => {
+      const isLastWord = i === words.length - 1
+      const wordWithSpace = isLastWord ? word : `${word} `
+      const wordWidth = ctx.measureText(wordWithSpace).width
+
+      if (wordWidth <= availableWidth) {
+        if (lineWidth > 0 && lineWidth + wordWidth > availableWidth) {
+          linesForParagraph += 1
+          lineWidth = wordWidth
+        } else {
+          lineWidth += wordWidth
+        }
+        return
       }
-    }
+
+      // The word itself doesn't fit on any line -- break it character by
+      // character, same as CSS break-words/overflow-wrap would.
+      if (lineWidth > 0) {
+        linesForParagraph += 1
+        lineWidth = 0
+      }
+      let chunk = ''
+      for (const ch of word) {
+        const chunkWidth = ctx.measureText(chunk + ch).width
+        if (chunkWidth > availableWidth && chunk !== '') {
+          linesForParagraph += 1
+          chunk = ch
+        } else {
+          chunk += ch
+        }
+      }
+      lineWidth = ctx.measureText(chunk + (isLastWord ? '' : ' ')).width
+    })
     totalLines += linesForParagraph
   }
   return totalLines
 }
 
+export interface AutoFitTextOptions {
+  fontFamily?: string // CSS font-family value, e.g. 'sans-serif' | 'serif' | 'monospace'
+  baseWidth?: number
+  baseHeight?: number
+}
+
 export function computeAutoFitTextSize(
   content: string,
   fontSizePx: number,
-  baseWidth = BASE_TEXT_WIDTH,
-  baseHeight = BASE_TEXT_HEIGHT,
+  options: AutoFitTextOptions = {},
 ): { width: number; height: number } {
+  const { fontFamily = 'sans-serif', baseWidth = BASE_TEXT_WIDTH, baseHeight = BASE_TEXT_HEIGHT } = options
   const ctx = getMeasureContext()
   if (!ctx || !content.trim()) {
     return { width: baseWidth, height: baseHeight }
   }
 
-  ctx.font = `${fontSizePx}px sans-serif`
+  ctx.font = `${fontSizePx}px ${fontFamily}`
   const lineHeight = fontSizePx * LINE_HEIGHT_RATIO
 
   for (let scale = 1; scale <= MAX_SCALE; scale += SCALE_STEP) {

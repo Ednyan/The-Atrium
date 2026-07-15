@@ -54,8 +54,11 @@ const OTHER_USER_CURSOR_Z_INDEX = 2_000_000
 // is only 100,000) since it was never designed with editing UI in mind.
 // Flooring the value used for both sort position and the cursor's actual
 // rendered zIndex keeps the player's own cursor on top without touching the
-// stored playerZIndex value other code relies on.
-const OWN_CURSOR_MIN_Z_INDEX = 3_000_000
+// stored playerZIndex value other code relies on. This also has to clear
+// the menu/panel z-index further down (Manage/Profile/Layer panels etc.) --
+// the own cursor indicator is expected to stay visible above open menus,
+// unlike traces/handles/other users' cursors.
+const OWN_CURSOR_MIN_Z_INDEX = 20_000_000
 
 // Menus/panels/dialogs (context menu, Customize/Batch Edit panels, delete
 // confirmation, full-view/text-preview modal) must stay above canvas
@@ -3119,7 +3122,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => setInlineEditText(e.target.value)}
                       onBlur={() => {
                         if (inlineEditText !== trace.content) {
-                          const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize)
+                          const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize, { fontFamily: textStyles.fontFamily })
                           updateTraceCustomization(trace.id, { content: inlineEditText, width: textSize.width, height: textSize.height })
                         }
                         setInlineEditingTraceId(null)
@@ -3132,7 +3135,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         } else if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault()
                           if (inlineEditText !== trace.content) {
-                            const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize)
+                            const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize, { fontFamily: textStyles.fontFamily })
                             updateTraceCustomization(trace.id, { content: inlineEditText, width: textSize.width, height: textSize.height })
                           }
                           setInlineEditingTraceId(null)
@@ -4301,7 +4304,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         setEditingTrace(updated)
                       }}
                       onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { content: e.target.value })
+                        const effectiveFontSize = typeof editingTrace.fontSize === 'number'
+                          ? editingTrace.fontSize
+                          : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
+                        const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
+                        const effectiveFontFamily = ({ sans: 'sans-serif', serif: 'serif', mono: 'monospace' } as Record<string, string>)[effectiveFontFamilyKey] || effectiveFontFamilyKey
+                        const textSize = computeAutoFitTextSize(e.target.value, effectiveFontSize, { fontFamily: effectiveFontFamily })
+                        updateTraceCustomization(editingTrace.id, { content: e.target.value, width: textSize.width, height: textSize.height })
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       placeholder="Your message..."
@@ -4319,12 +4328,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       value={typeof editingTrace.fontSize === 'number' ? editingTrace.fontSize : (editingTrace.fontSize === 'small' ? 12 : editingTrace.fontSize === 'large' ? 24 : 16)}
                       onChange={e => {
                         const value = parseInt(e.target.value) || 16;
-                        const updated = { ...editingTrace, fontSize: value };
+                        const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
+                        const effectiveFontFamily = ({ sans: 'sans-serif', serif: 'serif', mono: 'monospace' } as Record<string, string>)[effectiveFontFamilyKey] || effectiveFontFamilyKey
+                        const textSize = computeAutoFitTextSize(editingTrace.content ?? '', value, { fontFamily: effectiveFontFamily })
+                        const updated = { ...editingTrace, fontSize: value, width: textSize.width, height: textSize.height };
                         setEditingTrace(updated);
                         // Update trace in store for live preview and mark as pending
                         const trace = traces.find(t => t.id === editingTrace.id);
                         if (trace) {
-                          addTrace({ ...trace, fontSize: value });
+                          addTrace({ ...trace, fontSize: value, width: textSize.width, height: textSize.height });
                           markTraceChanged(editingTrace.id);
                         }
                       }}
@@ -4338,9 +4350,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
-                        const updated = { ...editingTrace, fontFamily: e.target.value };
+                        const effectiveFontSize = typeof editingTrace.fontSize === 'number'
+                          ? editingTrace.fontSize
+                          : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
+                        const effectiveFontFamily = ({ sans: 'sans-serif', serif: 'serif', mono: 'monospace' } as Record<string, string>)[e.target.value] || e.target.value
+                        const textSize = computeAutoFitTextSize(editingTrace.content ?? '', effectiveFontSize, { fontFamily: effectiveFontFamily })
+                        const updated = { ...editingTrace, fontFamily: e.target.value, width: textSize.width, height: textSize.height };
                         setEditingTrace(updated);
-                        updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value });
+                        updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value, width: textSize.width, height: textSize.height })
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     >
