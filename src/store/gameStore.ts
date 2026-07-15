@@ -77,6 +77,10 @@ interface GameState {
   markTraceDeleted: (traceId: string) => void
   unmarkTraceDeleted: (traceId: string) => void
   clearPendingChanges: () => void
+  // Clears only the given ids from pendingChanges/deletedTraces, leaving
+  // anything else (e.g. an item whose save failed) still marked pending so
+  // it isn't silently forgotten and gets retried on the next save.
+  clearSavedTraceIds: (updatedIds: string[], deletedIds: string[]) => void
   hasPendingChanges: () => boolean
   setIsSavingChanges: (saving: boolean) => void
 
@@ -255,6 +259,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   clearPendingChanges: () =>
     set({ pendingChanges: new Set<string>(), deletedTraces: new Set<string>() }),
+
+  clearSavedTraceIds: (updatedIds, deletedIds) =>
+    set((state) => {
+      const newPending = new Set(state.pendingChanges)
+      updatedIds.forEach(id => newPending.delete(id))
+      const newDeleted = new Set(state.deletedTraces)
+      deletedIds.forEach(id => newDeleted.delete(id))
+      return { pendingChanges: newPending, deletedTraces: newDeleted }
+    }),
 
   hasPendingChanges: () => {
     const state = get()

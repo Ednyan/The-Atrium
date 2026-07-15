@@ -19,18 +19,37 @@ export async function saveAllChanges(): Promise<void> {
   store.setIsSavingChanges(true)
 
   try {
-    const { pendingChanges, deletedTraces, traces, clearPendingChanges } = useGameStore.getState()
+    const { pendingChanges, deletedTraces, traces } = useGameStore.getState()
 
-    // Handle deletions first
+    // Handle deletions first. Tracks which ones actually succeeded so a
+    // failure (network error, or an RLS policy silently matching zero rows,
+    // which Postgrest does not treat as an error) leaves that id marked
+    // pending for a retry instead of being forgotten -- previously this
+    // just fired all the requests and unconditionally cleared every pending
+    // id regardless of whether any of them actually worked.
+    const successfulDeleteIds: string[] = []
     const deletePromises = Array.from(deletedTraces).map(async (traceId) => {
-      await (db.from('traces') as any).delete().eq('id', traceId)
+      const { data, error } = await (db.from('traces') as any).delete().eq('id', traceId).select()
+      if (error) {
+        console.error('[saveAllChanges] delete failed, will remain pending:', traceId, error)
+      } else if (!data || data.length === 0) {
+        console.warn('[saveAllChanges] delete matched zero rows (blocked by a policy, or already gone), will remain pending:', traceId)
+      } else {
+        successfulDeleteIds.push(traceId)
+      }
     })
     await Promise.all(deletePromises)
 
-    // Handle updates
+    // Handle updates. Same success-tracking as deletes above.
+    const successfulUpdateIds: string[] = []
     const updatePromises = Array.from(pendingChanges).map(async (traceId) => {
       const trace = traces.find(t => t.id === traceId)
-      if (!trace) return
+      if (!trace) {
+        // Nothing to save for a trace that no longer exists locally --
+        // clear it rather than retrying forever.
+        successfulUpdateIds.push(traceId)
+        return
+      }
 
       const updateData: any = {
         type: trace.type,
@@ -102,12 +121,26 @@ export async function saveAllChanges(): Promise<void> {
         if (trace.height !== undefined) updateData.height = trace.height
       }
 
-      await (db.from('traces') as any).update(updateData).eq('id', traceId)
+      const { data, error } = await (db.from('traces') as any).update(updateData).eq('id', traceId).select()
+      if (error) {
+        console.error('[saveAllChanges] update failed, will remain pending:', traceId, error)
+      } else if (!data || data.length === 0) {
+        console.warn('[saveAllChanges] update matched zero rows (blocked by a policy?), will remain pending:', traceId)
+      } else {
+        successfulUpdateIds.push(traceId)
+      }
     })
     await Promise.all(updatePromises)
 
-    // Clear pending changes
-    clearPendingChanges()
+    // Only clear ids that actually saved -- anything that failed (logged
+    // above) stays marked pending so it isn't silently forgotten and gets
+    // retried on the next save instead.
+    useGameStore.getState().clearSavedTraceIds(successfulUpdateIds, successfulDeleteIds)
+    const totalAttempted = deletedTraces.size + pendingChanges.size
+    const totalSucceeded = successfulDeleteIds.length + successfulUpdateIds.length
+    if (totalSucceeded < totalAttempted) {
+      alert(`${totalAttempted - totalSucceeded} change(s) failed to save and will be retried next time you save. Check the console for details.`)
+    }
     window.dispatchEvent(new CustomEvent(TRACE_SAVE_COMPLETED_EVENT))
   } catch (error) {
     alert('Failed to save some changes. Please try again.')
