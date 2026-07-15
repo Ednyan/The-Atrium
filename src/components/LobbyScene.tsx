@@ -2185,6 +2185,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           />
         </div>
 
+        {/* Shift+drag area-selection rectangle -- position/size mutated
+            directly on mousemove (see handleMouseMove), not React state.
+            Rendered unconditionally (not just while isDrawingMode) since
+            area-select is a normal-mode canvas interaction. z-index has to
+            clear TraceOverlay's own scale (traces/handles run up into the
+            millions -- see TraceOverlay.tsx), since this needs to stay
+            visible while dragging directly over traces. */}
+        <div
+          ref={areaSelectRectRef}
+          className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none"
+          style={{ display: 'none', zIndex: 1_500_000 }}
+        />
+
         {/* Drop Zone Indicator */}
         {isDragOver && (
           <div className="absolute inset-0 z-[9998] pointer-events-none flex items-center justify-center"
@@ -2758,17 +2771,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               transform: 'translate(-50%, -50%)',
               display: 'none',
             }}
-          />
-
-          {/* Shift+drag area-selection rectangle -- position/size mutated
-              directly on mousemove (see handleMouseMove), not React state.
-              z-index has to clear TraceOverlay's own scale (traces/handles
-              run up into the millions -- see TraceOverlay.tsx), since this
-              needs to stay visible while dragging directly over traces. */}
-          <div
-            ref={areaSelectRectRef}
-            className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none"
-            style={{ display: 'none', zIndex: 1_500_000 }}
           />
 
           {/* Drawing canvas overlay - below UI buttons, above traces */}
