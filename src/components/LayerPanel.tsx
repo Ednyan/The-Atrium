@@ -29,9 +29,15 @@ interface LayerPanelProps {
   activeLayerId?: string | null
   onSetActiveLayer?: (layerId: string | null) => void
   onSelectGroupTraces?: (traceIds: string[]) => void
+  // Mirrors LobbyScene's canEdit (per lobbies.edit_permission_mode). Server
+  // enforcement lives in RLS (user_can_edit_lobby on layers/traces); this
+  // hides the mutating controls (create/rename/delete group, reordering,
+  // moving traces between groups) for a user whose writes would be
+  // rejected anyway. Viewing/selecting is unaffected.
+  canEdit?: boolean
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, canEdit = true }: LayerPanelProps) {
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
@@ -137,7 +143,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   const doCreateGroup = async (name: string) => {
-    if (!supabase || !name.trim()) return
+    if (!supabase || !name.trim() || !canEdit) return
 
     const maxZIndex = Math.max(...layers.map(l => l.zIndex), 0)
     const newZIndex = maxZIndex + 1
@@ -165,7 +171,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   const doDeleteGroup = async (layerId: string) => {
-    if (!supabase) return
+    if (!supabase || !canEdit) return
 
     // Delete all traces in this group
     const { error: tracesError } = await supabase
@@ -192,7 +198,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // only way to remove a trace from the Layer panel was to delete its entire
   // group, which took every other trace in it down too.
   const doDeleteTrace = async (traceId: string) => {
-    if (!supabase) return
+    if (!supabase || !canEdit) return
 
     const { error } = await supabase.from('traces').delete().eq('id', traceId)
 
@@ -212,7 +218,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   const doRenameGroup = async (layerId: string, newName: string) => {
-    if (!supabase || !newName.trim()) return
+    if (!supabase || !newName.trim() || !canEdit) return
 
     const { error } = await (supabase.from('layers') as any)
       .update({ name: newName.trim() })
@@ -227,7 +233,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
-    if (!supabase) return
+    if (!supabase || !canEdit) return
 
     const currentLayerId = traces.find(t => t.id === traceId)?.layerId ?? null
     if (currentLayerId === layerId) return
@@ -270,7 +276,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // free" z-index from the same stale traces snapshot each time and collide
   // every moved trace onto the same slot).
   const moveTracesToLayer = async (traceIds: string[], layerId: string | null) => {
-    if (!supabase || traceIds.length === 0) return
+    if (!supabase || traceIds.length === 0 || !canEdit) return
 
     const idsToMove = new Set(traceIds)
     const tracesToMove = traces.filter(t => idsToMove.has(t.id) && (t.layerId ?? null) !== layerId)
@@ -330,7 +336,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   const moveTraceWithinLayer = async (traceId: string, layerId: string | null, direction: 'up' | 'down') => {
-    if (!supabase) return
+    if (!supabase || !canEdit) return
 
     const orderedTraces = getTracesForLayer(layerId)
     const currentIndex = orderedTraces.findIndex(t => t.id === traceId)
@@ -394,7 +400,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   const updateLayerZIndex = async (layerId: string, newZIndex: number) => {
-    if (!supabase) return
+    if (!supabase || !canEdit) return
 
     // Update the layer
     const { error: layerError } = await (supabase.from('layers') as any)
@@ -506,6 +512,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           <h2 className="text-sm text-white tracking-[0.15em] uppercase">Layers</h2>
         </div>
         <div className="flex gap-2">
+          {canEdit && (
           <button
             onClick={createGroup}
             className="px-3 py-1 bg-white text-black text-[9px] tracking-wider uppercase hover:bg-gray-200 transition-colors"
@@ -513,6 +520,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           >
             + Group
           </button>
+          )}
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white text-lg w-6 h-6 flex items-center justify-center transition-colors"
@@ -646,7 +654,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   {layerTraces.map((trace) => (
                     <div
                       key={trace.id}
-                      draggable
+                      draggable={canEdit}
                       className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                         trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                           ? 'border-blue-400 bg-blue-900/30'
@@ -766,7 +774,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               {ungroupedTraces.map((trace) => (
                 <div
                   key={trace.id}
-                  draggable
+                  draggable={canEdit}
                   className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                     trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                       ? 'border-blue-400 bg-blue-900/30'

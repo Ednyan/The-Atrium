@@ -28,10 +28,12 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
   )
   const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
+  const [editors, setEditors] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [admins, setAdmins] = useState<{ userId: string; username: string }[]>([])
+  const [editPermissionMode, setEditPermissionMode] = useState<'all' | 'none' | 'selected'>(lobby.editPermissionMode ?? 'all')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Profile[]>([])
-  const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist' | 'admins'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist' | 'editors' | 'admins'>('settings')
   const [error, setError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [transferTargetUserId, setTransferTargetUserId] = useState<string | null>(null)
@@ -43,6 +45,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     isPublic !== lobby.isPublic ||
     autosaveEnabled !== (lobby.autosaveEnabled ?? false) ||
     autosaveIntervalSeconds !== clampAutosaveInterval(lobby.autosaveIntervalSeconds ?? AUTOSAVE_MIN_SECONDS) ||
+    editPermissionMode !== (lobby.editPermissionMode ?? 'all') ||
     (showPasswordField && password.trim() !== '')
   )
 
@@ -105,12 +108,23 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
       if (blacklistError) throw blacklistError
 
+      // Load editors
+      const { data: editorData, error: editorError } = await (supabase
+        .from('lobby_access_lists')
+        .select('*')
+        .eq('lobby_id', lobby.id)
+        .eq('list_type', 'editor') as any)
+
+      if (editorError) throw editorError
+
       // Enrich with usernames
       const enrichWhitelist = await enrichWithUsernames(whitelistData || [])
       const enrichBlacklist = await enrichWithUsernames(blacklistData || [])
+      const enrichEditors = await enrichWithUsernames(editorData || [])
 
       setWhitelist(enrichWhitelist)
       setBlacklist(enrichBlacklist)
+      setEditors(enrichEditors)
     } catch (err) {
       console.error('Error loading access lists:', err)
     }
@@ -166,6 +180,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
         is_public: isPublic,
         autosave_enabled: autosaveEnabled,
         autosave_interval_seconds: clampAutosaveInterval(autosaveIntervalSeconds),
+        edit_permission_mode: editPermissionMode,
       }
 
       // Only touch password_hash if the user explicitly opened the
@@ -197,7 +212,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     }
   }
 
-  const addToList = async (userId: string, listType: 'whitelist' | 'blacklist') => {
+  const addToList = async (userId: string, listType: 'whitelist' | 'blacklist' | 'editor') => {
     if (!supabase) return
 
     try {
@@ -206,13 +221,17 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
       // A user can't be both whitelisted and blacklisted at once -- drop
       // them from the other list first so adding here is a clean move.
-      const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
-      await (supabase
-        .from('lobby_access_lists')
-        .delete()
-        .eq('lobby_id', lobby.id)
-        .eq('user_id', userId)
-        .eq('list_type', oppositeListType) as any)
+      // Editor is independent of whitelist/blacklist, so it's not part of
+      // this mutual-exclusion pass.
+      if (listType === 'whitelist' || listType === 'blacklist') {
+        const oppositeListType = listType === 'whitelist' ? 'blacklist' : 'whitelist'
+        await (supabase
+          .from('lobby_access_lists')
+          .delete()
+          .eq('lobby_id', lobby.id)
+          .eq('user_id', userId)
+          .eq('list_type', oppositeListType) as any)
+      }
 
       const { error } = await (supabase!
         .from('lobby_access_lists') as any)
@@ -389,6 +408,16 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           >
             Blacklist ({blacklist.length})
           </button>
+          <button
+            onClick={() => setActiveTab('editors')}
+            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+              activeTab === 'editors'
+                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
+                : 'text-nier-border/60 hover:text-nier-bg hover:bg-nier-bg/5'
+            }`}
+          >
+            Editors ({editors.length})
+          </button>
           {isOwner && (
             <button
               onClick={() => setActiveTab('admins')}
@@ -510,14 +539,50 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   </div>
                 )}
               </div>
+
+              <div className="pt-2 border-t border-nier-border/20">
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                  Editing Permissions
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {([
+                    { value: 'all', label: 'All' },
+                    { value: 'none', label: 'None' },
+                    { value: 'selected', label: 'Selected' },
+                  ] as const).map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setEditPermissionMode(option.value)}
+                      className={`py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                        editPermissionMode === option.value
+                          ? 'bg-nier-bg text-nier-black border-nier-bg'
+                          : 'border-nier-border/30 text-nier-border hover:border-nier-border/60 hover:text-nier-bg'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-nier-border/40 text-[10px] tracking-wider mt-1">
+                  {editPermissionMode === 'all' && 'Anyone who can access this atrium can create/edit/delete traces.'}
+                  {editPermissionMode === 'none' && 'Only the owner and admins can create/edit/delete traces.'}
+                  {editPermissionMode === 'selected' && 'Only the owner, admins, and users on the Editors list can create/edit/delete traces.'}
+                </p>
+              </div>
             </div>
           )}
 
-          {(activeTab === 'whitelist' || activeTab === 'blacklist') && (() => {
-            const currentList = activeTab === 'whitelist' ? whitelist : blacklist
-            const listLabel = activeTab === 'whitelist' ? 'Whitelisted Users' : 'Blacklisted Users'
+          {(activeTab === 'whitelist' || activeTab === 'blacklist' || activeTab === 'editors') && (() => {
+            const currentList = activeTab === 'whitelist' ? whitelist : activeTab === 'blacklist' ? blacklist : editors
+            const listLabel = activeTab === 'whitelist' ? 'Whitelisted Users' : activeTab === 'blacklist' ? 'Blacklisted Users' : 'Editors'
             return (
             <div className="space-y-4">
+              {activeTab === 'editors' && (
+                <p className="text-nier-border/40 text-[10px] tracking-wider">
+                  Only takes effect while Editing Permissions above is set to "Selected". Owner and admins can always edit regardless of this list.
+                </p>
+              )}
               {/* Search Users */}
               <div>
                 <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Add User</label>
@@ -548,7 +613,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                       >
                         <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
                         <button
-                          onClick={() => addToList(user.id, activeTab)}
+                          onClick={() => addToList(user.id, activeTab === 'editors' ? 'editor' : activeTab)}
                           className="px-3 py-1 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
                           Add

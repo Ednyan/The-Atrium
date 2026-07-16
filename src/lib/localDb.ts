@@ -643,7 +643,8 @@ export async function initLocalDb(): Promise<void> {
       theme_settings TEXT,
       autosave_enabled INTEGER DEFAULT 0,
       autosave_interval_seconds INTEGER DEFAULT 60,
-      admin_user_ids TEXT
+      admin_user_ids TEXT,
+      edit_permission_mode TEXT DEFAULT 'all'
     )
   `)
 
@@ -735,7 +736,7 @@ export async function initLocalDb(): Promise<void> {
       id TEXT PRIMARY KEY,
       lobby_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      list_type TEXT NOT NULL CHECK(list_type IN ('whitelist','blacklist','admin')),
+      list_type TEXT NOT NULL CHECK(list_type IN ('whitelist','blacklist','admin','editor')),
       added_at TEXT DEFAULT (datetime('now')),
       added_by TEXT,
       UNIQUE(lobby_id, user_id, list_type)
@@ -820,6 +821,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE lobbies ADD COLUMN admin_user_ids TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute("ALTER TABLE lobbies ADD COLUMN edit_permission_mode TEXT DEFAULT 'all'")
   } catch {
     // Column already exists — ignore
   }

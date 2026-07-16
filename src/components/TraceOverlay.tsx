@@ -38,6 +38,12 @@ interface TraceOverlayProps {
   // Layer panel (a sibling, not a child, of this component) can highlight
   // every multi-selected trace/group, not just the single selectedTraceId.
   onMultiSelectionChange?: (ids: string[]) => void
+  // Mirrors LobbyScene's canEdit (per lobbies.edit_permission_mode). Server
+  // enforcement lives in RLS (user_can_edit_lobby); this just keeps the
+  // editing UI (context menu, Customize/Batch Edit panels) from opening for
+  // a user whose writes would be rejected anyway. Defaults to true so
+  // callers that don't pass it (none currently) aren't silently locked out.
+  canEdit?: boolean
 }
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path'
 
@@ -199,7 +205,7 @@ function buildTraceInsertRow(
   return newTrace
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, isDrawingMode, onMultiSelectionChange }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
     // Load font files from public/fonts folder - only once, with cleanup
@@ -1051,6 +1057,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
     const handlePaste = (e: ClipboardEvent) => {
       if (isEditableTarget(e.target)) return
+      if (!canEdit) return
 
       const customPayload = e.clipboardData?.getData(TRACE_CLIPBOARD_MIME)
       const sentinel = e.clipboardData?.getData('text/plain')
@@ -1074,7 +1081,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       window.removeEventListener('copy', handleCopy)
       window.removeEventListener('paste', handlePaste)
     }
-  }, [duplicateTraces, getSelectedTraceSnapshots, lobbyId])
+  }, [duplicateTraces, getSelectedTraceSnapshots, lobbyId, canEdit])
 
   const deleteTraces = (traceIds: string[]) => {
     if (traceIds.length === 0) return
@@ -1207,8 +1214,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (!multiSelectedIds.has(trace.id)) {
       setMultiSelectedIds(new Set())
     }
-    
+
     setSelectedTraceId(trace.id)
+
+    // Selecting a trace (to view it) is always allowed; only arming an
+    // actual drag/transform is gated. Handles themselves already don't
+    // render for a non-editor (see the isSelected && canEdit guards), so in
+    // practice only 'move' (clicking the trace body itself) can reach here.
+    if (!canEdit) return
+
     setTransformMode(mode)
     selectedTraceIdRef.current = trace.id
     transformModeRef.current = mode
@@ -1744,19 +1758,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const handleKeyDown = (e: KeyboardEvent) => {
       // Delete key to delete the whole multi-selection if there is one,
       // otherwise just the single selected trace.
-      if (e.key === 'Delete' && (selectedTraceId || multiSelectedIds.size > 0)) {
+      if (e.key === 'Delete' && canEdit && (selectedTraceId || multiSelectedIds.size > 0)) {
         e.preventDefault()
         deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
       }
     }
-    
+
     window.addEventListener('click', handleClickOutside)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       window.removeEventListener('click', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode])
+  }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit])
 
   useEffect(() => {
     if (transformMode !== 'none') {
@@ -3239,8 +3253,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               )}
             </div>
 
-            {/* Transform controls (only for selected trace and not in crop mode) */}
-            {isSelected && !isCropMode && (
+            {/* Transform controls (only for selected trace, not in crop mode, and only when this user can actually edit) */}
+            {isSelected && !isCropMode && canEdit && (
               <>
                 {/* Special handles for path shapes */}
                 {(trace.type === 'shape' && trace.shapeType === 'path') ? (
@@ -3477,7 +3491,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             )}
 
             {/* Crop mode handles (only when crop mode is active) */}
-            {isSelected && isCropMode && (
+            {isSelected && isCropMode && canEdit && (
               <>
                 {/* Crop area overlay - shows the crop boundaries */}
                 <div
@@ -3871,8 +3885,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           )
         })}
 
-      {/* Context Menu */}
-      {contextMenu && (
+      {/* Context Menu -- hidden entirely (not just the edit items) when
+          canEdit is false, since even inspecting via this menu leads only to
+          editing actions */}
+      {contextMenu && canEdit && (
         <>
           {/* Menu */}
           <div
@@ -4076,7 +4092,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       )}
 
       {/* Customization Dialog */}
-      {editingTrace && (
+      {editingTrace && canEdit && (
         <>
           <div
             className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
@@ -4100,7 +4116,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
             
             <div className="space-y-5">
-              {/* Toggle Options */}
+              {/* Toggle Options -- shapes have their own dedicated Show
+                  Outline/No Fill controls further down (and are created with
+                  these generic wrapper toggles off by default), so showing
+                  both here read as duplicated "no fill" controls */}
+              {editingTrace.type !== 'shape' && (
               <div className="space-y-3">
                 <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
@@ -4136,6 +4156,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                 </label>
               </div>
+              )}
 
               {/* Border & Fill Color Controls (for text and embed traces) */}
               {(editingTrace.type === 'text' || editingTrace.type === 'embed') && (
@@ -5354,7 +5375,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           whichever selected trace happens to be `traces.find`'s first match --
           there's no per-field "mixed values" indicator, changing a control
           just overwrites that field on every selected trace immediately. */}
-      {showBatchEditPanel && multiSelectedIds.size > 1 && (() => {
+      {showBatchEditPanel && multiSelectedIds.size > 1 && canEdit && (() => {
         const batchIds = Array.from(multiSelectedIds)
         const seedTrace = traces.find(t => t.id === selectedTraceId && multiSelectedIds.has(t.id))
           || traces.find(t => multiSelectedIds.has(t.id))

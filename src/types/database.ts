@@ -210,13 +210,19 @@ export interface Lobby {
   // checking it from that table's own RLS policy can't recurse -- see
   // fix_lobby_admin_recursion_v2.sql.
   adminUserIds?: string[]
+  // Who can create/edit/delete traces and layers in this atrium -- 'all'
+  // (default), 'none' (owner/admins only), or 'selected' (owner/admins plus
+  // users on the 'editor' lobby_access_lists entries). View access is
+  // unaffected by this; it only gates writes, enforced server-side via
+  // user_can_edit_lobby (see add_edit_permissions.sql).
+  editPermissionMode?: 'all' | 'none' | 'selected'
 }
 
 export interface LobbyAccessList {
   id: string
   lobbyId: string
   userId: string
-  listType: 'whitelist' | 'blacklist'
+  listType: 'whitelist' | 'blacklist' | 'editor'
   addedAt: string
   addedBy?: string | null
 }

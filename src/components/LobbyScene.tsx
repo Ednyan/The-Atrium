@@ -576,6 +576,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           autosaveEnabled: data.autosave_enabled,
           autosaveIntervalSeconds: data.autosave_interval_seconds,
           adminUserIds: data.admin_user_ids ?? [],
+          editPermissionMode: data.edit_permission_mode ?? 'all',
         }
         setCurrentLobby(lobby)
         setIsLobbyOwner(data.owner_user_id === userId)
@@ -590,6 +591,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // (admin_user_ids), not a lobby_access_lists row, see
   // fix_lobby_admin_recursion_v2.sql.
   const isLobbyAdmin = !!(currentLobby?.adminUserIds?.includes(userId))
+
+  // Unlike admin status, the 'selected' editor list genuinely does live in
+  // lobby_access_lists (it's checked from traces/layers policies, a
+  // different table, so no recursion risk -- see add_edit_permissions.sql).
+  // Only queried when the mode actually needs it.
+  const [isSelectedEditor, setIsSelectedEditor] = useState(false)
+  useEffect(() => {
+    if (!supabase || !lobbyId || !userId || currentLobby?.editPermissionMode !== 'selected') {
+      setIsSelectedEditor(false)
+      return
+    }
+    let cancelled = false
+    ;(supabase
+      .from('lobby_access_lists')
+      .select('id')
+      .eq('lobby_id', lobbyId)
+      .eq('user_id', userId)
+      .eq('list_type', 'editor')
+      .maybeSingle() as any).then(({ data }: any) => {
+        if (!cancelled) setIsSelectedEditor(!!data)
+      })
+    return () => { cancelled = true }
+  }, [lobbyId, userId, currentLobby?.editPermissionMode])
+
+  // Server-side enforcement lives in RLS (user_can_edit_lobby); this mirrors
+  // it client-side to gate the UI so a non-editor doesn't see edit controls
+  // that would just fail to save.
+  const canEdit = isLobbyOwner || isLobbyAdmin ||
+    (currentLobby?.editPermissionMode ?? 'all') === 'all' ||
+    (currentLobby?.editPermissionMode === 'selected' && isSelectedEditor)
+  const canEditRef = useRef(canEdit)
+  useEffect(() => { canEditRef.current = canEdit }, [canEdit])
 
   // Listen for zoom sensitivity changes from profile settings and keep value in sync
   useEffect(() => {
@@ -692,12 +725,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       
       if (e.key === 't' || e.key === 'T') {
+        if (!canEditRef.current) return
         e.preventDefault()
         e.stopPropagation()
         setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
         setShowTracePanel(prev => !prev)
       }
       if (e.key === 'd' || e.key === 'D') {
+        if (!canEditRef.current) return
         e.preventDefault()
         e.stopPropagation()
         setIsDrawingMode(prev => {
@@ -1196,7 +1231,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         // Only show map context menu if clicking on the canvas (not UI elements or trace overlays)
         const isUI = target.closest('[data-ui-element], [data-trace-element], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
         if (isUI) return
-        
+        if (!canEditRef.current) return
+
         // Convert screen coords to world coords
         if (worldContainerRef.current) {
           const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
@@ -1955,6 +1991,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // handler, which used to flash the "drop file to create trace" overlay
     // while the user was just reordering layers.
     if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
+    if (!canEdit) return
     e.preventDefault()
     e.stopPropagation()
     e.dataTransfer.dropEffect = 'copy'
@@ -1975,6 +2012,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     e.stopPropagation()
     setIsDragOver(false)
 
+    if (!canEditRef.current) return
     if (!worldContainerRef.current) return
 
     if (!ensureLobbyHasSpace()) return
@@ -2086,6 +2124,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     const handlePaste = async (e: ClipboardEvent) => {
       if (e.defaultPrevented || isEditableTarget(e.target)) return
+      if (!canEditRef.current) return
 
       const imageFiles = Array.from(e.clipboardData?.items ?? [])
         .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
@@ -2243,6 +2282,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             multiSelectRequest={multiSelectRequest}
             isDrawingMode={isDrawingMode}
             onMultiSelectionChange={setMultiSelectedTraceIds}
+            canEdit={canEdit}
           />
         </div>
 
@@ -2476,8 +2516,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )
       })()}
 
-      {/* Trace Button */}
-      {(() => {
+      {/* Trace Button -- hidden entirely when the atrium's edit permission
+          mode doesn't allow this user to create traces */}
+      {canEdit && (() => {
         const isFull = useGameStore.getState().isLobbyFull()
         return (
       <button
@@ -2504,6 +2545,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       </button>
 
       {/* Draw Button */}
+      {canEdit && (
       <button
         onClick={() => {
           if (isDrawingMode) {
@@ -2518,6 +2560,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <span className="opacity-60 mr-2">✎</span>
         {isDrawingMode ? 'Exit Draw' : 'Draw'}
       </button>
+      )}
 
       {/* Drawing Mode Overlay */}
       {isDrawingMode && (
@@ -3022,6 +3065,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClose={() => setShowLayerPanel(false)}
           selectedTraceId={selectedTraceId}
           multiSelectedTraceIds={multiSelectedTraceIds}
+          canEdit={canEdit}
           onSelectTrace={(traceId) => {
             // onSelectTrace called
             setSelectedTraceId(traceId)
@@ -3120,6 +3164,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   autosaveEnabled: data.autosave_enabled,
                   autosaveIntervalSeconds: data.autosave_interval_seconds,
                   adminUserIds: data.admin_user_ids ?? [],
+                  editPermissionMode: data.edit_permission_mode ?? 'all',
                 }
                 setCurrentLobby(lobby)
               }
@@ -3158,6 +3203,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       autosaveEnabled: data.autosave_enabled,
                       autosaveIntervalSeconds: data.autosave_interval_seconds,
                       adminUserIds: data.admin_user_ids ?? [],
+                      editPermissionMode: data.edit_permission_mode ?? 'all',
                     })
                     setIsLobbyOwner(data.owner_user_id === userId)
                   }
