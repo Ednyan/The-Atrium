@@ -707,6 +707,7 @@ export async function initLocalDb(): Promise<void> {
       shape_no_fill INTEGER,
       shape_outline_color TEXT,
       shape_outline_width REAL,
+      shape_outline_opacity REAL,
       shape_points TEXT,
       path_curve_type TEXT,
       path_arrow_start TEXT,
@@ -819,6 +820,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE lobbies ADD COLUMN admin_user_ids TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN shape_outline_opacity REAL')
   } catch {
     // Column already exists — ignore
   }

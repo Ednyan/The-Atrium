@@ -318,10 +318,46 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
   const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
-  // True only while a save triggered by the autosave heartbeat is in flight
-  // (not manual Ctrl+S/HUD-button saves), so the "Saving..." indicator only
-  // appears when the atrium is auto-saving on the user's behalf.
+  // Mirrors TraceOverlay's own multi-selection state (reported up via
+  // onMultiSelectionChange) so the Layer panel can highlight every
+  // multi-selected trace/group, not just the single selectedTraceId.
+  const [multiSelectedTraceIds, setMultiSelectedTraceIds] = useState<string[]>([])
+
+  // The Layer panel's "Target" highlight on a group is meant to track actual
+  // selection, but activeLayerId is separate state (it also drives where new
+  // traces get created) that TraceOverlay's own canvas "click outside to
+  // deselect"/Escape had no way to reach -- deselecting on the canvas left
+  // the group looking selected in the Layer panel even though nothing was
+  // selected anymore. Every place TraceOverlay clears selection passes null
+  // here, so piggyback the activeLayerId clear on that same call rather than
+  // reactively watching multiSelectedTraceIds (which updates a tick later,
+  // through TraceOverlay's own effect, and would race the group-click flow
+  // that sets activeLayerId and the multi-selection together).
+  const handleSetSelectedTraceId = useCallback((id: string | null) => {
+    setSelectedTraceId(id)
+    if (id === null) setActiveLayerId(null)
+  }, [])
+  // Drives the top-right "Saving..." indicator for every save trigger
+  // (autosave heartbeat, Ctrl+S, and the manual HUD Save Changes button),
+  // not just autosave -- the name is legacy from when it was autosave-only.
   const [isAutosaving, setIsAutosaving] = useState(false)
+  // Shared by the autosave heartbeat and the manual Save Changes button so
+  // both get the same "stay visible at least 4s" floor -- a save that
+  // finishes in a blink would otherwise flash the indicator too fast to read.
+  const triggerSaveWithIndicator = useCallback(() => {
+    setIsAutosaving(true)
+    const savingStartedAt = Date.now()
+    const MIN_SAVING_INDICATOR_MS = 4000
+    saveAllChanges().finally(() => {
+      const elapsed = Date.now() - savingStartedAt
+      const remaining = MIN_SAVING_INDICATOR_MS - elapsed
+      if (remaining > 0) {
+        setTimeout(() => setIsAutosaving(false), remaining)
+      } else {
+        setIsAutosaving(false)
+      }
+    })
+  }, [])
   const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
@@ -405,6 +441,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   useEffect(() => {
     isDrawingModeRef.current = isDrawingMode
   }, [isDrawingMode])
+
+  // The exponential-moving-average smoothing factor is only perceptibly
+  // different from "off" once it's fairly high -- alpha (1 - smoothing)
+  // barely changes the stroke's responsiveness until smoothing climbs past
+  // roughly 0.7, so most of the old 0-100% slider (mapped 1:1 to smoothing)
+  // did effectively nothing and all the usable range was crammed into
+  // 70-100%. Remap the slider so 0% is a true "no smoothing" (raw points,
+  // no EMA at all) and (0, 100] linearly covers the old 70-95% (its cap)
+  // range where the effect actually varies.
+  const computeSmoothingFactor = (sliderValue: number): number => {
+    if (sliderValue <= 0) return 0
+    return 0.70 + (Math.min(sliderValue, 100) / 100) * 0.25
+  }
 
   // Keep drawing refs in sync
   useEffect(() => { isEraserModeRef.current = isEraserMode }, [isEraserMode])
@@ -605,18 +654,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (Date.now() - lastAutosaveAt < intervalSeconds * 1000) return
       lastAutosaveAt = Date.now()
       if (useGameStore.getState().hasPendingChanges() && !useGameStore.getState().isSavingChanges) {
-        setIsAutosaving(true)
-        const savingStartedAt = Date.now()
-        const MIN_SAVING_INDICATOR_MS = 4000
-        saveAllChanges().finally(() => {
-          const elapsed = Date.now() - savingStartedAt
-          const remaining = MIN_SAVING_INDICATOR_MS - elapsed
-          if (remaining > 0) {
-            setTimeout(() => setIsAutosaving(false), remaining)
-          } else {
-            setIsAutosaving(false)
-          }
-        })
+        triggerSaveWithIndicator()
       }
     }, 5000)
     return () => clearInterval(heartbeat)
@@ -677,6 +715,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           e.stopPropagation()
           setIsEraserMode(prev => !prev)
         }
+      }
+      // Ctrl+Z undoes the last stroke while drawing, same as the Undo
+      // button -- TraceOverlay's own Ctrl+Z (trace undo/redo) steps aside
+      // while isDrawingMode is active, see its isDrawingModeRef guard.
+      if (isDrawingModeRef.current && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        setCompletedStrokes(prev => prev.slice(0, -1))
       }
     }
     
@@ -2193,8 +2239,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffset={worldOffset}
             lobbyId={lobbyId}
             selectedTraceId={selectedTraceId}
-            setSelectedTraceId={setSelectedTraceId}
+            setSelectedTraceId={handleSetSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
+            isDrawingMode={isDrawingMode}
+            onMultiSelectionChange={setMultiSelectedTraceIds}
           />
         </div>
 
@@ -2224,10 +2272,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
       </div>
 
-      {/* Autosave indicator */}
+      {/* Saving indicator -- shown for autosave, Ctrl+S, and the manual
+          Save Changes button (see triggerSaveWithIndicator) */}
       {isAutosaving && (
         <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
-          <p className="text-white text-[10px] tracking-[0.2em] uppercase animate-saving-fade">
+          <p className="text-white text-base tracking-[0.2em] uppercase animate-saving-fade">
             ◇ Saving...
           </p>
         </div>
@@ -2269,7 +2318,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {showOnlineUsersList && (
           <div
             data-ui-element="true"
-            className="absolute left-0 top-full mt-1 w-48 bg-black border-2 border-white z-[10000] font-mono"
+            className="absolute left-0 top-full mt-1 w-64 bg-black border-2 border-white z-[10000] font-mono"
             style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
           >
             <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
@@ -2278,15 +2327,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
               </div>
               {Object.values(otherUsers).map(user => (
-                <div key={user.userId}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
-                    <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
-                  </div>
+                <div key={user.userId} className="flex items-center justify-between gap-2">
+                  <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
+                  <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
                   {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
                     <button
                       onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
-                      className="text-red-500 hover:text-red-400 text-[9px] tracking-wider uppercase transition-colors"
+                      className="text-red-500 hover:text-red-400 text-[9px] tracking-wider uppercase transition-colors flex-shrink-0"
                     >
                       Kick
                     </button>
@@ -2311,7 +2358,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </p>
         {hasPendingChanges() && (
           <button
-            onClick={() => saveAllChanges()}
+            onClick={() => triggerSaveWithIndicator()}
             disabled={isSavingChanges}
             className={`w-full mt-1.5 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all ${
               isSavingChanges
@@ -2828,7 +2875,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 // Cap below 1.0 -- at exactly 100% alpha becomes 0 and the
                 // smoothed point never moves from its starting position,
                 // turning the stroke into a pile of coincident points.
-                const smoothing = Math.min(drawingSmoothingRef.current / 100, 0.95)
+                const smoothing = computeSmoothingFactor(drawingSmoothingRef.current)
                 if (smoothing > 0 && smoothedPointRef.current) {
                   // Exponential moving average: lerp from smoothed toward raw
                   const alpha = 1 - smoothing
@@ -2877,7 +2924,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 e.preventDefault()
                 const touch = e.touches[0]
                 const raw = { x: touch.clientX, y: touch.clientY }
-                const smoothing = Math.min(drawingSmoothingRef.current / 100, 0.95)
+                const smoothing = computeSmoothingFactor(drawingSmoothingRef.current)
                 if (smoothing > 0 && smoothedPointRef.current) {
                   const alpha = 1 - smoothing
                   const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha
@@ -2974,6 +3021,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           lobbyId={lobbyId}
           onClose={() => setShowLayerPanel(false)}
           selectedTraceId={selectedTraceId}
+          multiSelectedTraceIds={multiSelectedTraceIds}
           onSelectTrace={(traceId) => {
             // onSelectTrace called
             setSelectedTraceId(traceId)

@@ -17,6 +17,10 @@ interface LayerPanelProps {
   lobbyId: string
   onClose: () => void
   selectedTraceId?: string | null
+  // Mirrors TraceOverlay's own multi-selection (shift-click, area-select),
+  // so every multi-selected trace/group highlights here too, not just the
+  // single selectedTraceId.
+  multiSelectedTraceIds?: string[]
   onSelectTrace?: (traceId: string) => void
   onGoToTrace?: (traceId: string) => void
   // The layer group new traces should be created into. Clicking a group
@@ -27,7 +31,8 @@ interface LayerPanelProps {
   onSelectGroupTraces?: (traceIds: string[]) => void
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces }: LayerPanelProps) {
+  const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -259,6 +264,38 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
     }
   }
 
+  // Moves every trace in the batch to layerId together, computing each
+  // one's z-index up front against the target's existing trace count (not
+  // by calling moveTraceToLayer in a loop, which would recompute the "next
+  // free" z-index from the same stale traces snapshot each time and collide
+  // every moved trace onto the same slot).
+  const moveTracesToLayer = async (traceIds: string[], layerId: string | null) => {
+    if (!supabase || traceIds.length === 0) return
+
+    const idsToMove = new Set(traceIds)
+    const tracesToMove = traces.filter(t => idsToMove.has(t.id) && (t.layerId ?? null) !== layerId)
+    if (tracesToMove.length === 0) return
+
+    const baseLayerZIndex = layerId === null ? 0 : (layers.find(l => l.id === layerId)?.zIndex ?? 0)
+    const existingInTarget = getTracesForLayer(layerId).filter(t => !idsToMove.has(t.id))
+    let orderIndex = existingInTarget.length
+
+    for (const trace of tracesToMove) {
+      const newZIndex = getTraceZIndexForOrder(layerId, baseLayerZIndex, orderIndex)
+      orderIndex++
+
+      const { error } = await (supabase.from('traces') as any)
+        .update({ layer_id: layerId, z_index: newZIndex })
+        .eq('id', trace.id)
+
+      if (error) {
+        console.error('Error moving trace:', error)
+      } else {
+        addTrace({ ...trace, layerId: layerId, zIndex: newZIndex })
+      }
+    }
+  }
+
   const getTraceBaseZIndex = (layerId: string | null, layerZIndex?: number) => {
     if (layerId === null) return 0
     const resolvedLayerZIndex = layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex
@@ -340,7 +377,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
     setDraggedTraceId(null)
 
     if (!traceId) return
-    await moveTraceToLayer(traceId, layerId)
+
+    // Dragging any one of a multi-selection moves the whole selection to
+    // the same group together, instead of stranding the rest behind.
+    if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
+      await moveTracesToLayer(Array.from(multiSelectedSet), layerId)
+    } else {
+      await moveTraceToLayer(traceId, layerId)
+    }
   }
 
   const handleDropTargetLeave = (targetId: string) => {
@@ -491,7 +535,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
           const canMoveDown = layerIndex < sortedLayers.length - 1 // Not already at bottom (lowest z-index)
           
           // Check if any trace in this group is selected
-          const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId)
+          const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
           const isActiveLayer = activeLayerId === layer.id
 
           return (
@@ -604,7 +648,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                       key={trace.id}
                       draggable
                       className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
-                        trace.id === selectedTraceId
+                        trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                           ? 'border-blue-400 bg-blue-900/30'
                           : 'border-gray-600'
                       }`}
@@ -663,7 +707,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            moveTraceToLayer(trace.id, null)
+                            if (multiSelectedSet.has(trace.id) && multiSelectedSet.size > 1) {
+                              moveTracesToLayer(Array.from(multiSelectedSet), null)
+                            } else {
+                              moveTraceToLayer(trace.id, null)
+                            }
                           }}
                           className="text-gray-500 hover:text-gray-300 text-[10px] px-1.5 py-0.5"
                           title="Remove from group"
@@ -720,7 +768,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                   key={trace.id}
                   draggable
                   className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
-                    trace.id === selectedTraceId
+                    trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                       ? 'border-blue-400 bg-blue-900/30'
                       : 'border-gray-600'
                   }`}
@@ -780,7 +828,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, onSelect
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => {
                         const layerId = e.target.value || null
-                        moveTraceToLayer(trace.id, layerId)
+                        if (multiSelectedSet.has(trace.id) && multiSelectedSet.size > 1) {
+                          moveTracesToLayer(Array.from(multiSelectedSet), layerId)
+                        } else {
+                          moveTraceToLayer(trace.id, layerId)
+                        }
                       }}
                       className="bg-gray-800 text-white text-[10px] border border-gray-600 px-2 py-1 focus:border-gray-400"
                     >

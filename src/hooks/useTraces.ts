@@ -67,6 +67,7 @@ export function mapRowToTrace(row: any): Trace {
     shapeNoFill: row.shape_no_fill,
     shapeOutlineColor: row.shape_outline_color,
     shapeOutlineWidth: row.shape_outline_width,
+    shapeOutlineOpacity: row.shape_outline_opacity ?? 1.0,
     shapePoints: row.shape_points,
     pathCurveType: row.path_curve_type,
     pathArrowStart: row.path_arrow_start,

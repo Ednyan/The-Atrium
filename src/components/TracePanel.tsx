@@ -6,10 +6,12 @@ import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import type { Trace } from '../types/database'
 
-// Matches the on-canvas text box's default effective font size (see
-// TraceOverlay's textStyles) for a trace that hasn't had its font size
-// customized yet -- there's no font-size control at creation time.
-const DEFAULT_TEXT_FONT_SIZE = 12
+// Matches mapRowToTrace's `row.font_size ?? 16` fallback -- a freshly
+// created trace never sets font_size in its insert payload, so once loaded
+// back (or echoed by realtime) it renders at 16px. Sizing the auto-fit box
+// for anything else here undersizes it until an edit recomputes with the
+// trace's real (loaded) font size.
+const DEFAULT_TEXT_FONT_SIZE = 16
 
 const DEFAULT_SHAPE_COLOR = '#3b82f6'
 const DEFAULT_PATH_COLOR = '#9ca3af'

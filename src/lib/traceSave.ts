@@ -100,6 +100,7 @@ export async function saveAllChanges(): Promise<void> {
         if (trace.shapeNoFill !== undefined) updateData.shape_no_fill = trace.shapeNoFill
         if (trace.shapeOutlineColor !== undefined) updateData.shape_outline_color = trace.shapeOutlineColor
         if (trace.shapeOutlineWidth !== undefined) updateData.shape_outline_width = trace.shapeOutlineWidth
+        if (trace.shapeOutlineOpacity !== undefined) updateData.shape_outline_opacity = trace.shapeOutlineOpacity
         if (trace.shapePoints !== undefined) updateData.shape_points = trace.shapePoints
         if (trace.pathCurveType !== undefined) updateData.path_curve_type = trace.pathCurveType
         if (trace.pathArrowStart !== undefined) updateData.path_arrow_start = trace.pathArrowStart

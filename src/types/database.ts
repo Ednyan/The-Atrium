@@ -82,6 +82,7 @@ export interface Trace {
   shapeNoFill?: boolean // Render with no fill (invisible but still interactive)
   shapeOutlineColor?: string // Color of the outline stroke
   shapeOutlineWidth?: number // Width of the outline in pixels (1-20)
+  shapeOutlineOpacity?: number // Outline/stroke opacity 0-1, independent of shapeOpacity (fill)
   shapePoints?: Array<{
     x: number
     y: number

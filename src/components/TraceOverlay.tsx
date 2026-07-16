@@ -31,6 +31,13 @@ interface TraceOverlayProps {
   // A new array reference is sent each time (even for the same set), so
   // the effect that consumes it always fires.
   multiSelectRequest?: string[] | null
+  // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
+  // undo (see LobbyScene) instead of this file's trace undo/redo history.
+  isDrawingMode?: boolean
+  // Reports this file's current multi-selection up to LobbyScene so the
+  // Layer panel (a sibling, not a child, of this component) can highlight
+  // every multi-selected trace/group, not just the single selectedTraceId.
+  onMultiSelectionChange?: (ids: string[]) => void
 }
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path'
 
@@ -167,6 +174,11 @@ function buildTraceInsertRow(
   if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
   if (trace.layerId) newTrace.layer_id = trace.layerId
   if (lobbyId) newTrace.lobby_id = lobbyId
+  // Applies to every resizable type (text, image, embed, video, shape) --
+  // this used to be gated to shape only, so duplicating a text/image/embed/
+  // video trace silently dropped its size and fell back to the default box.
+  if (trace.width) newTrace.width = trace.width
+  if (trace.height) newTrace.height = trace.height
 
   if (trace.type === 'shape') {
     if (trace.shapeType) newTrace.shape_type = trace.shapeType
@@ -177,18 +189,17 @@ function buildTraceInsertRow(
     if (trace.shapeNoFill !== undefined) newTrace.shape_no_fill = trace.shapeNoFill
     if (trace.shapeOutlineColor) newTrace.shape_outline_color = trace.shapeOutlineColor
     if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
+    if (trace.shapeOutlineOpacity !== undefined) newTrace.shape_outline_opacity = trace.shapeOutlineOpacity
     if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
     if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
     if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
     if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd
-    if (trace.width) newTrace.width = trace.width
-    if (trace.height) newTrace.height = trace.height
   }
 
   return newTrace
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, isDrawingMode, onMultiSelectionChange }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
     // Load font files from public/fonts folder - only once, with cleanup
@@ -254,6 +265,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
   const [showBatchEditPanel, setShowBatchEditPanel] = useState(false) // Batch-edit shared properties across multiSelectedIds
+
+  // Report the current multi-selection up to LobbyScene so the Layer panel
+  // (a sibling component) can mirror the highlight.
+  useEffect(() => {
+    onMultiSelectionChange?.(Array.from(multiSelectedIds))
+  }, [multiSelectedIds, onMultiSelectionChange])
 
   const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
@@ -813,6 +830,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [applyUndoOp])
 
   // Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo/redo shortcut
+  const isDrawingModeRef = useRef(isDrawingMode)
+  useEffect(() => {
+    isDrawingModeRef.current = isDrawingMode
+  }, [isDrawingMode])
   useEffect(() => {
     const isEditableTarget = (eventTarget: EventTarget | null) => {
       const element = eventTarget as HTMLElement | null
@@ -820,6 +841,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       return element?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     }
     const handleUndoRedoShortcut = (e: KeyboardEvent) => {
+      // Drawing mode owns Ctrl+Z/Ctrl+Shift+Z for stroke undo while active
+      // (see LobbyScene) -- don't also rewind trace history underneath it.
+      if (isDrawingModeRef.current) return
       if (isEditableTarget(e.target)) return
       if (!(e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
@@ -2634,15 +2658,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     const noFill = trace.shapeNoFill ?? false
                     const outlineColor = trace.shapeOutlineColor || shapeColor
                     const outlineWidth = trace.shapeOutlineWidth ?? 2
+                    const outlineOpacity = trace.shapeOutlineOpacity ?? 1.0
                     
                     // Determine fill and stroke based on options (independent)
                     const fill = noFill ? 'none' : shapeColor
                     const stroke = hasOutline ? outlineColor : 'none'
                     const strokeWidth = hasOutline ? outlineWidth : 0
                     
-                    // Convert corner radius to viewBox percentage separately for x and y to keep circles circular
-                    const radiusPercentX = (cornerRadius / width) * 100
-                    const radiusPercentY = (cornerRadius / height) * 100
+                    // Convert corner radius to viewBox percentage separately for x and y to keep circles circular.
+                    // Also has to divide out scaleX/scaleY (the resize-handle stretch applied as a CSS transform
+                    // on top of this SVG's base width/height) -- otherwise a non-uniform resize stretches the
+                    // already-correct-for-the-base-box radius into an ellipse, since the outer transform scales
+                    // the whole rendered box (corners included) after this percentage is baked in.
+                    const shapeScaleX = (transform as any).scaleX || 1
+                    const shapeScaleY = (transform as any).scaleY || 1
+                    const radiusPercentX = (cornerRadius / (width * shapeScaleX)) * 100
+                    const radiusPercentY = (cornerRadius / (height * shapeScaleY)) * 100
 
                     const clipPathStyle = trace.cropWidth && trace.cropWidth < 1 
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
@@ -2667,7 +2698,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             stroke={stroke}
                             strokeWidth={strokeWidth}
                             vectorEffect="non-scaling-stroke"
-                            opacity={shapeOpacity}
+                            fillOpacity={shapeOpacity}
+                            strokeOpacity={outlineOpacity}
                           />
                         </svg>
                       )
@@ -2688,7 +2720,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             stroke={stroke}
                             strokeWidth={strokeWidth}
                             vectorEffect="non-scaling-stroke"
-                            opacity={shapeOpacity}
+                            fillOpacity={shapeOpacity}
+                            strokeOpacity={outlineOpacity}
                           />
                         </svg>
                       )
@@ -2709,7 +2742,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             strokeWidth={strokeWidth}
                             strokeLinejoin="round"
                             vectorEffect="non-scaling-stroke"
-                            opacity={shapeOpacity}
+                            fillOpacity={shapeOpacity}
+                            strokeOpacity={outlineOpacity}
                           />
                         </svg>
                       )
@@ -4716,10 +4750,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
                   </div>
 
-                  {/* Opacity Slider */}
+                  {/* Fill Opacity Slider -- outline has its own opacity, see
+                      the Outline Opacity slider further down */}
                   <div>
                     <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
-                      Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
+                      Fill Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
                     </label>
                     <input
                       type="range"
@@ -4737,25 +4772,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                   </div>
 
-                  {/* Outline and Fill Options */}
+                  {/* Fill Options -- outline is configured further down, in
+                      the "Outline Mode" section that also gates outline
+                      width (a "Show Outline" toggle used to be duplicated
+                      here too, bound to the same shapeOutlineOnly state) */}
                   <div className="space-y-2">
-                    <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={editingTrace.shapeOutlineOnly ?? false}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, shapeOutlineOnly: e.target.checked }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
-                        }}
-                        className="hidden"
-                      />
-                      <span className="tracking-wider uppercase text-[10px]">Show Outline</span>
-                    </label>
-
                     <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
                       <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeNoFill ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                         {(editingTrace.shapeNoFill ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
@@ -4899,7 +4920,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className="hidden"
                       />
-                      <span className="tracking-wider uppercase text-[10px]">Outline Only (No Fill)</span>
+                      <span className="tracking-wider uppercase text-[10px]">Show Outline</span>
                     </label>
                     
                     {editingTrace.shapeOutlineOnly && (
@@ -4924,6 +4945,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
                           Adjust the thickness of the outline
                         </p>
+
+                        <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
+                          Outline Opacity: {((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0)}%
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={editingTrace.shapeOutlineOpacity ?? 1.0}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value)
+                            const updated = { ...editingTrace, shapeOutlineOpacity: value }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeOutlineOpacity: value })
+                          }}
+                          className="w-full accent-nier-bg"
+                        />
                       </div>
                     )}
                   </div>
