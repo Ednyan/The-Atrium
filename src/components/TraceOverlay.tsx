@@ -4810,7 +4810,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           setEditingTrace(updated)
                           updateTraceCustomization(editingTrace.id, { shapeNoFill: e.target.checked })
                         }}
-                        className="w-4 h-4"
+                        className="hidden"
                       />
                       <span className="tracking-wider uppercase text-[10px]">No Fill</span>
                     </label>

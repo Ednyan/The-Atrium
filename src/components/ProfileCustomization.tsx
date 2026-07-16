@@ -210,13 +210,15 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         onTouchStart={(e) => e.stopPropagation()}
       >
       
-      {/* Modal */}
-      <div 
-        className="z-[10000] bg-nier-blackLight border border-nier-border/40 p-5 w-80 max-h-[90vh] overflow-y-auto pointer-events-auto relative"
-        style={{
-          touchAction: 'pan-y',
-          overscrollBehavior: 'contain',
-        }}
+      {/* Modal -- corner brackets live on this outer, non-scrolling wrapper
+          (capped at max-h-[90vh]) so they stay pinned to the modal's actual
+          visible edges; the content scrolls in the inner div below instead.
+          Previously the brackets were absolutely positioned inside the same
+          overflow-y-auto element as the content, so once enough fields were
+          added to make it scroll, bottom-0 anchored to the bottom of the
+          full scrollable content instead of the visible box. */}
+      <div
+        className="z-[10000] bg-nier-blackLight border border-nier-border/40 w-80 max-h-[90vh] pointer-events-auto relative flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Corner brackets */}
@@ -225,6 +227,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
 
+        <div
+          className="p-5 overflow-y-auto flex-1 min-h-0"
+          style={{
+            touchAction: 'pan-y',
+            overscrollBehavior: 'contain',
+          }}
+        >
         <div className="flex justify-between items-center mb-5">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
@@ -501,6 +510,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             {loading ? 'Saving...' : 'Save Changes'}
           </button>
         </form>
+        </div>
       </div>
       </div>
     </>

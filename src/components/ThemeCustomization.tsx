@@ -205,12 +205,21 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-        <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] overflow-y-auto relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+        {/* Corner brackets live on this outer, non-scrolling wrapper (capped
+            at max-h-[90vh]) so they stay pinned to the modal's actual
+            visible edges; content scrolls in the inner div below. They used
+            to sit inside the same overflow-y-auto element as the content, so
+            once enough theme options were added to make it scroll, bottom-0
+            anchored to the bottom of the full scrollable content instead of
+            the visible box. */}
+        <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] relative flex flex-col">
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
         <div className="absolute bottom-0 left-0 w-6 h-6 border-l border-b border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-6 h-6 border-r border-b border-nier-border/60" />
+
+        <div className="overflow-y-auto flex-1 min-h-0" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
 
         {/* Header */}
         <div className="sticky top-0 bg-nier-blackLight border-b border-nier-border/20 px-6 py-4 flex justify-between items-center z-10">
@@ -659,6 +668,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           >
             {isSaving ? 'Saving...' : 'Save Theme'}
           </button>
+        </div>
         </div>
       </div>
     </div>
