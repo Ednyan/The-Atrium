@@ -16,7 +16,7 @@ import { saveAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox } from '../lib/binPack'
-import { getPinterestConnectionStatus } from '../lib/pinterest'
+import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
@@ -370,6 +370,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
   const [pinterestConnected, setPinterestConnected] = useState(false)
   const [showPinterestImport, setShowPinterestImport] = useState(false)
+  const [pinterestImportAnchor, setPinterestImportAnchor] = useState<{ x: number; y: number } | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -2486,7 +2487,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
         {!isDesktop && canEdit && pinterestConnected && (
           <button
-            onClick={() => setShowPinterestImport(true)}
+            onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
             className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
             title="Import a Pinterest board's pins as traces"
           >
@@ -3036,7 +3037,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             className="absolute bg-nier-blackLight border border-nier-border/40 py-1 min-w-[160px]"
             style={{
               left: Math.min(mapContextMenu.x, window.innerWidth - 180),
-              top: Math.min(mapContextMenu.y, window.innerHeight - (isDesktop ? 220 : 160)),
+              top: Math.min(mapContextMenu.y, window.innerHeight - (isDesktop ? 220 : 195)),
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3073,6 +3074,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {item.label}
               </button>
             ))}
+            {!isDesktop && (
+              <>
+                <div className="border-t border-nier-border/20 mt-1 pt-1">
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                    onClick={() => {
+                      const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                      setMapContextMenu(null)
+                      if (pinterestConnected) {
+                        setPinterestImportAnchor(anchor)
+                        setShowPinterestImport(true)
+                      } else {
+                        initiatePinterestConnect()
+                      }
+                    }}
+                  >
+                    ◇ Your Pinterest Boards
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -3085,9 +3107,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Pinterest Import Panel */}
       {showPinterestImport && (
         <PinterestImportPanel
-          onClose={() => setShowPinterestImport(false)}
+          onClose={() => { setShowPinterestImport(false); setPinterestImportAnchor(null) }}
           lobbyId={lobbyId}
-          worldCenter={{ x: positionRef.current.x, y: positionRef.current.y }}
+          worldCenter={pinterestImportAnchor || { x: positionRef.current.x, y: positionRef.current.y }}
           packingShape={packingShapeRef.current}
           activeLayerId={activeLayerId}
         />

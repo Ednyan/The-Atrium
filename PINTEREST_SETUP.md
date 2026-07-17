@@ -52,6 +52,18 @@ npx supabase secrets set PINTEREST_CLIENT_SECRET=<your App secret>
 2. Approve on Pinterest's consent screen. You should land back in the app with a "Pinterest connected as @username!" confirmation.
 3. Inside an atrium (with edit permission), the HUD should now show an **Import from Pinterest** button. Pick a board and import.
 
+## Also deployed alongside this: account deletion
+
+Profile Settings' "Delete Account" button (web only) depends on two things that ship in this same batch of files but aren't Pinterest-specific:
+
+```bash
+# Run in the Supabase SQL Editor:
+#   supabase/migrations/add_account_deletion_support.sql
+npx supabase functions deploy delete-account
+```
+
+No new secrets needed for this one -- it only uses the already-auto-injected service role key.
+
 ## Known limitations
 
 - **Web only.** Desktop (Tauri) OAuth needs a custom URL scheme + deep-link plugin this app doesn't have configured yet -- the "Connect Pinterest" section is hidden entirely on desktop.

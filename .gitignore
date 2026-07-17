@@ -30,3 +30,6 @@ src-tauri/target/
 .env
 .env.local
 .env.production
+
+# Supabase CLI local link state (project ref/version cache, no secrets, but not project source)
+supabase/.temp/

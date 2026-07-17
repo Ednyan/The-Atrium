@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
+import { deleteMyAccount } from '../lib/account'
 
 interface ProfileSettingsProps {
   onClose: () => void
@@ -31,6 +32,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [pinterestUsername, setPinterestUsername] = useState<string | null>(null)
   const [pinterestStatusLoading, setPinterestStatusLoading] = useState(!isDesktop)
   const [pinterestDisconnecting, setPinterestDisconnecting] = useState(false)
+
+  // Delete-account state -- web only, irreversible, so it's gated behind
+  // typing the account's own username as an explicit confirmation.
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     loadProfile()
@@ -209,6 +217,27 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     await supabase.auth.signOut()
     
     // Force navigation to landing page
+    window.location.hash = '/'
+    window.location.reload()
+  }
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== actualUsername) return
+    setDeleteError('')
+    setDeleteLoading(true)
+
+    const result = await deleteMyAccount()
+
+    if (!result.success) {
+      setDeleteError(result.error || 'Failed to delete account.')
+      setDeleteLoading(false)
+      return
+    }
+
+    localStorage.removeItem('lobby_hasEntered')
+    localStorage.removeItem('lobby_currentLobbyId')
+    localStorage.removeItem('lobby_showBrowser')
+
     window.location.hash = '/'
     window.location.reload()
   }
@@ -421,6 +450,62 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           >
             Log Out
           </button>
+
+          {/* Delete Account -- web only, irreversible */}
+          {!isDesktop && (
+            <>
+              <div className="h-[1px] bg-gradient-to-r from-nier-red/30 via-nier-red/10 to-transparent my-4" />
+
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full py-2 border border-nier-red/60 text-nier-red text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 transition-colors"
+                >
+                  Delete Account
+                </button>
+              ) : (
+                <div className="border border-nier-red/60 bg-nier-red/10 p-3 space-y-3">
+                  <p className="text-nier-bg text-[10px] tracking-wider">
+                    This permanently deletes your account, profile, and every atrium you own. Content you placed in atriums owned by other people stays, but is anonymized to "Deleted User" instead of your name. This cannot be undone.
+                  </p>
+                  <p className="text-nier-border/60 text-[9px] tracking-[0.15em] uppercase">
+                    Type <span className="text-nier-bg">{actualUsername}</span> to confirm
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-red/60 transition-colors"
+                    placeholder={actualUsername}
+                    autoComplete="off"
+                  />
+
+                  {deleteError && (
+                    <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider">
+                      {deleteError}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={deleteLoading || deleteConfirmText !== actualUsername}
+                      className="flex-1 py-2 bg-nier-red/80 text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      {deleteLoading ? 'Deleting...' : 'Delete Permanently'}
+                    </button>
+                    <button
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteError('') }}
+                      disabled={deleteLoading}
+                      className="flex-1 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
