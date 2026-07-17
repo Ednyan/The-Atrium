@@ -202,7 +202,8 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
+        data-ui-element="true"
         className="fixed inset-0 z-[10000100] bg-nier-black/80 flex items-center justify-center p-4"
         onClick={onClose}
         style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}

@@ -987,9 +987,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       // Mouse wheel zoom handler
       const handleWheel = (e: WheelEvent) => {
-        // Check if mouse is over any UI elements (menus, panels, etc.)
+        // Check if mouse is over any UI elements (menus, panels, etc.).
+        // [data-ui-element] is the general marker used by full-screen modals
+        // (Theme/Profile/Manage Atrium) -- without it, scrolling over one of
+        // those zoomed the canvas underneath instead of scrolling the modal,
+        // since their root elements didn't match .customize-menu/.layer-panel.
         const target = e.target as HTMLElement
-        const isOverUI = target.closest('.customize-menu, .layer-panel, select, input, textarea, button') !== null
+        const isOverUI = target.closest('[data-ui-element], .customize-menu, .layer-panel, select, input, textarea, button') !== null
         
         if (isOverUI) {
           // Let the browser handle normal scrolling for UI elements
