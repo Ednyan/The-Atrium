@@ -16,6 +16,8 @@ import { saveAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox } from '../lib/binPack'
+import { getPinterestConnectionStatus } from '../lib/pinterest'
+import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -366,6 +368,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
   const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
+  const [pinterestConnected, setPinterestConnected] = useState(false)
+  const [showPinterestImport, setShowPinterestImport] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -623,6 +627,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     (currentLobby?.editPermissionMode === 'selected' && isSelectedEditor)
   const canEditRef = useRef(canEdit)
   useEffect(() => { canEditRef.current = canEdit }, [canEdit])
+
+  // Check Pinterest connection once per atrium visit, just to decide whether
+  // to show the "Import from Pinterest" button -- web only.
+  useEffect(() => {
+    if (isDesktop) return
+    getPinterestConnectionStatus().then(({ connected }) => setPinterestConnected(connected))
+  }, [])
 
   // Listen for zoom sensitivity changes from profile settings and keep value in sync
   useEffect(() => {
@@ -2473,6 +2484,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
           </button>
         )}
+        {!isDesktop && canEdit && pinterestConnected && (
+          <button
+            onClick={() => setShowPinterestImport(true)}
+            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+            title="Import a Pinterest board's pins as traces"
+          >
+            Import from Pinterest
+          </button>
+        )}
         <button
           onClick={() => setShowProfileCustomization(true)}
           className="w-full mt-1 bg-gray-700 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
@@ -3060,6 +3080,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Trace Panel */}
       {showTracePanel && (
         <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
+      )}
+
+      {/* Pinterest Import Panel */}
+      {showPinterestImport && (
+        <PinterestImportPanel
+          onClose={() => setShowPinterestImport(false)}
+          lobbyId={lobbyId}
+          worldCenter={{ x: positionRef.current.x, y: positionRef.current.y }}
+          packingShape={packingShapeRef.current}
+          activeLayerId={activeLayerId}
+        />
       )}
 
       {/* Layer Panel */}

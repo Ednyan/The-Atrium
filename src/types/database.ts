@@ -72,6 +72,11 @@ export interface Trace {
   y: number
   imageUrl?: string
   mediaUrl?: string
+  // Generic click-through URL for embed traces, separate from mediaUrl (the
+  // hotlinked image itself) -- used by the link-card fallback when the
+  // image fails to load, so the card can still link to the source page
+  // (e.g. the original Pinterest pin) instead of the dead image URL.
+  linkUrl?: string
   createdAt: string
   // Shape properties
   shapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'

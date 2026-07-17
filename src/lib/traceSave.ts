@@ -82,6 +82,7 @@ export async function saveAllChanges(): Promise<void> {
 
       // Add optional fields
       if (trace.mediaUrl !== undefined) updateData.media_url = trace.mediaUrl
+      if (trace.linkUrl !== undefined) updateData.link_url = trace.linkUrl
       if (trace.content !== undefined) updateData.content = trace.content
       // width/height apply to every trace type that can be resized (text,
       // image, embed, video, shape) -- this used to be gated to shape only,

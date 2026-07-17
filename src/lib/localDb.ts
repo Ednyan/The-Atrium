@@ -660,6 +660,7 @@ export async function initLocalDb(): Promise<void> {
       position_y REAL NOT NULL DEFAULT 0,
       image_url TEXT,
       media_url TEXT,
+      link_url TEXT,
       scale REAL DEFAULT 1.0,
       scale_x REAL,
       scale_y REAL,
@@ -831,6 +832,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE traces ADD COLUMN shape_outline_opacity REAL')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN link_url TEXT')
   } catch {
     // Column already exists — ignore
   }

@@ -638,6 +638,19 @@ The result became what seems like a mix between pinterest, pureref and miro but 
             ))}
           </div>
 
+          {!isDesktop && (
+            <div className="flex items-center justify-center mt-4">
+              <a
+                href="/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-border/40 hover:text-nier-border/70 text-[10px] tracking-wider uppercase transition-colors"
+              >
+                Privacy Policy
+              </a>
+            </div>
+          )}
+
           {/* Final CTA */}
           <div className="mt-12">
             <div className="flex items-center justify-center gap-3 mb-8">

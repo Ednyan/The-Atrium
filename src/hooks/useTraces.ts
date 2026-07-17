@@ -14,6 +14,7 @@ export function mapRowToTrace(row: any): Trace {
     y: row.position_y,
     imageUrl: row.image_url || undefined,
     mediaUrl: row.media_url || undefined,
+    linkUrl: row.link_url || undefined,
     createdAt: row.created_at,
     scale: row.scale ?? 1.0,
     // scale_x/scale_y are authoritative (support non-uniform stretch);

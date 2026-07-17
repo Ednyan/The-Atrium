@@ -175,6 +175,7 @@ function buildTraceInsertRow(
 
   if (trace.imageUrl) newTrace.image_url = trace.imageUrl
   if (trace.mediaUrl) newTrace.media_url = trace.mediaUrl
+  if (trace.linkUrl) newTrace.link_url = trace.linkUrl
   if (trace.lightPulse !== undefined) newTrace.light_pulse = trace.lightPulse
   if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
   if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
@@ -3076,17 +3077,42 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   )
                 }
                 
-                // Show placeholder if direct image failed to load
+                // Styled link card if the direct image failed to hotlink --
+                // links to the source page (linkUrl, e.g. the original
+                // Pinterest pin) rather than the dead image URL itself.
                 if (isDirectImage && failedImages.has(trace.id)) {
+                  const clickThroughUrl = trace.linkUrl || trace.mediaUrl
+                  let hostname = ''
+                  try {
+                    hostname = new URL(clickThroughUrl).hostname.replace(/^www\./, '')
+                  } catch {
+                    hostname = ''
+                  }
                   return (
-                    <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
-                      <span className="text-4xl mb-2">🖼️</span>
-                      {showDescription && trace.content && (
-                        <p className="text-xs text-white/60 text-center">
-                          {trace.content}
-                        </p>
+                    <a
+                      href={clickThroughUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex flex-col items-center justify-center h-full w-full gap-2 px-3 select-none pointer-events-auto bg-nier-black/40 hover:bg-nier-black/60 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      title={clickThroughUrl}
+                    >
+                      {hostname && (
+                        <img
+                          src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(hostname)}`}
+                          alt=""
+                          className="w-8 h-8 opacity-80"
+                          draggable={false}
+                        />
                       )}
-                    </div>
+                      <p className="text-white/80 text-xs text-center line-clamp-2">
+                        {trace.content || 'View source'}
+                      </p>
+                      {hostname && (
+                        <p className="text-white/40 text-[9px] tracking-wider uppercase">{hostname}</p>
+                      )}
+                    </a>
                   )
                 }
                 

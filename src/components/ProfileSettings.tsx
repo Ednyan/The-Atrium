@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
+import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
 
 interface ProfileSettingsProps {
   onClose: () => void
@@ -24,9 +25,36 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState(false)
 
+  // Pinterest connection state -- web only (desktop OAuth needs deep-link
+  // support this app doesn't have yet, see src/lib/pinterest.ts)
+  const [pinterestConnected, setPinterestConnected] = useState(false)
+  const [pinterestUsername, setPinterestUsername] = useState<string | null>(null)
+  const [pinterestStatusLoading, setPinterestStatusLoading] = useState(!isDesktop)
+  const [pinterestDisconnecting, setPinterestDisconnecting] = useState(false)
+
   useEffect(() => {
     loadProfile()
+    if (!isDesktop) loadPinterestStatus()
   }, [])
+
+  const loadPinterestStatus = async () => {
+    setPinterestStatusLoading(true)
+    const { connected, username } = await getPinterestConnectionStatus()
+    setPinterestConnected(connected)
+    setPinterestUsername(username)
+    setPinterestStatusLoading(false)
+  }
+
+  const handleDisconnectPinterest = async () => {
+    setPinterestDisconnecting(true)
+    try {
+      await disconnectPinterest()
+      setPinterestConnected(false)
+      setPinterestUsername(null)
+    } finally {
+      setPinterestDisconnecting(false)
+    }
+  }
 
   const loadProfile = async () => {
     if (!supabase || !userId) return
@@ -333,6 +361,54 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </button>
                   </form>
                 )}
+              </div>
+
+              <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
+            </>
+          )}
+
+          {/* Pinterest Connection - web only (desktop OAuth needs deep-link
+              support this app doesn't have yet) */}
+          {!isDesktop && (
+            <>
+              <div>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                  Pinterest
+                </label>
+                {pinterestStatusLoading ? (
+                  <p className="text-nier-border/40 text-[10px] tracking-wider">Checking connection...</p>
+                ) : pinterestConnected ? (
+                  <div className="space-y-2">
+                    <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+                      ✓ Connected{pinterestUsername ? ` as @${pinterestUsername}` : ''}
+                    </div>
+                    <button
+                      onClick={handleDisconnectPinterest}
+                      disabled={pinterestDisconnecting}
+                      className="w-full py-2 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      {pinterestDisconnecting ? 'Disconnecting...' : 'Disconnect Pinterest'}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={initiatePinterestConnect}
+                      disabled={!isPinterestConfigured()}
+                      className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Connect Pinterest
+                    </button>
+                    {!isPinterestConfigured() && (
+                      <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                        Pinterest integration isn't configured yet.
+                      </p>
+                    )}
+                  </>
+                )}
+                <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                  Lets you import a board's pins as traces from inside an atrium.
+                </p>
               </div>
 
               <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />

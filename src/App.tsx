@@ -8,6 +8,7 @@ import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
 import { saveAllChanges } from './lib/traceSave'
+import { handlePinterestCallback } from './lib/pinterest'
 
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | 'ready'
 
@@ -385,6 +386,23 @@ function AppInner() {
       cancelled = true
     }
   }, [])
+
+  // Pick up a Pinterest OAuth redirect (?code=...&state=...) once the user's
+  // session is confirmed -- the exchange needs their Supabase JWT to know
+  // which account to attach the connection to. Web only; handlePinterestCallback
+  // itself no-ops if the URL doesn't carry OAuth params, so this is cheap to
+  // run on every authenticated mount.
+  useEffect(() => {
+    if (isDesktop || !isAuthenticated) return
+    handlePinterestCallback().then((result) => {
+      if (!result.handled) return
+      if (result.success) {
+        alert(result.username ? `Pinterest connected as @${result.username}!` : 'Pinterest connected!')
+      } else if (result.error) {
+        alert(`Pinterest: ${result.error}`)
+      }
+    })
+  }, [isAuthenticated])
 
   // Listen for hash changes (browser back/forward)
   useEffect(() => {

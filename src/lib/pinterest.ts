@@ -1,0 +1,197 @@
+// Pinterest OAuth connect flow + read API access, proxied through Supabase
+// Edge Functions (pinterest-oauth-exchange, pinterest-api) so the Client
+// Secret and stored access/refresh tokens never reach the browser. Web only
+// for now -- desktop OAuth needs a custom URL scheme/deep-link plugin this
+// app doesn't have yet.
+
+import { supabase } from './supabase'
+
+const PINTEREST_AUTHORIZE_URL = 'https://www.pinterest.com/oauth/'
+// Read-only scopes only -- boards/pins for import, plus the account's own
+// username for display. These fall under Pinterest's "Trial access" tier
+// and shouldn't need their app-review process.
+const PINTEREST_SCOPES = 'boards:read,pins:read,user_accounts:read'
+const OAUTH_STATE_KEY = 'pinterest_oauth_state'
+
+// Client ID is not sensitive (it's the public half of the OAuth flow, sent
+// straight to Pinterest in a browser redirect) -- safe to ship in the
+// frontend bundle. The Client Secret lives only in the
+// pinterest-oauth-exchange Edge Function's environment.
+const CLIENT_ID = import.meta.env.VITE_PINTEREST_CLIENT_ID as string | undefined
+
+export function isPinterestConfigured(): boolean {
+  return !!CLIENT_ID
+}
+
+// Whatever origin+path is actually serving the app right now. Register this
+// exact value as an allowed Redirect URI in the Pinterest app's settings --
+// Pinterest requires a byte-for-byte match.
+export function getPinterestRedirectUri(): string {
+  return window.location.origin + window.location.pathname
+}
+
+export function initiatePinterestConnect() {
+  if (!CLIENT_ID) {
+    alert('Pinterest integration is not configured yet (missing Client ID).')
+    return
+  }
+  const state = crypto.randomUUID()
+  sessionStorage.setItem(OAUTH_STATE_KEY, state)
+
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: getPinterestRedirectUri(),
+    response_type: 'code',
+    scope: PINTEREST_SCOPES,
+    state,
+  })
+
+  window.location.href = `${PINTEREST_AUTHORIZE_URL}?${params.toString()}`
+}
+
+export interface PinterestCallbackResult {
+  handled: boolean
+  success?: boolean
+  username?: string | null
+  error?: string
+}
+
+// Call once on app boot (see App.tsx). If the URL carries a Pinterest OAuth
+// redirect (?code=...&state=...), exchanges it via the Edge Function and
+// strips the query string immediately so a page refresh can't replay a
+// used/invalid code. No-ops (handled: false) for any other page load.
+export async function handlePinterestCallback(): Promise<PinterestCallbackResult> {
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  const state = params.get('state')
+  const oauthError = params.get('error')
+
+  if (!code && !oauthError) return { handled: false }
+
+  const cleanUrl = window.location.pathname + window.location.hash
+  window.history.replaceState({}, '', cleanUrl)
+
+  if (oauthError) {
+    return { handled: true, success: false, error: 'Pinterest authorization was cancelled or denied.' }
+  }
+
+  const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY)
+  sessionStorage.removeItem(OAUTH_STATE_KEY)
+  if (!expectedState || state !== expectedState) {
+    return { handled: true, success: false, error: 'Pinterest sign-in could not be verified. Please try connecting again.' }
+  }
+
+  if (!supabase) {
+    return { handled: true, success: false, error: 'Not connected to the server.' }
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('pinterest-oauth-exchange', {
+      body: { code, redirectUri: getPinterestRedirectUri() },
+    })
+    if (error || data?.error) {
+      return { handled: true, success: false, error: data?.error || error?.message || 'Failed to connect Pinterest.' }
+    }
+    return { handled: true, success: true, username: data?.username ?? null }
+  } catch (err: any) {
+    return { handled: true, success: false, error: err?.message || 'Failed to connect Pinterest.' }
+  }
+}
+
+export async function getPinterestConnectionStatus(): Promise<{ connected: boolean; username: string | null }> {
+  if (!supabase) return { connected: false, username: null }
+  const { data, error } = await supabase.rpc('get_pinterest_connection_status')
+  if (error || !data || data.length === 0) return { connected: false, username: null }
+  return { connected: !!data[0].connected, username: data[0].pinterest_username ?? null }
+}
+
+export async function disconnectPinterest(): Promise<void> {
+  if (!supabase) return
+  await supabase.rpc('disconnect_pinterest')
+}
+
+export interface PinterestBoard {
+  id: string
+  name: string
+  pinCount: number
+  thumbnailUrl: string | null
+}
+
+export interface PinterestPin {
+  id: string
+  title: string
+  description: string
+  imageUrl: string
+  imageWidth: number
+  imageHeight: number
+  // Link back to the pin's own page on pinterest.com -- used as the
+  // click-through target for the link-card fallback (not the raw image URL).
+  pinUrl: string
+}
+
+async function callPinterestApi(body: Record<string, unknown>): Promise<any> {
+  if (!supabase) throw new Error('Not connected to the server.')
+  const { data, error } = await supabase.functions.invoke('pinterest-api', { body })
+  if (error) throw new Error(error.message || 'Pinterest request failed.')
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+export async function fetchPinterestBoards(): Promise<PinterestBoard[]> {
+  const boards: PinterestBoard[] = []
+  let bookmark: string | undefined
+  // Pinterest paginates at 100/page; loop until exhausted. Bounded at 20
+  // pages (2000 boards) as a sanity cap, not a realistic ceiling.
+  for (let i = 0; i < 20; i++) {
+    const data = await callPinterestApi({ action: 'boards', bookmark })
+    for (const b of data.items ?? []) {
+      boards.push({
+        id: b.id,
+        name: b.name,
+        pinCount: b.pin_count ?? 0,
+        thumbnailUrl: b.media?.image_cover_url ?? b.media?.pin_thumbnail_urls?.[0] ?? null,
+      })
+    }
+    bookmark = data.bookmark ?? undefined
+    if (!bookmark) break
+  }
+  return boards
+}
+
+// Prefers a mid-size image variant (fast to load, still sharp) over the
+// full original. Pinterest's v5 pin objects key sizes like '150x150',
+// '400x300', '600x', '1200x', 'orig'.
+function pickBestImage(images: Record<string, { url: string; width: number; height: number }> | undefined) {
+  if (!images) return null
+  const preferredOrder = ['600x', '400x300', '1200x', 'orig', '150x150']
+  for (const key of preferredOrder) {
+    if (images[key]) return images[key]
+  }
+  return Object.values(images)[0] ?? null
+}
+
+export async function fetchPinterestBoardPins(boardId: string, onProgress?: (fetchedSoFar: number) => void): Promise<PinterestPin[]> {
+  const pins: PinterestPin[] = []
+  let bookmark: string | undefined
+  // Bounded at 100 pages (up to 10,000 pins) as a sanity cap.
+  for (let i = 0; i < 100; i++) {
+    const data = await callPinterestApi({ action: 'pins', boardId, bookmark })
+    for (const p of data.items ?? []) {
+      const image = pickBestImage(p.media?.images)
+      if (!image) continue
+      pins.push({
+        id: p.id,
+        title: p.title || '',
+        description: p.description || '',
+        imageUrl: image.url,
+        imageWidth: image.width,
+        imageHeight: image.height,
+        pinUrl: p.link || `https://www.pinterest.com/pin/${p.id}/`,
+      })
+    }
+    onProgress?.(pins.length)
+    bookmark = data.bookmark ?? undefined
+    if (!bookmark) break
+  }
+  return pins
+}
