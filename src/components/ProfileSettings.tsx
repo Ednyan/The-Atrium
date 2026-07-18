@@ -451,6 +451,17 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             Log Out
           </button>
 
+          {!isDesktop && (
+            <a
+              href="/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-center text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors pt-1"
+            >
+              Privacy Policy
+            </a>
+          )}
+
           {/* Delete Account -- web only, irreversible */}
           {!isDesktop && (
             <>
