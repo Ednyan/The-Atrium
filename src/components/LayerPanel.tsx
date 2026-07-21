@@ -550,14 +550,22 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           return (
             <div
               key={layer.id}
-              className={`bg-gray-800/80 border transition-all ${
+              className={`border transition-all ${
                 isActiveLayer
-                  ? 'border-amber-400 bg-amber-900/20'
+                  // A static bg-gray-800/80 used to always be present in the
+                  // base classes here alongside this, which -- since Tailwind
+                  // resolves same-specificity background-color utilities by
+                  // stylesheet order, not by className order -- could win over
+                  // this conditional background regardless of state. Folding
+                  // the default background into the final else branch below
+                  // (so only ever one bg-* class is present at a time) plus a
+                  // ring makes "this group is focused" actually visible.
+                  ? 'border-amber-400 bg-amber-900/20 ring-1 ring-amber-400/60'
                   : hasSelectedTrace
                   ? 'border-blue-400 bg-blue-900/20'
                   : dropTargetId === layer.id
                     ? 'border-emerald-400 bg-emerald-900/20'
-                    : 'border-gray-600'
+                    : 'border-gray-600 bg-gray-800/80'
               }`}
               onDragOver={(e) => handleDropTargetDragOver(e, layer.id)}
               onDrop={(e) => handleDropTargetDrop(e, layer.id)}
@@ -761,10 +769,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         {/* Ungrouped traces */}
         {ungroupedTraces.length > 0 && (
           <div
-            className={`bg-gray-900/50 border p-2 transition-all ${
+            className={`border p-2 transition-all ${
               !activeLayerId
-                ? 'border-amber-400 bg-amber-900/10'
-                : dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-gray-600'
+                ? 'border-amber-400 bg-amber-900/10 ring-1 ring-amber-400/60'
+                : dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-gray-600 bg-gray-900/50'
             }`}
             onDragOver={(e) => handleDropTargetDragOver(e, UNGROUPED_DROP_TARGET)}
             onDrop={(e) => handleDropTargetDrop(e, null)}

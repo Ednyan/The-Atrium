@@ -257,6 +257,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const mouseDownScreenPosRef = useRef<{ x: number; y: number } | null>(null)
   const [imageDimensions, setImageDimensions] = useState<Record<string, { width: number; height: number }>>({})
   const [modalTrace, setModalTrace] = useState<Trace | null>(null)
+  // Tracked live (not just read once) so the image modal below stays
+  // correctly sized if the window is resized while it's open.
+  const [modalViewportSize, setModalViewportSize] = useState({ width: window.innerWidth, height: window.innerHeight })
+  useEffect(() => {
+    if (!modalTrace) return
+    const handleResize = () => setModalViewportSize({ width: window.innerWidth, height: window.innerHeight })
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [modalTrace])
   const [copiedModalText, setCopiedModalText] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
@@ -1482,74 +1491,72 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         cropHeight: newCropHeight,
       })
     } else if (transformMode === 'scale') {
+      // Anchors the handle's OPPOSITE edge/corner in place, so dragging the
+      // bottom only grows downward (not also upward from the center), and
+      // dragging a corner only grows toward that corner -- matching how
+      // resize handles behave in most editors. Traces render center-anchored
+      // (translate(-50%,-50%)), so keeping the anchor fixed requires shifting
+      // the trace's center by half of whatever size change results, in the
+      // trace's own (possibly rotated) local axes.
+      //
+      // Scale itself tracks the mouse 1:1 in world space (grow the box by
+      // exactly how far the handle moved) rather than an arbitrary
+      // sensitivity multiplier -- zoom-correct and much less twitchy than
+      // the old fixed-percent-per-screen-pixel formula.
       const startScaleX = (startTransformRef.current as any).scaleX ?? (startTransformRef.current as any).scale ?? 1
       const startScaleY = (startTransformRef.current as any).scaleY ?? (startTransformRef.current as any).scale ?? 1
-      
-      // Check if corner drag (diagonal) - should preserve aspect ratio
-      const isCorner = startPosRef.current.corner.length === 2 // 'tl', 'tr', 'bl', 'br'
-      
+      const corner = startPosRef.current.corner
+      const isCorner = corner.length === 2 // 'tl', 'tr', 'bl', 'br'
+
+      const worldDeltaX = deltaX / currentZoom
+      const worldDeltaY = deltaY / currentZoom
+      const { width: baseWidth, height: baseHeight } = getTraceSize(currentTrace)
+
+      let newScaleX = startScaleX
+      let newScaleY = startScaleY
+      let localDx = 0
+      let localDy = 0
+
       if (isCorner) {
-        // Uniform scaling for diagonal (corners) - preserve aspect ratio
-        // Calculate distance from center to determine scale
-        const startDist = Math.sqrt(
-          Math.pow(startPosRef.current.x - centerRef.current.x, 2) + 
-          Math.pow(startPosRef.current.y - centerRef.current.y, 2)
-        )
-        const currentDist = Math.sqrt(
-          Math.pow(e.clientX - centerRef.current.x, 2) + 
-          Math.pow(e.clientY - centerRef.current.y, 2)
-        )
-        
-        const scaleFactor = currentDist / startDist
-        const newScale = Math.max(0.1, startScaleX * scaleFactor)
-        
-        updateTraceTransform(activeSelectedTraceId, { scaleX: newScale, scaleY: newScale })
-      } else {
-        // Non-uniform scaling for edges (horizontal/vertical only) -- anchors
-        // the OPPOSITE edge in place, so dragging the bottom edge only grows
-        // downward (not also upward from the center) and dragging the right
-        // edge only grows rightward, matching how resize handles behave in
-        // most editors. Traces render center-anchored (translate(-50%,-50%)),
-        // so keeping the opposite edge fixed requires shifting the trace's
-        // center by half of whatever size change results from the new scale,
-        // in the trace's own (possibly rotated) local axes -- otherwise the
-        // anchor edge would visibly drift on any rotated trace.
-        const corner = startPosRef.current.corner
-        let newScaleX = startScaleX
-        let newScaleY = startScaleY
-        let localDx = 0
-        let localDy = 0
+        // Uniform scaling (preserves aspect ratio), driven by distance from
+        // center -- same metric as before, just anchored at the opposite
+        // corner instead of the center.
+        const startDist = Math.hypot(startPosRef.current.x - centerRef.current.x, startPosRef.current.y - centerRef.current.y)
+        const currentDist = Math.hypot(e.clientX - centerRef.current.x, e.clientY - centerRef.current.y)
+        const scaleFactor = startDist > 0 ? currentDist / startDist : 1
+        newScaleX = Math.max(0.1, startScaleX * scaleFactor)
+        newScaleY = Math.max(0.1, startScaleY * scaleFactor)
 
-        const sensitivity = 0.01
-        const { width: baseWidth, height: baseHeight } = getTraceSize(currentTrace)
-
-        if (corner === 'l' || corner === 'r') {
-          // Horizontal edge - scale X only
-          const sign = corner === 'r' ? 1 : -1
-          newScaleX = Math.max(0.1, startScaleX * (1 + deltaX * sensitivity * sign))
-          const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
-          localDx = corner === 'r' ? widthDelta : -widthDelta
-        } else if (corner === 't' || corner === 'b') {
-          // Vertical edge - scale Y only
-          const sign = corner === 'b' ? 1 : -1
-          newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
-          const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
-          localDy = corner === 'b' ? heightDelta : -heightDelta
-        }
-
-        const rotationRad = (startTransformRef.current.rotation * Math.PI) / 180
-        const cos = Math.cos(rotationRad)
-        const sin = Math.sin(rotationRad)
-        const worldDx = localDx * cos - localDy * sin
-        const worldDy = localDx * sin + localDy * cos
-
-        updateTraceTransform(activeSelectedTraceId, {
-          x: startTransformRef.current.x + worldDx,
-          y: startTransformRef.current.y + worldDy,
-          scaleX: newScaleX,
-          scaleY: newScaleY,
-        })
+        const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
+        const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
+        localDx = corner.includes('r') ? widthDelta : -widthDelta
+        localDy = corner.includes('b') ? heightDelta : -heightDelta
+      } else if (corner === 'l' || corner === 'r') {
+        // Horizontal edge - scale X only
+        const sign = corner === 'r' ? 1 : -1
+        newScaleX = Math.max(0.1, startScaleX + (sign * worldDeltaX) / baseWidth)
+        const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
+        localDx = corner === 'r' ? widthDelta : -widthDelta
+      } else if (corner === 't' || corner === 'b') {
+        // Vertical edge - scale Y only
+        const sign = corner === 'b' ? 1 : -1
+        newScaleY = Math.max(0.1, startScaleY + (sign * worldDeltaY) / baseHeight)
+        const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
+        localDy = corner === 'b' ? heightDelta : -heightDelta
       }
+
+      const rotationRad = (startTransformRef.current.rotation * Math.PI) / 180
+      const cos = Math.cos(rotationRad)
+      const sin = Math.sin(rotationRad)
+      const worldDx = localDx * cos - localDy * sin
+      const worldDy = localDx * sin + localDy * cos
+
+      updateTraceTransform(activeSelectedTraceId, {
+        x: startTransformRef.current.x + worldDx,
+        y: startTransformRef.current.y + worldDy,
+        scaleX: newScaleX,
+        scaleY: newScaleY,
+      })
     } else if (activeTransformMode === 'rotate') {
       // Calculate rotation based on angle from center
       const startAngle = Math.atan2(
@@ -5715,10 +5722,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           <div
             className={
               modalTrace.type === 'embed'
-                // Embeds get as much of the viewport as possible -- there's
-                // no point opening the modal if it renders smaller than the
-                // canvas preview the user already double-clicked past.
+                // Embeds have no intrinsic size of their own (arbitrary web
+                // content) -- there's no point opening the modal if it renders
+                // smaller than the canvas preview, so just fill the viewport.
                 ? "bg-gray-900 border p-6 w-[95vw] h-[95vh] flex flex-col relative"
+                : modalTrace.type === 'image'
+                // Images DO have an intrinsic aspect ratio -- the modal shrinks
+                // to hug the image's own computed size (see the img below)
+                // instead of sitting in a fixed 95vw x 95vh box with the image
+                // letterboxed smaller inside it.
+                ? "bg-gray-900 border p-6 flex flex-col relative overflow-auto"
                 : "bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
             }
             style={{ borderColor: getBorderColor(modalTrace.type) }}
@@ -5751,13 +5764,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
             {/* Full content */}
             <div className={modalTrace.type === 'embed' ? "mb-4 flex-1 min-h-0" : "mb-4"}>
-              {modalTrace.type === 'image' && modalTrace.mediaUrl && (
-                <img
-                  src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
-                  alt=""
-                  className="w-full max-h-96 object-contain"
-                />
-              )}
+              {modalTrace.type === 'image' && modalTrace.mediaUrl && (() => {
+                // Size the image itself to the largest it can be within the
+                // viewport (minus room for this modal's own header/padding/
+                // caption/metadata chrome) while preserving its natural aspect
+                // ratio -- the modal's width/height above have no fixed size
+                // of their own, so they shrink to hug whatever this computes.
+                // Capped at 1x so a small image doesn't get blurrily upscaled.
+                const dims = imageDimensions[modalTrace.id]
+                const naturalWidth = dims?.width ?? 800
+                const naturalHeight = dims?.height ?? 600
+                const chromeHeight = 180
+                const maxWidth = modalViewportSize.width * 0.95
+                const maxHeight = Math.max(200, modalViewportSize.height * 0.95 - chromeHeight)
+                const scale = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight, 1)
+
+                return (
+                  <img
+                    src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
+                    alt=""
+                    style={{ width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) }}
+                    className="object-contain"
+                  />
+                )
+              })()}
 
               {modalTrace.type === 'video' && modalTrace.mediaUrl && (
                 <video

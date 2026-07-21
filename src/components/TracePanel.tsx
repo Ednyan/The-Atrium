@@ -267,10 +267,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         if (e.key === 'Escape') {
           e.preventDefault()
           onClose()
-        } else if (e.key === 'Enter' && !e.shiftKey && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-          // Textareas keep Enter as a newline (text content, embed URL/code) --
-          // everywhere else in the panel, Enter applies the trace, same as a
-          // regular HTML form submit.
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+          // Plain Enter applies the trace everywhere in the panel, including
+          // inside a textarea (text content, embed URL/code) -- Shift+Enter
+          // is what inserts a newline there instead, same as a chat input.
           e.preventDefault()
           formRef.current?.requestSubmit()
         }

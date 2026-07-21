@@ -2058,18 +2058,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const text = await file.text()
           const extension = inferFileExtension(file)
 
+          // A URL found inside a dropped text/html file is still just a
+          // remote reference, not real local file content -- always an
+          // embed, same as any other web-sourced URL drop (see handleDrop).
           if (file.type === 'text/html' || extension === 'html' || extension === 'htm') {
             const htmlImagePayload = extractImageUrlFromHtml(text)
             if (htmlImagePayload) {
-              pending.push({ traceType: 'image', content: htmlImagePayload.url, mediaUrl: htmlImagePayload.url, size: getDefaultTraceBoxSize('image') })
+              pending.push({ traceType: 'embed', content: htmlImagePayload.url, mediaUrl: htmlImagePayload.url, size: getDefaultTraceBoxSize('embed') })
               continue
             }
           }
 
           const urlPayload = getDroppedUrlPayload(text)
           if (urlPayload) {
-            const remoteTraceType = urlPayload.forceImage ? 'image' : classifyRemoteTraceType(urlPayload.url)
-            pending.push({ traceType: remoteTraceType, content: urlPayload.url, mediaUrl: urlPayload.url, size: getDefaultTraceBoxSize(remoteTraceType) })
+            pending.push({ traceType: 'embed', content: urlPayload.url, mediaUrl: urlPayload.url, size: getDefaultTraceBoxSize('embed') })
             continue
           }
 
@@ -2101,36 +2103,37 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
     }
 
+    // Anything dragged straight off a webpage (an <img>, a link, a URL) is a
+    // reference to content we don't own -- it always becomes an embed, never
+    // an internal image/audio/video trace, regardless of platform. Only a
+    // real local file (below) gets uploaded and converted.
     const htmlImagePayload = extractImageUrlFromHtml(e.dataTransfer.getData('text/html') || '')
     if (htmlImagePayload) {
-      await insertDroppedTrace('image', htmlImagePayload.url, htmlImagePayload.url, worldX, worldY)
+      await insertDroppedTrace('embed', htmlImagePayload.url, htmlImagePayload.url, worldX, worldY)
       return
     }
 
     const downloadUrlPayload = getDroppedUrlPayload(e.dataTransfer.getData('DownloadURL') || '')
     if (downloadUrlPayload) {
-      const traceType = downloadUrlPayload.forceImage ? 'image' : classifyRemoteTraceType(downloadUrlPayload.url)
-      await insertDroppedTrace(traceType, downloadUrlPayload.url, downloadUrlPayload.url, worldX, worldY)
-      return
-    }
-
-    if (isDesktop && droppedFiles.length > 0) {
-      await processDroppedFiles()
+      await insertDroppedTrace('embed', downloadUrlPayload.url, downloadUrlPayload.url, worldX, worldY)
       return
     }
 
     const urlPayload = getDroppedUrlPayload(
       e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || ''
     )
-
     if (urlPayload) {
-      const traceType = urlPayload.forceImage ? 'image' : classifyRemoteTraceType(urlPayload.url)
-      await insertDroppedTrace(traceType, urlPayload.url, urlPayload.url, worldX, worldY)
+      await insertDroppedTrace('embed', urlPayload.url, urlPayload.url, worldX, worldY)
       return
     }
 
-    // File drops from filesystem (desktop only)
-    if (isDesktop && droppedFiles.length > 0) {
+    // Real files from the OS filesystem -- desktop only. The web app can't
+    // upload/convert local files into internal image/audio/video traces yet.
+    if (droppedFiles.length > 0) {
+      if (!isDesktop) {
+        alert('Importing files from your computer isn\'t available in the web version yet. Get the desktop app to drag in images, audio, and video files directly: https://example.com/download')
+        return
+      }
       await processDroppedFiles()
     }
   }
