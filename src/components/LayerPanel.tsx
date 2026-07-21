@@ -554,14 +554,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
           const isGroupFullySelected = layerTraces.length > 0 && layerTraces.every(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
           const isActiveLayer = activeLayerId === layer.id
+          // "Hard selected" (all traces in the group actually selected on
+          // canvas, via the diamond icon) gets the amber/yellow treatment;
+          // merely focusing the group (soft selection, via its name) or
+          // having only some of its traces selected gets blue instead.
+          const isHardSelected = isGroupFullySelected
 
           return (
             <div
               key={layer.id}
               className={`border transition-all ${
-                // Focusing a group (clicking its name) uses the exact same
-                // "soft selection" blue as an actually-selected trace -- they
-                // both just mean "this is the thing currently in focus".
                 // A static bg-gray-800/80 used to always be present in the
                 // base classes here alongside this, which -- since Tailwind
                 // resolves same-specificity background-color utilities by
@@ -570,7 +572,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 // the default background into the final else branch below
                 // (so only ever one bg-* class is present at a time) makes
                 // the highlight actually visible.
-                (isActiveLayer || hasSelectedTrace)
+                isHardSelected
+                  ? 'border-amber-400 bg-amber-900/20 ring-1 ring-amber-400/60'
+                  : (isActiveLayer || hasSelectedTrace)
                   ? 'border-blue-400 bg-blue-900/20'
                   : dropTargetId === layer.id
                     ? 'border-emerald-400 bg-emerald-900/20'
@@ -611,7 +615,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                   >
                     <span
-                      className={`text-xs ${isActiveLayer ? 'text-amber-400' : 'text-gray-400'} hover:text-amber-300`}
+                      className={`text-xs ${isHardSelected ? 'text-amber-400' : 'text-gray-400'} hover:text-amber-300`}
                       title="Select all traces in this group"
                       onClick={(e) => {
                         e.stopPropagation()
@@ -623,12 +627,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         }
                       }}
                     >
-                      {isActiveLayer ? '◆' : '◇'}
+                      {isHardSelected ? '◆' : '◇'}
                     </span>
                     <span className="text-white text-xs tracking-wide">{layer.name}</span>
                     <span className="text-gray-500 text-[10px]">({layerTraces.length})</span>
                     {isActiveLayer && (
-                      <span className="text-amber-400 text-[9px] tracking-wider uppercase">Target</span>
+                      <span className={`text-[9px] tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
                     )}
                   </div>
                 </div>
