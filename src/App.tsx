@@ -20,11 +20,15 @@ const LOADING_ANIMATION_FRAMES = Object.entries(
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([, url]) => url)
 
-const ENTERING_ANIMATION_FRAMES = Object.entries(
-  import.meta.glob('/entering_animation/*.jpg', { eager: true, import: 'default' }) as Record<string, string>
-)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, url]) => url)
+// The one-shot "entering" cinematic used to be this same per-frame JPEG
+// sequence approach (see LOADING_ANIMATION_FRAMES/ImageSequencePlayer
+// below, still used for the looping loading spinner) -- decoding ~119
+// separate JPEGs one at a time on the main thread, racing a fixed-rate
+// requestAnimationFrame clock, was exactly what caused the stutter/flicker
+// (and occasional freeze on a slow device that never caught up on decode).
+// A real video lets the browser's hardware decoder handle it instead, and
+// is a fraction of the size (encoded from the same frames, ~780KB vs ~8MB).
+const ENTERING_ANIMATION_VIDEO_SRC = '/entering-animation.mp4'
 
 // Module-level (not component state) so decoded frames stay warm for the
 // life of the page -- both sequences get reused across multiple overlay
@@ -243,6 +247,7 @@ function AtriumTransitionOverlay({
   title,
   subtitle,
   frames,
+  videoSrc,
   loop,
   nearCompleteLeadFrames,
   onNearComplete,
@@ -251,27 +256,59 @@ function AtriumTransitionOverlay({
 }: {
   title: string
   subtitle: string
-  frames: string[]
-  loop: boolean
+  frames?: string[]
+  // When set, renders a <video> instead of the JPEG-sequence player (see
+  // ENTERING_ANIMATION_VIDEO_SRC) -- takes precedence over `frames`.
+  videoSrc?: string
+  loop?: boolean
   nearCompleteLeadFrames?: number
   onNearComplete?: () => void
   onAnimationComplete?: () => void
   progressClassName: string
 }) {
+  const nearCompleteFiredRef = useRef(false)
+  useEffect(() => {
+    nearCompleteFiredRef.current = false
+  }, [videoSrc])
+
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4 overflow-hidden">
       <div className="w-full max-w-[1600px] flex flex-col items-center justify-center">
         <p className="text-white text-[clamp(9px,2vw,15px)] tracking-[0.25em] uppercase mb-3 text-center">{title}</p>
 
-        <ImageSequencePlayer
-          frames={frames}
-          loop={loop}
-          nearCompleteLeadFrames={nearCompleteLeadFrames}
-          onNearComplete={onNearComplete}
-          onComplete={onAnimationComplete}
-          alt={title}
-          className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px]"
-        />
+        {videoSrc ? (
+          <video
+            key={videoSrc}
+            src={videoSrc}
+            autoPlay
+            muted
+            playsInline
+            aria-label={title}
+            className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px] object-contain"
+            onTimeUpdate={(e) => {
+              const video = e.currentTarget
+              if (!onNearComplete || nearCompleteFiredRef.current || !video.duration) return
+              // 1 frame (at the source's 40fps) of lead, same margin the old
+              // frame-sequence player used, so the flash transition still
+              // kicks in right at the very end instead of after a beat.
+              if (video.currentTime >= video.duration - (1 / 40)) {
+                nearCompleteFiredRef.current = true
+                onNearComplete()
+              }
+            }}
+            onEnded={() => onAnimationComplete?.()}
+          />
+        ) : (
+          <ImageSequencePlayer
+            frames={frames ?? []}
+            loop={loop ?? false}
+            nearCompleteLeadFrames={nearCompleteLeadFrames}
+            onNearComplete={onNearComplete}
+            onComplete={onAnimationComplete}
+            alt={title}
+            className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px]"
+          />
+        )}
 
         <div className="w-[60vw] sm:w-[420px] h-[3px] bg-white/10 overflow-hidden mx-auto mt-3">
           <div className={progressClassName} />
@@ -356,34 +393,31 @@ function AppInner() {
   const [verifyingAccess, setVerifyingAccess] = useState(false)
   const [atriumTransitionPhase, setAtriumTransitionPhase] = useState<AtriumTransitionPhase>('loading')
   const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
-  const [enteringFramesReady, setEnteringFramesReady] = useState(ENTERING_ANIMATION_FRAMES.length === 0)
+  const [enteringVideoReady, setEnteringVideoReady] = useState(false)
 
-  // Preload (fully decode, not just fetch) entering frames as early as
-  // possible -- as soon as the app boots, well before the entering overlay
-  // itself mounts -- so the fixed-40fps cinematic never has to race live
-  // decode work. Gating the 'loading' -> 'entering' phase transition on this
-  // (see the effect below) means the wait for decode is absorbed by the
-  // already-present loading loop instead of showing up as stutter later.
+  // Preload the entering cinematic as early as possible -- as soon as the
+  // app boots, well before the entering overlay itself mounts -- so it
+  // never has to start playback while still fetching. Gating the
+  // 'loading' -> 'entering' phase transition on this (see the effect below)
+  // means the wait is absorbed by the already-present loading loop instead
+  // of showing up as a stall later. canplaythrough (not just canplay/
+  // loadeddata) means the browser estimates it can play to the end without
+  // having to pause and rebuffer.
   useEffect(() => {
-    if (ENTERING_ANIMATION_FRAMES.length === 0) {
-      setEnteringFramesReady(true)
-      return
-    }
-
     let cancelled = false
-    let decodedCount = 0
-
-    ENTERING_ANIMATION_FRAMES.forEach((src) => {
-      decodeFrame(src).then(() => {
-        decodedCount += 1
-        if (!cancelled && decodedCount >= ENTERING_ANIMATION_FRAMES.length) {
-          setEnteringFramesReady(true)
-        }
-      })
-    })
+    const video = document.createElement('video')
+    video.muted = true
+    video.preload = 'auto'
+    video.src = ENTERING_ANIMATION_VIDEO_SRC
+    const markReady = () => { if (!cancelled) setEnteringVideoReady(true) }
+    video.addEventListener('canplaythrough', markReady)
+    video.addEventListener('error', markReady) // don't block entry forever if the video fails to load
+    video.load()
 
     return () => {
       cancelled = true
+      video.removeEventListener('canplaythrough', markReady)
+      video.removeEventListener('error', markReady)
     }
   }, [])
 
@@ -437,21 +471,20 @@ function AppInner() {
     : null
   const { isLoading: tracesLoading } = useTraces(preloadLobbyId)
 
-  // Once access is verified, the entering cinematic's frames are decoded,
+  // Once access is verified, the entering cinematic's video is preloaded,
   // AND trace/local-media loading has finished, transition from the loading
   // loop to the entering sequence. Waiting on trace loading here (not just
-  // frame decode) matters: that loading work runs on the same main thread as
-  // the cinematic's fixed-rate playback clock, so letting it run out during
-  // the already variable-length loading loop -- instead of overlapping it
-  // with the entering animation -- keeps it from contending with (and
-  // stuttering) the animation. Capped at 6s so a slow/hung request can't
-  // block entry indefinitely.
+  // video preload) matters: that loading work runs on the same main thread,
+  // so letting it run out during the already variable-length loading loop --
+  // instead of overlapping it with the entering animation -- keeps it from
+  // contending with (and stuttering) the animation. Capped at 6s so a
+  // slow/hung request can't block entry indefinitely.
   useEffect(() => {
     if (route.page !== 'atrium' || !route.lobbyId) return
     if (verifiedLobbyId !== route.lobbyId) return
     if (transitionLobbyId !== route.lobbyId) return
     if (atriumTransitionPhase !== 'loading') return
-    if (!enteringFramesReady) return
+    if (!enteringVideoReady) return
 
     if (!tracesLoading) {
       setAtriumTransitionPhase('entering')
@@ -465,7 +498,7 @@ function AppInner() {
     verifiedLobbyId,
     transitionLobbyId,
     atriumTransitionPhase,
-    enteringFramesReady,
+    enteringVideoReady,
     tracesLoading,
   ])
 
@@ -1000,10 +1033,8 @@ function AppInner() {
           <AtriumTransitionOverlay
             title="Entering Atrium"
             subtitle="◇ Crossing into another realm"
-            frames={ENTERING_ANIMATION_FRAMES}
-            loop={false}
+            videoSrc={ENTERING_ANIMATION_VIDEO_SRC}
             onNearComplete={() => setAtriumTransitionPhase('flash')}
-            nearCompleteLeadFrames={1}
             onAnimationComplete={() => setAtriumTransitionPhase('flash')}
             progressClassName="h-full bg-white/80"
           />
@@ -1030,7 +1061,7 @@ function AppInner() {
         return (
           <AtriumTransitionOverlay
             title="Entering Atrium"
-            subtitle={enteringFramesReady ? '◇ Aligning the gate' : '◇ Preparing passage'}
+            subtitle={enteringVideoReady ? '◇ Aligning the gate' : '◇ Preparing passage'}
             frames={LOADING_ANIMATION_FRAMES}
             loop={true}
             progressClassName="h-full bg-white/80 animate-nier-slide"
