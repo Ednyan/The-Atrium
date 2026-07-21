@@ -191,6 +191,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       return
     }
 
+    // activeLayerId now persists independently of canvas selection (see
+    // LobbyScene's comment on where it used to be cleared) -- but it must
+    // still be cleared here, otherwise it'd keep pointing at a group that no
+    // longer exists and new traces would silently try to target it.
+    if (layerId === activeLayerId) {
+      onSetActiveLayer?.(null)
+    }
+
     await loadLayers()
   }
 

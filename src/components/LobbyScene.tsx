@@ -325,20 +325,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // multi-selected trace/group, not just the single selectedTraceId.
   const [multiSelectedTraceIds, setMultiSelectedTraceIds] = useState<string[]>([])
 
-  // The Layer panel's "Target" highlight on a group is meant to track actual
-  // selection, but activeLayerId is separate state (it also drives where new
-  // traces get created) that TraceOverlay's own canvas "click outside to
-  // deselect"/Escape had no way to reach -- deselecting on the canvas left
-  // the group looking selected in the Layer panel even though nothing was
-  // selected anymore. Every place TraceOverlay clears selection passes null
-  // here, so piggyback the activeLayerId clear on that same call rather than
-  // reactively watching multiSelectedTraceIds (which updates a tick later,
-  // through TraceOverlay's own effect, and would race the group-click flow
-  // that sets activeLayerId and the multi-selection together).
-  const handleSetSelectedTraceId = useCallback((id: string | null) => {
-    setSelectedTraceId(id)
-    if (id === null) setActiveLayerId(null)
-  }, [])
+  // activeLayerId used to be cleared here too, on the theory that it should
+  // track canvas selection (deselecting on the canvas should un-target the
+  // group). That assumption broke once focusing a group (clicking its name,
+  // just sets the target) and selecting its traces (clicking its diamond
+  // icon) became separate actions: focusing a group is now meant to persist
+  // independently of canvas selection, specifically so a new trace can still
+  // be placed into it -- placing a trace involves clicking the canvas/context
+  // menu, which deselects, which was wiping activeLayerId right back to null
+  // first and silently dropping every new trace into "ungrouped".
   // Drives the top-right "Saving..." indicator for every save trigger
   // (autosave heartbeat, Ctrl+S, and the manual HUD Save Changes button),
   // not just autosave -- the name is legacy from when it was autosave-only.
@@ -2298,7 +2293,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffset={worldOffset}
             lobbyId={lobbyId}
             selectedTraceId={selectedTraceId}
-            setSelectedTraceId={handleSetSelectedTraceId}
+            setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
             isDrawingMode={isDrawingMode}
             onMultiSelectionChange={setMultiSelectedTraceIds}
