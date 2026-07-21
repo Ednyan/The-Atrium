@@ -5721,16 +5721,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         >
           <div
             className={
-              modalTrace.type === 'embed'
-                // Embeds have no intrinsic size of their own (arbitrary web
-                // content) -- there's no point opening the modal if it renders
-                // smaller than the canvas preview, so just fill the viewport.
-                ? "bg-gray-900 border p-6 w-[95vw] h-[95vh] flex flex-col relative"
-                : modalTrace.type === 'image'
-                // Images DO have an intrinsic aspect ratio -- the modal shrinks
-                // to hug the image's own computed size (see the img below)
-                // instead of sitting in a fixed 95vw x 95vh box with the image
-                // letterboxed smaller inside it.
+              (modalTrace.type === 'embed' || modalTrace.type === 'image')
+                // Both have a real aspect ratio to respect -- an embed's is
+                // whatever box the user resized it to on canvas (or its
+                // detected/default ratio), an image's is its natural pixel
+                // dimensions. The modal shrinks to hug that computed size
+                // (see below) instead of sitting in a fixed 95vw x 95vh box
+                // with the content letterboxed smaller inside it.
                 ? "bg-gray-900 border p-6 flex flex-col relative overflow-auto"
                 : "bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
             }
@@ -5763,7 +5760,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
 
             {/* Full content */}
-            <div className={modalTrace.type === 'embed' ? "mb-4 flex-1 min-h-0" : "mb-4"}>
+            <div className="mb-4">
               {modalTrace.type === 'image' && modalTrace.mediaUrl && (() => {
                 // Size the image itself to the largest it can be within the
                 // viewport (minus room for this modal's own header/padding/
@@ -5828,9 +5825,29 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {modalTrace.type === 'embed' && modalTrace.mediaUrl && (() => {
                 const embedUrl = extractEmbedUrl(modalTrace.mediaUrl)
+
+                // Same fit-to-viewport approach as the image case, but using
+                // the trace's own box (whatever size the user resized it to
+                // on canvas, or its detected/default aspect ratio) instead of
+                // a loaded image's natural pixel size -- and NOT capped at
+                // 1x, since embedded web content (unlike a raster image)
+                // doesn't get blurry when displayed larger, so it should
+                // still grow to fill the available space.
+                const { width: baseWidth, height: baseHeight } = getTraceSize(modalTrace)
+                const scaleX = modalTrace.scaleX ?? modalTrace.scale ?? 1
+                const scaleY = modalTrace.scaleY ?? modalTrace.scale ?? 1
+                const aspectWidth = baseWidth * scaleX
+                const aspectHeight = baseHeight * scaleY
+                const chromeHeight = 180
+                const maxWidth = modalViewportSize.width * 0.95
+                const maxHeight = Math.max(200, modalViewportSize.height * 0.95 - chromeHeight)
+                const scale = Math.min(maxWidth / aspectWidth, maxHeight / aspectHeight)
+                const displayWidth = Math.round(aspectWidth * scale)
+                const displayHeight = Math.round(aspectHeight * scale)
+
                 if (!embedUrl) {
                   return (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-800/50">
+                    <div style={{ width: displayWidth, height: displayHeight }} className="flex items-center justify-center bg-gray-800/50">
                       <p className="text-gray-400 text-sm tracking-wider">Invalid embed code</p>
                     </div>
                   )
@@ -5838,7 +5855,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <iframe
                     src={embedUrl}
-                    className="w-full h-full"
+                    style={{ width: displayWidth, height: displayHeight }}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />

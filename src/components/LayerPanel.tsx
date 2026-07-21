@@ -551,17 +551,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             <div
               key={layer.id}
               className={`border transition-all ${
-                isActiveLayer
-                  // A static bg-gray-800/80 used to always be present in the
-                  // base classes here alongside this, which -- since Tailwind
-                  // resolves same-specificity background-color utilities by
-                  // stylesheet order, not by className order -- could win over
-                  // this conditional background regardless of state. Folding
-                  // the default background into the final else branch below
-                  // (so only ever one bg-* class is present at a time) plus a
-                  // ring makes "this group is focused" actually visible.
-                  ? 'border-amber-400 bg-amber-900/20 ring-1 ring-amber-400/60'
-                  : hasSelectedTrace
+                // Focusing a group (clicking its name) uses the exact same
+                // "soft selection" blue as an actually-selected trace -- they
+                // both just mean "this is the thing currently in focus".
+                // A static bg-gray-800/80 used to always be present in the
+                // base classes here alongside this, which -- since Tailwind
+                // resolves same-specificity background-color utilities by
+                // stylesheet order, not by className order -- could win over
+                // this conditional background regardless of state. Folding
+                // the default background into the final else branch below
+                // (so only ever one bg-* class is present at a time) makes
+                // the highlight actually visible.
+                (isActiveLayer || hasSelectedTrace)
                   ? 'border-blue-400 bg-blue-900/20'
                   : dropTargetId === layer.id
                     ? 'border-emerald-400 bg-emerald-900/20'

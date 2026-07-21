@@ -371,6 +371,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [pinterestConnected, setPinterestConnected] = useState(false)
   const [showPinterestImport, setShowPinterestImport] = useState(false)
   const [pinterestImportAnchor, setPinterestImportAnchor] = useState<{ x: number; y: number } | null>(null)
+  const [showLocalFileBlockedDialog, setShowLocalFileBlockedDialog] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -2131,7 +2132,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // upload/convert local files into internal image/audio/video traces yet.
     if (droppedFiles.length > 0) {
       if (!isDesktop) {
-        alert('Importing files from your computer isn\'t available in the web version yet. Get the desktop app to drag in images, audio, and video files directly: https://example.com/download')
+        setShowLocalFileBlockedDialog(true)
         return
       }
       await processDroppedFiles()
@@ -3392,6 +3393,49 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600 disabled:opacity-50"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Local File Drop Blocked (web only) */}
+      {showLocalFileBlockedDialog && (
+        <div
+          className="fixed inset-0 z-[10000100] bg-black/70 flex items-center justify-center pointer-events-auto"
+          onClick={() => setShowLocalFileBlockedDialog(false)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-500 p-6 relative"
+            style={{ maxWidth: '360px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+
+            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-gray-400 mr-2">◇</span>Local Files Not Supported
+            </h3>
+            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+              Importing files from your computer isn't available in the web version yet. Get the desktop app to drag in images, audio, and video files directly.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <a
+                href="https://example.com/download"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all text-center"
+              >
+                ◇ Get the Desktop App
+              </a>
+              <button
+                onClick={() => setShowLocalFileBlockedDialog(false)}
+                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+              >
+                Close
               </button>
             </div>
           </div>
