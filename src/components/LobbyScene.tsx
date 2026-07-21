@@ -334,27 +334,36 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // be placed into it -- placing a trace involves clicking the canvas/context
   // menu, which deselects, which was wiping activeLayerId right back to null
   // first and silently dropping every new trace into "ungrouped".
-  // Drives the top-right "Saving..." indicator for every save trigger
-  // (autosave heartbeat, Ctrl+S, and the manual HUD Save Changes button),
-  // not just autosave -- the name is legacy from when it was autosave-only.
+  // Drives the top-right "Saving..." indicator for every save trigger --
+  // autosave, the manual HUD Save Changes button, AND Ctrl+S (whose handler
+  // lives in TraceOverlay and calls saveAllChanges() directly, with no way
+  // to reach a LobbyScene-local trigger function). Tracking the store's
+  // shared isSavingChanges flag instead of requiring each caller to opt in
+  // via a wrapper means every current and future saveAllChanges() call
+  // shows the indicator automatically. The name is legacy from when it was
+  // autosave-only.
   const [isAutosaving, setIsAutosaving] = useState(false)
-  // Shared by the autosave heartbeat and the manual Save Changes button so
-  // both get the same "stay visible at least 4s" floor -- a save that
-  // finishes in a blink would otherwise flash the indicator too fast to read.
-  const triggerSaveWithIndicator = useCallback(() => {
-    setIsAutosaving(true)
-    const savingStartedAt = Date.now()
+  const savingStartedAtRef = useRef<number | null>(null)
+  useEffect(() => {
+    // Floor so a save that finishes in a blink doesn't flash the indicator
+    // too fast to read.
     const MIN_SAVING_INDICATOR_MS = 4000
-    saveAllChanges().finally(() => {
-      const elapsed = Date.now() - savingStartedAt
-      const remaining = MIN_SAVING_INDICATOR_MS - elapsed
-      if (remaining > 0) {
-        setTimeout(() => setIsAutosaving(false), remaining)
-      } else {
-        setIsAutosaving(false)
-      }
-    })
-  }, [])
+    if (isSavingChanges) {
+      savingStartedAtRef.current = Date.now()
+      setIsAutosaving(true)
+      return
+    }
+    if (savingStartedAtRef.current === null) return
+    const elapsed = Date.now() - savingStartedAtRef.current
+    savingStartedAtRef.current = null
+    const remaining = MIN_SAVING_INDICATOR_MS - elapsed
+    if (remaining <= 0) {
+      setIsAutosaving(false)
+      return
+    }
+    const timeout = setTimeout(() => setIsAutosaving(false), remaining)
+    return () => clearTimeout(timeout)
+  }, [isSavingChanges])
   const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
@@ -695,7 +704,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (Date.now() - lastAutosaveAt < intervalSeconds * 1000) return
       lastAutosaveAt = Date.now()
       if (useGameStore.getState().hasPendingChanges() && !useGameStore.getState().isSavingChanges) {
-        triggerSaveWithIndicator()
+        saveAllChanges()
       }
     }, 5000)
     return () => clearInterval(heartbeat)
@@ -2327,8 +2336,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
       </div>
 
-      {/* Saving indicator -- shown for autosave, Ctrl+S, and the manual
-          Save Changes button (see triggerSaveWithIndicator) */}
+      {/* Saving indicator -- tracks the shared isSavingChanges store flag, so
+          it shows for autosave, Ctrl+S, and the manual Save Changes button alike */}
       {isAutosaving && (
         <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
           <p className="text-white text-base tracking-[0.2em] uppercase animate-saving-fade">
@@ -2413,7 +2422,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </p>
         {hasPendingChanges() && (
           <button
-            onClick={() => triggerSaveWithIndicator()}
+            onClick={() => saveAllChanges()}
             disabled={isSavingChanges}
             className={`w-full mt-1.5 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all ${
               isSavingChanges
@@ -2519,8 +2528,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
         const isFull = !isDesktop && sizeBytes >= LOBBY_SIZE_LIMIT
         return (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto" title={isDesktop ? `${sizeMB.toFixed(2)}MB used` : `${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
-            <div className="flex items-center gap-2 bg-black/90 border border-gray-600 px-3 py-2">
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+            {multiSelectedTraceIds.length > 1 && (
+              <p className="text-green-400 text-[9px] font-mono tracking-[0.12em] uppercase">
+                {multiSelectedTraceIds.length} traces selected
+              </p>
+            )}
+            <div className="pointer-events-auto flex items-center gap-2 bg-black/90 border border-gray-600 px-3 py-2" title={isDesktop ? `${sizeMB.toFixed(2)}MB used` : `${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
               <span className={`text-[9px] font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-gray-400'}`}>
                 Usage
               </span>

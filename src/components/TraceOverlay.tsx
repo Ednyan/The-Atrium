@@ -206,6 +206,41 @@ function buildTraceInsertRow(
   return newTrace
 }
 
+// Builds an SVG path `d` string that traces the given polygon with each
+// corner cut and rounded by `radius` (in the same units as the points) --
+// SVG polygons have no rx/ry equivalent the way <rect> does, so a shape
+// like the triangle needs its own path built by hand to get a Corner
+// Radius option. Clamps each corner's radius to half its shorter adjacent
+// edge so radius can't be dragged past where opposite roundings would meet
+// and overlap/invert.
+function roundedPolygonPath(points: { x: number; y: number }[], radius: number): string {
+  if (radius <= 0) {
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ') + ' Z'
+  }
+  const n = points.length
+  const segments: string[] = []
+  for (let i = 0; i < n; i++) {
+    const curr = points[i]
+    const prev = points[(i - 1 + n) % n]
+    const next = points[(i + 1) % n]
+
+    const toPrev = { x: prev.x - curr.x, y: prev.y - curr.y }
+    const toNext = { x: next.x - curr.x, y: next.y - curr.y }
+    const distPrev = Math.hypot(toPrev.x, toPrev.y) || 1
+    const distNext = Math.hypot(toNext.x, toNext.y) || 1
+    const rPrev = Math.min(radius, distPrev / 2)
+    const rNext = Math.min(radius, distNext / 2)
+
+    const startPoint = { x: curr.x + (toPrev.x / distPrev) * rPrev, y: curr.y + (toPrev.y / distPrev) * rPrev }
+    const endPoint = { x: curr.x + (toNext.x / distNext) * rNext, y: curr.y + (toNext.y / distNext) * rNext }
+
+    segments.push(i === 0 ? `M${startPoint.x},${startPoint.y}` : `L${startPoint.x},${startPoint.y}`)
+    segments.push(`Q${curr.x},${curr.y} ${endPoint.x},${endPoint.y}`)
+  }
+  segments.push('Z')
+  return segments.join(' ')
+}
+
 export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
@@ -2103,15 +2138,37 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const viewportTop = -worldOffset.y / zoom - margin
     const viewportRight = (window.innerWidth - worldOffset.x) / zoom + margin
     const viewportBottom = (window.innerHeight - worldOffset.y) / zoom + margin
-    
+    const buffer = 500 // Account for large traces
+
     return traces.filter(trace => {
+      // A path's x/y field is only set at creation and by whole-path moves --
+      // dragging an individual point (or adding points while drawing) only
+      // ever updates shapePoints, so x/y can drift arbitrarily far from
+      // where the path is actually rendered. Checking the stale x/y against
+      // the viewport could cull a path whose real on-screen points are still
+      // fully visible (or keep one whose points are long gone off-screen),
+      // which looked like paths randomly vanishing/reappearing across zoom
+      // levels depending on how far that drift happened to be. Using the
+      // actual bounding box of shapePoints instead is always accurate.
+      if (trace.type === 'shape' && trace.shapeType === 'path' && trace.shapePoints && trace.shapePoints.length > 0) {
+        const xs = trace.shapePoints.map(p => p.x)
+        const ys = trace.shapePoints.map(p => p.y)
+        const minX = Math.min(...xs)
+        const maxX = Math.max(...xs)
+        const minY = Math.min(...ys)
+        const maxY = Math.max(...ys)
+        return maxX >= viewportLeft - buffer &&
+               minX <= viewportRight + buffer &&
+               maxY >= viewportTop - buffer &&
+               minY <= viewportBottom + buffer
+      }
+
       const traceX = trace.x
       const traceY = trace.y
       // Rough bounds check (traces are centered, so add some buffer)
-      const buffer = 500 // Account for large traces
-      return traceX >= viewportLeft - buffer && 
-             traceX <= viewportRight + buffer && 
-             traceY >= viewportTop - buffer && 
+      return traceX >= viewportLeft - buffer &&
+             traceX <= viewportRight + buffer &&
+             traceY >= viewportTop - buffer &&
              traceY <= viewportBottom + buffer
     })
   }, [traces, zoom, worldOffset.x, worldOffset.y])
@@ -2142,9 +2199,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const curveType = displayTrace.pathCurveType || 'straight'
     const shapeColor = displayTrace.shapeColor || '#3b82f6'
     const shapeOpacity = displayTrace.shapeOpacity ?? 1.0
+    // shapeOutlineWidth is the path's thickness in WORLD units (like every
+    // other size on a trace) -- the stroke/markers below are drawn in
+    // screen-pixel SVG units (via getScreenPosition, which already bakes
+    // zoom into the point positions), so the width has to be scaled by zoom
+    // too. Previously it wasn't, which kept the line/arrows a constant
+    // screen-pixel size while the line's actual length scaled with zoom --
+    // making them look disproportionately huge when zoomed out (barely any
+    // line length left to dwarf them) and disproportionately thin when
+    // zoomed in (line length grew, thickness didn't).
     const outlineWidth = displayTrace.shapeOutlineWidth ?? 2
+    const zoomedOutlineWidth = Math.max(outlineWidth * zoom, 0.5)
     const arrowStart = displayTrace.pathArrowStart || 'none'
     const arrowEnd = displayTrace.pathArrowEnd || 'none'
+    // Reuses the illuminate/lightColor/lightIntensity fields (see the
+    // Customize panel's path-specific "Glow" section) -- off by default,
+    // unlike before where this glow always rendered unconditionally.
+    const glowEnabled = displayTrace.illuminate ?? false
+    const glowColor = displayTrace.lightColor ?? '#cbcbcb'
+    const glowOpacity = 0.22 * (displayTrace.lightIntensity ?? 1.0)
 
     // Generate unique marker IDs for this trace
     const markerId = `path-marker-${trace.id}`
@@ -2241,58 +2314,58 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           {/* Triangle markers - size in screen pixels (userSpaceOnUse) */}
           <marker
             id={`${markerId}-triangle-start`}
-            markerWidth={outlineWidth * 3.5}
-            markerHeight={outlineWidth * 3.5}
-            refX={outlineWidth * 3.5}
-            refY={outlineWidth * 1.75}
+            markerWidth={zoomedOutlineWidth * 3.5}
+            markerHeight={zoomedOutlineWidth * 3.5}
+            refX={zoomedOutlineWidth * 3.5}
+            refY={zoomedOutlineWidth * 1.75}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`${outlineWidth * 3.5},0 ${outlineWidth * 3.5},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
+              points={`${zoomedOutlineWidth * 3.5},0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 3.5} 0,${zoomedOutlineWidth * 1.75}`}
               fill={shapeColor}
             />
           </marker>
           <marker
             id={`${markerId}-triangle-end`}
-            markerWidth={outlineWidth * 3.5}
-            markerHeight={outlineWidth * 3.5}
+            markerWidth={zoomedOutlineWidth * 3.5}
+            markerHeight={zoomedOutlineWidth * 3.5}
             refX={0}
-            refY={outlineWidth * 1.75}
+            refY={zoomedOutlineWidth * 1.75}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`0,0 ${outlineWidth * 3.5},${outlineWidth * 1.75} 0,${outlineWidth * 3.5}`}
+              points={`0,0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 1.75} 0,${zoomedOutlineWidth * 3.5}`}
               fill={shapeColor}
             />
           </marker>
           {/* Diamond (Nier-style) markers - size in screen pixels */}
           <marker
             id={`${markerId}-diamond-start`}
-            markerWidth={outlineWidth * 3.5}
-            markerHeight={outlineWidth * 3.5}
-            refX={outlineWidth * 1.75}
-            refY={outlineWidth * 1.75}
+            markerWidth={zoomedOutlineWidth * 3.5}
+            markerHeight={zoomedOutlineWidth * 3.5}
+            refX={zoomedOutlineWidth * 1.75}
+            refY={zoomedOutlineWidth * 1.75}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`${outlineWidth * 1.75},0 ${outlineWidth * 3.5},${outlineWidth * 1.75} ${outlineWidth * 1.75},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
+              points={`${zoomedOutlineWidth * 1.75},0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 1.75} ${zoomedOutlineWidth * 1.75},${zoomedOutlineWidth * 3.5} 0,${zoomedOutlineWidth * 1.75}`}
               fill={shapeColor}
             />
           </marker>
           <marker
             id={`${markerId}-diamond-end`}
-            markerWidth={outlineWidth * 3.5}
-            markerHeight={outlineWidth * 3.5}
-            refX={outlineWidth * 1.75}
-            refY={outlineWidth * 1.75}
+            markerWidth={zoomedOutlineWidth * 3.5}
+            markerHeight={zoomedOutlineWidth * 3.5}
+            refX={zoomedOutlineWidth * 1.75}
+            refY={zoomedOutlineWidth * 1.75}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`${outlineWidth * 1.75},0 ${outlineWidth * 3.5},${outlineWidth * 1.75} ${outlineWidth * 1.75},${outlineWidth * 3.5} 0,${outlineWidth * 1.75}`}
+              points={`${zoomedOutlineWidth * 1.75},0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 1.75} ${zoomedOutlineWidth * 1.75},${zoomedOutlineWidth * 3.5} 0,${zoomedOutlineWidth * 1.75}`}
               fill={shapeColor}
             />
           </marker>
@@ -2305,19 +2378,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 d={pathData}
                 fill="none"
                 stroke="#86efac"
-                strokeWidth={outlineWidth + 8}
+                strokeWidth={zoomedOutlineWidth + 8}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 opacity={0.75}
                 style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
               />
             )}
-            {/* Invisible wider stroke for easier clicking */}
+            {/* Invisible wider stroke for easier clicking -- floored so a
+                heavily zoomed-out (thus very thin) path stays clickable */}
             <path
               d={pathData}
               fill="none"
               stroke="transparent"
-              strokeWidth={outlineWidth + 10}
+              strokeWidth={Math.max(zoomedOutlineWidth + 10, 14)}
               strokeLinecap="round"
               strokeLinejoin="round"
               data-trace-element="true"
@@ -2357,21 +2431,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
               }}
             />
-            <path
-              d={pathData}
-              fill="none"
-              stroke="rgba(203, 203, 203, 0.22)"
-              strokeWidth={outlineWidth + 4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
-            />
+            {/* Glow along the line -- off by default, toggled via the
+                Customize panel's "Glow" section (see displayTrace.illuminate) */}
+            {glowEnabled && (
+              <path
+                d={pathData}
+                fill="none"
+                stroke={glowColor}
+                strokeWidth={zoomedOutlineWidth + 4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={glowOpacity}
+                style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+              />
+            )}
             {/* Visible path */}
             <path
               d={pathData}
               fill="none"
               stroke={shapeColor}
-              strokeWidth={outlineWidth}
+              strokeWidth={zoomedOutlineWidth}
               strokeLinecap="round"
               strokeLinejoin="round"
               opacity={shapeOpacity}
@@ -2388,19 +2467,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke="#86efac"
-                strokeWidth={outlineWidth + 8}
+                strokeWidth={zoomedOutlineWidth + 8}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 opacity={0.75}
                 style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
               />
             )}
-            {/* Invisible wider stroke for easier clicking */}
+            {/* Invisible wider stroke for easier clicking -- floored so a
+                heavily zoomed-out (thus very thin) path stays clickable */}
             <polyline
               points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
               fill="none"
               stroke="transparent"
-              strokeWidth={outlineWidth + 10}
+              strokeWidth={Math.max(zoomedOutlineWidth + 10, 14)}
               strokeLinecap="round"
               strokeLinejoin="round"
               data-trace-element="true"
@@ -2440,21 +2520,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
               }}
             />
-            <polyline
-              points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-              fill="none"
-              stroke="rgba(203, 203, 203, 0.22)"
-              strokeWidth={outlineWidth + 4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
-            />
+            {/* Glow along the line -- off by default, toggled via the
+                Customize panel's "Glow" section (see displayTrace.illuminate) */}
+            {glowEnabled && (
+              <polyline
+                points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke={glowColor}
+                strokeWidth={zoomedOutlineWidth + 4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={glowOpacity}
+                style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+              />
+            )}
             {/* Visible path */}
             <polyline
               points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
               fill="none"
               stroke={shapeColor}
-              strokeWidth={outlineWidth}
+              strokeWidth={zoomedOutlineWidth}
               strokeLinecap="round"
               strokeLinejoin="round"
               opacity={shapeOpacity}
@@ -2612,7 +2697,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             // Use editingTrace for selected trace to show live updates (check ID match to be safe)
             const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
         const transform = getTraceTransform(trace)
-        const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
+        let { screenX, screenY } = getScreenPosition(transform.x, transform.y)
+        // Same staleness problem as the viewport-culling filter above: a
+        // path's x/y only reflects where it was created or last moved as a
+        // whole, not where its (possibly individually-dragged) points
+        // currently are. Left uncorrected, the distance-from-viewport-center
+        // fade below fades/hides the path based on that wrong position
+        // instead of where it's actually drawn.
+        if (trace.type === 'shape' && trace.shapeType === 'path') {
+          const livePoints = localShapePoints[trace.id] || displayTrace.shapePoints
+          if (livePoints && livePoints.length > 0) {
+            const centroidX = livePoints.reduce((sum, p) => sum + p.x, 0) / livePoints.length
+            const centroidY = livePoints.reduce((sum, p) => sum + p.y, 0) / livePoints.length
+            const centroidScreen = getScreenPosition(centroidX, centroidY)
+            screenX = centroidScreen.screenX
+            screenY = centroidScreen.screenY
+          }
+        }
         const { width, height } = getTraceSize(trace)
         const borderColor = trace.borderColor || getBorderColor(trace.type)
         const isSelected = selectedTraceId === trace.id
@@ -2678,30 +2779,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // on renderPathSvg's definition for why that used to make paths
         // appear to always paint on top of everything else.
         if (trace.type === 'shape' && trace.shapeType === 'path') {
+          // Paths don't use the standard radial point-light (a glow centered
+          // on one spot doesn't suit an elongated line) -- illuminate/
+          // lightColor/lightIntensity are reused instead to drive the
+          // along-the-line glow rendered inside renderPathSvg.
           return (
             <div key={trace.id} className="contents">
-              {trace.illuminate && (
-                <div
-                  className="absolute pointer-events-none"
-                  style={{
-                    left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
-                    top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
-                    width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-                    height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-                    borderRadius: '50%',
-                    background: trace.lightColor ?? '#ffffff',
-                    opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
-                    mixBlendMode: 'screen',
-                    filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
-                    animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
-                    transformOrigin: 'center center',
-                    marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                    marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                    willChange: 'transform, opacity',
-                    ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
-                  }}
-                />
-              )}
               {renderPathSvg(trace)}
             </div>
           )
@@ -2891,7 +2974,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       )
                     } else if (shapeType === 'triangle') {
                       const inset = hasOutline ? strokeWidth / 2 : 0
-                      
+                      // Triangle edges aren't axis-aligned, so there's no
+                      // clean separate X/Y radius the way a rectangle has --
+                      // averaging the two keeps it consistent with the
+                      // rectangle's radius "feel" without a second control.
+                      const triangleRadiusPercent = (radiusPercentX + radiusPercentY) / 2
+
                       return (
                         <svg
                           className="w-full h-full pointer-events-none select-none"
@@ -2899,8 +2987,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           preserveAspectRatio="none"
                           style={{ clipPath: clipPathStyle }}
                         >
-                          <polygon
-                            points={`50,${15 + inset} ${85 - inset},${85 - inset} ${15 + inset},${85 - inset}`}
+                          <path
+                            d={roundedPolygonPath(
+                              [
+                                { x: 50, y: 15 + inset },
+                                { x: 85 - inset, y: 85 - inset },
+                                { x: 15 + inset, y: 85 - inset },
+                              ],
+                              triangleRadiusPercent
+                            )}
                             fill={fill}
                             stroke={stroke}
                             strokeWidth={strokeWidth}
@@ -5073,8 +5168,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
                   )}
 
-                  {/* Corner Radius (Rectangle only) */}
-                  {(editingTrace.shapeType || 'rectangle') === 'rectangle' && (
+                  {/* Corner Radius (Rectangle and Triangle only -- circles have no corners, paths use point editing) */}
+                  {((editingTrace.shapeType || 'rectangle') === 'rectangle' || editingTrace.shapeType === 'triangle') && (
                     <div>
                       <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                         Corner Radius: {editingTrace.cornerRadius || 0}px
@@ -5094,7 +5189,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         className="w-full accent-nier-bg"
                       />
                       <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
-                        Rounds the corners of the rectangle
+                        Rounds the corners of the shape
                       </p>
                     </div>
                   )}
@@ -5336,13 +5431,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
-              {/* Lighting Controls */}
+              {/* Lighting Controls -- paths get a much simpler "glow along the
+                  line" version instead: a radial point-light with a
+                  radius/offset doesn't make sense for an elongated line, so
+                  those (and pulsing) are hidden for them, reusing the same
+                  illuminate/lightColor/lightIntensity fields for the glow
+                  rendered in renderPathSvg instead. */}
+              {(() => {
+                const isPathTrace = editingTrace.shapeType === 'path'
+                return (
               <div className="border-t border-nier-border/20 pt-4 mt-4">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                  <h3 className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Lighting</h3>
+                  <h3 className="text-nier-border text-[10px] tracking-[0.15em] uppercase">{isPathTrace ? 'Glow' : 'Lighting'}</h3>
                 </div>
-                
+
                 <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-3 group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.illuminate ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.illuminate ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
@@ -5357,13 +5460,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-wider uppercase text-[10px]">Enable Light Emission</span>
+                  <span className="tracking-wider uppercase text-[10px]">{isPathTrace ? 'Enable Glow' : 'Enable Light Emission'}</span>
                 </label>
 
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Light Color</label>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">{isPathTrace ? 'Glow Color' : 'Light Color'}</label>
                       <div className="flex gap-2 items-center">
                         <input
                           type="color"
@@ -5411,6 +5514,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       />
                     </div>
 
+                    {!isPathTrace && (
                     <div>
                       <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
                         Radius: {editingTrace.lightRadius ?? 200}px
@@ -5430,7 +5534,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         className="w-full accent-nier-bg"
                       />
                     </div>
+                    )}
 
+                    {!isPathTrace && (
                     <div>
                       <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
                       <div className="grid grid-cols-2 gap-2">
@@ -5473,7 +5579,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         Adjust light source position relative to trace center
                       </p>
                     </div>
+                    )}
 
+                    {!isPathTrace && (
                     <div>
                       <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-2 group">
                         <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.lightPulse ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
@@ -5491,7 +5599,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         />
                         <span className="tracking-wider uppercase text-[10px]">Enable Pulsing/Flickering</span>
                       </label>
-                      
+
                       {editingTrace.lightPulse && (
                         <div className="ml-6">
                           <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">
@@ -5517,9 +5625,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
                 )}
               </div>
+                )
+              })()}
 
               <button
                 onClick={() => {

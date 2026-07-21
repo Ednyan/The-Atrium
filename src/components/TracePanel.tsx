@@ -492,8 +492,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 </div>
               </div>
 
-              {/* Corner Radius (Rectangle only) */}
-              {shapeType === 'rectangle' && (
+              {/* Corner Radius (Rectangle and Triangle only) */}
+              {(shapeType === 'rectangle' || shapeType === 'triangle') && (
                 <div>
                   <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                     Corner Radius: {cornerRadius}px
