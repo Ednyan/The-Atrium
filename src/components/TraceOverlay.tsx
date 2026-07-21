@@ -249,6 +249,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [isCropMode, setIsCropMode] = useState(false)
   const [localTraceTransforms, setLocalTraceTransforms] = useState<Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number }>>({})
   const justDraggedRef = useRef(false)
+  // Distinguishes a genuine click on empty canvas (should deselect) from a
+  // click+drag that happens to end on the same element, e.g. panning the
+  // map (should NOT deselect) -- native 'click' events fire after mouseup
+  // regardless of how far the mouse moved in between, so this is tracked
+  // separately from justDraggedRef, which only covers dragging a trace.
+  const mouseDownScreenPosRef = useRef<{ x: number; y: number } | null>(null)
   const [imageDimensions, setImageDimensions] = useState<Record<string, { width: number; height: number }>>({})
   const [modalTrace, setModalTrace] = useState<Trace | null>(null)
   const [copiedModalText, setCopiedModalText] = useState(false)
@@ -285,6 +291,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const centerRef = useRef({ x: 0, y: 0 })
   const multiStartTransformsRef = useRef<Record<string, { x: number; y: number }>>({}) // Store starting positions for multi-select move
   const multiStartPathPointsRef = useRef<Record<string, any[]>>({}) // Store starting shapePoints for path traces in multi-select
+  // True only while an actual multi-select move/move-path drag is in progress
+  // (set in handleMouseDown, cleared in handleMouseUp) -- multiStartTransformsRef
+  // itself is never reset between drags, so it can't be used on its own to tell
+  // whether the drag that just ended was a batch move or a lone single-trace one.
+  const isMultiDragActiveRef = useRef(false)
   
   // Refs to store latest values for event handlers (to avoid stale closures)
   const tracesRef = useRef(traces)
@@ -667,6 +678,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     | { kind: 'add'; traceId: string; trace: Trace }
     | { kind: 'delete'; trace: Trace }
     | { kind: 'update'; traceId: string; before: Partial<Trace>; after: Partial<Trace>; ts: number }
+    // One atomic undo step covering every trace moved together in a
+    // multi-select drag -- without this, moving N selected traces pushes N
+    // (or, per mousemove frame, many more than N) separate 'update' ops, so
+    // a single Ctrl+Z only walks the move back one trace at a time.
+    | { kind: 'batch'; ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[]; ts: number }
 
   const undoStackRef = useRef<UndoOp[]>([])
   const redoStackRef = useRef<UndoOp[]>([])
@@ -720,6 +736,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     redoStackRef.current = []
   }, [])
 
+  // Pushes every trace moved together in a multi-select drag as ONE undo
+  // step (see the 'batch' UndoOp comment above). Falls back to a plain
+  // 'update' push for the trivial single-trace case.
+  const pushBatchUpdateOp = useCallback((ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[]) => {
+    if (ops.length === 0) return
+    if (ops.length === 1) {
+      const stack = undoStackRef.current
+      stack.push({ kind: 'update', traceId: ops[0].traceId, before: ops[0].before, after: { ...ops[0].after }, ts: Date.now() })
+      if (stack.length > maxUndoDepthRef.current) stack.shift()
+      redoStackRef.current = []
+      return
+    }
+    const stack = undoStackRef.current
+    stack.push({ kind: 'batch', ops, ts: Date.now() })
+    if (stack.length > maxUndoDepthRef.current) stack.shift()
+    redoStackRef.current = []
+  }, [])
+
   const pushAddOp = useCallback((traceId: string, trace: Trace) => {
     undoStackRef.current.push({ kind: 'add', traceId, trace: cloneTraceSnapshot(trace) })
     if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
@@ -761,6 +795,40 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // undo cheap (unmarkTraceDeleted() below is enough to fully cancel it,
   // no database round-trip needed) at the cost of the delete only becoming
   // permanent once you save.
+  // Shared by the 'update' and 'batch' cases below. Applies one trace's
+  // before/after target and clears whatever local drag-preview state would
+  // otherwise keep rendering the stale (pre-undo) value on top of it --
+  // localTraceTransforms for moved/scaled/rotated traces, localShapePoints
+  // for path traces. Missing the shapePoints clear here previously meant a
+  // path's undo silently had no visible effect whenever it wasn't the trace
+  // that originally started the drag (e.g. one of several traces moved
+  // together in a multi-select), since its stale local override kept
+  // rendering over the reverted store value.
+  const applyUpdateTarget = (store: ReturnType<typeof useGameStore.getState>, traceId: string, target: Partial<Trace>) => {
+    const current = store.traces.find(t => t.id === traceId)
+    if (!current) return
+    const updated = { ...current, ...target }
+    store.addTrace(updated)
+    store.markTraceChanged(traceId)
+    setLocalTraceTransforms(prev => {
+      if (!(traceId in prev)) return prev
+      const next = { ...prev }
+      delete next[traceId]
+      return next
+    })
+    if ('shapePoints' in target) {
+      setLocalShapePoints(prev => {
+        if (!(traceId in prev)) return prev
+        const next = { ...prev }
+        delete next[traceId]
+        return next
+      })
+    }
+    if (editingTraceRef.current?.id === traceId) {
+      setEditingTrace({ ...editingTraceRef.current, ...target })
+    }
+  }
+
   const applyUndoOp = useCallback((op: UndoOp, direction: 'undo' | 'redo') => {
     const store = useGameStore.getState()
     if (op.kind === 'add') {
@@ -802,23 +870,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         if (editingTraceRef.current?.id === op.trace.id) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.trace.id) setSelectedTraceId(null)
       }
+    } else if (op.kind === 'batch') {
+      for (const subOp of op.ops) {
+        const target = direction === 'undo' ? subOp.before : subOp.after
+        applyUpdateTarget(store, subOp.traceId, target)
+      }
     } else {
       const target = direction === 'undo' ? op.before : op.after
-      const current = store.traces.find(t => t.id === op.traceId)
-      if (current) {
-        const updated = { ...current, ...target }
-        store.addTrace(updated)
-        store.markTraceChanged(op.traceId)
-        setLocalTraceTransforms(prev => {
-          if (!(op.traceId in prev)) return prev
-          const next = { ...prev }
-          delete next[op.traceId]
-          return next
-        })
-        if (editingTraceRef.current?.id === op.traceId) {
-          setEditingTrace({ ...editingTraceRef.current, ...target })
-        }
-      }
+      applyUpdateTarget(store, op.traceId, target)
     }
   }, [])
 
@@ -867,7 +926,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [undo, redo])
   // --- End undo/redo history ------------------------------------------------
 
-  const updateTraceTransform = (traceId: string, updates: Partial<{ x: number; y: number; scale?: number; scaleX?: number; scaleY?: number; rotation: number }>) => {
+  const updateTraceTransform = (traceId: string, updates: Partial<{ x: number; y: number; scale?: number; scaleX?: number; scaleY?: number; rotation: number }>, options?: { skipUndo?: boolean }) => {
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
 
@@ -886,7 +945,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const after: Partial<Trace> = {
       x: newTransform.x, y: newTransform.y, scaleX: newTransform.scaleX, scaleY: newTransform.scaleY, rotation: newTransform.rotation,
     }
-    pushUpdateOp(traceId, before, after)
+    if (!options?.skipUndo) {
+      pushUpdateOp(traceId, before, after)
+    }
 
     // Update local state immediately for smooth UI
     setLocalTraceTransforms(prev => ({ ...prev, [traceId]: newTransform }))
@@ -1129,7 +1190,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     await duplicateTraces(tracesToDuplicate)
   }
 
-  const updateTraceCustomization = (traceId: string, updates: Partial<Trace>) => {
+  const updateTraceCustomization = (traceId: string, updates: Partial<Trace>, options?: { skipUndo?: boolean }) => {
     // Find the trace
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
@@ -1138,7 +1199,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     for (const key of Object.keys(updates) as (keyof Trace)[]) {
       (before as any)[key] = trace[key]
     }
-    pushUpdateOp(traceId, before, updates)
+    if (!options?.skipUndo) {
+      pushUpdateOp(traceId, before, updates)
+    }
 
     // Update editingTrace immediately if it matches
     if (editingTrace && editingTrace.id === traceId) {
@@ -1266,6 +1329,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }
       multiStartTransformsRef.current = startTransforms
       multiStartPathPointsRef.current = startPathPoints
+      isMultiDragActiveRef.current = true
     }
     
     const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
@@ -1322,7 +1386,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return newP
               })
               setLocalShapePoints(prev => ({ ...prev, [id]: newPoints }))
-              updateTraceCustomization(id, { shapePoints: newPoints })
+              // skipUndo -- this whole multi-select move is recorded as ONE
+              // batched undo step on mouseup instead of per-trace-per-frame.
+              updateTraceCustomization(id, { shapePoints: newPoints }, { skipUndo: true })
             }
           } else {
             const startPos = multiStartTransformsRef.current[id]
@@ -1330,7 +1396,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               updateTraceTransform(id, {
                 x: startPos.x + worldDeltaX,
                 y: startPos.y + worldDeltaY,
-              })
+              }, { skipUndo: true })
             }
           }
         })
@@ -1339,7 +1405,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           updateTraceTransform(activeSelectedTraceId, {
             x: startTransformRef.current.x + worldDeltaX,
             y: startTransformRef.current.y + worldDeltaY,
-          })
+          }, { skipUndo: true })
         }
       } else {
         // Single trace move
@@ -1439,24 +1505,50 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         
         updateTraceTransform(activeSelectedTraceId, { scaleX: newScale, scaleY: newScale })
       } else {
-        // Non-uniform scaling for edges (horizontal/vertical only)
+        // Non-uniform scaling for edges (horizontal/vertical only) -- anchors
+        // the OPPOSITE edge in place, so dragging the bottom edge only grows
+        // downward (not also upward from the center) and dragging the right
+        // edge only grows rightward, matching how resize handles behave in
+        // most editors. Traces render center-anchored (translate(-50%,-50%)),
+        // so keeping the opposite edge fixed requires shifting the trace's
+        // center by half of whatever size change results from the new scale,
+        // in the trace's own (possibly rotated) local axes -- otherwise the
+        // anchor edge would visibly drift on any rotated trace.
         const corner = startPosRef.current.corner
         let newScaleX = startScaleX
         let newScaleY = startScaleY
-        
+        let localDx = 0
+        let localDy = 0
+
         const sensitivity = 0.01
-        
+        const { width: baseWidth, height: baseHeight } = getTraceSize(currentTrace)
+
         if (corner === 'l' || corner === 'r') {
           // Horizontal edge - scale X only
           const sign = corner === 'r' ? 1 : -1
           newScaleX = Math.max(0.1, startScaleX * (1 + deltaX * sensitivity * sign))
+          const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
+          localDx = corner === 'r' ? widthDelta : -widthDelta
         } else if (corner === 't' || corner === 'b') {
           // Vertical edge - scale Y only
           const sign = corner === 'b' ? 1 : -1
           newScaleY = Math.max(0.1, startScaleY * (1 + deltaY * sensitivity * sign))
+          const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
+          localDy = corner === 'b' ? heightDelta : -heightDelta
         }
 
-        updateTraceTransform(activeSelectedTraceId, { scaleX: newScaleX, scaleY: newScaleY })
+        const rotationRad = (startTransformRef.current.rotation * Math.PI) / 180
+        const cos = Math.cos(rotationRad)
+        const sin = Math.sin(rotationRad)
+        const worldDx = localDx * cos - localDy * sin
+        const worldDy = localDx * sin + localDy * cos
+
+        updateTraceTransform(activeSelectedTraceId, {
+          x: startTransformRef.current.x + worldDx,
+          y: startTransformRef.current.y + worldDy,
+          scaleX: newScaleX,
+          scaleY: newScaleY,
+        })
       }
     } else if (activeTransformMode === 'rotate') {
       // Calculate rotation based on angle from center
@@ -1587,7 +1679,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 cp2y: p.cp2y !== undefined ? p.cp2y + worldDeltaY : undefined,
               }))
               setLocalShapePoints(prev => ({ ...prev, [id]: newPathPoints }))
-              updateTraceCustomization(id, { shapePoints: newPathPoints })
+              // skipUndo -- batched into ONE undo step on mouseup, see the
+              // primary path's own shapePoints commit there too.
+              updateTraceCustomization(id, { shapePoints: newPathPoints }, { skipUndo: true })
             }
           } else {
             // For non-path traces, move by transform
@@ -1596,7 +1690,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               updateTraceTransform(id, {
                 x: startPos.x + worldDeltaX,
                 y: startPos.y + worldDeltaY,
-              })
+              }, { skipUndo: true })
             }
           }
         })
@@ -1639,9 +1733,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // The panel should only open via right-click > Customize or double-click
       }
       
-      // Update database
-      await updateTraceCustomization(activeSelectedTraceId, { shapePoints: pointsToSave })
-      
+      // Update database -- skip its own undo push when this was part of a
+      // multi-select batch drag; it's folded into the single batch op below instead.
+      await updateTraceCustomization(activeSelectedTraceId, { shapePoints: pointsToSave }, { skipUndo: isMultiDragActiveRef.current })
+
       // Clear local state after saving so new points can be added without interference
       setLocalShapePoints(prev => {
         const next = { ...prev }
@@ -1649,7 +1744,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         return next
       })
     }
-    
+
+    // If this drag moved a multi-selection together, record the whole move
+    // as ONE undo step -- every per-trace update above was pushed with
+    // skipUndo so it wouldn't get recorded piecemeal (or, for paths, dozens
+    // of times per drag; see the 'batch' UndoOp comment).
+    if (isMultiDragActiveRef.current && (activeTransformMode === 'move' || activeTransformMode === 'move-path')) {
+      const batchOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+      for (const id of Object.keys(multiStartTransformsRef.current)) {
+        const finalTrace = currentTraces.find(t => t.id === id)
+        if (!finalTrace) continue
+        const startPoints = multiStartPathPointsRef.current[id]
+        if (startPoints) {
+          batchOps.push({ traceId: id, before: { shapePoints: startPoints }, after: { shapePoints: finalTrace.shapePoints } })
+        } else {
+          const startPos = multiStartTransformsRef.current[id]
+          batchOps.push({ traceId: id, before: { x: startPos.x, y: startPos.y }, after: { x: finalTrace.x, y: finalTrace.y } })
+        }
+      }
+      pushBatchUpdateOp(batchOps)
+    }
+    isMultiDragActiveRef.current = false
+    multiStartTransformsRef.current = {}
+    multiStartPathPointsRef.current = {}
+
     // Clear initial point/control point references
     if (startPosRef.current.initialPoint) {
       startPosRef.current.initialPoint = undefined
@@ -1694,7 +1812,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       if (justDraggedRef.current) {
         return
       }
-      
+
+      // Don't deselect if this click is the tail end of a click+drag (e.g.
+      // panning the map) -- only a genuine, near-stationary click should
+      // clear the multi-selection.
+      const downPos = mouseDownScreenPosRef.current
+      if (downPos) {
+        const dragDistance = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y)
+        if (dragDistance > 6) {
+          return
+        }
+      }
+
       // CRITICAL: If in path creation mode, prevent ANY deselection
       if (pathCreationMode) {
         const target = e.target as HTMLElement
@@ -1758,18 +1887,31 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     
     const handleKeyDown = (e: KeyboardEvent) => {
       // Delete key to delete the whole multi-selection if there is one,
-      // otherwise just the single selected trace.
-      if (e.key === 'Delete' && canEdit && (selectedTraceId || multiSelectedIds.size > 0)) {
+      // otherwise just the single selected trace. Must not fire while the
+      // user is editing text inside an input/textarea (e.g. the Customize
+      // panel's text content field) -- otherwise pressing Delete to remove
+      // a character deletes the entire trace instead.
+      const target = e.target as HTMLElement | null
+      const isEditableTarget = target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT'
+      if (e.key === 'Delete' && canEdit && !isEditableTarget && (selectedTraceId || multiSelectedIds.size > 0)) {
         e.preventDefault()
         deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
       }
     }
 
+    // Captured (not bubbled) so it's recorded even if some element's mousedown
+    // handler elsewhere calls stopPropagation() before it would otherwise reach here.
+    const handleMouseDownCapture = (e: MouseEvent) => {
+      mouseDownScreenPosRef.current = { x: e.clientX, y: e.clientY }
+    }
+
     window.addEventListener('click', handleClickOutside)
     window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('mousedown', handleMouseDownCapture, true)
     return () => {
       window.removeEventListener('click', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('mousedown', handleMouseDownCapture, true)
     }
   }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit])
 
@@ -5571,7 +5713,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           onClick={() => setModalTrace(null)}
         >
           <div
-            className="bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
+            className={
+              modalTrace.type === 'embed'
+                // Embeds get as much of the viewport as possible -- there's
+                // no point opening the modal if it renders smaller than the
+                // canvas preview the user already double-clicked past.
+                ? "bg-gray-900 border p-6 w-[95vw] h-[95vh] flex flex-col relative"
+                : "bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
+            }
             style={{ borderColor: getBorderColor(modalTrace.type) }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -5601,7 +5750,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
 
             {/* Full content */}
-            <div className="mb-4">
+            <div className={modalTrace.type === 'embed' ? "mb-4 flex-1 min-h-0" : "mb-4"}>
               {modalTrace.type === 'image' && modalTrace.mediaUrl && (
                 <img
                   src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
@@ -5651,7 +5800,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 const embedUrl = extractEmbedUrl(modalTrace.mediaUrl)
                 if (!embedUrl) {
                   return (
-                    <div className="w-full h-96 flex items-center justify-center bg-gray-800/50">
+                    <div className="w-full h-full flex items-center justify-center bg-gray-800/50">
                       <p className="text-gray-400 text-sm tracking-wider">Invalid embed code</p>
                     </div>
                   )
@@ -5659,7 +5808,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <iframe
                     src={embedUrl}
-                    className="w-full h-96"
+                    className="w-full h-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />

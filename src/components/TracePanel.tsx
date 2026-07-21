@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
@@ -36,6 +36,7 @@ interface TracePanelProps {
 }
 
 export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId }: TracePanelProps) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
   const [mediaUrl, setMediaUrl] = useState('')
@@ -262,6 +263,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         transform: 'translateY(-50%)',
         zIndex: 10_000_100,
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          onClose()
+        } else if (e.key === 'Enter' && !e.shiftKey && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+          // Textareas keep Enter as a newline (text content, embed URL/code) --
+          // everywhere else in the panel, Enter applies the trace, same as a
+          // regular HTML form submit.
+          e.preventDefault()
+          formRef.current?.requestSubmit()
+        }
+      }}
     >
       {/* Corner brackets */}
       <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
@@ -274,7 +287,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Leave a Trace</h2>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
           {/* Trace Type Selector */}
           <div>
             <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-3">

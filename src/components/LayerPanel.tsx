@@ -542,8 +542,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           const canMoveUp = layerIndex > 0 // Not already at top (highest z-index)
           const canMoveDown = layerIndex < sortedLayers.length - 1 // Not already at bottom (lowest z-index)
           
-          // Check if any trace in this group is selected
+          // Check if any/all traces in this group are selected
           const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
+          const isGroupFullySelected = layerTraces.length > 0 && layerTraces.every(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
           const isActiveLayer = activeLayerId === layer.id
 
           return (
@@ -566,7 +567,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               <div className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer">
                 <div
                   className="flex items-center gap-1 flex-1"
-                  title="Click the arrow to expand/collapse. Click the name to select all traces in this group and set it as the target for new traces."
+                  title="Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group."
                 >
                   <span
                     className="text-gray-400 text-[10px] px-1 cursor-pointer"
@@ -580,19 +581,31 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   <div
                     className="flex items-center gap-2 flex-1 cursor-pointer"
                     onClick={() => {
+                      // Just focuses the group as the target for new traces --
+                      // does NOT select its traces on the canvas. That's the
+                      // diamond icon's job (below), kept as a separate click
+                      // target so opening/targeting a group doesn't yank the
+                      // user's current canvas selection out from under them.
                       if (isActiveLayer) {
-                        // Deselecting the group -- clear the multi-selection
-                        // too, otherwise it stuck around and dragging any one
-                        // of those traces kept moving the whole former group.
-                        onSelectGroupTraces?.([])
                         onSetActiveLayer?.(null)
                       } else {
-                        onSelectGroupTraces?.(layerTraces.map(t => t.id))
                         onSetActiveLayer?.(layer.id)
                       }
                     }}
                   >
-                    <span className={`text-xs ${isActiveLayer ? 'text-amber-400' : 'text-gray-400'}`}>
+                    <span
+                      className={`text-xs ${isActiveLayer ? 'text-amber-400' : 'text-gray-400'} hover:text-amber-300`}
+                      title="Select all traces in this group"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (isGroupFullySelected) {
+                          onSelectGroupTraces?.([])
+                        } else {
+                          onSelectGroupTraces?.(layerTraces.map(t => t.id))
+                          onSetActiveLayer?.(layer.id)
+                        }
+                      }}
+                    >
                       {isActiveLayer ? '◆' : '◇'}
                     </span>
                     <span className="text-white text-xs tracking-wide">{layer.name}</span>
