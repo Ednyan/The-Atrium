@@ -4447,7 +4447,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </button>
               {contextMenuTransformOpen && transformFlyoutRect && (
                 <div
-                  className="fixed w-max bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                  className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
                   style={
                     contextMenuFlyoutOnLeft
                       ? { top: transformFlyoutRect.top, right: window.innerWidth - transformFlyoutRect.left + 1 }
@@ -4457,7 +4457,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   onMouseLeave={scheduleCloseTransformFlyout}
                 >
                   <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                    className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -4474,7 +4474,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     Reset Cropping
                   </button>
                   <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                    className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -4492,7 +4492,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     Reset Aspect Ratio
                   </button>
                   <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                    className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -4509,7 +4509,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     return (
                       <>
                         <button
-                          className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                           onClick={() => {
                             updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
                             setContextMenu(null)
@@ -4518,7 +4518,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           Flip Horizontal
                         </button>
                         <button
-                          className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                           onClick={() => {
                             updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
                             setContextMenu(null)
@@ -4572,7 +4572,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </button>
                   {contextMenuMoveOpen && moveFlyoutRect && (
                     <div
-                      className="fixed w-max bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
                           ? { top: moveFlyoutRect.top, right: window.innerWidth - moveFlyoutRect.left + 1 }
@@ -4582,25 +4582,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onMouseLeave={scheduleCloseMoveFlyout}
                     >
                       <button
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceOneStep(trace.id, 'up')}
                       >
                         Move Up
                       </button>
                       <button
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceOneStep(trace.id, 'down')}
                       >
                         Move Down
                       </button>
                       <button
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
                       >
                         Move to Top of Group
                       </button>
                       <button
-                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
                       >
                         Move to Bottom of Group

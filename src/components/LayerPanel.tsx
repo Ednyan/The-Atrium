@@ -624,12 +624,28 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // race across separate effects: expanding schedules a state update, which
   // re-runs this SAME effect once expandedGroups actually changes, so the
   // scroll attempt that follows always sees the up-to-date DOM.
+  // Remembers which trace we last auto-scrolled to, so we only scroll on an
+  // actual selection change (or the first paint after the panel opens with
+  // something already selected) -- NOT every time `traces` changes, which
+  // happens on every reorder and made the panel annoyingly re-center on the
+  // selected row each time a layer was dragged.
+  const lastScrolledTraceIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!selectedTraceId) return
+    if (!selectedTraceId) {
+      lastScrolledTraceIdRef.current = null
+      return
+    }
     const selectedTrace = traces.find(t => t.id === selectedTraceId)
+    // Expand the containing group first if needed; expandedGroups changing
+    // re-runs this effect, and the row ref will exist on that next pass.
     if (selectedTrace?.layerId && !expandedGroups.has(selectedTrace.layerId)) {
       setExpandedGroups(prev => new Set(prev).add(selectedTrace.layerId!))
+      return
     }
+    // Selection unchanged since our last scroll (e.g. a reorder just mutated
+    // `traces`): don't yank the scroll position around again.
+    if (lastScrolledTraceIdRef.current === selectedTraceId) return
+    lastScrolledTraceIdRef.current = selectedTraceId
     const raf = requestAnimationFrame(() => {
       traceRowRefs.current.get(selectedTraceId)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     })
