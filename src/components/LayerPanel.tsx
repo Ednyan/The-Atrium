@@ -395,6 +395,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         console.error('Error moving trace to layer:', error)
         return
       }
+      // Optimistic local update -- realtime subscription may drop this due
+      // to the pendingChanges guard, same as moveTraceToLayer above.
+      addTrace({ ...draggedTrace, layerId: targetLayerId })
     }
 
     const existingInTarget = getTracesForLayer(targetLayerId).filter(t => t.id !== traceId)
@@ -408,7 +411,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     await persistTraceOrder(targetLayerId, finalOrder, layerZIndex)
   }
 
-  const handleTraceDragStart = (e: React.DragEvent<HTMLDivElement>, traceId: string) => {
+  const handleTraceDragStart = (e: React.DragEvent<HTMLElement>, traceId: string) => {
     e.stopPropagation()
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData(TRACE_DRAG_DATA_KEY, traceId)
@@ -884,8 +887,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     <div
                       key={trace.id}
                       ref={setTraceRowRef(trace.id)}
-                      draggable={canEdit}
-                      style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
                       className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                         dropTargetId === trace.id
                           ? 'border-emerald-400 bg-emerald-900/20'
@@ -893,8 +894,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                           ? 'border-blue-400 bg-blue-900/30'
                           : 'border-gray-600'
                       }`}
-                      onDragStart={(e) => handleTraceDragStart(e, trace.id)}
-                      onDragEnd={handleTraceDragEnd}
                       onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                       onDrop={(e) => handleTraceRowDrop(e, trace.id)}
                       onClick={() => {
@@ -902,6 +901,25 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       }}
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {canEdit && (
+                          <span
+                            className="grid grid-cols-2 gap-[2px] px-1 py-0.5 cursor-grab active:cursor-grabbing group/tgrip shrink-0"
+                            style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
+                            draggable
+                            onDragStart={(e) => { e.stopPropagation(); handleTraceDragStart(e, trace.id) }}
+                            onDragEnd={handleTraceDragEnd}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Drag to reorder"
+                          >
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <span
+                                key={i}
+                                className="w-[3px] h-[3px] rounded-full bg-gray-600 group-hover/tgrip:bg-gray-300 pointer-events-none"
+                                style={{ userSelect: 'none' }}
+                              />
+                            ))}
+                          </span>
+                        )}
                         <span className="text-gray-400 text-[10px]">
                           {trace.type === 'text' && '◇'}
                           {trace.type === 'image' && '◻'}
@@ -1010,8 +1028,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <div
                   key={trace.id}
                   ref={setTraceRowRef(trace.id)}
-                  draggable={canEdit}
-                  style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
                   className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                     dropTargetId === trace.id
                       ? 'border-emerald-400 bg-emerald-900/20'
@@ -1019,8 +1035,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       ? 'border-blue-400 bg-blue-900/30'
                       : 'border-gray-600'
                   }`}
-                  onDragStart={(e) => handleTraceDragStart(e, trace.id)}
-                  onDragEnd={handleTraceDragEnd}
                   onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                   onDrop={(e) => handleTraceRowDrop(e, trace.id)}
                   onClick={() => {
@@ -1028,6 +1042,25 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   }}
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {canEdit && (
+                      <span
+                        className="grid grid-cols-2 gap-[2px] px-1 py-0.5 cursor-grab active:cursor-grabbing group/tgrip shrink-0"
+                        style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
+                        draggable
+                        onDragStart={(e) => { e.stopPropagation(); handleTraceDragStart(e, trace.id) }}
+                        onDragEnd={handleTraceDragEnd}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Drag to reorder"
+                      >
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <span
+                            key={i}
+                            className="w-[3px] h-[3px] rounded-full bg-gray-600 group-hover/tgrip:bg-gray-300 pointer-events-none"
+                            style={{ userSelect: 'none' }}
+                          />
+                        ))}
+                      </span>
+                    )}
                     <span className="text-gray-400 text-[10px]">
                       {trace.type === 'text' && '◇'}
                       {trace.type === 'image' && '◻'}

@@ -316,19 +316,38 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // to the flyout doesn't close it prematurely.
   const [contextMenuMoveOpen, setContextMenuMoveOpen] = useState(false)
   const [contextMenuTransformOpen, setContextMenuTransformOpen] = useState(false)
+  // Flyouts are positioned via `position: fixed` computed from the
+  // trigger's own bounding rect (captured here) rather than `position:
+  // absolute` inside the menu -- the menu has `overflow-y-auto`, and per
+  // the CSS overflow spec, setting only overflow-y to a non-visible value
+  // forces overflow-x to compute as auto too, which clipped an absolutely
+  // positioned flyout into a scrollbar instead of letting it render outside
+  // the menu's box.
+  const [moveFlyoutRect, setMoveFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const [transformFlyoutRect, setTransformFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
   const moveFlyoutCloseTimer = useRef<number | null>(null)
   const transformFlyoutCloseTimer = useRef<number | null>(null)
-  const openMoveFlyout = () => {
+  const openMoveFlyout = (e: React.MouseEvent<HTMLElement>) => {
     if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMoveFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
     setContextMenuMoveOpen(true)
+  }
+  const keepMoveFlyoutOpen = () => {
+    if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
   }
   const scheduleCloseMoveFlyout = () => {
     if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
     moveFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuMoveOpen(false), 200)
   }
-  const openTransformFlyout = () => {
+  const openTransformFlyout = (e: React.MouseEvent<HTMLElement>) => {
     if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
+    const rect = e.currentTarget.getBoundingClientRect()
+    setTransformFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
     setContextMenuTransformOpen(true)
+  }
+  const keepTransformFlyoutOpen = () => {
+    if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
   }
   const scheduleCloseTransformFlyout = () => {
     if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
@@ -4426,10 +4445,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Transformations</span>
                 <span className="text-gray-500 text-[9px]">▶</span>
               </button>
-              {contextMenuTransformOpen && (
+              {contextMenuTransformOpen && transformFlyoutRect && (
                 <div
-                  className={`absolute top-0 ${contextMenuFlyoutOnLeft ? 'right-full mr-px' : 'left-full ml-px'} min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]`}
-                  onMouseEnter={openTransformFlyout}
+                  className="fixed min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                  style={
+                    contextMenuFlyoutOnLeft
+                      ? { top: transformFlyoutRect.top, right: window.innerWidth - transformFlyoutRect.left + 1 }
+                      : { top: transformFlyoutRect.top, left: transformFlyoutRect.right + 1 }
+                  }
+                  onMouseEnter={keepTransformFlyoutOpen}
                   onMouseLeave={scheduleCloseTransformFlyout}
                 >
                   <button
@@ -4546,10 +4570,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move Layer</span>
                     <span className="text-gray-500 text-[9px]">▶</span>
                   </button>
-                  {contextMenuMoveOpen && (
+                  {contextMenuMoveOpen && moveFlyoutRect && (
                     <div
-                      className={`absolute top-0 ${contextMenuFlyoutOnLeft ? 'right-full mr-px' : 'left-full ml-px'} min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]`}
-                      onMouseEnter={openMoveFlyout}
+                      className="fixed min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                      style={
+                        contextMenuFlyoutOnLeft
+                          ? { top: moveFlyoutRect.top, right: window.innerWidth - moveFlyoutRect.left + 1 }
+                          : { top: moveFlyoutRect.top, left: moveFlyoutRect.right + 1 }
+                      }
+                      onMouseEnter={keepMoveFlyoutOpen}
                       onMouseLeave={scheduleCloseMoveFlyout}
                     >
                       <button
