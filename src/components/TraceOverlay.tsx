@@ -31,6 +31,13 @@ interface TraceOverlayProps {
   // A new array reference is sent each time (even for the same set), so
   // the effect that consumes it always fires.
   multiSelectRequest?: string[] | null
+  // One-shot request from LobbyScene: a brand-new path trace (just inserted
+  // with a single starting point) that should be selected and immediately
+  // put into point-placing mode, instead of leaving the user to find the
+  // Customize panel's "Add Points" button themselves. Trace ids are always
+  // freshly generated, so a plain useEffect keyed on this value fires
+  // correctly for every new path without needing to be reset back to null.
+  newPathRequest?: string | null
   // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
   // undo (see LobbyScene) instead of this file's trace undo/redo history.
   isDrawingMode?: boolean
@@ -158,7 +165,7 @@ function buildTraceInsertRow(
     text_align: trace.textAlign ?? 'center',
     text_color: trace.textColor ?? '#ffffff',
     is_locked: false,
-    border_radius: trace.borderRadius ?? 8,
+    border_radius: trace.borderRadius ?? 0,
     crop_x: trace.cropX ?? 0,
     crop_y: trace.cropY ?? 0,
     crop_width: trace.cropWidth ?? 1,
@@ -241,7 +248,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     const [customFonts, setCustomFonts] = useState<string[]>([]);
 
     // Load font files from public/fonts folder - only once, with cleanup
@@ -349,7 +356,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const multiSelectedIdsRef = useRef(multiSelectedIds)
   const transformModeRef = useRef<TransformMode>(transformMode)
   const selectedTraceIdRef = useRef<string | null>(selectedTraceId)
-  
+  const pathCreationModeRef = useRef(pathCreationMode)
+
   // Keep refs updated
   useEffect(() => { tracesRef.current = traces }, [traces])
   useEffect(() => { editingTraceRef.current = editingTrace }, [editingTrace])
@@ -358,6 +366,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => { multiSelectedIdsRef.current = multiSelectedIds }, [multiSelectedIds])
   useEffect(() => { transformModeRef.current = transformMode }, [transformMode])
   useEffect(() => { selectedTraceIdRef.current = selectedTraceId }, [selectedTraceId])
+  useEffect(() => { pathCreationModeRef.current = pathCreationMode }, [pathCreationMode])
 
   // Apply a group-select request from the Layer panel (clicking a group
   // header selects all its traces so they're easier to move together).
@@ -366,6 +375,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     setMultiSelectedIds(new Set(multiSelectRequest))
     setSelectedTraceId(multiSelectRequest[0] ?? null)
   }, [multiSelectRequest, setSelectedTraceId])
+
+  // A brand-new path was just created (single starting point) -- select it,
+  // open its Customize panel, and drop straight into point-placing mode so
+  // the user keeps clicking to extend it immediately. Reads traces via ref
+  // (not the traces prop directly) and omits it from the dependency array --
+  // traces changes on every point placed while drawing, and this should
+  // only ever fire once per genuinely new request, not on every edit made
+  // while newPathRequest happens to still be set (LobbyScene never resets
+  // it back to null, same as the multiSelectRequest signal above).
+  useEffect(() => {
+    if (!newPathRequest) return
+    const trace = tracesRef.current.find(t => t.id === newPathRequest)
+    if (!trace) return
+    setSelectedTraceId(trace.id)
+    setEditingTrace(trace)
+    setPathCreationMode(true)
+  }, [newPathRequest, setSelectedTraceId])
 
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
@@ -547,12 +573,55 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           document.body.style.cursor = 'default'
           return
         }
+        // Escape while actively placing a new path's points either finishes
+        // it (2+ points already placed -- same as clicking "Done Adding")
+        // or fully discards it (still 0-1 points, i.e. nothing meaningful
+        // was drawn yet), rather than leaving a degenerate stray trace
+        // behind. Uses refs (this listener is registered once, not
+        // re-bound per render) rather than the render-scoped executeDelete.
+        if (pathCreationModeRef.current) {
+          setPathCreationMode(false)
+          const currentSelectedId = selectedTraceIdRef.current
+          if (currentSelectedId) {
+            const trace = tracesRef.current.find(t => t.id === currentSelectedId)
+            const currentEditingTrace = editingTraceRef.current
+            const points = (currentEditingTrace && currentEditingTrace.id === currentSelectedId ? currentEditingTrace.shapePoints : trace?.shapePoints) || []
+            if (points.length < 2) {
+              removeTrace(currentSelectedId)
+              markTraceDeleted(currentSelectedId)
+              knownTraceIdsRef.current?.delete(currentSelectedId)
+            }
+          }
+        }
         setSelectedTraceId(null)
         setMultiSelectedIds(new Set()) // Clear multi-selection on Escape
         setTransformMode('none')
         setIsCropMode(false)
         setContextMenu(null)
         setEditingTrace(null)
+      } else if (e.key === 'Enter' && pathCreationModeRef.current) {
+        // Enter finishes placing points -- same safety net as Escape for an
+        // incomplete path, but (unlike Escape) leaves the Customize panel
+        // open on a successfully-finished path so its arrow-config section
+        // (right above Path Points there) is immediately at hand.
+        const target = e.target as HTMLElement | null
+        const isEditableTarget = target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT'
+        if (isEditableTarget) return
+        e.preventDefault()
+        setPathCreationMode(false)
+        const currentSelectedId = selectedTraceIdRef.current
+        if (currentSelectedId) {
+          const trace = tracesRef.current.find(t => t.id === currentSelectedId)
+          const currentEditingTrace = editingTraceRef.current
+          const points = (currentEditingTrace && currentEditingTrace.id === currentSelectedId ? currentEditingTrace.shapePoints : trace?.shapePoints) || []
+          if (points.length < 2) {
+            removeTrace(currentSelectedId)
+            markTraceDeleted(currentSelectedId)
+            knownTraceIdsRef.current?.delete(currentSelectedId)
+            setSelectedTraceId(null)
+            setEditingTrace(null)
+          }
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -1232,6 +1301,36 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (tracesToDuplicate.length === 0) return
 
     await duplicateTraces(tracesToDuplicate)
+  }
+
+  // Moves a trace to the top/bottom of its own group's (or the ungrouped
+  // pool's) stacking order -- right-click menu equivalent of dragging it to
+  // either end of its group in the Layer panel. Reuses the group's existing
+  // set of z-index values (just permuted) rather than computing new ones,
+  // so it never needs to know the layer's own z-index and can't drift the
+  // group outside whatever numeric range it already occupies.
+  const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
+    const trace = traces.find(t => t.id === traceId)
+    if (!trace) return
+    const groupTraces = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
+    if (groupTraces.length <= 1) {
+      setContextMenu(null)
+      return
+    }
+
+    const sorted = [...groupTraces].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    const zIndexes = sorted.map(t => t.zIndex ?? 0)
+    const withoutTrace = sorted.filter(t => t.id !== traceId)
+    const reordered = edge === 'top' ? [...withoutTrace, trace] : [trace, ...withoutTrace]
+
+    reordered.forEach((t, i) => {
+      const newZIndex = zIndexes[i]
+      if ((t.zIndex ?? 0) !== newZIndex) {
+        updateTraceCustomization(t.id, { zIndex: newZIndex })
+      }
+    })
+
+    setContextMenu(null)
   }
 
   const updateTraceCustomization = (traceId: string, updates: Partial<Trace>, options?: { skipUndo?: boolean }) => {
@@ -3023,7 +3122,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
                     border: showBorder ? `2px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
-                    borderRadius: `${displayTrace.borderRadius ?? 8}px`,
+                    borderRadius: `${displayTrace.borderRadius ?? 0}px`,
                     backgroundColor: showBackground ? (() => {
                       const fc = displayTrace.fillColor || '#191919';
                       const fo = displayTrace.fillOpacity ?? 0.95;
@@ -3984,7 +4083,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         {/* Also show for paths when they're part of a multi-selection so they can be moved together */}
         {selectedTraceId && !isCropMode && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
-          const isPathInMultiSelect = trace?.type === 'shape' && trace?.shapeType === 'path' && multiSelectedIds.size > 0
+          // Must check membership (has), not just multiSelectedIds.size > 0 --
+          // that alone made ANY solo-selected path get the full non-path
+          // corner/edge/rotate handle box (sized to its unrelated default
+          // width/height, positioned at its stale x/y -- see the path
+          // zoom-visibility fix) whenever the user simply had some OTHER,
+          // unrelated multi-selection active, which looked like a random
+          // "empty box" appearing around freshly-selected paths.
+          const isPathInMultiSelect = trace?.type === 'shape' && trace?.shapeType === 'path' && multiSelectedIds.has(trace.id)
           // Hide for paths unless they're in a multi-selection
           if (!trace || (trace.type === 'shape' && trace.shapeType === 'path' && !isPathInMultiSelect)) return null
           
@@ -4327,6 +4433,28 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 >
                   <span className="text-gray-400 text-[10px]">◇</span> Convert to Image
                 </button>
+              )
+            })()}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace) return null
+              const groupSize = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null)).length
+              if (groupSize <= 1) return null
+              return (
+                <>
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                    onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
+                  >
+                    <span className="text-gray-400 text-[10px]">◇</span> Move to Top of Group
+                  </button>
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                    onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
+                  >
+                    <span className="text-gray-400 text-[10px]">◇</span> Move to Bottom of Group
+                  </button>
+                </>
               )
             })()}
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
@@ -4826,14 +4954,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type !== 'shape' && (
                 <div>
                   <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
-                    Border Radius: {editingTrace.borderRadius ?? 8}px
+                    Border Radius: {editingTrace.borderRadius ?? 0}px
                   </label>
                   <input
                     type="range"
                     min="0"
                     max="50"
                     step="1"
-                    value={editingTrace.borderRadius ?? 8}
+                    value={editingTrace.borderRadius ?? 0}
                     onChange={(e) => {
                       const value = parseInt(e.target.value)
                       const updated = { ...editingTrace, borderRadius: value }
@@ -5801,6 +5929,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                   </div>
                 )}
+
+                {/* Border Radius (non-shape traces -- shapes use their own
+                    Corner Radius control instead) */}
+                {seedTrace.type !== 'shape' && (
+                  <div>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                      Border Radius: {seedTrace.borderRadius ?? 0}px
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      step="1"
+                      value={seedTrace.borderRadius ?? 0}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderRadius: parseInt(e.target.value) })}
+                      className="w-full accent-nier-bg"
+                    />
+                  </div>
+                )}
               </div>
 
               <button
@@ -5839,7 +5986,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 // dimensions. The modal shrinks to hug that computed size
                 // (see below) instead of sitting in a fixed 95vw x 95vh box
                 // with the content letterboxed smaller inside it.
-                ? "bg-gray-900 border p-6 flex flex-col relative overflow-auto"
+                // overflow-hidden (not -auto) so any tiny leftover rounding
+                // mismatch just clips a stray pixel instead of popping a
+                // visible scrollbar -- a scrollbar showing at all reads as
+                // broken, a clipped pixel doesn't.
+                ? "bg-gray-900 border p-6 flex flex-col relative overflow-hidden"
                 : "bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
             }
             style={{ borderColor: getBorderColor(modalTrace.type) }}
@@ -5966,7 +6117,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <iframe
                     src={embedUrl}
-                    style={{ width: displayWidth, height: displayHeight }}
+                    // Chrome/Edge still render a default sunken ~2px iframe
+                    // border unless explicitly overridden (Firefox doesn't),
+                    // which was pushing the iframe's rendered box just past
+                    // the computed size and triggering the container's
+                    // overflow scrollbars -- showing a scrolled/cropped
+                    // ("zoomed in") view of the embedded content in exactly
+                    // the browsers that add that border.
+                    frameBorder={0}
+                    style={{ width: displayWidth, height: displayHeight, border: 'none', display: 'block' }}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />

@@ -291,6 +291,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null })
   const lastTouchDistRef = useRef<number | null>(null)
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
+  // One-shot signal telling TraceOverlay "select this brand-new path and
+  // start its point-placing mode immediately" -- see handleCreatePath.
+  const [newPathTraceId, setNewPathTraceId] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
   const [onlinePlayerCount, setOnlinePlayerCount] = useState(1) // Start with 1 (self)
@@ -814,6 +817,71 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     setClickedTracePosition(null)
     setTracePanelInitialType(undefined)
     setTracePanelInitialShapeType(undefined)
+  }
+
+  // Creating a path used to insert a static 2-point line and leave the user
+  // to hunt down the Customize panel to actually draw it or add arrows --
+  // instead, this creates just a single starting point and immediately
+  // hands off to TraceOverlay's point-placing mode (see newPathTraceId /
+  // the "Special handles for path shapes" section there), landing right on
+  // the arrow controls once the user finishes.
+  const handleCreatePath = async (color: string, opacity: number) => {
+    if (!supabase || !userId) return
+    if (!ensureLobbyHasSpace()) return
+
+    const startPosition = clickedTracePosition || positionRef.current
+
+    const layerFields = activeLayerId
+      ? {
+          layer_id: activeLayerId,
+          z_index: await computeZIndexForNewTraceInLayer(
+            activeLayerId,
+            traces.filter(t => t.layerId === activeLayerId).length
+          ),
+        }
+      : {}
+
+    const { data, error } = await supabase.from('traces').insert({
+      user_id: userId,
+      username,
+      type: 'shape',
+      content: 'shape content',
+      position_x: startPosition.x,
+      position_y: startPosition.y,
+      media_url: null,
+      scale: 1.0,
+      rotation: 0.0,
+      border_radius: 0,
+      lobby_id: lobbyId,
+      show_description: false,
+      show_filename: false,
+      shape_type: 'path',
+      shape_color: color,
+      shape_opacity: opacity,
+      show_border: false,
+      show_background: false,
+      shape_points: [{ x: startPosition.x, y: startPosition.y }],
+      path_curve_type: 'straight',
+      ...layerFields,
+    } as any).select()
+
+    if (error) {
+      console.error('Failed to create path:', error)
+      alert('Failed to create path: ' + error.message)
+      return
+    }
+
+    if (data && data[0]) {
+      const dbTrace = data[0] as any
+      const trace = {
+        ...mapRowToTrace(dbTrace),
+        shapePoints: dbTrace.shape_points,
+        pathCurveType: dbTrace.path_curve_type,
+      }
+      useGameStore.getState().addTrace(trace)
+      handleCloseTracePanel()
+      setNewPathTraceId(trace.id)
+    }
   }
 
   // Bulk-convert every embed trace in this atrium into an internal image
@@ -2304,6 +2372,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
+            newPathRequest={newPathTraceId}
             isDrawingMode={isDrawingMode}
             onMultiSelectionChange={setMultiSelectedTraceIds}
             canEdit={canEdit}
@@ -3114,7 +3183,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
+        <TracePanel onClose={handleCloseTracePanel} onCreatePath={handleCreatePath} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
       )}
 
       {/* Pinterest Import Panel */}

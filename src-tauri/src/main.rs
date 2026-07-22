@@ -174,6 +174,20 @@ fn vault_path_exists(path: String) -> Result<bool, String> {
     Ok(PathBuf::from(path).exists())
 }
 
+// Used to fold real local media file sizes into the atrium storage-usage
+// figure (see get_lobby_size_bytes in localDb.ts) -- Postgres/web has actual
+// Supabase Storage object sizes to sum, desktop's equivalent is this.
+// Returns 0 rather than an error for a missing file, since a trace's
+// underlying file can legitimately be gone (moved/deleted outside the app)
+// without that being a fatal condition for a size estimate.
+#[tauri::command]
+fn get_file_size(path: String) -> Result<u64, String> {
+    match fs::metadata(PathBuf::from(path)) {
+        Ok(metadata) => Ok(metadata.len()),
+        Err(_) => Ok(0),
+    }
+}
+
 #[tauri::command]
 fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
     let file_path = PathBuf::from(path);
@@ -277,6 +291,7 @@ fn main() {
             set_vault_base_path,
             prepare_live_database,
             vault_path_exists,
+            get_file_size,
             write_vault_text_file,
             write_binary_file,
             read_binary_file,

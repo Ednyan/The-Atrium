@@ -41,7 +41,7 @@ export function mapRowToTrace(row: any): Trace {
     textAlign: row.text_align ?? 'center',
     textColor: row.text_color ?? '#ffffff',
     isLocked: row.is_locked ?? false,
-    borderRadius: row.border_radius ?? 8,
+    borderRadius: row.border_radius ?? 0,
     cropX: row.crop_x ?? 0,
     cropY: row.crop_y ?? 0,
     cropWidth: row.crop_width ?? 1,

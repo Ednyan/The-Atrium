@@ -33,9 +33,15 @@ interface TracePanelProps {
   initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
   initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
   activeLayerId?: string | null
+  // Submitting a Path skips the normal insert-and-done flow -- instead of a
+  // static pre-made line, this hands off to LobbyScene/TraceOverlay's
+  // point-by-point drawing mode so the user starts placing the path (and
+  // lands on its arrow controls) immediately. Optional so TracePanel doesn't
+  // hard-depend on this -- falls back to the old static-line insert if unset.
+  onCreatePath?: (color: string, opacity: number) => void
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
@@ -74,7 +80,14 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
       return
     }
-    
+
+    // Hand off to the point-by-point drawing flow instead of inserting a
+    // static pre-made line -- see the onCreatePath prop's doc comment.
+    if (traceType === 'shape' && shapeType === 'path' && onCreatePath) {
+      onCreatePath(shapeColor, shapeOpacity)
+      return
+    }
+
     // Validate based on trace type
     if (traceType === 'text' && !content.trim()) return
     if ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) return
@@ -146,6 +159,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         scaleX: 1.0,
         scaleY: 1.0,
         rotation: 0.0,
+        borderRadius: 0,
         // Auto-fit the box to the content so long text isn't clipped
         // and doesn't require a manual resize right after creating it.
         ...(textSize && { width: textSize.width, height: textSize.height }),
@@ -190,6 +204,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           media_url: uploadedUrl || null,
           scale: 1.0,
           rotation: 0.0,
+          border_radius: 0,
           lobby_id: lobbyId,
           show_description: false,
           show_filename: false,
@@ -466,7 +481,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 />
               </div>
 
-              {/* Size Controls */}
+              {/* Size Controls -- meaningless for a path, which is sized by
+                  the points you place, not a fixed box */}
+              {shapeType !== 'path' && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Width (px)</label>
@@ -491,6 +508,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   />
                 </div>
               </div>
+              )}
+              {shapeType === 'path' && (
+                <p className="text-nier-border/50 text-[9px] tracking-wider uppercase">
+                  ◇ Click "Start Path" below, then click the canvas to place points. Enter or "Done Adding" finishes it; Escape cancels.
+                </p>
+              )}
 
               {/* Corner Radius (Rectangle and Triangle only) */}
               {(shapeType === 'rectangle' || shapeType === 'triangle') && (
@@ -555,7 +578,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               disabled={isSubmitting || lobbyFull || (traceType === 'text' && !content.trim()) || ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) || (traceType === 'embed' && !mediaUrl)}
               className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : 'Leave Trace'}
+              {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : (traceType === 'shape' && shapeType === 'path') ? 'Start Path' : 'Leave Trace'}
             </button>
           </div>
       </form>

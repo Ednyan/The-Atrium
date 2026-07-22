@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
@@ -11,6 +11,11 @@ import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
 // overlay flash on, since the trace row's drag bubbled past any gaps in the
 // panel that don't have their own onDragOver/stopPropagation.
 export const TRACE_DRAG_DATA_KEY = 'application/x-atrium-trace-id'
+// Separate data key from TRACE_DRAG_DATA_KEY so a group-header drag (to
+// reorder groups) and a trace-row drag (to move a trace into a different
+// group) can share the same drop targets without being confused for each
+// other.
+const LAYER_DRAG_DATA_KEY = 'application/x-atrium-layer-id'
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
 
 interface LayerPanelProps {
@@ -43,7 +48,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
+  // Lets the selected-trace effect below scroll the right row into view
+  // without any CSS-selector escaping concerns (trace ids are plain UUIDs,
+  // but this avoids relying on that).
+  const traceRowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const setTraceRowRef = (traceId: string) => (el: HTMLDivElement | null) => {
+    if (el) traceRowRefs.current.set(traceId, el)
+    else traceRowRefs.current.delete(traceId)
+  }
   // Dialog state for create/rename/delete (replaces prompt/confirm which don't work in Tauri)
   const [dialogMode, setDialogMode] = useState<'create' | 'rename' | 'delete' | null>(null)
   const [dialogInput, setDialogInput] = useState('')
@@ -407,6 +421,76 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  const handleLayerDragStart = (e: React.DragEvent<HTMLSpanElement>, layerId: string) => {
+    if (!canEdit) return
+    e.stopPropagation()
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData(LAYER_DRAG_DATA_KEY, layerId)
+    setDraggedLayerId(layerId)
+  }
+
+  const handleLayerDragEnd = () => {
+    setDraggedLayerId(null)
+    setDropTargetId(null)
+  }
+
+  // Shared with each group card's existing trace-drop-into-group handlers
+  // (handleDropTargetDragOver/Drop) -- a group header doubles as both a
+  // trace drop target and a group reorder-drop target, disambiguated by
+  // whether a layer drag or a trace drag is currently in progress.
+  const handleGroupCardDragOver = (e: React.DragEvent<HTMLDivElement>, targetLayerId: string) => {
+    if (draggedLayerId) {
+      if (draggedLayerId === targetLayerId) return
+      e.preventDefault()
+      e.stopPropagation()
+      e.dataTransfer.dropEffect = 'move'
+      if (dropTargetId !== targetLayerId) setDropTargetId(targetLayerId)
+      return
+    }
+    handleDropTargetDragOver(e, targetLayerId)
+  }
+
+  const handleGroupCardDrop = async (e: React.DragEvent<HTMLDivElement>, targetLayerId: string) => {
+    if (draggedLayerId) {
+      e.preventDefault()
+      e.stopPropagation()
+      const sourceLayerId = draggedLayerId
+      setDropTargetId(null)
+      setDraggedLayerId(null)
+      if (sourceLayerId === targetLayerId) return
+      await reorderLayers(sourceLayerId, targetLayerId)
+      return
+    }
+    await handleDropTargetDrop(e, targetLayerId)
+  }
+
+  // Moves a group to sit where targetLayerId currently is, renumbering every
+  // layer's z_index to match the new visual order (rather than a pairwise
+  // swap like moveLayerUp/moveLayerDown, since a drag can reorder across
+  // more than one position at once).
+  const reorderLayers = async (sourceLayerId: string, targetLayerId: string) => {
+    if (!supabase || !canEdit) return
+
+    const sorted = [...layers].sort((a, b) => b.zIndex - a.zIndex)
+    const draggedIndex = sorted.findIndex(l => l.id === sourceLayerId)
+    const targetIndex = sorted.findIndex(l => l.id === targetLayerId)
+    if (draggedIndex === -1 || targetIndex === -1) return
+
+    const reordered = [...sorted]
+    const [movedLayer] = reordered.splice(draggedIndex, 1)
+    reordered.splice(targetIndex, 0, movedLayer)
+
+    const total = reordered.length
+    for (let i = 0; i < total; i++) {
+      const newZIndex = total - i
+      if (reordered[i].zIndex !== newZIndex) {
+        await updateLayerZIndex(reordered[i].id, newZIndex)
+      }
+    }
+
+    await loadLayers()
+  }
+
   const updateLayerZIndex = async (layerId: string, newZIndex: number) => {
     if (!supabase || !canEdit) return
 
@@ -432,6 +516,28 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
     setExpandedGroups(newExpanded)
   }
+
+  // Auto-expand whatever group contains the trace just selected on canvas,
+  // so its row is actually in the DOM for the scroll-into-view effect below
+  // to find.
+  useEffect(() => {
+    if (!selectedTraceId) return
+    const selectedTrace = traces.find(t => t.id === selectedTraceId)
+    if (!selectedTrace || !selectedTrace.layerId) return
+    if (expandedGroups.has(selectedTrace.layerId)) return
+    setExpandedGroups(prev => new Set(prev).add(selectedTrace.layerId!))
+  }, [selectedTraceId, traces])
+
+  // Scrolls the selected trace's row into view within the panel whenever
+  // selection changes (e.g. clicking a trace on the canvas) -- runs after
+  // the auto-expand effect above so a just-revealed row is already in the DOM.
+  useEffect(() => {
+    if (!selectedTraceId) return
+    const raf = requestAnimationFrame(() => {
+      traceRowRefs.current.get(selectedTraceId)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [selectedTraceId, expandedGroups])
 
   const moveLayerUp = async (layer: Layer) => {
     if (!supabase) return
@@ -580,16 +686,27 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     ? 'border-emerald-400 bg-emerald-900/20'
                     : 'border-gray-600 bg-gray-800/80'
               }`}
-              onDragOver={(e) => handleDropTargetDragOver(e, layer.id)}
-              onDrop={(e) => handleDropTargetDrop(e, layer.id)}
+              onDragOver={(e) => handleGroupCardDragOver(e, layer.id)}
+              onDrop={(e) => handleGroupCardDrop(e, layer.id)}
               onDragLeave={() => handleDropTargetLeave(layer.id)}
             >
               {/* Group header */}
               <div className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer">
                 <div
                   className="flex items-center gap-1 flex-1"
-                  title="Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group."
+                  title="Drag the grip to reorder groups. Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group."
                 >
+                  {canEdit && (
+                    <span
+                      className="text-gray-500 text-[10px] px-0.5 cursor-grab active:cursor-grabbing hover:text-gray-300"
+                      draggable
+                      onDragStart={(e) => handleLayerDragStart(e, layer.id)}
+                      onDragEnd={handleLayerDragEnd}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      ⠿
+                    </span>
+                  )}
                   <span
                     className="text-gray-400 text-[10px] px-1 cursor-pointer"
                     onClick={(e) => {
@@ -688,6 +805,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   {layerTraces.map((trace) => (
                     <div
                       key={trace.id}
+                      ref={setTraceRowRef(trace.id)}
                       draggable={canEdit}
                       className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                         trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
@@ -808,6 +926,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               {ungroupedTraces.map((trace) => (
                 <div
                   key={trace.id}
+                  ref={setTraceRowRef(trace.id)}
                   draggable={canEdit}
                   className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
                     trace.id === selectedTraceId || multiSelectedSet.has(trace.id)

@@ -683,7 +683,7 @@ export async function initLocalDb(): Promise<void> {
       text_align TEXT DEFAULT 'center',
       text_color TEXT DEFAULT '#ffffff',
       is_locked INTEGER DEFAULT 0,
-      border_radius REAL DEFAULT 8,
+      border_radius REAL DEFAULT 0,
       crop_x REAL DEFAULT 0,
       crop_y REAL DEFAULT 0,
       crop_width REAL DEFAULT 1,
@@ -1268,12 +1268,38 @@ async function localRpc(fnName: string, params: any): Promise<{ data: any; error
   try {
     switch (fnName) {
       case 'get_lobby_size_bytes': {
-        // Sum the approximate size of all traces in this lobby
+        // Sum the approximate row size of all traces in this lobby...
         const rows = await db.select<any[]>(
           `SELECT SUM(LENGTH(CAST(id AS TEXT)) + LENGTH(COALESCE(content,'')) + LENGTH(COALESCE(image_url,'')) + LENGTH(COALESCE(media_url,'')) + LENGTH(COALESCE(shape_points,'')) + 200) as total_bytes FROM traces WHERE lobby_id = ?`,
           [params.p_lobby_id]
         )
-        return { data: rows[0]?.total_bytes || 0, error: null }
+        const rowBytes = rows[0]?.total_bytes || 0
+
+        // ...plus the ACTUAL size of any local media file each trace points
+        // at (image/audio/video uploads) -- media_url is just a short
+        // local:// reference string, so the row-size sum above never
+        // reflects real file size the way it does on web (where the
+        // Postgres version of this function sums real Supabase Storage
+        // object sizes). Desktop has no equivalent limit enforced
+        // (isLobbyFull() is hardcoded false there), but the usage figure is
+        // still shown to the user, so it should be real.
+        const mediaRows = await db.select<any[]>(
+          `SELECT media_url FROM traces WHERE lobby_id = ? AND media_url LIKE 'local://%'`,
+          [params.p_lobby_id]
+        )
+        let mediaBytes = 0
+        for (const row of mediaRows) {
+          try {
+            const filePath = await resolveLocalMediaFilePath(row.media_url)
+            if (!filePath) continue
+            mediaBytes += await invoke<number>('get_file_size', { path: filePath })
+          } catch {
+            // A trace whose underlying file is missing/unreadable just
+            // doesn't contribute to the total -- not fatal to the estimate.
+          }
+        }
+
+        return { data: rowBytes + mediaBytes, error: null }
       }
 
       case 'lobby_has_password': {
