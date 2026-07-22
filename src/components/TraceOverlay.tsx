@@ -310,13 +310,30 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [modalTrace])
   const [copiedModalText, setCopiedModalText] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
-  // Accordion-style submenus inside the trace context menu (Move Layer,
-  // Transformations) -- kept as their own state rather than nested menus
-  // with flyout positioning, since the menu already needed to scroll for
-  // tall lists and a side-flyout adds viewport-edge positioning to get
-  // right for comparatively little benefit here.
+  // Side-flyout submenus inside the trace context menu (Move Layer,
+  // Transformations) -- opened/closed on hover rather than click, with a
+  // short close delay so moving the mouse diagonally from the trigger row
+  // to the flyout doesn't close it prematurely.
   const [contextMenuMoveOpen, setContextMenuMoveOpen] = useState(false)
   const [contextMenuTransformOpen, setContextMenuTransformOpen] = useState(false)
+  const moveFlyoutCloseTimer = useRef<number | null>(null)
+  const transformFlyoutCloseTimer = useRef<number | null>(null)
+  const openMoveFlyout = () => {
+    if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
+    setContextMenuMoveOpen(true)
+  }
+  const scheduleCloseMoveFlyout = () => {
+    if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
+    moveFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuMoveOpen(false), 200)
+  }
+  const openTransformFlyout = () => {
+    if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
+    setContextMenuTransformOpen(true)
+  }
+  const scheduleCloseTransformFlyout = () => {
+    if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
+    transformFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuTransformOpen(false), 200)
+  }
   useEffect(() => {
     setContextMenuMoveOpen(false)
     setContextMenuTransformOpen(false)
@@ -4309,7 +4326,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       {/* Context Menu -- hidden entirely (not just the edit items) when
           canEdit is false, since even inspecting via this menu leads only to
           editing actions */}
-      {contextMenu && canEdit && (
+      {contextMenu && canEdit && (() => {
+        // Side flyouts (Move Layer, Transformations) open to the right of
+        // the menu by default; flip to the left if there isn't roughly
+        // enough room for one (menu width + flyout width) between the
+        // click point and the right edge of the viewport.
+        const contextMenuFlyoutOnLeft = contextMenu.x > window.innerWidth - 400
+        return (
         <>
           {/* Menu */}
           <div
@@ -4389,93 +4412,102 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               <span className="text-gray-400 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? 'Enable Clicks' : 'Ignore Clicks'}
             </button>
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
-            {/* Transformations submenu -- accordion-style (expands inline)
-                rather than a side flyout, grouping the crop/rotate/flip
-                resets that used to each take their own row in this menu. */}
-            <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
-              onClick={() => setContextMenuTransformOpen(!contextMenuTransformOpen)}
+            {/* Transformations submenu -- opens as a side flyout on hover,
+                grouping the crop/rotate/flip resets that used to each take
+                their own row in this menu. */}
+            <div
+              className="relative"
+              onMouseEnter={openTransformFlyout}
+              onMouseLeave={scheduleCloseTransformFlyout}
             >
-              <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Transformations</span>
-              <span className="text-gray-500 text-[9px]">{contextMenuTransformOpen ? '▼' : '▶'}</span>
-            </button>
-            {contextMenuTransformOpen && (
-              <div className="bg-gray-900/50">
-                <button
-                  className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
-                  onClick={async () => {
-                    const trace = traces.find(t => t.id === contextMenu.traceId)
-                    if (trace) {
-                      updateTraceCustomization(trace.id, {
-                        cropX: 0,
-                        cropY: 0,
-                        cropWidth: 1,
-                        cropHeight: 1,
-                      })
-                    }
-                    setContextMenu(null)
-                  }}
+              <button
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+              >
+                <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Transformations</span>
+                <span className="text-gray-500 text-[9px]">▶</span>
+              </button>
+              {contextMenuTransformOpen && (
+                <div
+                  className={`absolute top-0 ${contextMenuFlyoutOnLeft ? 'right-full mr-px' : 'left-full ml-px'} min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]`}
+                  onMouseEnter={openTransformFlyout}
+                  onMouseLeave={scheduleCloseTransformFlyout}
                 >
-                  Reset Cropping
-                </button>
-                <button
-                  className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
-                  onClick={async () => {
-                    const trace = traces.find(t => t.id === contextMenu.traceId)
-                    if (trace) {
-                      const transform = getTraceTransform(trace)
-                      const avgScale = (transform.scaleX + transform.scaleY) / 2
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                    onClick={async () => {
+                      const trace = traces.find(t => t.id === contextMenu.traceId)
+                      if (trace) {
+                        updateTraceCustomization(trace.id, {
+                          cropX: 0,
+                          cropY: 0,
+                          cropWidth: 1,
+                          cropHeight: 1,
+                        })
+                      }
+                      setContextMenu(null)
+                    }}
+                  >
+                    Reset Cropping
+                  </button>
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                    onClick={async () => {
+                      const trace = traces.find(t => t.id === contextMenu.traceId)
+                      if (trace) {
+                        const transform = getTraceTransform(trace)
+                        const avgScale = (transform.scaleX + transform.scaleY) / 2
 
-                      updateTraceTransform(trace.id, {
-                        scaleX: avgScale,
-                        scaleY: avgScale,
-                      })
-                    }
-                    setContextMenu(null)
-                  }}
-                >
-                  Reset Aspect Ratio
-                </button>
-                <button
-                  className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
-                  onClick={async () => {
+                        updateTraceTransform(trace.id, {
+                          scaleX: avgScale,
+                          scaleY: avgScale,
+                        })
+                      }
+                      setContextMenu(null)
+                    }}
+                  >
+                    Reset Aspect Ratio
+                  </button>
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                    onClick={async () => {
+                      const trace = traces.find(t => t.id === contextMenu.traceId)
+                      if (trace) {
+                        updateTraceTransform(trace.id, { rotation: 0 })
+                      }
+                      setContextMenu(null)
+                    }}
+                  >
+                    Reset Rotation
+                  </button>
+                  {(() => {
                     const trace = traces.find(t => t.id === contextMenu.traceId)
-                    if (trace) {
-                      updateTraceTransform(trace.id, { rotation: 0 })
-                    }
-                    setContextMenu(null)
-                  }}
-                >
-                  Reset Rotation
-                </button>
-                {(() => {
-                  const trace = traces.find(t => t.id === contextMenu.traceId)
-                  if (!trace || trace.type === 'audio' || trace.type === 'video') return null
-                  return (
-                    <>
-                      <button
-                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
-                        onClick={() => {
-                          updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
-                          setContextMenu(null)
-                        }}
-                      >
-                        Flip Horizontal
-                      </button>
-                      <button
-                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
-                        onClick={() => {
-                          updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
-                          setContextMenu(null)
-                        }}
-                      >
-                        Flip Vertical
-                      </button>
-                    </>
-                  )
-                })()}
-              </div>
-            )}
+                    if (!trace || trace.type === 'audio' || trace.type === 'video') return null
+                    return (
+                      <>
+                        <button
+                          className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                          onClick={() => {
+                            updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
+                            setContextMenu(null)
+                          }}
+                        >
+                          Flip Horizontal
+                        </button>
+                        <button
+                          className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                          onClick={() => {
+                            updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
+                            setContextMenu(null)
+                          }}
+                        >
+                          Flip Vertical
+                        </button>
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+            </div>
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!isDesktop || !trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
@@ -4494,8 +4526,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </button>
               )
             })()}
-            {/* Move Layer submenu -- same accordion pattern, groups the four
-                z-order actions (one-step up/down, jump to top/bottom of
+            {/* Move Layer submenu -- same side-flyout pattern, groups the
+                four z-order actions (one-step up/down, jump to top/bottom of
                 this trace's group) that used to each take their own row. */}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -4503,43 +4535,50 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               const groupSize = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null)).length
               if (groupSize <= 1) return null
               return (
-                <>
+                <div
+                  className="relative"
+                  onMouseEnter={openMoveFlyout}
+                  onMouseLeave={scheduleCloseMoveFlyout}
+                >
                   <button
                     className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
-                    onClick={() => setContextMenuMoveOpen(!contextMenuMoveOpen)}
                   >
                     <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move Layer</span>
-                    <span className="text-gray-500 text-[9px]">{contextMenuMoveOpen ? '▼' : '▶'}</span>
+                    <span className="text-gray-500 text-[9px]">▶</span>
                   </button>
                   {contextMenuMoveOpen && (
-                    <div className="bg-gray-900/50">
+                    <div
+                      className={`absolute top-0 ${contextMenuFlyoutOnLeft ? 'right-full mr-px' : 'left-full ml-px'} min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]`}
+                      onMouseEnter={openMoveFlyout}
+                      onMouseLeave={scheduleCloseMoveFlyout}
+                    >
                       <button
-                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
                         onClick={() => moveTraceOneStep(trace.id, 'up')}
                       >
                         Move Up
                       </button>
                       <button
-                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
                         onClick={() => moveTraceOneStep(trace.id, 'down')}
                       >
                         Move Down
                       </button>
                       <button
-                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
                       >
                         Move to Top of Group
                       </button>
                       <button
-                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
                       >
                         Move to Bottom of Group
                       </button>
                     </div>
                   )}
-                </>
+                </div>
               )
             })()}
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
@@ -4572,7 +4611,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             onClick={() => setContextMenu(null)}
           />
         </>
-      )}
+        )
+      })()}
 
       {/* Customization Dialog */}
       {editingTrace && canEdit && (

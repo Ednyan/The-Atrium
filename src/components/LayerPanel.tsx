@@ -374,6 +374,40 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
   }
 
+  // Drops a dragged trace directly onto another trace's row -- inserts it
+  // immediately before that trace in its group (moving it into that group
+  // first if it wasn't already there), rather than only being able to drop
+  // onto a group header (which always lands at the top) or nudge one step
+  // via the up/down buttons.
+  const moveTraceToPosition = async (traceId: string, targetTraceId: string) => {
+    if (!supabase || !canEdit || traceId === targetTraceId) return
+    const draggedTrace = traces.find(t => t.id === traceId)
+    const targetTrace = traces.find(t => t.id === targetTraceId)
+    if (!draggedTrace || !targetTrace) return
+
+    const targetLayerId = targetTrace.layerId ?? null
+
+    if ((draggedTrace.layerId ?? null) !== targetLayerId) {
+      const { error } = await (supabase.from('traces') as any)
+        .update({ layer_id: targetLayerId })
+        .eq('id', traceId)
+      if (error) {
+        console.error('Error moving trace to layer:', error)
+        return
+      }
+    }
+
+    const existingInTarget = getTracesForLayer(targetLayerId).filter(t => t.id !== traceId)
+    const targetIndex = existingInTarget.findIndex(t => t.id === targetTraceId)
+    if (targetIndex === -1) return
+
+    const finalOrder = [...existingInTarget]
+    finalOrder.splice(targetIndex, 0, { ...draggedTrace, layerId: targetLayerId })
+
+    const layerZIndex = targetLayerId === null ? undefined : layers.find(l => l.id === targetLayerId)?.zIndex
+    await persistTraceOrder(targetLayerId, finalOrder, layerZIndex)
+  }
+
   const handleTraceDragStart = (e: React.DragEvent<HTMLDivElement>, traceId: string) => {
     e.stopPropagation()
     e.dataTransfer.effectAllowed = 'move'
@@ -384,6 +418,35 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const handleTraceDragEnd = () => {
     setDraggedTraceId(null)
     setDropTargetId(null)
+  }
+
+  const handleTraceRowDragOver = (e: React.DragEvent<HTMLDivElement>, targetTraceId: string) => {
+    if (!draggedTraceId || draggedTraceId === targetTraceId) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    if (dropTargetId !== targetTraceId) setDropTargetId(targetTraceId)
+  }
+
+  const handleTraceRowDrop = async (e: React.DragEvent<HTMLDivElement>, targetTraceId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const traceId = e.dataTransfer.getData(TRACE_DRAG_DATA_KEY) || draggedTraceId
+    setDropTargetId(null)
+    setDraggedTraceId(null)
+    if (!traceId || traceId === targetTraceId) return
+
+    // Dragging any one of a multi-selection moves the whole selection to
+    // the target's group together (landing at the top there, same as
+    // dropping on a group header), rather than trying to reason about
+    // precise ordering for several traces against one drop point at once.
+    if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
+      const targetTrace = traces.find(t => t.id === targetTraceId)
+      await moveTracesToLayer(Array.from(multiSelectedSet), targetTrace?.layerId ?? null)
+      return
+    }
+
+    await moveTraceToPosition(traceId, targetTraceId)
   }
 
   const handleDropTargetDragOver = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
@@ -706,6 +769,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     // which looked like drag-reordering not working at all.
                     <span
                       className="grid grid-cols-2 gap-[2px] px-1.5 py-1 cursor-grab active:cursor-grabbing group/grip"
+                      style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
                       draggable
                       onDragStart={(e) => handleLayerDragStart(e, layer.id)}
                       onDragEnd={handleLayerDragEnd}
@@ -713,7 +777,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       title="Drag to reorder"
                     >
                       {Array.from({ length: 6 }).map((_, i) => (
-                        <span key={i} className="w-[3px] h-[3px] rounded-full bg-gray-500 group-hover/grip:bg-gray-300" />
+                        <span
+                          key={i}
+                          className="w-[3px] h-[3px] rounded-full bg-gray-500 group-hover/grip:bg-gray-300 pointer-events-none"
+                          style={{ userSelect: 'none' }}
+                        />
                       ))}
                     </span>
                   )}
@@ -817,13 +885,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       key={trace.id}
                       ref={setTraceRowRef(trace.id)}
                       draggable={canEdit}
+                      style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
                       className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
-                        trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
+                        dropTargetId === trace.id
+                          ? 'border-emerald-400 bg-emerald-900/20'
+                          : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                           ? 'border-blue-400 bg-blue-900/30'
                           : 'border-gray-600'
                       }`}
                       onDragStart={(e) => handleTraceDragStart(e, trace.id)}
                       onDragEnd={handleTraceDragEnd}
+                      onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
+                      onDrop={(e) => handleTraceRowDrop(e, trace.id)}
                       onClick={() => {
                         onSelectTrace?.(trace.id)
                       }}
@@ -938,13 +1011,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   key={trace.id}
                   ref={setTraceRowRef(trace.id)}
                   draggable={canEdit}
+                  style={{ userSelect: 'none', WebkitUserDrag: 'element' } as React.CSSProperties}
                   className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
-                    trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
+                    dropTargetId === trace.id
+                      ? 'border-emerald-400 bg-emerald-900/20'
+                      : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                       ? 'border-blue-400 bg-blue-900/30'
                       : 'border-gray-600'
                   }`}
                   onDragStart={(e) => handleTraceDragStart(e, trace.id)}
                   onDragEnd={handleTraceDragEnd}
+                  onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
+                  onDrop={(e) => handleTraceRowDrop(e, trace.id)}
                   onClick={() => {
                     onSelectTrace?.(trace.id)
                   }}
