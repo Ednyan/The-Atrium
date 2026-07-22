@@ -50,6 +50,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
+  // True while a drag-reorder is being persisted, so we can show a small
+  // spinner -- the DB round-trip (plus realtime settling) can take a moment.
+  const [isReordering, setIsReordering] = useState(false)
   // Lets the selected-trace effect below scroll the right row into view
   // without any CSS-selector escaping concerns (trace ids are plain UUIDs,
   // but this avoids relying on that).
@@ -371,7 +374,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     ;[reorderedTraces[currentIndex], reorderedTraces[targetIndex]] = [reorderedTraces[targetIndex], reorderedTraces[currentIndex]]
 
     const layerZIndex = layerId === null ? undefined : layers.find(l => l.id === layerId)?.zIndex
-    await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
+    setIsReordering(true)
+    try {
+      await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
+    } finally {
+      setIsReordering(false)
+    }
   }
 
   // Drops a dragged trace directly onto another trace's row -- inserts it
@@ -415,6 +423,15 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     e.stopPropagation()
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData(TRACE_DRAG_DATA_KEY, traceId)
+    // Drag the whole row as the drag image, not the little grip glyph, so
+    // it's clear the layer itself is what's moving. The grip's own rect is
+    // the drag origin, so offset the image to sit under the cursor.
+    const row = traceRowRefs.current.get(traceId)
+    if (row) {
+      const gripRect = e.currentTarget.getBoundingClientRect()
+      const rowRect = row.getBoundingClientRect()
+      e.dataTransfer.setDragImage(row, gripRect.left - rowRect.left + 8, gripRect.top - rowRect.top + 8)
+    }
     setDraggedTraceId(traceId)
   }
 
@@ -439,17 +456,21 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setDraggedTraceId(null)
     if (!traceId || traceId === targetTraceId) return
 
-    // Dragging any one of a multi-selection moves the whole selection to
-    // the target's group together (landing at the top there, same as
-    // dropping on a group header), rather than trying to reason about
-    // precise ordering for several traces against one drop point at once.
-    if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
-      const targetTrace = traces.find(t => t.id === targetTraceId)
-      await moveTracesToLayer(Array.from(multiSelectedSet), targetTrace?.layerId ?? null)
-      return
+    setIsReordering(true)
+    try {
+      // Dragging any one of a multi-selection moves the whole selection to
+      // the target's group together (landing at the top there, same as
+      // dropping on a group header), rather than trying to reason about
+      // precise ordering for several traces against one drop point at once.
+      if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
+        const targetTrace = traces.find(t => t.id === targetTraceId)
+        await moveTracesToLayer(Array.from(multiSelectedSet), targetTrace?.layerId ?? null)
+        return
+      }
+      await moveTraceToPosition(traceId, targetTraceId)
+    } finally {
+      setIsReordering(false)
     }
-
-    await moveTraceToPosition(traceId, targetTraceId)
   }
 
   const handleDropTargetDragOver = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
@@ -472,12 +493,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     if (!traceId) return
 
-    // Dragging any one of a multi-selection moves the whole selection to
-    // the same group together, instead of stranding the rest behind.
-    if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
-      await moveTracesToLayer(Array.from(multiSelectedSet), layerId)
-    } else {
-      await moveTraceToLayer(traceId, layerId)
+    setIsReordering(true)
+    try {
+      // Dragging any one of a multi-selection moves the whole selection to
+      // the same group together, instead of stranding the rest behind.
+      if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
+        await moveTracesToLayer(Array.from(multiSelectedSet), layerId)
+      } else {
+        await moveTraceToLayer(traceId, layerId)
+      }
+    } finally {
+      setIsReordering(false)
     }
   }
 
@@ -546,15 +572,19 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const [movedLayer] = reordered.splice(draggedIndex, 1)
     reordered.splice(targetIndex, 0, movedLayer)
 
-    const total = reordered.length
-    for (let i = 0; i < total; i++) {
-      const newZIndex = total - i
-      if (reordered[i].zIndex !== newZIndex) {
-        await updateLayerZIndex(reordered[i].id, newZIndex)
+    setIsReordering(true)
+    try {
+      const total = reordered.length
+      for (let i = 0; i < total; i++) {
+        const newZIndex = total - i
+        if (reordered[i].zIndex !== newZIndex) {
+          await updateLayerZIndex(reordered[i].id, newZIndex)
+        }
       }
+      await loadLayers()
+    } finally {
+      setIsReordering(false)
     }
-
-    await loadLayers()
   }
 
   const updateLayerZIndex = async (layerId: string, newZIndex: number) => {
@@ -658,8 +688,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0)) // Highest z-index first (top of layer)
   }
 
-  // Get ungrouped traces
-  const ungroupedTraces = traces.filter(t => !t.layerId)
+  // Get ungrouped traces, sorted the same way grouped traces are (highest
+  // z-index first) so the rendered order matches what moveTraceToPosition /
+  // moveTraceWithinLayer reason about -- otherwise reordering within the
+  // ungrouped section appears to do nothing.
+  const ungroupedTraces = getTracesForLayer(null)
 
   // Sort layers by z-index (highest first)
   const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
@@ -691,6 +724,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
           <h2 className="text-sm text-white tracking-[0.15em] uppercase">Layers</h2>
+          {isReordering && (
+            <span
+              className="w-3 h-3 border border-gray-500 border-t-white rounded-full animate-spin"
+              title="Updating order…"
+            />
+          )}
         </div>
         <div className="flex gap-2">
           {canEdit && (

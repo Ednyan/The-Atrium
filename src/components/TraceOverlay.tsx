@@ -4447,7 +4447,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </button>
               {contextMenuTransformOpen && transformFlyoutRect && (
                 <div
-                  className="fixed min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                  className="fixed w-max bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
                   style={
                     contextMenuFlyoutOnLeft
                       ? { top: transformFlyoutRect.top, right: window.innerWidth - transformFlyoutRect.left + 1 }
@@ -4572,7 +4572,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </button>
                   {contextMenuMoveOpen && moveFlyoutRect && (
                     <div
-                      className="fixed min-w-[190px] bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                      className="fixed w-max bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
                           ? { top: moveFlyoutRect.top, right: window.innerWidth - moveFlyoutRect.left + 1 }
