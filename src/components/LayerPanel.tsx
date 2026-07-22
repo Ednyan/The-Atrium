@@ -517,27 +517,28 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setExpandedGroups(newExpanded)
   }
 
-  // Auto-expand whatever group contains the trace just selected on canvas,
-  // so its row is actually in the DOM for the scroll-into-view effect below
-  // to find.
+  // Auto-expands whatever group contains the selected trace, and scrolls its
+  // row into view -- both on a genuine selection change (e.g. clicking a
+  // trace on canvas) AND the very first time this effect runs at all, which
+  // covers the panel being freshly opened while a trace is already selected
+  // (previously that case needed the user to deselect/reselect to trigger
+  // it, since a bare "on selection change" effect never fires if the
+  // selection didn't actually change since mount).
+  // One merged effect (not two) so the expand-then-scroll sequence can't
+  // race across separate effects: expanding schedules a state update, which
+  // re-runs this SAME effect once expandedGroups actually changes, so the
+  // scroll attempt that follows always sees the up-to-date DOM.
   useEffect(() => {
     if (!selectedTraceId) return
     const selectedTrace = traces.find(t => t.id === selectedTraceId)
-    if (!selectedTrace || !selectedTrace.layerId) return
-    if (expandedGroups.has(selectedTrace.layerId)) return
-    setExpandedGroups(prev => new Set(prev).add(selectedTrace.layerId!))
-  }, [selectedTraceId, traces])
-
-  // Scrolls the selected trace's row into view within the panel whenever
-  // selection changes (e.g. clicking a trace on the canvas) -- runs after
-  // the auto-expand effect above so a just-revealed row is already in the DOM.
-  useEffect(() => {
-    if (!selectedTraceId) return
+    if (selectedTrace?.layerId && !expandedGroups.has(selectedTrace.layerId)) {
+      setExpandedGroups(prev => new Set(prev).add(selectedTrace.layerId!))
+    }
     const raf = requestAnimationFrame(() => {
       traceRowRefs.current.get(selectedTraceId)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     })
     return () => cancelAnimationFrame(raf)
-  }, [selectedTraceId, expandedGroups])
+  }, [selectedTraceId, traces, expandedGroups])
 
   const moveLayerUp = async (layer: Layer) => {
     if (!supabase) return
@@ -697,14 +698,23 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   title="Drag the grip to reorder groups. Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group."
                 >
                   {canEdit && (
+                    // Drawn from divs, not a font glyph (a braille-pattern
+                    // grip character here previously) -- whether that glyph
+                    // actually renders depends on the system/webview's font
+                    // fallback for a fairly obscure Unicode block, so it may
+                    // have been invisible (and un-grabbable) for some users,
+                    // which looked like drag-reordering not working at all.
                     <span
-                      className="text-gray-500 text-[10px] px-0.5 cursor-grab active:cursor-grabbing hover:text-gray-300"
+                      className="grid grid-cols-2 gap-[2px] px-1.5 py-1 cursor-grab active:cursor-grabbing group/grip"
                       draggable
                       onDragStart={(e) => handleLayerDragStart(e, layer.id)}
                       onDragEnd={handleLayerDragEnd}
                       onClick={(e) => e.stopPropagation()}
+                      title="Drag to reorder"
                     >
-                      ⠿
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <span key={i} className="w-[3px] h-[3px] rounded-full bg-gray-500 group-hover/grip:bg-gray-300" />
+                      ))}
                     </span>
                   )}
                   <span

@@ -310,6 +310,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [modalTrace])
   const [copiedModalText, setCopiedModalText] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
+  // Accordion-style submenus inside the trace context menu (Move Layer,
+  // Transformations) -- kept as their own state rather than nested menus
+  // with flyout positioning, since the menu already needed to scroll for
+  // tall lists and a side-flyout adds viewport-edge positioning to get
+  // right for comparatively little benefit here.
+  const [contextMenuMoveOpen, setContextMenuMoveOpen] = useState(false)
+  const [contextMenuTransformOpen, setContextMenuTransformOpen] = useState(false)
+  useEffect(() => {
+    setContextMenuMoveOpen(false)
+    setContextMenuTransformOpen(false)
+  }, [contextMenu?.traceId])
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
@@ -1322,6 +1333,40 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const zIndexes = sorted.map(t => t.zIndex ?? 0)
     const withoutTrace = sorted.filter(t => t.id !== traceId)
     const reordered = edge === 'top' ? [...withoutTrace, trace] : [trace, ...withoutTrace]
+
+    reordered.forEach((t, i) => {
+      const newZIndex = zIndexes[i]
+      if ((t.zIndex ?? 0) !== newZIndex) {
+        updateTraceCustomization(t.id, { zIndex: newZIndex })
+      }
+    })
+
+    setContextMenu(null)
+  }
+
+  // One-step version of moveTraceToGroupEdge -- swaps with just the next
+  // trace up/down in the same group's stacking order, instead of jumping
+  // all the way to the front/back.
+  const moveTraceOneStep = (traceId: string, direction: 'up' | 'down') => {
+    const trace = traces.find(t => t.id === traceId)
+    if (!trace) return
+    const groupTraces = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
+    if (groupTraces.length <= 1) {
+      setContextMenu(null)
+      return
+    }
+
+    const sorted = [...groupTraces].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    const zIndexes = sorted.map(t => t.zIndex ?? 0)
+    const currentIndex = sorted.findIndex(t => t.id === traceId)
+    const targetIndex = direction === 'up' ? currentIndex + 1 : currentIndex - 1
+    if (currentIndex === -1 || targetIndex < 0 || targetIndex >= sorted.length) {
+      setContextMenu(null)
+      return
+    }
+
+    const reordered = [...sorted]
+    ;[reordered[currentIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[currentIndex]]
 
     reordered.forEach((t, i) => {
       const newZIndex = zIndexes[i]
@@ -4344,79 +4389,93 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               <span className="text-gray-400 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? 'Enable Clicks' : 'Ignore Clicks'}
             </button>
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+            {/* Transformations submenu -- accordion-style (expands inline)
+                rather than a side flyout, grouping the crop/rotate/flip
+                resets that used to each take their own row in this menu. */}
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-              onClick={async () => {
-                const trace = traces.find(t => t.id === contextMenu.traceId)
-                if (trace) {
-                  updateTraceCustomization(trace.id, {
-                    cropX: 0,
-                    cropY: 0,
-                    cropWidth: 1,
-                    cropHeight: 1,
-                  })
-                }
-                setContextMenu(null)
-              }}
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+              onClick={() => setContextMenuTransformOpen(!contextMenuTransformOpen)}
             >
-              <span className="text-gray-400 text-[10px]">◇</span> Reset Cropping
+              <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Transformations</span>
+              <span className="text-gray-500 text-[9px]">{contextMenuTransformOpen ? '▼' : '▶'}</span>
             </button>
-            <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-              onClick={async () => {
-                const trace = traces.find(t => t.id === contextMenu.traceId)
-                if (trace) {
-                  const transform = getTraceTransform(trace)
-                  const avgScale = (transform.scaleX + transform.scaleY) / 2
-                  
-                  updateTraceTransform(trace.id, {
-                    scaleX: avgScale,
-                    scaleY: avgScale,
-                  })
-                }
-                setContextMenu(null)
-              }}
-            >
-              <span className="text-gray-400 text-[10px]">◇</span> Reset Aspect Ratio
-            </button>
-            <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-              onClick={async () => {
-                const trace = traces.find(t => t.id === contextMenu.traceId)
-                if (trace) {
-                  updateTraceTransform(trace.id, { rotation: 0 })
-                }
-                setContextMenu(null)
-              }}
-            >
-              <span className="text-gray-400 text-[10px]">◇</span> Reset Rotation
-            </button>
-            {(() => {
-              const trace = traces.find(t => t.id === contextMenu.traceId)
-              if (!trace || trace.type === 'audio' || trace.type === 'video') return null
-              return (
-                <>
-                  <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-                    onClick={() => {
-                      updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
-                      setContextMenu(null)
-                    }}
-                  >
-                    <span className="text-gray-400 text-[10px]">◇</span> Flip Horizontal
-                  </button>
-                  <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-                    onClick={() => {
-                      updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
-                      setContextMenu(null)
-                    }}
-                  >
-                    <span className="text-gray-400 text-[10px]">◇</span> Flip Vertical
-                  </button>
-                </>
-              )
-            })()}
+            {contextMenuTransformOpen && (
+              <div className="bg-gray-900/50">
+                <button
+                  className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                  onClick={async () => {
+                    const trace = traces.find(t => t.id === contextMenu.traceId)
+                    if (trace) {
+                      updateTraceCustomization(trace.id, {
+                        cropX: 0,
+                        cropY: 0,
+                        cropWidth: 1,
+                        cropHeight: 1,
+                      })
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  Reset Cropping
+                </button>
+                <button
+                  className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                  onClick={async () => {
+                    const trace = traces.find(t => t.id === contextMenu.traceId)
+                    if (trace) {
+                      const transform = getTraceTransform(trace)
+                      const avgScale = (transform.scaleX + transform.scaleY) / 2
+
+                      updateTraceTransform(trace.id, {
+                        scaleX: avgScale,
+                        scaleY: avgScale,
+                      })
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  Reset Aspect Ratio
+                </button>
+                <button
+                  className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                  onClick={async () => {
+                    const trace = traces.find(t => t.id === contextMenu.traceId)
+                    if (trace) {
+                      updateTraceTransform(trace.id, { rotation: 0 })
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  Reset Rotation
+                </button>
+                {(() => {
+                  const trace = traces.find(t => t.id === contextMenu.traceId)
+                  if (!trace || trace.type === 'audio' || trace.type === 'video') return null
+                  return (
+                    <>
+                      <button
+                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        onClick={() => {
+                          updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
+                          setContextMenu(null)
+                        }}
+                      >
+                        Flip Horizontal
+                      </button>
+                      <button
+                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        onClick={() => {
+                          updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
+                          setContextMenu(null)
+                        }}
+                      >
+                        Flip Vertical
+                      </button>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!isDesktop || !trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
@@ -4435,6 +4494,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </button>
               )
             })()}
+            {/* Move Layer submenu -- same accordion pattern, groups the four
+                z-order actions (one-step up/down, jump to top/bottom of
+                this trace's group) that used to each take their own row. */}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!trace) return null
@@ -4443,17 +4505,40 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               return (
                 <>
                   <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-                    onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                    onClick={() => setContextMenuMoveOpen(!contextMenuMoveOpen)}
                   >
-                    <span className="text-gray-400 text-[10px]">◇</span> Move to Top of Group
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move Layer</span>
+                    <span className="text-gray-500 text-[9px]">{contextMenuMoveOpen ? '▼' : '▶'}</span>
                   </button>
-                  <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-                    onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
-                  >
-                    <span className="text-gray-400 text-[10px]">◇</span> Move to Bottom of Group
-                  </button>
+                  {contextMenuMoveOpen && (
+                    <div className="bg-gray-900/50">
+                      <button
+                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        onClick={() => moveTraceOneStep(trace.id, 'up')}
+                      >
+                        Move Up
+                      </button>
+                      <button
+                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        onClick={() => moveTraceOneStep(trace.id, 'down')}
+                      >
+                        Move Down
+                      </button>
+                      <button
+                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
+                      >
+                        Move to Top of Group
+                      </button>
+                      <button
+                        className="w-full pl-9 pr-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase"
+                        onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
+                      >
+                        Move to Bottom of Group
+                      </button>
+                    </div>
+                  )}
                 </>
               )
             })()}
@@ -5931,23 +6016,33 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 )}
 
                 {/* Border Radius (non-shape traces -- shapes use their own
-                    Corner Radius control instead) */}
-                {seedTrace.type !== 'shape' && (
-                  <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
-                      Border Radius: {seedTrace.borderRadius ?? 0}px
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="50"
-                      step="1"
-                      value={seedTrace.borderRadius ?? 0}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderRadius: parseInt(e.target.value) })}
-                      className="w-full accent-nier-bg"
-                    />
-                  </div>
-                )}
+                    Corner Radius control instead). Shown as long as ANY
+                    trace in the selection is non-shape -- gating on just
+                    seedTrace's own type hid this for the whole batch
+                    whenever the seed happened to be a shape, even with
+                    other, eligible traces also selected. */}
+                {(() => {
+                  const nonShapeSeed = batchIds
+                    .map(id => traces.find(t => t.id === id))
+                    .find((t): t is Trace => !!t && t.type !== 'shape')
+                  if (!nonShapeSeed) return null
+                  return (
+                    <div>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                        Border Radius: {nonShapeSeed.borderRadius ?? 0}px
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="50"
+                        step="1"
+                        value={nonShapeSeed.borderRadius ?? 0}
+                        onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderRadius: parseInt(e.target.value) })}
+                        className="w-full accent-nier-bg"
+                      />
+                    </div>
+                  )
+                })()}
               </div>
 
               <button
@@ -6086,15 +6181,49 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               )}
 
               {modalTrace.type === 'embed' && modalTrace.mediaUrl && (() => {
+                // An embed that's actually just a hotlinkable image (very
+                // common now that any web-dragged image becomes an embed --
+                // see the drag-drop classification fix) renders as a plain
+                // <img>, same as the 'image' trace type's own modal, instead
+                // of wrapping it in an iframe. Wrapping a raw image URL in
+                // an iframe means the browser loads it at its own native
+                // resolution inside that iframe's document, and whenever
+                // that didn't match the iframe's assigned size, the iframe
+                // showed its own internal scrollbars instead of the whole
+                // image -- exactly the "zoomed in with scrollbars" report,
+                // which persisted after the earlier border/overflow fix
+                // because that fix couldn't do anything about scrolling
+                // that's internal to the iframe's own embedded document.
+                const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(modalTrace.mediaUrl)
+                const isDirectImage = hasImageExtension || confirmedImageIds.has(modalTrace.id)
+
+                if (isDirectImage) {
+                  const dims = imageDimensions[modalTrace.id]
+                  const naturalWidth = dims?.width ?? 800
+                  const naturalHeight = dims?.height ?? 600
+                  const chromeHeight = 180
+                  const maxWidth = modalViewportSize.width * 0.95
+                  const maxHeight = Math.max(200, modalViewportSize.height * 0.95 - chromeHeight)
+                  const scale = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight, 1)
+
+                  return (
+                    <img
+                      src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
+                      alt=""
+                      style={{ width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) }}
+                      className="object-contain"
+                    />
+                  )
+                }
+
                 const embedUrl = extractEmbedUrl(modalTrace.mediaUrl)
 
-                // Same fit-to-viewport approach as the image case, but using
-                // the trace's own box (whatever size the user resized it to
-                // on canvas, or its detected/default aspect ratio) instead of
-                // a loaded image's natural pixel size -- and NOT capped at
-                // 1x, since embedded web content (unlike a raster image)
-                // doesn't get blurry when displayed larger, so it should
-                // still grow to fill the available space.
+                // Fit-to-viewport for a genuine (non-image) embed, using the
+                // trace's own box (whatever size the user resized it to on
+                // canvas, or its detected/default aspect ratio) -- not
+                // capped at 1x, since embedded web content (unlike a raster
+                // image) doesn't get blurry when displayed larger, so it
+                // should still grow to fill the available space.
                 const { width: baseWidth, height: baseHeight } = getTraceSize(modalTrace)
                 const scaleX = modalTrace.scaleX ?? modalTrace.scale ?? 1
                 const scaleY = modalTrace.scaleY ?? modalTrace.scale ?? 1
