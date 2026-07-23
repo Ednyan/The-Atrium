@@ -1547,11 +1547,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             })
           } else {
           pulseTime += 0.02 // Slower pulse for elegant animation
-          
+
           // Find traces that are outside the camera viewport
           const cameraX = cameraPositionRef.current.x
           const cameraY = cameraPositionRef.current.y
-          
+
           const offScreenTraces: Array<{ distance: number; angle: number }> = []
 
           tracesDataRef.current.forEach((trace) => {
@@ -1587,10 +1587,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               offScreenTraces.push({ distance, angle })
             }
           })
-          
-          // Sort by distance and show up to 8 closest
+
+          // Sort by distance and show up to 16 closest
           offScreenTraces.sort((a, b) => a.distance - b.distance)
-          const closestTraces = offScreenTraces.slice(0, 8)
+          const closestTraces = offScreenTraces.slice(0, 16)
           const neededCount = closestTraces.length
           
           // Ensure pool has enough indicators (create if needed, only once)

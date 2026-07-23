@@ -959,6 +959,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // just got replaced wholesale with the last-saved DB state, so any undo
   // diff is stale, and any panel showing a snapshot of a trace (Customize /
   // Batch Edit) may now be showing values that no longer exist.
+  //
+  // Also clear localTraceTransforms/localShapePoints entirely -- these are
+  // drag-preview overrides that render ON TOP of the store's trace data
+  // (see applyUpdateTarget above, and getTraceTransform's use at the actual
+  // render site) so dragging feels instant without waiting for a state
+  // round-trip. Undo already knew to clear these per-trace; a discard is the
+  // same problem but for every trace at once. Without this, any trace moved/
+  // resized/rotated (or path point dragged) during the session kept
+  // rendering its unsaved position/shape indefinitely after "Don't Save",
+  // since the override map still had stale entries the reverted `traces`
+  // array couldn't override -- only a full page refresh (which remounts
+  // this component and resets this state) made it visually revert.
   useEffect(() => {
     const handleDiscardCompleted = () => {
       undoStackRef.current = []
@@ -966,6 +978,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       setEditingTrace(null)
       setShowBatchEditPanel(false)
       setContextMenu(null)
+      setLocalTraceTransforms({})
+      setLocalShapePoints({})
     }
     window.addEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
     return () => window.removeEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
