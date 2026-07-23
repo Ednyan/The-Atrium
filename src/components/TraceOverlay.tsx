@@ -919,6 +919,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // (or, per mousemove frame, many more than N) separate 'update' ops, so
     // a single Ctrl+Z only walks the move back one trace at a time.
     | { kind: 'batch'; ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[]; ts: number }
+    // Same idea as 'batch', but for creation: every trace that shows up in
+    // the same traces-prop update (batch embed placement, a multi-file
+    // drop/paste, etc.) is one atomic undo step instead of N separate 'add'
+    // ops -- see the "detect new traces" effect below.
+    | { kind: 'batchAdd'; traces: Trace[] }
 
   const undoStackRef = useRef<UndoOp[]>([])
   const redoStackRef = useRef<UndoOp[]>([])
@@ -1020,8 +1025,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     redoStackRef.current = []
   }, [])
 
-  const pushAddOp = useCallback((traceId: string, trace: Trace) => {
-    undoStackRef.current.push({ kind: 'add', traceId, trace: cloneTraceSnapshot(trace) })
+  // Pushes every trace that appeared together (in the same traces-prop
+  // update) as ONE undo step. Falls back to a plain 'add' for the trivial
+  // single-trace case, matching pushBatchUpdateOp's pattern.
+  const pushBatchAddOp = useCallback((newTraces: Trace[]) => {
+    if (newTraces.length === 0) return
+    if (newTraces.length === 1) {
+      undoStackRef.current.push({ kind: 'add', traceId: newTraces[0].id, trace: cloneTraceSnapshot(newTraces[0]) })
+      if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
+      redoStackRef.current = []
+      return
+    }
+    undoStackRef.current.push({ kind: 'batchAdd', traces: newTraces.map(cloneTraceSnapshot) })
     if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
     redoStackRef.current = []
   }, [])
@@ -1033,27 +1048,38 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [])
 
   // Detect newly-created traces (via the "Leave a Trace" panel, duplication,
-  // or the freehand-draw "Print" action) by diffing the traces prop, so adds
-  // become undoable without needing to instrument every trace-creation call
-  // site individually. Pre-existing traces at mount are not treated as adds.
+  // the freehand-draw "Print" action, or a batch embed/multi-file placement)
+  // by diffing the traces prop, so adds become undoable without needing to
+  // instrument every trace-creation call site individually. Pre-existing
+  // traces at mount are not treated as adds.
+  //
+  // Every trace discovered in the SAME effect run (i.e. the same traces-prop
+  // update) is collected and pushed as one batch op -- a batch-inserted
+  // group of traces all lands in one store update, so without this a single
+  // Ctrl+Z only undid one trace of the batch at a time instead of the whole
+  // placement.
   useEffect(() => {
     if (knownTraceIdsRef.current === null) {
       knownTraceIdsRef.current = new Set(traces.map(t => t.id))
       return
     }
     const known = knownTraceIdsRef.current
+    const newlyDiscovered: Trace[] = []
     for (const trace of traces) {
       if (!known.has(trace.id)) {
         known.add(trace.id)
-        pushAddOp(trace.id, trace)
+        newlyDiscovered.push(trace)
       }
+    }
+    if (newlyDiscovered.length > 0) {
+      pushBatchAddOp(newlyDiscovered)
     }
     // Keep the known-ids set from growing unboundedly across a long session
     if (known.size > traces.length) {
       const currentIds = new Set(traces.map(t => t.id))
       known.forEach(id => { if (!currentIds.has(id)) known.delete(id) })
     }
-  }, [traces, pushAddOp])
+  }, [traces, pushBatchAddOp])
 
   // Deletion is deferred to Save (like edits): removeTrace() gives an
   // instant local UI update, and markTraceDeleted() queues the actual
@@ -1140,6 +1166,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       for (const subOp of op.ops) {
         const target = direction === 'undo' ? subOp.before : subOp.after
         applyUpdateTarget(store, subOp.traceId, target)
+      }
+    } else if (op.kind === 'batchAdd') {
+      for (const trace of op.traces) {
+        if (direction === 'undo') {
+          store.removeTrace(trace.id)
+          store.markTraceDeleted(trace.id)
+          knownTraceIdsRef.current?.delete(trace.id)
+          if (editingTraceRef.current?.id === trace.id) setEditingTrace(null)
+          if (selectedTraceIdRef.current === trace.id) setSelectedTraceId(null)
+        } else {
+          store.addTrace(cloneTraceSnapshot(trace))
+          store.unmarkTraceDeleted(trace.id)
+          store.markTraceChanged(trace.id)
+          knownTraceIdsRef.current?.add(trace.id)
+        }
       }
     } else {
       const target = direction === 'undo' ? op.before : op.after
