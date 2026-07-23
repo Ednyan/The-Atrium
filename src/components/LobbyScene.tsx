@@ -14,7 +14,7 @@ import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
+import { computeZIndexForNewTraceInLayer, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import PinterestImportPanel from './PinterestImportPanel'
@@ -920,6 +920,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // per line becomes its own embed trace, bin-packed around the placement
   // point exactly like a multi-file drop/paste (see handleDrop/handlePaste
   // above) instead of stacking every trace on the same spot.
+  //
+  // Inserted as a single bulk statement rather than looping insertDroppedTrace
+  // per URL -- N sequential single-row inserts meant N separate network
+  // round-trips (slow for a large batch) for no benefit: Supabase Realtime
+  // broadcasts one change event per row regardless of how many rows a single
+  // INSERT statement affects, so batching the SQL call doesn't reduce
+  // realtime traffic, only the number of requests this client has to make.
   const handleCreateBatchEmbeds = async (urls: string[]) => {
     if (urls.length === 0) return
     if (!ensureLobbyHasSpace()) return
@@ -936,8 +943,66 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const sizes = probed.map(dims => dims ? scaleToDisplayBox(dims) : getDefaultTraceBoxSize('embed'))
     const offsets = packBoxesAroundCenter(sizes, 24, packingShapeRef.current)
 
-    for (let i = 0; i < urls.length; i++) {
-      await insertDroppedTrace('embed', urls[i], urls[i], anchor.x + offsets[i].x, anchor.y + offsets[i].y)
+    if (supabase) {
+      // Resolve the active layer's z-index once up front (a single query)
+      // instead of once per item -- z_index for each row is then computed
+      // locally, mirroring how LayerPanel's moveTracesToLayer avoids
+      // recomputing "next free slot" from the same stale count per item.
+      let layerFields: { layer_id: string; z_index: number }[] | null = null
+      if (activeLayerId) {
+        const { data: layerData } = await supabase.from('layers').select('z_index').eq('id', activeLayerId).single()
+        const layerZIndex = (layerData as any)?.z_index
+        const baseZ = layerZIndex !== undefined && layerZIndex !== null ? getTraceBaseZIndex(layerZIndex) : 0
+        const existingCount = traces.filter(t => t.layerId === activeLayerId).length
+        layerFields = urls.map((_, i) => ({ layer_id: activeLayerId, z_index: baseZ + existingCount + i + 1 }))
+      }
+
+      const rows = urls.map((url, i) => ({
+        user_id: userId,
+        username,
+        type: 'embed',
+        content: url,
+        position_x: anchor.x + offsets[i].x,
+        position_y: anchor.y + offsets[i].y,
+        media_url: url,
+        scale: 1.0,
+        rotation: 0.0,
+        lobby_id: lobbyId,
+        show_description: false,
+        show_filename: false,
+        ...(layerFields ? layerFields[i] : {}),
+      }))
+
+      const { data, error } = await supabase.from('traces').insert(rows as any).select()
+      if (error) {
+        console.error('Batch embed insert error:', error)
+        alert('Failed to place batch embeds: ' + error.message)
+        return
+      }
+      if (data) {
+        for (const row of data) {
+          useGameStore.getState().addTrace(mapRowToTrace(row))
+        }
+      }
+    } else {
+      for (let i = 0; i < urls.length; i++) {
+        const trace: Trace = {
+          id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${i}`,
+          userId,
+          username,
+          type: 'embed',
+          content: urls[i],
+          x: anchor.x + offsets[i].x,
+          y: anchor.y + offsets[i].y,
+          mediaUrl: urls[i],
+          createdAt: new Date().toISOString(),
+          scale: 1.0,
+          scaleX: 1.0,
+          scaleY: 1.0,
+          rotation: 0.0,
+        }
+        useGameStore.getState().addTrace(trace)
+      }
     }
 
     handleCloseTracePanel()
