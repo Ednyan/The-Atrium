@@ -14,7 +14,7 @@ async function resolveLocalUrl(url: string): Promise<string> {
 }
 
 import ProfileCustomization from './ProfileCustomization'
-import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
+import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
@@ -953,6 +953,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
     window.addEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
     return () => window.removeEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
+  }, [])
+
+  // Same reasoning applies to a discard ("Don't Save"): the traces array
+  // just got replaced wholesale with the last-saved DB state, so any undo
+  // diff is stale, and any panel showing a snapshot of a trace (Customize /
+  // Batch Edit) may now be showing values that no longer exist.
+  useEffect(() => {
+    const handleDiscardCompleted = () => {
+      undoStackRef.current = []
+      redoStackRef.current = []
+      setEditingTrace(null)
+      setShowBatchEditPanel(false)
+      setContextMenu(null)
+    }
+    window.addEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
+    return () => window.removeEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
   }, [])
 
   const pushUpdateOp = useCallback((traceId: string, before: Partial<Trace>, after: Partial<Trace>) => {
@@ -2922,8 +2938,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   }}
                 >
                   {getCursorSvg()}
-                  {/* Player label */}
-                  {!hideOwnNameTag && (
+                  {/* Player label -- a user-chosen dark/near-black color used
+                      to glow/blend into the also-dark background+canvas,
+                      making the tag unreadable. Perceived luminance decides
+                      whether the glow is the player's own color (fine for
+                      lighter colors, which already contrast against the dark
+                      backdrop) or a fixed light stroke/glow (for dark colors,
+                      which otherwise vanish into their own background). */}
+                  {!hideOwnNameTag && (() => {
+                    const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
+                    const isDarkColor = luminance < 90
+                    return (
                     <div
                       style={{
                         position: 'absolute',
@@ -2934,16 +2959,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         fontWeight: 600,
                         whiteSpace: 'nowrap',
                         pointerEvents: 'none',
-                        textShadow: `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                        textShadow: isDarkColor
+                          ? '0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
+                          : `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                        WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
                         letterSpacing: '0.5px',
-                        background: 'rgba(0,0,0,0.6)',
+                        background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
+                        border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
                         padding: '2px 6px',
                         borderRadius: '3px',
                       }}
                     >
                       {username}
                     </div>
-                  )}
+                    )
+                  })()}
                 </div>
               )
             }
@@ -4392,8 +4422,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   strokeWidth="1.5"
                 />
               </svg>
-              {/* User label */}
-              {!hideOtherNameTags && (
+              {/* User label -- see the own-player label above for why dark
+                  user colors get a different (light-glow) treatment instead
+                  of glowing/blending into their own dark background. */}
+              {!hideOtherNameTags && (() => {
+                const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
+                const isDarkColor = luminance < 90
+                return (
                 <div
                   style={{
                     position: 'absolute',
@@ -4404,16 +4439,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     fontWeight: 600,
                     whiteSpace: 'nowrap',
                     pointerEvents: 'none',
-                    textShadow: `0 0 6px rgba(${rgb.r},${rgb.g},${rgb.b},0.4), 0 2px 4px rgba(0,0,0,0.8)`,
+                    textShadow: isDarkColor
+                      ? '0 0 5px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
+                      : `0 0 6px rgba(${rgb.r},${rgb.g},${rgb.b},0.4), 0 2px 4px rgba(0,0,0,0.8)`,
+                    WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
                     letterSpacing: '0.5px',
-                    background: 'rgba(0,0,0,0.6)',
+                    background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
+                    border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
                     padding: '2px 5px',
                     borderRadius: '3px',
                   }}
                 >
                   {user.username}
                 </div>
-              )}
+                )
+              })()}
             </div>
           )
         })}

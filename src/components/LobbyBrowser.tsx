@@ -17,6 +17,11 @@ interface LobbyBrowserProps {
 export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [lobbies, setLobbies] = useState<LobbyWithOwner[]>([])
   const [userLobbies, setUserLobbies] = useState<LobbyWithOwner[]>([])
+  // Lobbies the current user administers but doesn't own -- admins get the
+  // same in-atrium management permissions (whitelist/blacklist/editors/
+  // settings, everything except the owner-only Admins tab) from the browser
+  // too, without needing to enter the atrium first.
+  const [adminLobbies, setAdminLobbies] = useState<LobbyWithOwner[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateLobby, setShowCreateLobby] = useState(false)
   const [managingLobbyId, setManagingLobbyId] = useState<string | null>(null)
@@ -222,12 +227,28 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         .select('*')
         .eq('owner_user_id', user.id)
         .order('created_at', { ascending: false })
-      
+
       if (ownedError) throw ownedError
-      
+
       // Get usernames and player counts
       const enrichedOwned = await enrichLobbiesWithData(ownedLobbies || [])
       setUserLobbies(enrichedOwned)
+
+      // Load lobbies the user administers but doesn't own -- these get the
+      // same "Manage" affordance as owned atriums (just without the
+      // owner-only Admins tab), so an admin doesn't have to enter the
+      // atrium first to change its settings/whitelist/blacklist/editors.
+      const { data: adminLobbyData, error: adminError } = await (supabase
+        .from('lobbies') as any)
+        .select('*')
+        .contains('admin_user_ids', [user.id])
+        .neq('owner_user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (!adminError) {
+        const enrichedAdmin = await enrichLobbiesWithData(adminLobbyData || [])
+        setAdminLobbies(enrichedAdmin)
+      }
 
       // Combine public and whitelisted private lobbies, remove duplicates
       const allLobbies = [...(publicLobbies || []), ...privateLobbies]
@@ -392,8 +413,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return
       }
 
-      // If owner or whitelisted, join directly (no password needed)
-      if (accessStatus === 'owner' || accessStatus === 'whitelisted') {
+      // Owner or admin always skip the password -- everyone else (including
+      // a plain whitelisted user, who can enter a private atrium but still
+      // isn't trusted with its password) falls through to the password
+      // check below like a normal visitor would.
+      if (accessStatus === 'owner' || accessStatus === 'admin') {
         onJoinLobby(lobby.id)
         return
       }
@@ -404,7 +428,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       })
 
       console.log('Has password RPC result:', hasPassword, 'Error:', pwError)
-      
+
       // Use RPC result, or fallback to lobby.passwordHash if RPC fails
       const needsPassword = hasPassword === true || (pwError && lobby.passwordHash)
 
@@ -474,8 +498,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return
       }
 
-      // If owner or whitelisted, join directly (no password needed)
-      if (accessStatus === 'owner' || accessStatus === 'whitelisted') {
+      // Owner or admin always skip the password -- a plain whitelisted user
+      // can still enter a private atrium by ID, but falls through to the
+      // password check below like anyone else would.
+      if (accessStatus === 'owner' || accessStatus === 'admin') {
         setShowJoinById(false)
         setLobbyIdInput('')
         setJoinByIdLoading(false)
@@ -902,6 +928,49 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </section>
           )}
 
+          {/* Atriums you administer (but don't own) -- same management
+              permissions as the owner, minus the owner-only Admins tab */}
+          {adminLobbies.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Administered Atriums</span>
+                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              </div>
+              <div className="grid gap-3">
+                {adminLobbies.map(lobby => (
+                  <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors group">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
+                        <div className="flex gap-4 mt-2 text-[10px] text-nier-border/60 tracking-wider uppercase">
+                          <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
+                          <span>{lobby.isPublic ? (isDesktop ? '◦ Local Public' : '◦ Public') : (isDesktop ? '◦ Local Private' : '◦ Private')}</span>
+                          {lobby.passwordHash && <span>◦ Secured</span>}
+                          <span className="text-nier-bg/70">◦ Admin</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleJoinClick(lobby)}
+                          className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
+                        >
+                          Enter
+                        </button>
+                        <button
+                          onClick={() => setManagingLobbyId(lobby.id)}
+                          className="px-3 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          title="Manage access, password, and autosave without entering"
+                        >
+                          Manage
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Import Atrium (web only) */}
           {!isDesktop && (
             <section>
@@ -995,12 +1064,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Manage Atrium (access/password/autosave, without entering) */}
       {managingLobbyId && (() => {
-        const managedLobby = userLobbies.find(l => l.id === managingLobbyId)
+        const ownedMatch = userLobbies.find(l => l.id === managingLobbyId)
+        const managedLobby = ownedMatch ?? adminLobbies.find(l => l.id === managingLobbyId)
         if (!managedLobby) return null
         return (
           <LobbyManagement
             lobby={managedLobby}
-            isOwner={true}
+            isOwner={!!ownedMatch}
             onClose={() => setManagingLobbyId(null)}
             onUpdate={loadLobbies}
           />

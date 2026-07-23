@@ -9,12 +9,21 @@ import { mapRowToTrace } from '../hooks/useTraces'
 // (other collaborators' realtime edits may land in between).
 export const TRACE_SAVE_COMPLETED_EVENT = 'trace-save-completed'
 
+// Fired whenever discardAllChanges() successfully reverts unsaved edits.
+// TraceOverlay listens for this to clear its undo/redo stacks (same reason
+// as a real save -- diffs computed against pre-discard traces are no longer
+// valid) and to close any panel showing a stale snapshot of a reverted
+// trace (Customize / Batch Edit).
+export const TRACE_DISCARD_COMPLETED_EVENT = 'trace-discard-completed'
+
 // Discard every unsaved trace change/deletion by re-fetching the atrium's
 // traces from the database (the last saved state) and replacing the store's
-// copy. setTraces() clears pendingChanges/deletedTraces, so after this the
-// atrium reflects exactly what's persisted -- as if the user had refreshed,
-// but without actually reloading the page. Used by the HUD "Don't Save"
-// button. Returns false if there was nothing to discard or the reload failed.
+// copy. setTraces() only replaces the traces array -- it does NOT clear
+// pendingChanges/deletedTraces on its own, so those are cleared explicitly
+// here too. After this the atrium reflects exactly what's persisted -- as
+// if the user had refreshed, but without actually reloading the page. Used
+// by the HUD "Don't Save" button. Returns false if there was nothing to
+// discard or the reload failed.
 export async function discardAllChanges(lobbyId: string): Promise<boolean> {
   const store = useGameStore.getState()
   if (!supabase || store.isSavingChanges) return false
@@ -49,6 +58,8 @@ export async function discardAllChanges(lobbyId: string): Promise<boolean> {
     }
 
     useGameStore.getState().setTraces(traces)
+    useGameStore.getState().clearPendingChanges()
+    window.dispatchEvent(new CustomEvent(TRACE_DISCARD_COMPLETED_EVENT))
     return true
   } catch {
     return false

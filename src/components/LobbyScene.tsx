@@ -916,10 +916,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }
   
-  // Restore saved camera position for this lobby on mount
+  // Restore saved camera position for this lobby on mount -- keyed by both
+  // lobby AND user, since a shared device/browser profile with multiple
+  // accounts would otherwise have each login clobber the last one's saved
+  // position under a single lobby-only key. Falls back to the older
+  // lobby-only key (pre-existing saves from before this was per-user) so
+  // returning users don't lose their last position outright.
   useEffect(() => {
+    if (!userId) return
     try {
-      const saved = localStorage.getItem(`lobby_camera_${lobbyId}`)
+      const saved = localStorage.getItem(`lobby_camera_${lobbyId}_${userId}`)
+        ?? localStorage.getItem(`lobby_camera_${lobbyId}`)
       if (saved) {
         const { x, y, zoom: savedZoom } = JSON.parse(saved)
         cameraPositionRef.current = { x, y }
@@ -928,7 +935,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         cameraRestoredRef.current = true
       }
     } catch {}
-  }, [lobbyId])
+  }, [lobbyId, userId])
 
   // Keep position ref in sync
   useEffect(() => {
@@ -1546,19 +1553,35 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const cameraY = cameraPositionRef.current.y
           
           const offScreenTraces: Array<{ distance: number; angle: number }> = []
-          
+
           tracesDataRef.current.forEach((trace) => {
-            const traceScreenX = (trace.x - cameraX) * zoomRef.current + viewportWidth / 2
-            const traceScreenY = (trace.y - cameraY) * zoomRef.current + viewportHeight / 2
-            
+            // A path's x/y field is only set at creation and by whole-path
+            // moves -- dragging an individual point only ever updates
+            // shapePoints, so x/y can drift far from where the path is
+            // actually rendered (see the same fix in TraceOverlay's
+            // viewport culling). Point this indicator at the path's live
+            // centroid instead so it doesn't silently miss (or misdirect
+            // for) a path that's actually off-screen.
+            let tx = trace.x
+            let ty = trace.y
+            if (trace.type === 'shape' && trace.shapeType === 'path' && trace.shapePoints && trace.shapePoints.length > 0) {
+              const xs = trace.shapePoints.map(p => p.x)
+              const ys = trace.shapePoints.map(p => p.y)
+              tx = (Math.min(...xs) + Math.max(...xs)) / 2
+              ty = (Math.min(...ys) + Math.max(...ys)) / 2
+            }
+
+            const traceScreenX = (tx - cameraX) * zoomRef.current + viewportWidth / 2
+            const traceScreenY = (ty - cameraY) * zoomRef.current + viewportHeight / 2
+
             const margin = 100
-            const isOutsideViewport = 
+            const isOutsideViewport =
               traceScreenX < -margin || traceScreenX > viewportWidth + margin ||
               traceScreenY < -margin || traceScreenY > viewportHeight + margin
-            
+
             if (isOutsideViewport) {
-              const dx = trace.x - cameraX
-              const dy = trace.y - cameraY
+              const dx = tx - cameraX
+              const dy = ty - cameraY
               const distance = Math.sqrt(dx * dx + dy * dy)
               const angle = Math.atan2(dy, dx)
               offScreenTraces.push({ distance, angle })
@@ -1858,13 +1881,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
       eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null }
       
-      // Save camera position for this lobby before cleanup
+      // Save camera position for this lobby+user before cleanup
       try {
-        localStorage.setItem(`lobby_camera_${lobbyId}`, JSON.stringify({
+        const payload = JSON.stringify({
           x: cameraPositionRef.current.x,
           y: cameraPositionRef.current.y,
           zoom: zoomRef.current,
-        }))
+        })
+        if (userId) localStorage.setItem(`lobby_camera_${lobbyId}_${userId}`, payload)
+        localStorage.setItem(`lobby_camera_${lobbyId}`, payload)
       } catch {}
 
       // Clear all refs to help garbage collection
