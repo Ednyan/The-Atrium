@@ -17,6 +17,12 @@ const DEFAULT_SHAPE_COLOR = '#3b82f6'
 const DEFAULT_PATH_COLOR = '#9ca3af'
 const DEFAULT_PATH_HALF_LENGTH = 30
 
+// Caps a single batch-embed paste -- each link is a sequential insert (see
+// LobbyScene's handleCreateBatchEmbeds), so an unbounded paste could fire
+// hundreds of requests in a row and easily blow past the atrium's trace/size
+// limits before the user even realizes it.
+const MAX_BATCH_EMBED_LINKS = 30
+
 const getDefaultShapeColor = (shapeType: 'rectangle' | 'circle' | 'triangle' | 'path') => (
   shapeType === 'path' ? DEFAULT_PATH_COLOR : DEFAULT_SHAPE_COLOR
 )
@@ -39,15 +45,50 @@ interface TracePanelProps {
   // lands on its arrow controls) immediately. Optional so TracePanel doesn't
   // hard-depend on this -- falls back to the old static-line insert if unset.
   onCreatePath?: (color: string, opacity: number) => void
+  // "Batch Placement" toggle on the Embed type: one URL per line becomes its
+  // own embed trace, bin-packed around the placement point by LobbyScene
+  // instead of the normal single insert-and-done flow.
+  onCreateBatchEmbeds?: (urls: string[]) => void
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath }: TracePanelProps) {
+interface ParsedBatchLink {
+  line: number
+  text: string
+  url: string | null
+}
+
+// Each non-empty line must be a bare http(s) URL -- batch mode is
+// specifically for pasting a list of links, not embed codes/iframes (that's
+// what the single-embed textarea already supports).
+function parseBatchLinks(text: string): ParsedBatchLink[] {
+  return text
+    .split(/\r?\n/)
+    .map((raw, i) => ({ line: i + 1, text: raw.trim() }))
+    .filter((entry) => entry.text.length > 0)
+    .map((entry) => {
+      if (!/^https?:\/\/\S+$/i.test(entry.text)) return { ...entry, url: null }
+      try {
+        new URL(entry.text)
+        return { ...entry, url: entry.text }
+      } catch {
+        return { ...entry, url: null }
+      }
+    })
+}
+
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [batchMode, setBatchMode] = useState(false)
+  const [batchLinksText, setBatchLinksText] = useState('')
+  const batchLinks = parseBatchLinks(batchLinksText)
+  const batchValidUrls = batchLinks.filter(l => l.url).map(l => l.url!)
+  const batchInvalidEntries = batchLinks.filter(l => !l.url)
+  const batchOverCap = batchValidUrls.length > MAX_BATCH_EMBED_LINKS
   
   // Shape-specific state
   const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
@@ -85,6 +126,16 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     // static pre-made line -- see the onCreatePath prop's doc comment.
     if (traceType === 'shape' && shapeType === 'path' && onCreatePath) {
       onCreatePath(shapeColor, shapeOpacity)
+      return
+    }
+
+    // Batch Placement: skip the normal single-insert flow entirely -- see
+    // the onCreateBatchEmbeds prop's doc comment. Guarded on there being no
+    // invalid lines too (the submit button is already disabled in that case,
+    // but this is the actual gate against a stray Enter-key submit).
+    if (traceType === 'embed' && batchMode && onCreateBatchEmbeds) {
+      if (batchValidUrls.length === 0 || batchInvalidEntries.length > 0 || batchOverCap) return
+      onCreateBatchEmbeds(batchValidUrls)
       return
     }
 
@@ -392,28 +443,89 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {/* Embed URL */}
           {traceType === 'embed' && (
             <div>
-              <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
-                Embed URL or HTML Code
-              </label>
-              <textarea
-                value={mediaUrl}
-                onChange={(e) => setMediaUrl(e.target.value)}
-                placeholder={`Direct URL:\nhttps://youtube.com/watch?v=...\n\nOr full embed code:\n<iframe src="https://..."></iframe>`}
-                className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors font-mono"
-                rows={5}
-                autoFocus
-              />
-              <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
-                ◇ Direct URL or ◇ Paste full embed code
-              </p>
-              <input
-                type="text"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Optional description..."
-                maxLength={100}
-                className="w-full px-4 py-2 mt-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
-              />
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase">
+                  {batchMode ? 'Batch Links' : 'Embed URL or HTML Code'}
+                </label>
+                {onCreateBatchEmbeds && (
+                  <button
+                    type="button"
+                    onClick={() => setBatchMode(!batchMode)}
+                    className={`px-2 py-1 text-[9px] tracking-wider uppercase transition-colors ${
+                      batchMode
+                        ? 'bg-nier-bg text-nier-black'
+                        : 'bg-nier-black border border-nier-border/30 text-nier-border hover:border-nier-border/60 hover:text-nier-bg'
+                    }`}
+                    title="Paste multiple links (one per line) and place them all at once"
+                  >
+                    ◇ Batch Placement
+                  </button>
+                )}
+              </div>
+
+              {batchMode ? (
+                <>
+                  <textarea
+                    value={batchLinksText}
+                    onChange={(e) => setBatchLinksText(e.target.value)}
+                    // Plain Enter must insert a newline here (that's the
+                    // whole point of a one-link-per-line list) rather than
+                    // submitting the form like the panel's own Enter handler
+                    // otherwise does everywhere else -- stopping propagation
+                    // keeps that handler from ever seeing this keydown.
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation() }}
+                    placeholder={`One link per line:\nhttps://example.com/one\nhttps://example.com/two\nhttps://example.com/three`}
+                    className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors font-mono"
+                    rows={8}
+                    autoFocus
+                  />
+                  <p className={`text-[9px] tracking-wider mt-2 uppercase ${batchOverCap ? '' : 'text-nier-border/40'}`} style={batchOverCap ? { color: '#FF6161' } : undefined}>
+                    {batchValidUrls.length} valid link{batchValidUrls.length === 1 ? '' : 's'}
+                    {batchOverCap
+                      ? ` -- over the ${MAX_BATCH_EMBED_LINKS}-link limit per batch, remove ${batchValidUrls.length - MAX_BATCH_EMBED_LINKS} to place`
+                      : ' -- each becomes its own embed, arranged around the placement point'}
+                  </p>
+                  {batchInvalidEntries.length > 0 && (
+                    <div className="mt-2 border border-nier-red/40 bg-nier-red/10 px-3 py-2 space-y-1">
+                      <p className="text-nier-bg text-[10px] tracking-wider">
+                        ⚠ {batchInvalidEntries.length} line{batchInvalidEntries.length === 1 ? '' : 's'} not a valid link -- fix or remove before placing:
+                      </p>
+                      {batchInvalidEntries.slice(0, 5).map((entry) => (
+                        <p key={entry.line} className="text-nier-border/70 text-[9px] tracking-wide font-mono truncate">
+                          Line {entry.line}: {entry.text || '(empty)'}
+                        </p>
+                      ))}
+                      {batchInvalidEntries.length > 5 && (
+                        <p className="text-nier-border/50 text-[9px] tracking-wide">
+                          + {batchInvalidEntries.length - 5} more
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <textarea
+                    value={mediaUrl}
+                    onChange={(e) => setMediaUrl(e.target.value)}
+                    placeholder={`Direct URL:\nhttps://youtube.com/watch?v=...\n\nOr full embed code:\n<iframe src="https://..."></iframe>`}
+                    className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors font-mono"
+                    rows={5}
+                    autoFocus
+                  />
+                  <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
+                    ◇ Direct URL or ◇ Paste full embed code
+                  </p>
+                  <input
+                    type="text"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Optional description..."
+                    maxLength={100}
+                    className="w-full px-4 py-2 mt-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                  />
+                </>
+              )}
             </div>
           )}
 
@@ -575,10 +687,16 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || lobbyFull || (traceType === 'text' && !content.trim()) || ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) || (traceType === 'embed' && !mediaUrl)}
+              disabled={
+                isSubmitting || lobbyFull ||
+                (traceType === 'text' && !content.trim()) ||
+                ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) ||
+                (traceType === 'embed' && batchMode && (batchValidUrls.length === 0 || batchInvalidEntries.length > 0 || batchOverCap)) ||
+                (traceType === 'embed' && !batchMode && !mediaUrl)
+              }
               className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : (traceType === 'shape' && shapeType === 'path') ? 'Start Path' : 'Leave Trace'}
+              {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : (traceType === 'shape' && shapeType === 'path') ? 'Start Path' : (traceType === 'embed' && batchMode) ? `Place ${batchValidUrls.length} Embed${batchValidUrls.length === 1 ? '' : 's'}` : 'Leave Trace'}
             </button>
           </div>
       </form>

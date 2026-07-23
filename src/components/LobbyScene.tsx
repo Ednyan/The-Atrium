@@ -886,6 +886,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }
 
+  // Batch-embed creation from TracePanel's "Batch Placement" toggle: one URL
+  // per line becomes its own embed trace, bin-packed around the placement
+  // point exactly like a multi-file drop/paste (see handleDrop/handlePaste
+  // above) instead of stacking every trace on the same spot.
+  const handleCreateBatchEmbeds = async (urls: string[]) => {
+    if (urls.length === 0) return
+    if (!ensureLobbyHasSpace()) return
+
+    const anchor = clickedTracePosition || positionRef.current
+    const sizes = urls.map(() => getDefaultTraceBoxSize('embed'))
+    const offsets = packBoxesAroundCenter(sizes, 24, packingShapeRef.current)
+
+    for (let i = 0; i < urls.length; i++) {
+      await insertDroppedTrace('embed', urls[i], urls[i], anchor.x + offsets[i].x, anchor.y + offsets[i].y)
+    }
+
+    handleCloseTracePanel()
+  }
+
   // Bulk-convert every embed trace in this atrium into an internal image
   // (reuses the same per-trace conversion used by the trace context menu).
   // Runs sequentially rather than in parallel to avoid hammering the vault
@@ -3250,7 +3269,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} onCreatePath={handleCreatePath} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
+        <TracePanel onClose={handleCloseTracePanel} onCreatePath={handleCreatePath} onCreateBatchEmbeds={handleCreateBatchEmbeds} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
       )}
 
       {/* Pinterest Import Panel */}
