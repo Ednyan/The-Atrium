@@ -132,6 +132,36 @@ const probeImageFileDimensions = (file: File, timeoutMs = 1500): Promise<{ width
   })
 }
 
+// Same idea as probeImageFileDimensions but for a batch embed's actual
+// hotlinked URL (a network fetch, so a longer timeout, and no blob to
+// revoke). Without this, every batch embed packed as a flat default box
+// (300x169) regardless of its real aspect ratio, then rendered at its
+// actual (very different) size once the image loaded -- producing an
+// overlapping mess since the packer never saw the real footprint. Non-image
+// embeds (YouTube links, etc.) simply never load as an <img> and resolve to
+// null on timeout, falling back to the default box as before.
+const probeRemoteImageDimensions = (url: string, timeoutMs = 4000): Promise<{ width: number; height: number } | null> => {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result: { width: number; height: number } | null) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+    const timeout = setTimeout(() => finish(null), timeoutMs)
+    const img = new Image()
+    img.onload = () => {
+      clearTimeout(timeout)
+      finish(img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null)
+    }
+    img.onerror = () => {
+      clearTimeout(timeout)
+      finish(null)
+    }
+    img.src = url
+  })
+}
+
 const classifyRemoteTraceType = (url: string): 'image' | 'video' | 'audio' | 'embed' => {
   const lower = url.toLowerCase()
 
@@ -895,7 +925,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     if (!ensureLobbyHasSpace()) return
 
     const anchor = clickedTracePosition || positionRef.current
-    const sizes = urls.map(() => getDefaultTraceBoxSize('embed'))
+    // Probe each URL's real image dimensions before packing (like the
+    // multi-file drop handler already does for actual files) -- most
+    // pasted embeds are hotlinked images, and packing them all as a flat
+    // default box regardless of their real aspect ratio produced an
+    // overlapping mess once each one rendered at its real (very different)
+    // size. Non-image embeds (YouTube links, etc.) simply fail to probe and
+    // fall back to the default box.
+    const probed = await Promise.all(urls.map(url => probeRemoteImageDimensions(url)))
+    const sizes = probed.map(dims => dims ? scaleToDisplayBox(dims) : getDefaultTraceBoxSize('embed'))
     const offsets = packBoxesAroundCenter(sizes, 24, packingShapeRef.current)
 
     for (let i = 0; i < urls.length; i++) {
