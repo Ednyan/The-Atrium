@@ -12,7 +12,7 @@ import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
-import { saveAllChanges } from '../lib/traceSave'
+import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox } from '../lib/binPack'
@@ -371,6 +371,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const [isDiscarding, setIsDiscarding] = useState(false)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -2502,6 +2504,41 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             {isSavingChanges ? 'Saving…' : `Save Changes (${pendingChanges.size + deletedTraces.size})`}
           </button>
         )}
+        {hasPendingChanges() && (
+          showDiscardConfirm ? (
+            <div className="w-full mt-1 flex gap-1">
+              <button
+                onClick={async () => {
+                  setIsDiscarding(true)
+                  await discardAllChanges(lobbyId)
+                  setIsDiscarding(false)
+                  setShowDiscardConfirm(false)
+                }}
+                disabled={isDiscarding || isSavingChanges}
+                className="flex-1 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all bg-red-900/40 border-red-500/60 hover:border-red-400 text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Revert all unsaved changes to the last saved state"
+              >
+                {isDiscarding ? 'Discarding…' : 'Confirm Discard'}
+              </button>
+              <button
+                onClick={() => setShowDiscardConfirm(false)}
+                disabled={isDiscarding}
+                className="flex-1 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all bg-gray-800 border-gray-600 hover:border-white text-white disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDiscardConfirm(true)}
+              disabled={isSavingChanges}
+              className="w-full mt-1 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all bg-gray-800 border-gray-600 hover:border-red-400 text-gray-300 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Revert all unsaved changes to the last saved state"
+            >
+              Don't Save
+            </button>
+          )
+        )}
         <button
           onClick={() => {
             // Reset camera to center of map
@@ -2598,6 +2635,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const isFull = !isDesktop && sizeBytes >= LOBBY_SIZE_LIMIT
         return (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+            {!canEdit && (
+              <p className="text-[9px] font-mono tracking-[0.12em] uppercase" style={{ color: '#FF6161' }}>
+                ◇ View Only — You don't have permission to edit this atrium
+              </p>
+            )}
             {multiSelectedTraceIds.length > 1 && (
               <p className="text-green-400 text-[9px] font-mono tracking-[0.12em] uppercase">
                 {multiSelectedTraceIds.length} traces selected

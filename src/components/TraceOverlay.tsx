@@ -17,6 +17,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
+import { getTraceBaseZIndex } from '../lib/layerZIndex'
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -356,7 +357,82 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => {
     setContextMenuMoveOpen(false)
     setContextMenuTransformOpen(false)
+    setContextMenuGroupOpen(false)
   }, [contextMenu?.traceId])
+  // "Move to Group" side flyout -- lets the user reassign the selected
+  // trace(s) to a layer group (or Ungrouped) straight from the canvas
+  // context menu, without opening the Layer panel. Needs its own lightweight
+  // list of this atrium's groups since TraceOverlay doesn't otherwise load
+  // them (the Layer panel does, but it isn't always mounted).
+  const [contextMenuGroupOpen, setContextMenuGroupOpen] = useState(false)
+  const [groupFlyoutRect, setGroupFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const groupFlyoutCloseTimer = useRef<number | null>(null)
+  const openGroupFlyout = (e: React.MouseEvent<HTMLElement>) => {
+    if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
+    const rect = e.currentTarget.getBoundingClientRect()
+    setGroupFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
+    setContextMenuGroupOpen(true)
+  }
+  const keepGroupFlyoutOpen = () => {
+    if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
+  }
+  const scheduleCloseGroupFlyout = () => {
+    if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
+    groupFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuGroupOpen(false), 200)
+  }
+  const [groupLayers, setGroupLayers] = useState<{ id: string; name: string; zIndex: number }[]>([])
+  useEffect(() => {
+    if (!supabase || !lobbyId) return
+    let cancelled = false
+    const loadLayers = async () => {
+      const { data } = await (supabase!.from('layers') as any)
+        .select('id, name, z_index')
+        .eq('lobby_id', lobbyId)
+      if (cancelled || !data) return
+      setGroupLayers(
+        data
+          .map((l: any) => ({ id: l.id, name: l.name, zIndex: l.z_index ?? 0 }))
+          .sort((a: any, b: any) => b.zIndex - a.zIndex)
+      )
+    }
+    loadLayers()
+    const channel = supabase
+      .channel(`traceoverlay-layers-${lobbyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'layers', filter: `lobby_id=eq.${lobbyId}` }, () => loadLayers())
+      .subscribe()
+    return () => {
+      cancelled = true
+      channel.unsubscribe()
+    }
+  }, [lobbyId])
+
+  // Reassigns the given traces to a layer group (or Ungrouped when
+  // targetLayerId is null), placing them at the top of that group. Mirrors
+  // the z-index scheme in LayerPanel/layerZIndex (base = layerZIndex*100,
+  // then order within the layer).
+  const moveTracesToGroup = useCallback(async (traceIds: string[], targetLayerId: string | null) => {
+    if (!supabase || !canEdit || traceIds.length === 0) return
+    const store = useGameStore.getState()
+    const allTraces = store.traces
+    const targetLayer = targetLayerId ? groupLayers.find(l => l.id === targetLayerId) : null
+    if (targetLayerId && !targetLayer) return
+    const baseZ = targetLayer ? getTraceBaseZIndex(targetLayer.zIndex) : 0
+    const idSet = new Set(traceIds)
+    let order = allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)).length
+    for (const id of traceIds) {
+      const trace = allTraces.find(t => t.id === id)
+      if (!trace || (trace.layerId ?? null) === targetLayerId) continue
+      const newZ = baseZ + order + 1
+      order++
+      const { error } = await (supabase.from('traces') as any)
+        .update({ layer_id: targetLayerId, z_index: newZ })
+        .eq('id', id)
+      if (!error) {
+        store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
+      }
+    }
+  }, [canEdit, groupLayers])
+
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
@@ -4605,6 +4681,64 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       >
                         Move to Bottom of Group
                       </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            {/* Move to Group -- reassigns the selected trace(s) to a layer
+                group (or Ungrouped) without opening the Layer panel. */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace) return null
+              const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+              const targetIds = inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId]
+              const currentLayerId = inMultiSelect ? undefined : (trace.layerId ?? null)
+              return (
+                <div
+                  className="relative"
+                  onMouseEnter={openGroupFlyout}
+                  onMouseLeave={scheduleCloseGroupFlyout}
+                >
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                  >
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move to Group</span>
+                    <span className="text-gray-500 text-[9px]">▶</span>
+                  </button>
+                  {contextMenuGroupOpen && groupFlyoutRect && (
+                    <div
+                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto"
+                      style={
+                        contextMenuFlyoutOnLeft
+                          ? { top: groupFlyoutRect.top, right: window.innerWidth - groupFlyoutRect.left + 1 }
+                          : { top: groupFlyoutRect.top, left: groupFlyoutRect.right + 1 }
+                      }
+                      onMouseEnter={keepGroupFlyoutOpen}
+                      onMouseLeave={scheduleCloseGroupFlyout}
+                    >
+                      <button
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                        disabled={currentLayerId === null}
+                        onClick={() => { moveTracesToGroup(targetIds, null); setContextMenu(null) }}
+                      >
+                        {currentLayerId === null && <span className="text-emerald-400 text-[9px]">✓</span>}
+                        Ungrouped
+                      </button>
+                      {groupLayers.length === 0 && (
+                        <span className="px-4 py-2 text-gray-500 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
+                      )}
+                      {groupLayers.map(layer => (
+                        <button
+                          key={layer.id}
+                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                          disabled={currentLayerId === layer.id}
+                          onClick={() => { moveTracesToGroup(targetIds, layer.id); setContextMenu(null) }}
+                        >
+                          {currentLayerId === layer.id && <span className="text-emerald-400 text-[9px]">✓</span>}
+                          {layer.name}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>

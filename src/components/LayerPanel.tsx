@@ -613,39 +613,34 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setExpandedGroups(newExpanded)
   }
 
-  // Auto-expands whatever group contains the selected trace, and scrolls its
-  // row into view -- both on a genuine selection change (e.g. clicking a
-  // trace on canvas) AND the very first time this effect runs at all, which
-  // covers the panel being freshly opened while a trace is already selected
-  // (previously that case needed the user to deselect/reselect to trigger
-  // it, since a bare "on selection change" effect never fires if the
-  // selection didn't actually change since mount).
-  // One merged effect (not two) so the expand-then-scroll sequence can't
-  // race across separate effects: expanding schedules a state update, which
-  // re-runs this SAME effect once expandedGroups actually changes, so the
-  // scroll attempt that follows always sees the up-to-date DOM.
-  // Remembers which trace we last auto-scrolled to, so we only scroll on an
-  // actual selection change (or the first paint after the panel opens with
-  // something already selected) -- NOT every time `traces` changes, which
-  // happens on every reorder and made the panel annoyingly re-center on the
-  // selected row each time a layer was dragged.
-  const lastScrolledTraceIdRef = useRef<string | null>(null)
+  // Auto-expands whatever group contains the selected trace and scrolls its
+  // row into view -- but ONLY once per selection: on a genuine selection
+  // change (e.g. clicking a trace on canvas) or the first time this effect
+  // sees a given selected trace (which covers the panel being freshly opened
+  // while a trace is already selected).
+  //
+  // Crucially, everything is gated behind a "have we already handled THIS
+  // selectedTraceId" ref, so we do NOT fight the user afterwards: once we've
+  // expanded + scrolled for a selection, they're free to collapse that group
+  // or scroll away, and reorders (which mutate `traces`) won't re-trigger it
+  // either. We only mark a selection handled once its trace actually exists
+  // in `traces`, so a panel that mounts before traces load still fires once
+  // they arrive.
+  const handledSelectionRef = useRef<string | null>(null)
   useEffect(() => {
     if (!selectedTraceId) {
-      lastScrolledTraceIdRef.current = null
+      handledSelectionRef.current = null
       return
     }
+    if (handledSelectionRef.current === selectedTraceId) return
     const selectedTrace = traces.find(t => t.id === selectedTraceId)
-    // Expand the containing group first if needed; expandedGroups changing
-    // re-runs this effect, and the row ref will exist on that next pass.
-    if (selectedTrace?.layerId && !expandedGroups.has(selectedTrace.layerId)) {
+    if (!selectedTrace) return // traces not loaded yet; try again when they are
+    handledSelectionRef.current = selectedTraceId
+    // Expand the containing group if it's collapsed (one-shot -- if the user
+    // later collapses it again we leave it be).
+    if (selectedTrace.layerId && !expandedGroups.has(selectedTrace.layerId)) {
       setExpandedGroups(prev => new Set(prev).add(selectedTrace.layerId!))
-      return
     }
-    // Selection unchanged since our last scroll (e.g. a reorder just mutated
-    // `traces`): don't yank the scroll position around again.
-    if (lastScrolledTraceIdRef.current === selectedTraceId) return
-    lastScrolledTraceIdRef.current = selectedTraceId
     const raf = requestAnimationFrame(() => {
       traceRowRefs.current.get(selectedTraceId)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     })

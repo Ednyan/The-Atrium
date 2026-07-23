@@ -722,12 +722,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 </button>
               </div>
               {vaultError && (
-                <p className="text-nier-red/70 text-[9px] tracking-wide mt-3">{vaultError}</p>
+                <p className="text-[9px] tracking-wide mt-3" style={{ color: '#FF6161' }}>{vaultError}</p>
               )}
             </div>
           )}
           {error && (
-            <div className="mt-4 text-nier-bg/80 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2">
+            <div className="mt-4 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2" style={{ color: '#FF6161' }}>
               ⚠ {error}
             </div>
           )}
@@ -741,7 +741,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Create New</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               {!canCreateMore && (
-                <span className="text-nier-red/60 text-[10px] tracking-wider">Limit reached</span>
+                <span className="text-[10px] tracking-wider" style={{ color: '#FF6161' }}>Limit reached</span>
               )}
             </div>
 
@@ -917,7 +917,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 ◇ Import Atrium (.json)
               </button>
               {!canCreateMore && (
-                <p className="text-nier-red/60 text-[9px] tracking-wider mt-2">You have 3 atriums. Delete one to import.</p>
+                <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
               )}
             </section>
           )}
@@ -1062,7 +1062,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               Enter the atrium ID shared with you by the atrium owner.
             </p>
             {joinByIdError && (
-              <div className="text-red-400 text-xs mb-3 bg-red-400/10 border border-red-400/30 px-3 py-2">
+              <div className="text-xs mb-3 bg-red-400/10 border border-red-400/30 px-3 py-2" style={{ color: '#FF6161' }}>
                 {joinByIdError}
               </div>
             )}

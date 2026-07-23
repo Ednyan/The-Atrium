@@ -480,7 +480,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     This permanently deletes your account, profile, and every atrium you own. Content you placed in atriums owned by other people stays, but is anonymized to "Deleted User" instead of your name. This cannot be undone.
                   </p>
                   <p className="text-nier-border/60 text-[9px] tracking-[0.15em] uppercase">
-                    Type <span className="text-nier-bg">{actualUsername}</span> to confirm
+                    Type <span className="text-nier-bg normal-case">{actualUsername}</span> to confirm
                   </p>
                   <input
                     type="text"

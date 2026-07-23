@@ -1,5 +1,6 @@
-import { supabase } from './supabase'
+import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
+import { mapRowToTrace } from '../hooks/useTraces'
 
 // Fired on window whenever a saveAllChanges() call completes successfully.
 // Undo/redo history (see TraceOverlay.tsx) listens for this to clear its
@@ -7,6 +8,52 @@ import { useGameStore } from '../store/gameStore'
 // once the underlying rows it was computed against have been persisted
 // (other collaborators' realtime edits may land in between).
 export const TRACE_SAVE_COMPLETED_EVENT = 'trace-save-completed'
+
+// Discard every unsaved trace change/deletion by re-fetching the atrium's
+// traces from the database (the last saved state) and replacing the store's
+// copy. setTraces() clears pendingChanges/deletedTraces, so after this the
+// atrium reflects exactly what's persisted -- as if the user had refreshed,
+// but without actually reloading the page. Used by the HUD "Don't Save"
+// button. Returns false if there was nothing to discard or the reload failed.
+export async function discardAllChanges(lobbyId: string): Promise<boolean> {
+  const store = useGameStore.getState()
+  if (!supabase || store.isSavingChanges) return false
+  if (!store.hasPendingChanges()) return false
+
+  try {
+    const { data, error } = await supabase
+      .from('traces')
+      .select('*')
+      .eq('lobby_id', lobbyId)
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (error || !data) return false
+
+    const traces = data.map(mapRowToTrace)
+
+    // Desktop: re-warm the local media blob-URL cache for anything we just
+    // pulled back, mirroring the initial load in useTraces, so reverted
+    // image/audio/video traces still render immediately.
+    if (isDesktop) {
+      const localUrls = new Set<string>()
+      for (const trace of traces) {
+        for (const url of [trace.mediaUrl, trace.imageUrl]) {
+          if (url && url.startsWith('local://')) localUrls.add(url)
+        }
+      }
+      if (localUrls.size > 0) {
+        const { resolveLocalUrl } = await import('./localDb')
+        await Promise.allSettled(Array.from(localUrls).map(url => resolveLocalUrl(url)))
+      }
+    }
+
+    useGameStore.getState().setTraces(traces)
+    return true
+  } catch {
+    return false
+  }
+}
 
 // Save every pending trace change/deletion to the database. Shared by the
 // Ctrl+S shortcut, the HUD save button, autosave, and the desktop

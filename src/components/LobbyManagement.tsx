@@ -35,6 +35,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
   const [searchResults, setSearchResults] = useState<Profile[]>([])
   const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist' | 'editors' | 'admins'>('settings')
   const [error, setError] = useState<string | null>(null)
+  const [settingsSaved, setSettingsSaved] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [transferTargetUserId, setTransferTargetUserId] = useState<string | null>(null)
   const [transferTargetUsername, setTransferTargetUsername] = useState<string | null>(null)
@@ -203,7 +204,8 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       setShowPasswordField(false)
       setPassword('')
       setShowCloseConfirm(false)
-      alert('Atrium settings updated!')
+      setSettingsSaved(true)
+      window.setTimeout(() => setSettingsSaved(false), 3000)
       return true
     } catch (err: any) {
       console.error('Error updating lobby:', err)
@@ -758,6 +760,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           >
             Save Settings
           </button>
+          {settingsSaved && (
+            <div className="mt-2 border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+              ✓ Atrium settings updated
+            </div>
+          )}
         </div>
       </div>
 

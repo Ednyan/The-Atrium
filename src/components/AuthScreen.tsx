@@ -11,6 +11,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
   const [email, setEmail] = useState('')
   const [emailOrUsername, setEmailOrUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [username, setUsername] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -123,6 +124,12 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
 
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       setError('Username can only contain letters, numbers, and underscores')
+      setLoading(false)
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
       setLoading(false)
       return
     }
@@ -497,6 +504,28 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
             </div>
           )}
 
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+              {confirmPassword.length > 0 && confirmPassword !== password && (
+                <p className="text-[9px] tracking-wider mt-2 uppercase" style={{ color: '#FF6161' }}>
+                  Passwords do not match
+                </p>
+              )}
+            </div>
+          )}
+
           {error && (
             <div className="border border-nier-red/40 bg-nier-red/10 px-4 py-3 text-nier-bg/80 text-xs tracking-wide">
               ⚠ {error}
@@ -532,6 +561,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScree
                 setMode(mode === 'login' ? 'signup' : 'login')
               }
               setError('')
+              setConfirmPassword('')
             }}
             className="text-nier-border text-[11px] tracking-wider hover:text-nier-bg transition-colors"
           >
