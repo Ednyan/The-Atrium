@@ -271,33 +271,61 @@ function AtriumTransitionOverlay({
     nearCompleteFiredRef.current = false
   }, [videoSrc])
 
+  // The video's own footage fades to white in its last ~150ms (a portal
+  // expanding to fill the frame) -- letterboxed inside a viewport-sized box
+  // that's narrower than the full screen, so once that expanding white fills
+  // the box, the box's own edges (and any letterbox bars beyond it) become
+  // visible as a hard border against the surrounding black page, right as
+  // everything is supposed to read as "the whole screen going white".
+  //
+  // Rather than cut to the separate AtriumFlashOverlay at a single instant
+  // (previously ~1 video frame before the end) and hope the timing lines up
+  // with however that footage happens to look, a full-viewport white div is
+  // crossfaded in UNDER our control well before the video ends -- covering
+  // the letterbox/border artifact regardless of the source footage's own
+  // fade, and finishing at (or just before) the real end so the later swap
+  // to AtriumFlashOverlay is invisible (both are already solid white).
+  const [flashActive, setFlashActive] = useState(false)
+  const CROSSFADE_LEAD_SEC = 0.6
+  useEffect(() => {
+    setFlashActive(false)
+  }, [videoSrc])
+
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4 overflow-hidden">
       <div className="w-full max-w-[1600px] flex flex-col items-center justify-center">
         <p className="text-white text-[clamp(9px,2vw,15px)] tracking-[0.25em] uppercase mb-3 text-center">{title}</p>
 
         {videoSrc ? (
-          <video
-            key={videoSrc}
-            src={videoSrc}
-            autoPlay
-            muted
-            playsInline
-            aria-label={title}
-            className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px] object-contain"
-            onTimeUpdate={(e) => {
-              const video = e.currentTarget
-              if (!onNearComplete || nearCompleteFiredRef.current || !video.duration) return
-              // 1 frame (at the source's 40fps) of lead, same margin the old
-              // frame-sequence player used, so the flash transition still
-              // kicks in right at the very end instead of after a beat.
-              if (video.currentTime >= video.duration - (1 / 40)) {
-                nearCompleteFiredRef.current = true
-                onNearComplete()
-              }
-            }}
-            onEnded={() => onAnimationComplete?.()}
-          />
+          <>
+            <video
+              key={videoSrc}
+              src={videoSrc}
+              autoPlay
+              muted
+              playsInline
+              aria-label={title}
+              className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px] object-contain"
+              onTimeUpdate={(e) => {
+                const video = e.currentTarget
+                if (nearCompleteFiredRef.current || !video.duration) return
+                if (video.currentTime >= video.duration - CROSSFADE_LEAD_SEC) {
+                  nearCompleteFiredRef.current = true
+                  setFlashActive(true)
+                  onNearComplete?.()
+                }
+              }}
+              onEnded={() => onAnimationComplete?.()}
+            />
+            <div
+              aria-hidden="true"
+              className="fixed inset-0 z-40 bg-white pointer-events-none"
+              style={{
+                opacity: flashActive ? 1 : 0,
+                transition: `opacity ${CROSSFADE_LEAD_SEC}s linear`,
+              }}
+            />
+          </>
         ) : (
           <ImageSequencePlayer
             frames={frames ?? []}
@@ -535,7 +563,7 @@ function AppInner() {
       
       setVerifyingAccess(true)
       setLobbyAccessError(null)
-      
+
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
@@ -543,7 +571,29 @@ function AppInner() {
           setVerifyingAccess(false)
           return
         }
-        
+
+        // Fast path: a plain refresh (or re-navigating to the same URL)
+        // re-runs this whole check from scratch every time, which used to
+        // mean a password-protected atrium always re-prompted even though
+        // lobby_sessions already durably remembers a successful entry. This
+        // single RPC mirrors the owner/blacklist/whitelist rules AND treats
+        // a still-fresh (< 30 min idle) password verification as valid,
+        // refreshing it in the same call -- so an actively-used session
+        // never re-prompts, but returning after a long idle gap does.
+        const { data: alreadyHasAccess } = await (supabase as any).rpc('check_and_touch_lobby_access', {
+          p_lobby_id: route.lobbyId,
+        })
+        if (alreadyHasAccess) {
+          setVerifiedLobbyId(route.lobbyId)
+          setCurrentLobbyId(route.lobbyId)
+          localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+          await (supabase.from('profiles') as any)
+            .update({ active_lobby_id: route.lobbyId })
+            .eq('id', user.id)
+          setVerifyingAccess(false)
+          return
+        }
+
         // Check if lobby exists
         const { data: lobby, error: lobbyError } = await (supabase as any)
           .from('lobbies')
@@ -1034,7 +1084,6 @@ function AppInner() {
             title="Entering Atrium"
             subtitle="◇ Crossing into another realm"
             videoSrc={ENTERING_ANIMATION_VIDEO_SRC}
-            onNearComplete={() => setAtriumTransitionPhase('flash')}
             onAnimationComplete={() => setAtriumTransitionPhase('flash')}
             progressClassName="h-full bg-white/80"
           />

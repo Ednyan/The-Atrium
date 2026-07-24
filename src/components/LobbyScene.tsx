@@ -290,6 +290,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const isPanningRef = useRef(false)
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
   const lastMouseScreenPositionRef = useRef<{ x: number; y: number } | null>(null)
+  // Last time the cursor moved inside this atrium -- feeds the password
+  // session heartbeat below (touch_lobby_session), which keeps an actively-
+  // used password verification from expiring, per check_and_touch_lobby_access's
+  // 30-minute idle window on the App.tsx side.
+  const lastActivityAtRef = useRef(Date.now())
   const mouseDownScreenPosRef = useRef<{ x: number; y: number } | null>(null)
   // Shift+drag on empty canvas draws a selection rectangle instead of
   // panning; areaSelectRectRef is the visual box, mutated directly on
@@ -744,6 +749,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }, 5000)
     return () => clearInterval(heartbeat)
   }, [])
+
+  // Password-session heartbeat: keeps this lobby's lobby_sessions row fresh
+  // (see check_and_touch_lobby_access in App.tsx) as long as the user shows
+  // real activity, so a long continuously-active visit never lets the
+  // 30-minute idle window lapse -- only genuinely walking away for 30+
+  // minutes and then reloading should re-prompt for the password. A no-op
+  // (skipped client-side, and a harmless no-op server-side even if called)
+  // for atriums without a password.
+  useEffect(() => {
+    if (!supabase || !currentLobby?.passwordHash) return
+    const IDLE_LIMIT_MS = 30 * 60 * 1000
+    const heartbeat = setInterval(() => {
+      if (Date.now() - lastActivityAtRef.current > IDLE_LIMIT_MS) return
+      ;(supabase as any).rpc('touch_lobby_session', { p_lobby_id: lobbyId })
+    }, 5 * 60 * 1000)
+    return () => clearInterval(heartbeat)
+  }, [lobbyId, currentLobby?.passwordHash])
 
   // The brush/eraser cursor circle is only shown/hidden/moved via direct DOM
   // mutations on mouse move/enter/leave (see brushCursorRef usage below), so
@@ -1319,6 +1341,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Mouse move - handle panning and cursor tracking
       const handleMouseMove = (e: MouseEvent) => {
         lastMouseScreenPositionRef.current = { x: e.clientX, y: e.clientY }
+        lastActivityAtRef.current = Date.now()
 
         // Always track cursor position in world coordinates
         // Convert screen coordinates to world coordinates
@@ -1710,9 +1733,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             }
           })
 
-          // Sort by distance and show up to 16 closest
+          // Sort by distance and show up to 10 closest
           offScreenTraces.sort((a, b) => a.distance - b.distance)
-          const closestTraces = offScreenTraces.slice(0, 16)
+          const closestTraces = offScreenTraces.slice(0, 10)
           const neededCount = closestTraces.length
           
           // Ensure pool has enough indicators (create if needed, only once)

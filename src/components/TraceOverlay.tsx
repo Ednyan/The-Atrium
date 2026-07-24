@@ -18,6 +18,7 @@ import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVE
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
+import { packBoxesAroundCenter } from '../lib/binPack'
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -1557,6 +1558,56 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         updateTraceCustomization(t.id, { zIndex: newZIndex })
       }
     })
+
+    setContextMenu(null)
+  }
+
+  const MAX_REORGANIZE_TRACES = 50
+
+  // Right-click > "Reorganize Selected" -- re-packs the current
+  // multi-selection with the same bin-packing algorithm used for a fresh
+  // batch embed/multi-file placement, but around the selection's own
+  // current center instead of a drop point, and using each trace's real
+  // current size (getTraceSize) rather than probing/defaults since these
+  // traces already exist. Capped at 50 traces since a much larger
+  // multi-select is an unusual case not worth the packer's overlap-check
+  // (circle mode) or skyline-scan (square mode) overhead.
+  const reorganizeSelectedTraces = () => {
+    const ids = Array.from(multiSelectedIds)
+    if (ids.length < 2 || ids.length > MAX_REORGANIZE_TRACES) {
+      setContextMenu(null)
+      return
+    }
+    const selected = ids
+      .map(id => traces.find(t => t.id === id))
+      .filter((t): t is Trace => !!t)
+    if (selected.length < 2) {
+      setContextMenu(null)
+      return
+    }
+
+    const anchorX = selected.reduce((sum, t) => sum + t.x, 0) / selected.length
+    const anchorY = selected.reduce((sum, t) => sum + t.y, 0) / selected.length
+
+    let packingShape: 'square' | 'circle' = 'square'
+    try {
+      const raw = lobbyId ? localStorage.getItem(`lobby_${lobbyId}_packingShape`) : null
+      if (raw === 'circle' || raw === 'square') packingShape = raw
+    } catch {
+      // ignore -- default to 'square'
+    }
+
+    const sizes = selected.map(t => getTraceSize(t))
+    const offsets = packBoxesAroundCenter(sizes, 24, packingShape)
+
+    const batchOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+    selected.forEach((trace, i) => {
+      const newX = anchorX + offsets[i].x
+      const newY = anchorY + offsets[i].y
+      batchOps.push({ traceId: trace.id, before: { x: trace.x, y: trace.y }, after: { x: newX, y: newY } })
+      updateTraceTransform(trace.id, { x: newX, y: newY }, { skipUndo: true })
+    })
+    pushBatchUpdateOp(batchOps)
 
     setContextMenu(null)
   }
@@ -4556,6 +4607,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 }}
               >
                 <span className="text-gray-400 text-[10px]">◇</span> Batch Edit ({multiSelectedIds.size})
+              </button>
+            )}
+            {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId) && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
+              <button
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                onClick={reorganizeSelectedTraces}
+                title="Re-pack the selected traces around their current center using the batch placement algorithm"
+              >
+                <span className="text-gray-400 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})
               </button>
             )}
             {(() => {
