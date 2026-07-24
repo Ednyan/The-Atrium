@@ -1597,21 +1597,41 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       // ignore -- default to 'square'
     }
 
-    // getTraceSize only knows a trace's real image/embed dimensions once its
-    // <img> has actually rendered and loaded on screen (imageDimensions[id]
-    // gets populated by that element's own onLoad). A selected trace that's
-    // off-screen, culled by zoom/distance, or simply never scrolled into
-    // view yet never populated that cache, so packing it at getTraceSize's
-    // flat fallback default caused the exact same overlap bug a fresh batch
-    // embed placement had before it probed real dimensions up front. Probe
-    // anything still missing from the cache before packing, same approach.
+    // Two things determine a trace's real on-canvas footprint, and both were
+    // being missed:
+    //
+    // 1. getTraceSize only knows an image/embed's true dimensions once its
+    //    <img> has actually rendered and loaded on screen (imageDimensions[id]
+    //    is populated by that element's own onLoad). A selected trace that's
+    //    off-screen, culled by zoom/distance, or never scrolled into view yet
+    //    never populated that cache, so packing it at getTraceSize's flat
+    //    fallback default caused the same overlap a fresh batch embed had
+    //    before it probed real dimensions up front -- so probe anything still
+    //    missing from the cache.
+    // 2. getTraceSize returns the BASE (unscaled) box, but a trace also has a
+    //    scaleX/scaleY (from resizing/zoom-to-fit), and it renders at
+    //    base * scale world units. Packing the base size while the trace
+    //    draws bigger is itself enough to overlap -- a fresh batch embed is
+    //    always scale 1 so this never showed up there, but an existing
+    //    selection can be any scale. Multiply the packed box by each trace's
+    //    real scale.
     const sizes = await Promise.all(selected.map(async (trace) => {
-      if (trace.type !== 'image' && trace.type !== 'embed') return getTraceSize(trace)
-      if ((trace.width && trace.height) || imageDimensions[trace.id]) return getTraceSize(trace)
-      const url = localMediaUrls[trace.id] || trace.mediaUrl
-      if (!url) return getTraceSize(trace)
-      const probed = await probeRemoteImageDimensions(url)
-      return probed ? scaleToDisplayBox(probed) : getTraceSize(trace)
+      const transform = getTraceTransform(trace)
+      const sx = Math.abs(transform.scaleX) || 1
+      const sy = Math.abs(transform.scaleY) || 1
+      let base = getTraceSize(trace)
+      const needsProbe =
+        (trace.type === 'image' || trace.type === 'embed') &&
+        !(trace.width && trace.height) &&
+        !imageDimensions[trace.id]
+      if (needsProbe) {
+        const url = localMediaUrls[trace.id] || trace.mediaUrl
+        if (url) {
+          const probed = await probeRemoteImageDimensions(url)
+          if (probed) base = scaleToDisplayBox(probed)
+        }
+      }
+      return { width: base.width * sx, height: base.height * sy }
     }))
     const offsets = packBoxesAroundCenter(sizes, 24, packingShape)
 

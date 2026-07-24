@@ -728,18 +728,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // (see check_and_touch_lobby_access in App.tsx) as long as the user shows
   // real activity, so a long continuously-active visit never lets the
   // 30-minute idle window lapse -- only genuinely walking away for 30+
-  // minutes and then reloading should re-prompt for the password. A no-op
-  // (skipped client-side, and a harmless no-op server-side even if called)
-  // for atriums without a password.
+  // minutes and then reloading should re-prompt for the password.
+  //
+  // Deliberately NOT guarded on currentLobby.passwordHash: a non-owner guest
+  // (exactly the person who has to enter a password) can't see password_hash
+  // at all -- RLS/column visibility hides it -- so it comes back null client-
+  // side, meaning a guard on it would skip the heartbeat for precisely the
+  // users who need it, and their session would silently go stale. touch_lobby
+  // _session is a harmless no-op server-side when the lobby has no password
+  // or this user has no session row, so it's safe to call unconditionally.
   //
   // Touches immediately on mount, not just every 5 minutes -- a browser
   // refresh fully unmounts this component, clearing any pending interval, so
   // a short visit that refreshes again before the first periodic tick would
-  // otherwise never have gotten the chance to extend a verified_at that was
-  // already close to (or past) 30 minutes old, incorrectly re-prompting for
-  // the password despite the user having just been here.
+  // otherwise never have extended a verified_at that was already close to
+  // (or past) 30 minutes old.
   useEffect(() => {
-    if (!supabase || !currentLobby?.passwordHash) return
+    if (!supabase) return
     const IDLE_LIMIT_MS = 30 * 60 * 1000
     ;(supabase as any).rpc('touch_lobby_session', { p_lobby_id: lobbyId })
     const heartbeat = setInterval(() => {
@@ -747,7 +752,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       ;(supabase as any).rpc('touch_lobby_session', { p_lobby_id: lobbyId })
     }, 5 * 60 * 1000)
     return () => clearInterval(heartbeat)
-  }, [lobbyId, currentLobby?.passwordHash])
+  }, [lobbyId])
 
   // The brush/eraser cursor circle is only shown/hidden/moved via direct DOM
   // mutations on mouse move/enter/leave (see brushCursorRef usage below), so
