@@ -7,6 +7,8 @@ import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
 import LayerPanel, { TRACE_DRAG_DATA_KEY } from './LayerPanel'
+import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
+import type { LobbyLocation } from '../types/database'
 import { LobbyManagement } from './LobbyManagement'
 import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
@@ -261,6 +263,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const zoomRef = useRef(1.0)
   const targetZoomRef = useRef(1.0) // Target zoom for smooth interpolation
   const cameraRestoredRef = useRef(false) // Whether we restored a saved camera position
+  // Smooth camera fly-to for Locations panel jumps / presentation mode. The
+  // ticker eases cameraPositionRef + zoom toward the target; any manual pan or
+  // zoom cancels it (set to null) so the user is never fighting the animation.
+  const cameraFlyToRef = useRef<{
+    startX: number; startY: number; startZoom: number
+    targetX: number; targetY: number; targetZoom: number
+    startTime: number; duration: number
+  } | null>(null)
   const isPanningRef = useRef(false)
   const lastPanPositionRef = useRef({ x: 0, y: 0 })
   const lastMouseScreenPositionRef = useRef<{ x: number; y: number } | null>(null)
@@ -318,6 +328,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
+  const [showLocationsPanel, setShowLocationsPanel] = useState(false)
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
@@ -925,6 +936,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }
 
+  // Camera helpers for the Locations panel: read the live camera view, and
+  // smoothly fly to a saved one (the ticker eases cameraPositionRef + zoom
+  // toward the target; see cameraFlyToRef).
+  const getCurrentCamera = () => ({
+    x: cameraPositionRef.current.x,
+    y: cameraPositionRef.current.y,
+    zoom: zoomRef.current,
+  })
+
+  const flyToLocation = (location: LobbyLocation) => {
+    cameraFlyToRef.current = {
+      startX: cameraPositionRef.current.x,
+      startY: cameraPositionRef.current.y,
+      startZoom: zoomRef.current,
+      targetX: location.positionX,
+      targetY: location.positionY,
+      targetZoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, location.zoom)),
+      startTime: performance.now(),
+      duration: 900,
+    }
+  }
+
   // Batch-embed creation from TracePanel's "Batch Placement" toggle: one URL
   // per line becomes its own embed trace, bin-packed around the placement
   // point exactly like a multi-file drop/paste (see handleDrop/handlePaste
@@ -1226,6 +1259,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         }
         
         e.preventDefault()
+        cameraFlyToRef.current = null // manual zoom cancels any camera fly-to
         const delta = -e.deltaY * 0.001
         const zoomSensitivity = zoomSensitivityRef.current
         const newTargetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current + delta * zoomSensitivity))
@@ -1313,6 +1347,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               }
             } else {
               isPanningRef.current = true
+              cameraFlyToRef.current = null // manual pan cancels any camera fly-to
               lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
             }
           }
@@ -1480,6 +1515,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         if (e.touches.length === 1 && !isDrawingModeRef.current) {
           // Single finger - pan
           isPanningRef.current = true
+          cameraFlyToRef.current = null // manual pan cancels any camera fly-to
           lastPanPositionRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
         } else if (e.touches.length === 2) {
           // Two fingers - pinch zoom (stop panning)
@@ -1551,7 +1587,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       
       app.ticker.add(() => {
         frameCounter++
-        
+
+        // Camera fly-to (Locations panel jump / presentation mode): eased
+        // interpolation of both position and zoom. Setting targetZoomRef to the
+        // eased value keeps the normal zoom-lerp below a no-op while it runs.
+        const flyTo = cameraFlyToRef.current
+        if (flyTo) {
+          const raw = Math.min((performance.now() - flyTo.startTime) / flyTo.duration, 1)
+          const eased = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2 // easeInOutQuad
+          cameraPositionRef.current.x = flyTo.startX + (flyTo.targetX - flyTo.startX) * eased
+          cameraPositionRef.current.y = flyTo.startY + (flyTo.targetY - flyTo.startY) * eased
+          const z = flyTo.startZoom + (flyTo.targetZoom - flyTo.startZoom) * eased
+          zoomRef.current = z
+          targetZoomRef.current = z
+          if (raw >= 1) cameraFlyToRef.current = null
+        }
+
         // Smooth zoom interpolation with snap-to-target to prevent jitter
         const zoomLerpSpeed = 0.1 // Slower for smoother animation
         const zoomDiff = targetZoomRef.current - zoomRef.current
@@ -2238,7 +2289,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // bubble here through any gap in the panel without its own drop-target
     // handler, which used to flash the "drop file to create trace" overlay
     // while the user was just reordering layers.
-    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
+    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) || e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)) return
     if (!canEdit) return
     e.preventDefault()
     e.stopPropagation()
@@ -2247,7 +2298,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
+    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) || e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)) return
     // Only hide overlay when actually leaving the container
     if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false)
@@ -2255,7 +2306,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }
 
   const handleDrop = async (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY)) return
+    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) || e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)) return
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
@@ -2850,6 +2901,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {showLayerPanel ? 'Close' : 'Layers'}
       </button>
 
+      {/* Locations Button -- visible to everyone (viewing/presenting saved
+          camera views doesn't require edit permission; the panel hides its
+          mutating controls when canEdit is false) */}
+      <button
+        onClick={() => setShowLocationsPanel(!showLocationsPanel)}
+        className="fixed bottom-52 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
+      >
+        <span className="opacity-60 mr-2">◇</span>
+        {showLocationsPanel ? 'Close' : 'Locations'}
+      </button>
+
       {/* Draw Button */}
       {canEdit && (
       <button
@@ -3393,6 +3455,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           worldCenter={pinterestImportAnchor || { x: positionRef.current.x, y: positionRef.current.y }}
           packingShape={packingShapeRef.current}
           activeLayerId={activeLayerId}
+        />
+      )}
+
+      {/* Locations Panel */}
+      {showLocationsPanel && (
+        <LocationsPanel
+          lobbyId={lobbyId}
+          onClose={() => setShowLocationsPanel(false)}
+          canEdit={canEdit}
+          getCurrentCamera={getCurrentCamera}
+          onGoToLocation={flyToLocation}
         />
       )}
 

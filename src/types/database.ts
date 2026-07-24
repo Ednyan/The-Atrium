@@ -164,6 +164,18 @@ export interface Layer {
   lobbyId?: string | null
 }
 
+export interface LobbyLocation {
+  id: string
+  createdAt: string
+  lobbyId: string
+  name: string
+  positionX: number
+  positionY: number
+  zoom: number
+  orderIndex: number
+  userId?: string | null
+}
+
 export interface Profile {
   id: string
   username: string

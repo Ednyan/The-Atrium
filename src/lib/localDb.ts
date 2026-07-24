@@ -744,6 +744,20 @@ export async function initLocalDb(): Promise<void> {
     )
   `)
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS lobby_locations (
+      id TEXT PRIMARY KEY,
+      created_at TEXT DEFAULT (datetime('now')),
+      lobby_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      position_x REAL NOT NULL,
+      position_y REAL NOT NULL,
+      zoom REAL NOT NULL DEFAULT 1,
+      order_index INTEGER NOT NULL DEFAULT 0,
+      user_id TEXT
+    )
+  `)
+
   // Ensure theme_settings column exists (for DBs created before it was added)
   try {
     await db.execute('ALTER TABLE lobbies ADD COLUMN theme_settings TEXT')
