@@ -15,7 +15,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, getTraceBaseZIndex } from '../lib/layerZIndex'
-import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox } from '../lib/binPack'
+import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
@@ -132,35 +132,9 @@ const probeImageFileDimensions = (file: File, timeoutMs = 1500): Promise<{ width
   })
 }
 
-// Same idea as probeImageFileDimensions but for a batch embed's actual
-// hotlinked URL (a network fetch, so a longer timeout, and no blob to
-// revoke). Without this, every batch embed packed as a flat default box
-// (300x169) regardless of its real aspect ratio, then rendered at its
-// actual (very different) size once the image loaded -- producing an
-// overlapping mess since the packer never saw the real footprint. Non-image
-// embeds (YouTube links, etc.) simply never load as an <img> and resolve to
-// null on timeout, falling back to the default box as before.
-const probeRemoteImageDimensions = (url: string, timeoutMs = 4000): Promise<{ width: number; height: number } | null> => {
-  return new Promise((resolve) => {
-    let settled = false
-    const finish = (result: { width: number; height: number } | null) => {
-      if (settled) return
-      settled = true
-      resolve(result)
-    }
-    const timeout = setTimeout(() => finish(null), timeoutMs)
-    const img = new Image()
-    img.onload = () => {
-      clearTimeout(timeout)
-      finish(img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null)
-    }
-    img.onerror = () => {
-      clearTimeout(timeout)
-      finish(null)
-    }
-    img.src = url
-  })
-}
+// probeRemoteImageDimensions now lives in ../lib/binPack (shared with
+// TraceOverlay's "Reorganize Selected", which has the same wrong-box-size
+// problem for traces not currently rendered on screen).
 
 const classifyRemoteTraceType = (url: string): 'image' | 'video' | 'audio' | 'embed' => {
   const lower = url.toLowerCase()
@@ -757,9 +731,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // minutes and then reloading should re-prompt for the password. A no-op
   // (skipped client-side, and a harmless no-op server-side even if called)
   // for atriums without a password.
+  //
+  // Touches immediately on mount, not just every 5 minutes -- a browser
+  // refresh fully unmounts this component, clearing any pending interval, so
+  // a short visit that refreshes again before the first periodic tick would
+  // otherwise never have gotten the chance to extend a verified_at that was
+  // already close to (or past) 30 minutes old, incorrectly re-prompting for
+  // the password despite the user having just been here.
   useEffect(() => {
     if (!supabase || !currentLobby?.passwordHash) return
     const IDLE_LIMIT_MS = 30 * 60 * 1000
+    ;(supabase as any).rpc('touch_lobby_session', { p_lobby_id: lobbyId })
     const heartbeat = setInterval(() => {
       if (Date.now() - lastActivityAtRef.current > IDLE_LIMIT_MS) return
       ;(supabase as any).rpc('touch_lobby_session', { p_lobby_id: lobbyId })

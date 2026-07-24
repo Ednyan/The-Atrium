@@ -46,6 +46,38 @@ export function scaleToDisplayBox(box: PackBox, maxEdge = IMAGE_DISPLAY_MAX_EDGE
   return { width: Math.round(box.width * scale), height: Math.round(box.height * scale) }
 }
 
+// Probes a (possibly remote, possibly local:// on desktop) image URL's real
+// dimensions by loading it, so a batch can be packed against its actual
+// aspect ratio instead of a flat default box. Used both for brand-new batch
+// embeds (LobbyScene) and for reorganizing already-existing traces
+// (TraceOverlay) -- the latter needs this too because a selected trace that
+// isn't currently rendered on screen (culled by viewport distance/zoom, or
+// simply never scrolled into view yet) never populated its cached natural
+// dimensions, so packing it at a wrong guessed size caused the exact same
+// overlap bug a fresh batch embed placement had. A longer timeout than a
+// local blob probe since this is a real network fetch for remote URLs.
+export function probeRemoteImageDimensions(url: string, timeoutMs = 4000): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result: { width: number; height: number } | null) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+    const timeout = setTimeout(() => finish(null), timeoutMs)
+    const img = new Image()
+    img.onload = () => {
+      clearTimeout(timeout)
+      finish(img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null)
+    }
+    img.onerror = () => {
+      clearTimeout(timeout)
+      finish(null)
+    }
+    img.src = url
+  })
+}
+
 // Mirrors TraceOverlay's getTraceSize default (pre-aspect-ratio-detection)
 // dimensions, so a freshly-placed batch is packed against roughly the same
 // footprint each trace will actually render at.

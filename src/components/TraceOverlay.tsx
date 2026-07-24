@@ -18,7 +18,7 @@ import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVE
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
-import { packBoxesAroundCenter } from '../lib/binPack'
+import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -1562,17 +1562,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     setContextMenu(null)
   }
 
-  const MAX_REORGANIZE_TRACES = 50
+  const MAX_REORGANIZE_TRACES = 100
 
   // Right-click > "Reorganize Selected" -- re-packs the current
   // multi-selection with the same bin-packing algorithm used for a fresh
   // batch embed/multi-file placement, but around the selection's own
-  // current center instead of a drop point, and using each trace's real
-  // current size (getTraceSize) rather than probing/defaults since these
-  // traces already exist. Capped at 50 traces since a much larger
-  // multi-select is an unusual case not worth the packer's overlap-check
-  // (circle mode) or skyline-scan (square mode) overhead.
-  const reorganizeSelectedTraces = () => {
+  // current center instead of a drop point. Capped at 100 traces since a
+  // much larger multi-select is an unusual case not worth the packer's
+  // overlap-check (circle mode) or skyline-scan (square mode) overhead.
+  const reorganizeSelectedTraces = async () => {
     const ids = Array.from(multiSelectedIds)
     if (ids.length < 2 || ids.length > MAX_REORGANIZE_TRACES) {
       setContextMenu(null)
@@ -1586,6 +1584,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       return
     }
 
+    setContextMenu(null)
+
     const anchorX = selected.reduce((sum, t) => sum + t.x, 0) / selected.length
     const anchorY = selected.reduce((sum, t) => sum + t.y, 0) / selected.length
 
@@ -1597,7 +1597,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       // ignore -- default to 'square'
     }
 
-    const sizes = selected.map(t => getTraceSize(t))
+    // getTraceSize only knows a trace's real image/embed dimensions once its
+    // <img> has actually rendered and loaded on screen (imageDimensions[id]
+    // gets populated by that element's own onLoad). A selected trace that's
+    // off-screen, culled by zoom/distance, or simply never scrolled into
+    // view yet never populated that cache, so packing it at getTraceSize's
+    // flat fallback default caused the exact same overlap bug a fresh batch
+    // embed placement had before it probed real dimensions up front. Probe
+    // anything still missing from the cache before packing, same approach.
+    const sizes = await Promise.all(selected.map(async (trace) => {
+      if (trace.type !== 'image' && trace.type !== 'embed') return getTraceSize(trace)
+      if ((trace.width && trace.height) || imageDimensions[trace.id]) return getTraceSize(trace)
+      const url = localMediaUrls[trace.id] || trace.mediaUrl
+      if (!url) return getTraceSize(trace)
+      const probed = await probeRemoteImageDimensions(url)
+      return probed ? scaleToDisplayBox(probed) : getTraceSize(trace)
+    }))
     const offsets = packBoxesAroundCenter(sizes, 24, packingShape)
 
     const batchOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
@@ -1608,8 +1623,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       updateTraceTransform(trace.id, { x: newX, y: newY }, { skipUndo: true })
     })
     pushBatchUpdateOp(batchOps)
-
-    setContextMenu(null)
   }
 
   const updateTraceCustomization = (traceId: string, updates: Partial<Trace>, options?: { skipUndo?: boolean }) => {

@@ -580,9 +580,12 @@ function AppInner() {
         // a still-fresh (< 30 min idle) password verification as valid,
         // refreshing it in the same call -- so an actively-used session
         // never re-prompts, but returning after a long idle gap does.
-        const { data: alreadyHasAccess } = await (supabase as any).rpc('check_and_touch_lobby_access', {
+        const { data: alreadyHasAccess, error: fastPathError } = await (supabase as any).rpc('check_and_touch_lobby_access', {
           p_lobby_id: route.lobbyId,
         })
+        if (fastPathError) {
+          console.error('check_and_touch_lobby_access error:', fastPathError)
+        }
         if (alreadyHasAccess) {
           setVerifiedLobbyId(route.lobbyId)
           setCurrentLobbyId(route.lobbyId)
