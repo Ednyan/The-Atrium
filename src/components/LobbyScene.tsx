@@ -32,6 +32,20 @@ const DEFAULT_ZOOM_SENSITIVITY = 0.16
 
 const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
+function mapLocationRow(row: any): LobbyLocation {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    lobbyId: row.lobby_id,
+    name: row.name,
+    positionX: row.position_x,
+    positionY: row.position_y,
+    zoom: row.zoom ?? 1,
+    orderIndex: row.order_index ?? 0,
+    userId: row.user_id,
+  }
+}
+
 const formatTimeInAtrium = (joinedAt: number | undefined) => {
   if (!joinedAt) return '—'
   const elapsedMs = Math.max(0, Date.now() - joinedAt)
@@ -329,6 +343,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLocationsPanel, setShowLocationsPanel] = useState(false)
+  // Saved (persisted) locations from the DB, and the local editable working
+  // copy. Edits (add/rename/delete/reorder) only touch the working copy and
+  // set locationsDirty; nothing is written -- and so nothing is broadcast
+  // over realtime -- until the user hits "Save Changes", which persists the
+  // whole diff at once. Both live here (not in LocationsPanel) so presentation
+  // mode keeps running after the panel is closed and the on-screen quick
+  // toggle can know whether any locations exist.
+  const [savedLocations, setSavedLocations] = useState<LobbyLocation[]>([])
+  const [workingLocations, setWorkingLocations] = useState<LobbyLocation[]>([])
+  const [locationsDirty, setLocationsDirty] = useState(false)
+  const [presentationMode, setPresentationMode] = useState(false)
+  const [presentationIndex, setPresentationIndex] = useState(0)
+  const workingLocationsRef = useRef<LobbyLocation[]>([])
+  const presentationModeRef = useRef(false)
+  const presentationIndexRef = useRef(0)
+  useEffect(() => { workingLocationsRef.current = workingLocations }, [workingLocations])
+  useEffect(() => { presentationModeRef.current = presentationMode }, [presentationMode])
+  useEffect(() => { presentationIndexRef.current = presentationIndex }, [presentationIndex])
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
@@ -957,6 +989,171 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       duration: 900,
     }
   }
+
+  // --- Locations state (shared per-atrium; edits deferred to Save) ---------
+  const loadLocations = useCallback(async () => {
+    if (!supabase || !lobbyId) return
+    const { data, error } = await supabase
+      .from('lobby_locations')
+      .select('*')
+      .eq('lobby_id', lobbyId)
+      .order('order_index', { ascending: true })
+    if (error || !data) return
+    setSavedLocations(data.map(mapLocationRow))
+  }, [lobbyId])
+
+  useEffect(() => {
+    loadLocations()
+    if (!supabase) return
+    const channel = supabase
+      .channel(`locations-channel-${lobbyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_locations', filter: `lobby_id=eq.${lobbyId}` }, () => {
+        loadLocations()
+      })
+      .subscribe()
+    return () => { channel.unsubscribe() }
+  }, [loadLocations, lobbyId])
+
+  // Keep the working copy in sync with the saved list whenever there are no
+  // unsaved edits -- so a fresh load, or another user's saved change arriving
+  // over realtime, is reflected, but an in-progress local edit is never
+  // clobbered.
+  useEffect(() => {
+    if (!locationsDirty) {
+      setWorkingLocations(savedLocations.map(l => ({ ...l })))
+    }
+  }, [savedLocations, locationsDirty])
+
+  const addLocation = (name: string) => {
+    const cam = getCurrentCamera()
+    setWorkingLocations(prev => [
+      ...prev,
+      {
+        id: `temp_${crypto.randomUUID()}`,
+        createdAt: new Date().toISOString(),
+        lobbyId,
+        name: name.trim(),
+        positionX: cam.x,
+        positionY: cam.y,
+        zoom: cam.zoom,
+        orderIndex: prev.length,
+        userId: username,
+      },
+    ])
+    setLocationsDirty(true)
+  }
+
+  const renameLocation = (id: string, name: string) => {
+    setWorkingLocations(prev => prev.map(l => (l.id === id ? { ...l, name: name.trim() } : l)))
+    setLocationsDirty(true)
+  }
+
+  const deleteLocation = (id: string) => {
+    setWorkingLocations(prev => prev.filter(l => l.id !== id))
+    setLocationsDirty(true)
+  }
+
+  const reorderLocations = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return
+    setWorkingLocations(prev => {
+      const arr = [...prev]
+      const from = arr.findIndex(l => l.id === sourceId)
+      const to = arr.findIndex(l => l.id === targetId)
+      if (from === -1 || to === -1) return prev
+      const [moved] = arr.splice(from, 1)
+      arr.splice(to, 0, moved)
+      return arr
+    })
+    setLocationsDirty(true)
+  }
+
+  const discardLocationChanges = () => {
+    setWorkingLocations(savedLocations.map(l => ({ ...l })))
+    setLocationsDirty(false)
+  }
+
+  // Persists the whole working/saved diff in one pass (deletes, inserts,
+  // updates), so all the session's location edits are written -- and
+  // broadcast over realtime -- only once, on demand, instead of on every edit.
+  const saveLocationChanges = async () => {
+    if (!supabase || !canEdit) return
+    const saved = savedLocations
+    const working = workingLocationsRef.current
+    const workingRealIds = new Set(working.filter(l => !l.id.startsWith('temp_')).map(l => l.id))
+
+    for (const s of saved) {
+      if (!workingRealIds.has(s.id)) {
+        await (supabase.from('lobby_locations') as any).delete().eq('id', s.id)
+      }
+    }
+    for (let i = 0; i < working.length; i++) {
+      const w = working[i]
+      if (w.id.startsWith('temp_')) {
+        await (supabase.from('lobby_locations') as any).insert({
+          lobby_id: lobbyId,
+          name: w.name,
+          position_x: w.positionX,
+          position_y: w.positionY,
+          zoom: w.zoom,
+          order_index: i,
+          user_id: username,
+        })
+      } else {
+        const orig = saved.find(s => s.id === w.id)
+        if (!orig || orig.name !== w.name || orig.orderIndex !== i || orig.positionX !== w.positionX || orig.positionY !== w.positionY || orig.zoom !== w.zoom) {
+          await (supabase.from('lobby_locations') as any).update({
+            name: w.name,
+            order_index: i,
+            position_x: w.positionX,
+            position_y: w.positionY,
+            zoom: w.zoom,
+          }).eq('id', w.id)
+        }
+      }
+    }
+    setLocationsDirty(false)
+    await loadLocations()
+  }
+
+  // --- Presentation mode (arrow-key navigation through working locations) --
+  const goToPresentationIndex = useCallback((index: number) => {
+    const list = workingLocationsRef.current
+    if (list.length === 0) return
+    const clamped = Math.max(0, Math.min(list.length - 1, index))
+    setPresentationIndex(clamped)
+    presentationIndexRef.current = clamped
+    flyToLocation(list[clamped])
+  }, [])
+
+  const togglePresentationMode = useCallback(() => {
+    if (presentationModeRef.current) {
+      setPresentationMode(false)
+      presentationModeRef.current = false
+    } else {
+      if (workingLocationsRef.current.length === 0) return
+      setPresentationMode(true)
+      presentationModeRef.current = true
+      goToPresentationIndex(presentationIndexRef.current)
+    }
+  }, [goToPresentationIndex])
+
+  // Arrow keys step through locations while presentation mode is on. Stable
+  // listener (reads refs), so it keeps working even with the panel closed.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!presentationModeRef.current) return
+      if (isEditableTarget(e.target)) return
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        goToPresentationIndex(presentationIndexRef.current + 1)
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        goToPresentationIndex(presentationIndexRef.current - 1)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [goToPresentationIndex])
 
   // Batch-embed creation from TracePanel's "Batch Placement" toggle: one URL
   // per line becomes its own embed trace, bin-packed around the placement
@@ -2901,12 +3098,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {showLayerPanel ? 'Close' : 'Layers'}
       </button>
 
-      {/* Locations Button -- visible to everyone (viewing/presenting saved
-          camera views doesn't require edit permission; the panel hides its
-          mutating controls when canEdit is false) */}
+      {/* Locations Button -- grouped right below Layers (both open panels);
+          visible to everyone (viewing/presenting saved camera views doesn't
+          require edit permission; the panel hides its mutating controls when
+          canEdit is false) */}
       <button
         onClick={() => setShowLocationsPanel(!showLocationsPanel)}
-        className="fixed bottom-52 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
+        className="fixed bottom-36 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLocationsPanel ? 'Close' : 'Locations'}
@@ -2923,7 +3121,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           }
           setIsDrawingMode(!isDrawingMode)
         }}
-        className={`fixed bottom-36 right-4 ${isDrawingMode ? 'bg-white text-black border-white' : 'bg-gray-800 hover:bg-gray-700 text-white border-gray-500'} px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
+        className={`fixed bottom-52 right-4 ${isDrawingMode ? 'bg-white text-black border-white' : 'bg-gray-800 hover:bg-gray-700 text-white border-gray-500'} px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
       >
         <span className="opacity-60 mr-2">✎</span>
         {isDrawingMode ? 'Exit Draw' : 'Draw'}
@@ -3461,11 +3659,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Locations Panel */}
       {showLocationsPanel && (
         <LocationsPanel
-          lobbyId={lobbyId}
           onClose={() => setShowLocationsPanel(false)}
           canEdit={canEdit}
-          getCurrentCamera={getCurrentCamera}
+          locations={workingLocations}
+          dirty={locationsDirty}
+          onAdd={addLocation}
+          onRename={renameLocation}
+          onDelete={deleteLocation}
+          onReorder={reorderLocations}
+          onSave={saveLocationChanges}
+          onDiscard={discardLocationChanges}
           onGoToLocation={flyToLocation}
+          presentationMode={presentationMode}
+          onTogglePresentation={togglePresentationMode}
+          presentationIndex={presentationIndex}
         />
       )}
 
@@ -3499,14 +3706,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         />
       )}
 
-      {/* Instructions */}
-      <div className="fixed bottom-4 left-4 px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+      {/* Controls tab + presentation quick-toggle, laid out in one bottom-left
+          row so the toggle always sits just to the right of the Controls box
+          regardless of its (variable) width. */}
+      <div className="fixed bottom-4 left-4 z-[9999] flex items-end gap-2 pointer-events-none">
+      <div className="relative px-4 py-3 border-2 border-white font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
         <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
         <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white"></div>
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white"></div>
-        
+
         <div className="flex items-center justify-between gap-3">
           <p className="text-white text-[10px] tracking-[0.15em] uppercase">Controls</p>
           <button
@@ -3545,6 +3755,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             </p>
           </div>
         )}
+      </div>
+
+      {/* Presentation quick-toggle -- only shown when locations exist, so it
+          disappears entirely for an atrium with no saved views. Lets the user
+          flip presentation mode on/off (and see the current stop) without
+          opening the Locations panel. */}
+      {workingLocations.length > 0 && (
+        <button
+          onClick={togglePresentationMode}
+          className={`pointer-events-auto relative px-3 py-2 border-2 font-mono text-[10px] tracking-[0.15em] uppercase transition-all shadow-lg ${
+            presentationMode
+              ? 'bg-emerald-500 border-emerald-400 text-black'
+              : 'bg-black/90 border-white text-white hover:bg-gray-800'
+          }`}
+          title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
+        >
+          <span className="opacity-70 mr-1.5">▶</span>
+          {presentationMode ? `Present ${presentationIndex + 1}/${workingLocations.length}` : 'Present'}
+        </button>
+      )}
       </div>
 
       {/* Theme Customization Modal */}

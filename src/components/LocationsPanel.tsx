@@ -1,6 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase'
-import { useGameStore } from '../store/gameStore'
+import { useState } from 'react'
 import type { LobbyLocation } from '../types/database'
 
 // Custom drag MIME so LobbyScene's canvas-wide file/URL drop handlers can
@@ -9,174 +7,47 @@ import type { LobbyLocation } from '../types/database'
 export const LOCATION_DRAG_DATA_KEY = 'application/x-atrium-location-id'
 
 interface LocationsPanelProps {
-  lobbyId: string
   onClose: () => void
   canEdit?: boolean
-  // Reads the live camera (world position + zoom) at the moment "Save
-  // Location" is pressed.
-  getCurrentCamera: () => { x: number; y: number; zoom: number }
-  // Smoothly flies the camera to a saved location (LobbyScene's flyToLocation).
+  // The working (possibly-unsaved) locations list, owned by LobbyScene. All
+  // mutations go back up through the callbacks below and are only persisted
+  // when onSave is called -- this panel is purely presentational.
+  locations: LobbyLocation[]
+  dirty: boolean
+  onAdd: (name: string) => void
+  onRename: (id: string, name: string) => void
+  onDelete: (id: string) => void
+  onReorder: (sourceId: string, targetId: string) => void
+  onSave: () => void
+  onDiscard: () => void
   onGoToLocation: (location: LobbyLocation) => void
+  presentationMode: boolean
+  onTogglePresentation: () => void
+  presentationIndex: number
 }
 
-function mapRow(row: any): LobbyLocation {
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    lobbyId: row.lobby_id,
-    name: row.name,
-    positionX: row.position_x,
-    positionY: row.position_y,
-    zoom: row.zoom ?? 1,
-    orderIndex: row.order_index ?? 0,
-    userId: row.user_id,
-  }
-}
-
-export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCurrentCamera, onGoToLocation }: LocationsPanelProps) {
-  const { username } = useGameStore()
-  const [locations, setLocations] = useState<LobbyLocation[]>([])
-  const [isReordering, setIsReordering] = useState(false)
+export default function LocationsPanel({
+  onClose,
+  canEdit = true,
+  locations,
+  dirty,
+  onAdd,
+  onRename,
+  onDelete,
+  onReorder,
+  onSave,
+  onDiscard,
+  onGoToLocation,
+  presentationMode,
+  onTogglePresentation,
+  presentationIndex,
+}: LocationsPanelProps) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
   const [dialogMode, setDialogMode] = useState<'create' | 'rename' | 'delete' | null>(null)
   const [dialogInput, setDialogInput] = useState('')
   const [dialogTargetId, setDialogTargetId] = useState<string | null>(null)
-
-  // Presentation mode: while on, Left/Right arrow keys step through the
-  // locations in order, flying the camera to each. Lives here (rather than
-  // LobbyScene) since this panel owns the ordered list; it therefore only
-  // works while the panel is open, which is fine -- the panel docks to the
-  // side and leaves the canvas visible.
-  const [presentationMode, setPresentationMode] = useState(false)
-  const [presentationIndex, setPresentationIndex] = useState(0)
-
-  // Sorted ascending by order_index -- index 0 is the top of the list and the
-  // first stop in presentation mode.
-  const sorted = [...locations].sort((a, b) => a.orderIndex - b.orderIndex)
-  const sortedRef = useRef(sorted)
-  sortedRef.current = sorted
-
-  const loadLocations = useCallback(async () => {
-    if (!supabase) return
-    const { data, error } = await supabase
-      .from('lobby_locations')
-      .select('*')
-      .eq('lobby_id', lobbyId)
-      .order('order_index', { ascending: true })
-    if (error || !data) return
-    setLocations(data.map(mapRow))
-  }, [lobbyId])
-
-  useEffect(() => {
-    loadLocations()
-    if (!supabase) return
-    const channel = supabase
-      .channel(`locations-channel-${lobbyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_locations', filter: `lobby_id=eq.${lobbyId}` }, () => {
-        loadLocations()
-      })
-      .subscribe()
-    return () => { channel.unsubscribe() }
-  }, [loadLocations, lobbyId])
-
-  const goToIndex = useCallback((index: number) => {
-    const list = sortedRef.current
-    if (list.length === 0) return
-    const clamped = Math.max(0, Math.min(list.length - 1, index))
-    setPresentationIndex(clamped)
-    onGoToLocation(list[clamped])
-  }, [onGoToLocation])
-
-  // Arrow-key navigation while presentation mode is on.
-  useEffect(() => {
-    if (!presentationMode) return
-    const isEditable = (t: EventTarget | null) => {
-      const el = t as HTMLElement | null
-      const tag = el?.tagName
-      return !!el?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
-    }
-    const handler = (e: KeyboardEvent) => {
-      if (isEditable(e.target)) return
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        goToIndex(presentationIndex + 1)
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        goToIndex(presentationIndex - 1)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [presentationMode, presentationIndex, goToIndex])
-
-  const togglePresentationMode = () => {
-    if (presentationMode) {
-      setPresentationMode(false)
-      return
-    }
-    setPresentationMode(true)
-    // Jump to the first location immediately so the mode has visible effect.
-    if (sortedRef.current.length > 0) goToIndex(0)
-  }
-
-  const doSave = async (name: string) => {
-    if (!supabase || !name.trim() || !canEdit) return
-    const cam = getCurrentCamera()
-    const maxOrder = locations.reduce((m, l) => Math.max(m, l.orderIndex), -1)
-    const { error } = await (supabase.from('lobby_locations') as any).insert({
-      lobby_id: lobbyId,
-      name: name.trim(),
-      position_x: cam.x,
-      position_y: cam.y,
-      zoom: cam.zoom,
-      order_index: maxOrder + 1,
-      user_id: username,
-    })
-    if (error) {
-      alert(`Failed to save location: ${error.message}`)
-      return
-    }
-    await loadLocations()
-  }
-
-  const doRename = async (id: string, name: string) => {
-    if (!supabase || !name.trim() || !canEdit) return
-    const { error } = await (supabase.from('lobby_locations') as any).update({ name: name.trim() }).eq('id', id)
-    if (error) { alert(`Failed to rename: ${error.message}`); return }
-    await loadLocations()
-  }
-
-  const doDelete = async (id: string) => {
-    if (!supabase || !canEdit) return
-    const { error } = await (supabase.from('lobby_locations') as any).delete().eq('id', id)
-    if (error) { alert(`Failed to delete: ${error.message}`); return }
-    await loadLocations()
-  }
-
-  // Drag-reorder: reassign a contiguous order_index sequence matching the new
-  // visual order, same approach as LayerPanel's group reorder.
-  const reorder = async (sourceId: string, targetId: string) => {
-    if (!supabase || !canEdit || sourceId === targetId) return
-    const ordered = [...sortedRef.current]
-    const from = ordered.findIndex(l => l.id === sourceId)
-    const to = ordered.findIndex(l => l.id === targetId)
-    if (from === -1 || to === -1) return
-    const [moved] = ordered.splice(from, 1)
-    ordered.splice(to, 0, moved)
-    setIsReordering(true)
-    try {
-      for (let i = 0; i < ordered.length; i++) {
-        if (ordered[i].orderIndex !== i) {
-          await (supabase.from('lobby_locations') as any).update({ order_index: i }).eq('id', ordered[i].id)
-        }
-      }
-      await loadLocations()
-    } finally {
-      setIsReordering(false)
-    }
-  }
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.stopPropagation()
@@ -192,13 +63,13 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
     e.dataTransfer.dropEffect = 'move'
     if (dropTargetId !== id) setDropTargetId(id)
   }
-  const handleDrop = async (e: React.DragEvent, targetId: string) => {
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault()
     e.stopPropagation()
     const sourceId = e.dataTransfer.getData(LOCATION_DRAG_DATA_KEY) || draggedId
     setDropTargetId(null)
     setDraggedId(null)
-    if (sourceId) await reorder(sourceId, targetId)
+    if (sourceId) onReorder(sourceId, targetId)
   }
 
   return (
@@ -217,9 +88,7 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
           <h2 className="text-sm text-white tracking-[0.15em] uppercase">Locations</h2>
-          {isReordering && (
-            <span className="w-3 h-3 border border-gray-500 border-t-white rounded-full animate-spin" title="Updating order…" />
-          )}
+          {dirty && <span className="text-amber-400 text-[8px] tracking-wider uppercase" title="Unsaved changes">● Unsaved</span>}
         </div>
         <div className="flex gap-2">
           {canEdit && (
@@ -228,7 +97,7 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
               className="px-3 py-1 bg-white text-black text-[9px] tracking-wider uppercase hover:bg-gray-200 transition-colors"
               title="Save the current camera view as a location"
             >
-              + Save Location
+              + Save View
             </button>
           )}
           <button onClick={onClose} className="text-gray-400 hover:text-white text-lg w-6 h-6 flex items-center justify-center transition-colors">×</button>
@@ -242,7 +111,7 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
           <span className="text-gray-500 text-[8px] tracking-wide">← / → keys to move between locations</span>
         </div>
         <button
-          onClick={togglePresentationMode}
+          onClick={onTogglePresentation}
           disabled={locations.length === 0}
           className={`px-3 py-1 text-[9px] tracking-wider uppercase transition-colors border ${
             presentationMode
@@ -256,12 +125,12 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
 
       {/* Location list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {sorted.length === 0 && (
+        {locations.length === 0 && (
           <p className="text-gray-600 text-[10px] tracking-wide text-center px-4 py-6">
-            {canEdit ? 'No locations yet. Frame a view and press "Save Location".' : 'No locations saved.'}
+            {canEdit ? 'No locations yet. Frame a view and press "Save View".' : 'No locations saved.'}
           </p>
         )}
-        {sorted.map((loc, index) => {
+        {locations.map((loc, index) => {
           const isPresentationCurrent = presentationMode && index === presentationIndex
           return (
             <div
@@ -272,7 +141,7 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
               onDragEnd={handleDragEnd}
               onDragOver={(e) => handleDragOver(e, loc.id)}
               onDrop={(e) => handleDrop(e, loc.id)}
-              onDoubleClick={() => { onGoToLocation(loc); if (presentationMode) setPresentationIndex(index) }}
+              onDoubleClick={() => onGoToLocation(loc)}
               className={`border p-2 flex items-center justify-between gap-2 transition-all cursor-pointer group ${
                 dropTargetId === loc.id
                   ? 'border-emerald-400 bg-emerald-900/20'
@@ -304,7 +173,7 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={(e) => { e.stopPropagation(); onGoToLocation(loc); if (presentationMode) setPresentationIndex(index) }}
+                  onClick={(e) => { e.stopPropagation(); onGoToLocation(loc) }}
                   className="text-gray-400 hover:text-white text-[11px] px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
                   title="Fly here"
                 >
@@ -334,6 +203,24 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
         })}
       </div>
 
+      {/* Save / Discard footer -- only while there are unsaved edits */}
+      {canEdit && dirty && (
+        <div className="bg-black border-t border-gray-600 p-2 flex gap-2">
+          <button
+            onClick={onSave}
+            className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+          >
+            Save Changes
+          </button>
+          <button
+            onClick={onDiscard}
+            className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+          >
+            Discard
+          </button>
+        </div>
+      )}
+
       {/* Dialog for create/rename/delete */}
       {dialogMode && (
         <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -348,7 +235,7 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
                 <p className="text-white text-xs tracking-[0.15em] uppercase mb-4">Delete this location?</p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { if (dialogTargetId) doDelete(dialogTargetId); setDialogMode(null) }}
+                    onClick={() => { if (dialogTargetId) onDelete(dialogTargetId); setDialogMode(null) }}
                     className="flex-1 bg-red-900 hover:bg-red-700 text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
                   >
                     Delete
@@ -368,8 +255,8 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
                   onChange={(e) => setDialogInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && dialogInput.trim()) {
-                      if (dialogMode === 'create') doSave(dialogInput)
-                      else if (dialogMode === 'rename' && dialogTargetId) doRename(dialogTargetId, dialogInput)
+                      if (dialogMode === 'create') onAdd(dialogInput)
+                      else if (dialogMode === 'rename' && dialogTargetId) onRename(dialogTargetId, dialogInput)
                       setDialogMode(null)
                     }
                     if (e.key === 'Escape') setDialogMode(null)
@@ -381,8 +268,8 @@ export default function LocationsPanel({ lobbyId, onClose, canEdit = true, getCu
                   <button
                     onClick={() => {
                       if (dialogInput.trim()) {
-                        if (dialogMode === 'create') doSave(dialogInput)
-                        else if (dialogMode === 'rename' && dialogTargetId) doRename(dialogTargetId, dialogInput)
+                        if (dialogMode === 'create') onAdd(dialogInput)
+                        else if (dialogMode === 'rename' && dialogTargetId) onRename(dialogTargetId, dialogInput)
                       }
                       setDialogMode(null)
                     }}
