@@ -609,7 +609,25 @@ function AppInner() {
           setVerifyingAccess(false)
           return
         }
-        
+
+        // Admins bypass the password prompt exactly like the owner does (and
+        // exactly like can_user_join_lobby lets them in server-side). Without
+        // this an admin who isn't the owner fell through to the password gate
+        // below with no lobby_sessions row (they never enter a password, so
+        // one is never recorded for them) and got re-prompted on every
+        // refresh, while the owner -- handled by the explicit owner check
+        // above -- did not.
+        if (accessStatus === 'admin') {
+          setVerifiedLobbyId(route.lobbyId)
+          setCurrentLobbyId(route.lobbyId)
+          localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+          await (supabase.from('profiles') as any)
+            .update({ active_lobby_id: route.lobbyId })
+            .eq('id', user.id)
+          setVerifyingAccess(false)
+          return
+        }
+
         // Check if lobby has a password. This applies even to whitelisted
         // users -- a lobby can require both whitelist membership AND a
         // password (see can_user_join_lobby), so whitelisting alone must not
