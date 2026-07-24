@@ -572,31 +572,6 @@ function AppInner() {
           return
         }
 
-        // Fast path: a plain refresh (or re-navigating to the same URL)
-        // re-runs this whole check from scratch every time, which used to
-        // mean a password-protected atrium always re-prompted even though
-        // lobby_sessions already durably remembers a successful entry. This
-        // single RPC mirrors the owner/blacklist/whitelist rules AND treats
-        // a still-fresh (< 30 min idle) password verification as valid,
-        // refreshing it in the same call -- so an actively-used session
-        // never re-prompts, but returning after a long idle gap does.
-        const { data: alreadyHasAccess, error: fastPathError } = await (supabase as any).rpc('check_and_touch_lobby_access', {
-          p_lobby_id: route.lobbyId,
-        })
-        if (fastPathError) {
-          console.error('check_and_touch_lobby_access error:', fastPathError)
-        }
-        if (alreadyHasAccess) {
-          setVerifiedLobbyId(route.lobbyId)
-          setCurrentLobbyId(route.lobbyId)
-          localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
-          await (supabase.from('profiles') as any)
-            .update({ active_lobby_id: route.lobbyId })
-            .eq('id', user.id)
-          setVerifyingAccess(false)
-          return
-        }
-
         // Check if lobby exists
         const { data: lobby, error: lobbyError } = await (supabase as any)
           .from('lobbies')
@@ -645,9 +620,34 @@ function AppInner() {
         })
 
         if (hasPassword) {
-          setLobbyAccessError('password_required')
-          setVerifyingAccess(false)
-          return
+          // ...unless the user already entered the password recently. Entering
+          // it (via the lobby browser -> can_user_join_lobby) records a
+          // lobby_sessions row the user is allowed to read back (see the
+          // "Users can view their own lobby sessions" RLS policy). Skip the
+          // re-prompt on a plain refresh as long as that verification is
+          // still within the 30-minute idle window kept fresh by LobbyScene's
+          // heartbeat -- a direct SELECT here rather than the earlier RPC,
+          // since the RPC path silently failed for guests in practice and a
+          // plain read is easy to reason about and debug.
+          const IDLE_LIMIT_MS = 30 * 60 * 1000
+          const { data: session, error: sessionError } = await (supabase as any)
+            .from('lobby_sessions')
+            .select('verified_at')
+            .eq('lobby_id', route.lobbyId)
+            .eq('user_id', user.id)
+            .maybeSingle()
+          if (sessionError) {
+            console.error('lobby_sessions read error:', sessionError)
+          }
+          const verifiedAt = session?.verified_at ? new Date(session.verified_at).getTime() : 0
+          const sessionIsFresh = verifiedAt > 0 && (Date.now() - verifiedAt) < IDLE_LIMIT_MS
+
+          if (!sessionIsFresh) {
+            setLobbyAccessError('password_required')
+            setVerifyingAccess(false)
+            return
+          }
+          // Fresh session -- fall through to grant access below.
         }
 
         if (accessStatus === 'whitelisted') {
