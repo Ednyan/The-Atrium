@@ -29,6 +29,8 @@ const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.15
 const DEFAULT_ZOOM_SENSITIVITY = 0.16
+// Same contact address already used on the landing page.
+const SUPPORT_EMAIL = 'mindeformer@gmail.com'
 
 const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
@@ -425,6 +427,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
+  const [showReportForm, setShowReportForm] = useState(false)
+  const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')
+  const [reportDescription, setReportDescription] = useState('')
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -2956,24 +2961,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             </button>
           )
         )}
-        <button
-          onClick={() => {
-            // Reset camera to center of map
-            cameraPositionRef.current = { x: 0, y: 0 }
-            worldOffsetRef.current = { x: 0, y: 0 }
-            setWorldOffset({ x: 0, y: 0 })
-          }}
-          className="w-full mt-1.5 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
-        >
-          Recenter
-        </button>
-        <button
-          onClick={toggleFullscreen}
-          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
-        >
-          {isFullscreen ? 'Windowed' : 'Fullscreen'}
-        </button>
-        <div className="flex gap-1 mt-1">
+        <div className="flex gap-1 mt-1.5">
           <button
             onClick={() => {
               if (useGameStore.getState().hasPendingChanges()) {
@@ -3030,6 +3018,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           className="w-full mt-1 bg-gray-700 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
         >
           Profile
+        </button>
+        <button
+          onClick={() => {
+            // Reset camera to center of map
+            cameraPositionRef.current = { x: 0, y: 0 }
+            worldOffsetRef.current = { x: 0, y: 0 }
+            setWorldOffset({ x: 0, y: 0 })
+          }}
+          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+        >
+          Recenter
+        </button>
+        <button
+          onClick={toggleFullscreen}
+          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+        >
+          {isFullscreen ? 'Windowed' : 'Fullscreen'}
         </button>
         {(isLobbyOwner || isLobbyAdmin) && (
           <button
@@ -3099,9 +3104,95 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {sizeMB.toFixed(1)}{isDesktop ? 'MB' : `/${limitMB}MB`}
               </span>
             </div>
+            <button
+              onClick={() => setShowReportForm(true)}
+              className="pointer-events-auto text-gray-500 hover:text-gray-300 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
+            >
+              Report a problem or suggest a feature
+            </button>
           </div>
         )
       })()}
+
+      {/* Report a problem / suggest a feature -- builds a mailto: link (opens
+          the user's own mail client with the subject/body pre-filled) rather
+          than sending server-side, so this needs no backend/email-service
+          setup. */}
+      {showReportForm && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10000200] pointer-events-auto"
+          onClick={() => setShowReportForm(false)}
+        >
+          <div
+            className="bg-black border-2 border-white p-5 w-full max-w-sm relative mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-white pointer-events-none" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-white pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-white pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-white pointer-events-none" />
+
+            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4">
+              <span className="text-gray-400 mr-2">◇</span>Report / Suggest
+            </h3>
+
+            <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Motive</label>
+            <select
+              value={reportMotive}
+              onChange={(e) => setReportMotive(e.target.value as 'bug' | 'feature' | 'other')}
+              className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider"
+            >
+              <option value="bug">Report a Problem</option>
+              <option value="feature">Suggest a Feature</option>
+              <option value="other">Other</option>
+            </select>
+
+            <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Description</label>
+            <textarea
+              autoFocus
+              value={reportDescription}
+              onChange={(e) => setReportDescription(e.target.value)}
+              rows={5}
+              placeholder={reportMotive === 'feature' ? "What would you like to see added?" : "What happened? Steps to reproduce, if it's a bug..."}
+              className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-4 focus:border-white focus:outline-none tracking-wider resize-none"
+            />
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (!reportDescription.trim()) return
+                  const motiveLabel = reportMotive === 'bug' ? 'Bug Report' : reportMotive === 'feature' ? 'Feature Suggestion' : 'Other'
+                  const subject = encodeURIComponent(`[The Atrium] ${motiveLabel}`)
+                  const bodyLines = [
+                    reportDescription.trim(),
+                    '',
+                    '---',
+                    `Motive: ${motiveLabel}`,
+                    `User: ${username || 'Unknown'}`,
+                    `Atrium: ${currentLobby?.name ?? lobbyId}`,
+                    `Platform: ${isDesktop ? 'Desktop' : 'Web'}`,
+                  ]
+                  const body = encodeURIComponent(bodyLines.join('\n'))
+                  window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
+                  setShowReportForm(false)
+                  setReportDescription('')
+                  setReportMotive('bug')
+                }}
+                disabled={!reportDescription.trim()}
+                className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Open Email
+              </button>
+              <button
+                onClick={() => setShowReportForm(false)}
+                className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Trace Button -- hidden entirely when the atrium's edit permission
           mode doesn't allow this user to create traces */}
