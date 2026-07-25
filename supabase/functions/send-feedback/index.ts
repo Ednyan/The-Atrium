@@ -6,17 +6,18 @@
 //
 // Requires the RESEND_API_KEY secret to be set on this project
 // (`supabase secrets set RESEND_API_KEY=...`) with a key from
-// https://resend.com. On Resend's free tier, the "from" address must be
-// onboarding@resend.dev (or a domain you've verified in Resend) -- it
-// cannot be an arbitrary address. reply_to is set to the caller's own
-// verified email (from their session JWT, not a client-supplied field) so
-// replying in a normal mail client goes straight back to them.
+// https://resend.com. The "from" address uses mail.scenefoundry.studio --
+// already verified in Resend (it's what sends account-confirmation email
+// via Supabase Auth SMTP) -- rather than Resend's shared onboarding@resend.dev
+// sandbox address. reply_to is set to the caller's own verified email (from
+// their session JWT, not a client-supplied field) so replying in a normal
+// mail client goes straight back to them.
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
 const SUPPORT_EMAIL = 'mindeformer@gmail.com'
-const RESEND_FROM = 'The Atrium <onboarding@resend.dev>'
+const RESEND_FROM = 'The Atrium <feedback@mail.scenefoundry.studio>'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
