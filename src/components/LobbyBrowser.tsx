@@ -1,7 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
+import { useGameStore } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
+import { ReportFeedbackModal } from './ReportFeedbackModal'
 import type { Lobby } from '../types/database'
 
 interface LobbyWithOwner extends Lobby {
@@ -43,6 +45,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vaultPath, setVaultPath] = useState<string | null>(null)
+  const [showReportForm, setShowReportForm] = useState(false)
+  const { username } = useGameStore()
   const [vaultBusy, setVaultBusy] = useState(false)
   const [vaultError, setVaultError] = useState<string | null>(null)
 
@@ -1208,6 +1212,20 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         <ImportAtrium
           onClose={() => setShowImport(false)}
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
+        />
+      )}
+
+      {/* Report a problem / suggest a feature */}
+      <button
+        onClick={() => setShowReportForm(true)}
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-gray-500 hover:text-gray-300 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
+      >
+        Report a problem or suggest a feature
+      </button>
+      {showReportForm && (
+        <ReportFeedbackModal
+          onClose={() => setShowReportForm(false)}
+          username={username}
         />
       )}
 

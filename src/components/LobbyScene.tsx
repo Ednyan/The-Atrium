@@ -19,7 +19,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
-import { sendFeedbackReport, canSendFeedbackDirectly } from '../lib/feedback'
+import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
@@ -30,8 +30,6 @@ const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.15
 const DEFAULT_ZOOM_SENSITIVITY = 0.16
-// Same contact address already used on the landing page.
-const SUPPORT_EMAIL = 'mindeformer@gmail.com'
 
 const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
@@ -429,11 +427,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
-  const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')
-  const [reportSubject, setReportSubject] = useState('')
-  const [reportDescription, setReportDescription] = useState('')
-  const [isSendingReport, setIsSendingReport] = useState(false)
-  const [reportSentMessage, setReportSentMessage] = useState<string | null>(null)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -3048,6 +3041,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             Theme
           </button>
         )}
+        <button
+          onClick={() => setShowReportForm(true)}
+          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+        >
+          Report a Problem
+        </button>
           </>
         )}
       </div>
@@ -3108,145 +3107,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {sizeMB.toFixed(1)}{isDesktop ? 'MB' : `/${limitMB}MB`}
               </span>
             </div>
-            <button
-              onClick={() => setShowReportForm(true)}
-              className="pointer-events-auto text-gray-500 hover:text-gray-300 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
-            >
-              Report a problem or suggest a feature
-            </button>
           </div>
         )
       })()}
 
-      {/* Report a problem / suggest a feature -- tries to send directly via
-          the send-feedback Edge Function (so the user never leaves the
-          page); falls back to a mailto: link (opens the user's own mail
-          client, subject/body pre-filled) if direct sending isn't available
-          on this platform (desktop) or the call fails for any reason (e.g.
-          the Resend API key isn't configured yet), so the feature never
-          fully breaks. */}
       {showReportForm && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10000200] pointer-events-auto"
-          onClick={() => { if (!isSendingReport) setShowReportForm(false) }}
-        >
-          <div
-            className="bg-black border-2 border-white p-5 w-full max-w-sm relative mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-white pointer-events-none" />
-            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-white pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-white pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-white pointer-events-none" />
-
-            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4">
-              <span className="text-gray-400 mr-2">◇</span>Report / Suggest
-            </h3>
-
-            {reportSentMessage ? (
-              <p className="text-gray-300 text-xs tracking-wider text-center py-4">{reportSentMessage}</p>
-            ) : (
-              <>
-                <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Motive</label>
-                <select
-                  value={reportMotive}
-                  onChange={(e) => setReportMotive(e.target.value as 'bug' | 'feature' | 'other')}
-                  disabled={isSendingReport}
-                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider disabled:opacity-50"
-                >
-                  <option value="bug">Report a Problem</option>
-                  <option value="feature">Suggest a Feature</option>
-                  <option value="other">Other</option>
-                </select>
-
-                <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Subject</label>
-                <input
-                  type="text"
-                  value={reportSubject}
-                  onChange={(e) => setReportSubject(e.target.value)}
-                  disabled={isSendingReport}
-                  placeholder="Short summary..."
-                  maxLength={100}
-                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider disabled:opacity-50"
-                />
-
-                <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Description</label>
-                <textarea
-                  autoFocus
-                  value={reportDescription}
-                  onChange={(e) => setReportDescription(e.target.value)}
-                  rows={5}
-                  disabled={isSendingReport}
-                  placeholder={reportMotive === 'feature' ? "What would you like to see added?" : "What happened? Steps to reproduce, if it's a bug..."}
-                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-4 focus:border-white focus:outline-none tracking-wider resize-none disabled:opacity-50"
-                />
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      if (!reportDescription.trim() || isSendingReport) return
-
-                      const motiveLabel = reportMotive === 'bug' ? 'Bug Report' : reportMotive === 'feature' ? 'Feature Suggestion' : 'Other'
-                      const emailSubjectLine = reportSubject.trim() ? `${motiveLabel} - ${reportSubject.trim()}` : motiveLabel
-
-                      if (canSendFeedbackDirectly()) {
-                        setIsSendingReport(true)
-                        const result = await sendFeedbackReport({
-                          motive: reportMotive,
-                          subject: reportSubject.trim(),
-                          description: reportDescription.trim(),
-                          username,
-                          atriumName: currentLobby?.name ?? lobbyId,
-                        })
-                        setIsSendingReport(false)
-                        if (result.success) {
-                          setReportSentMessage('✓ Sent — thank you!')
-                          setTimeout(() => {
-                            setShowReportForm(false)
-                            setReportSentMessage(null)
-                            setReportSubject('')
-                            setReportDescription('')
-                            setReportMotive('bug')
-                          }, 1500)
-                          return
-                        }
-                        // Fall through to the mailto: fallback below.
-                      }
-
-                      const subject = encodeURIComponent(emailSubjectLine)
-                      const bodyLines = [
-                        reportDescription.trim(),
-                        '',
-                        '---',
-                        `Motive: ${motiveLabel}`,
-                        `User: ${username || 'Unknown'}`,
-                        `Atrium: ${currentLobby?.name ?? lobbyId}`,
-                        `Platform: ${isDesktop ? 'Desktop' : 'Web'}`,
-                      ]
-                      const body = encodeURIComponent(bodyLines.join('\n'))
-                      window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
-                      setShowReportForm(false)
-                      setReportSubject('')
-                      setReportDescription('')
-                      setReportMotive('bug')
-                    }}
-                    disabled={!reportDescription.trim() || isSendingReport}
-                    className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    {isSendingReport ? 'Sending…' : canSendFeedbackDirectly() ? 'Send' : 'Open Email'}
-                  </button>
-                  <button
-                    onClick={() => setShowReportForm(false)}
-                    disabled={isSendingReport}
-                    className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-30"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <ReportFeedbackModal
+          onClose={() => setShowReportForm(false)}
+          username={username}
+          atriumName={currentLobby?.name ?? lobbyId}
+        />
       )}
 
       {/* Trace Button -- hidden entirely when the atrium's edit permission
