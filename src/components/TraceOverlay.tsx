@@ -3115,14 +3115,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                 switch (cursorState) {
                   case 'pointer':
-                    // Hand pointing cursor (for clickable items)
+                    // Paint-drop cursor (for clickable items) -- an abstract
+                    // blob with trailing streaks, as if a drop of paint were
+                    // falling upward against gravity. See
+                    // src/assets/cursors/hand-pointer.svg for the editable
+                    // source (open in Illustrator to tweak further).
                     return (
                       <svg {...baseProps}>
                         <path
-                          d="M7 5.5a2.5 2.5 0 0 1 5 0v3.062a2.5 2.5 0 0 1 2 0V7.5a2.5 2.5 0 0 1 5 0v7a7.5 7.5 0 0 1-15 0v-5a2.5 2.5 0 0 1 5 0v1.062a2.5 2.5 0 0 1-2 0V5.5z"
+                          d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,2.5,0,2.5"
                           fill={playerColor}
                           stroke="white"
                           strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         />
                       </svg>
                     )
