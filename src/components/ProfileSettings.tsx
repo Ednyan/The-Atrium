@@ -197,30 +197,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     }
   }
 
-  const handleLogout = async () => {
-    if (!supabase) return
-    
-    // Clear active_lobby_id before signing out
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await (supabase
-        .from('profiles') as any)
-        .update({ active_lobby_id: null })
-        .eq('id', user.id)
-    }
-    
-    // Clear local storage
-    localStorage.removeItem('lobby_hasEntered')
-    localStorage.removeItem('lobby_currentLobbyId')
-    localStorage.removeItem('lobby_showBrowser')
-    
-    await supabase.auth.signOut()
-    
-    // Force navigation to landing page
-    window.location.hash = '/'
-    window.location.reload()
-  }
-
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== actualUsername) return
     setDeleteError('')
@@ -443,13 +419,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
             </>
           )}
-
-          <button
-            onClick={handleLogout}
-            className="w-full py-2 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
-          >
-            Log Out
-          </button>
 
           {!isDesktop && (
             <a

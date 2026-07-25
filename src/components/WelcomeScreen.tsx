@@ -1,7 +1,7 @@
 import { useState, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
-import { isDesktop } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 
 // Lazy load desktop-only components to avoid importing Tauri deps in web mode
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
@@ -17,6 +17,30 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   const [isHovered, setIsHovered] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { username } = useGameStore()
+
+  const handleLogout = async () => {
+    if (!supabase) return
+
+    // Clear active_lobby_id before signing out
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await (supabase
+        .from('profiles') as any)
+        .update({ active_lobby_id: null })
+        .eq('id', user.id)
+    }
+
+    // Clear local storage
+    localStorage.removeItem('lobby_hasEntered')
+    localStorage.removeItem('lobby_currentLobbyId')
+    localStorage.removeItem('lobby_showBrowser')
+
+    await supabase.auth.signOut()
+
+    // Force navigation to landing page
+    window.location.hash = '/'
+    window.location.reload()
+  }
 
   const toggleFullscreen = async () => {
     if (isDesktop) {
@@ -233,6 +257,16 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
             >
               <span className="relative z-10">◇ {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+            </button>
+
+            {/* Log Out button */}
+            <button
+              onClick={handleLogout}
+              onMouseEnter={() => setIsHovered('logout')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="relative w-full py-3 border border-nier-red/40 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-red/80 hover:bg-nier-red/20 hover:text-nier-bg"
+            >
+              <span className="relative z-10">◇ Log Out</span>
             </button>
 
             {/* Exit button (desktop only) */}
