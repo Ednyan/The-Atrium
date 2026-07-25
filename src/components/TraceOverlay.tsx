@@ -4150,9 +4150,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
               {/* Text Content - renders at final pixel size, text conforms to box like Excel */}
               {trace.type === 'text' && (() => {
-                // Calculate the actual pixel font size accounting for zoom
+                // Calculate the actual pixel font size accounting for zoom and
+                // the trace's own scale -- without the latter, resizing a text
+                // trace grew its box while the glyphs stayed put.
+                //
+                // min(scaleX, scaleY) rather than an average: font-size is a
+                // single scalar, so a non-uniform stretch has to pick one. The
+                // smaller axis is the one that can clip (the text container is
+                // overflow-hidden), so this keeps text inside its box and lets
+                // a one-axis stretch just reflow the text instead of resizing
+                // it. Uniform scaling -- including every group transform, which
+                // is corner-only -- has scaleX === scaleY, so it's exact there.
                 const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
-                const scaledFontSize = baseFontSize * zoom
+                const traceScale = Math.min((transform as any).scaleX ?? 1, (transform as any).scaleY ?? 1)
+                const scaledFontSize = baseFontSize * traceScale * zoom
                 const textStyles = {
                   fontSize: `${scaledFontSize}px`,
                   fontFamily: resolveFontFamilyCss(fontFamily),
@@ -4167,8 +4178,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <div 
                   className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
                   style={{
-                    padding: `${Math.max(4, 6 * zoom)}px`,
-                    clipPath: trace.cropWidth && trace.cropWidth < 1 
+                    padding: `${Math.max(4, 6 * traceScale * zoom)}px`,
+                    clipPath: trace.cropWidth && trace.cropWidth < 1
                       ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
                       : undefined,
                   }}
