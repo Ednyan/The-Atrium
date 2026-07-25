@@ -2822,8 +2822,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
       )}
 
-      {/* HUD */}
-      <div ref={hudRef} data-ui-element="true" className="fixed top-4 left-4 bg-black px-3 py-2 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
+      {/* HUD + presentation quick-toggle, in one top-left row so the toggle
+          always sits just to the right of the HUD regardless of its width. */}
+      <div className="fixed top-4 left-4 z-[9999] flex items-start gap-2 pointer-events-none">
+      <div ref={hudRef} data-ui-element="true" className="relative bg-black px-3 py-2 border-2 border-white font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white"></div>
         <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white"></div>
@@ -3031,6 +3033,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
       </div>
 
+      {/* Presentation quick-toggle -- only shown when locations exist. Collapsed
+          to just the play icon; reveals the "Present" label on hover. Green
+          while presentation mode is active. */}
+      {workingLocations.length > 0 && (
+        <button
+          onClick={togglePresentationMode}
+          className={`group pointer-events-auto relative border-2 font-mono text-[10px] tracking-[0.15em] uppercase transition-all shadow-lg flex items-center h-8 px-2 ${
+            presentationMode
+              ? 'bg-emerald-500 border-emerald-400 text-black'
+              : 'bg-black/90 border-white text-white hover:bg-gray-800'
+          }`}
+          title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
+        >
+          <span className="text-[11px] leading-none">▶</span>
+          <span className="overflow-hidden max-w-0 group-hover:max-w-[70px] group-hover:ml-1.5 transition-all duration-200 whitespace-nowrap">Present</span>
+        </button>
+      )}
+      </div>
+
       {/* Atrium size indicator - bottom center */}
       {(() => {
         const sizeBytes = useGameStore.getState().getLobbySizeBytes()
@@ -3092,19 +3113,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Layers Button */}
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
-        className="fixed bottom-20 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
+        className="fixed bottom-36 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLayerPanel ? 'Close' : 'Layers'}
       </button>
 
-      {/* Locations Button -- grouped right below Layers (both open panels);
+      {/* Locations Button -- directly below Layers (both open panels);
           visible to everyone (viewing/presenting saved camera views doesn't
           require edit permission; the panel hides its mutating controls when
           canEdit is false) */}
       <button
         onClick={() => setShowLocationsPanel(!showLocationsPanel)}
-        className="fixed bottom-36 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
+        className="fixed bottom-20 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLocationsPanel ? 'Close' : 'Locations'}
@@ -3706,11 +3727,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         />
       )}
 
-      {/* Controls tab + presentation quick-toggle, laid out in one bottom-left
-          row so the toggle always sits just to the right of the Controls box
-          regardless of its (variable) width. */}
-      <div className="fixed bottom-4 left-4 z-[9999] flex items-end gap-2 pointer-events-none">
-      <div className="relative px-4 py-3 border-2 border-white font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+      {/* Instructions */}
+      <div className="fixed bottom-4 left-4 px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
         <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
@@ -3755,26 +3773,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             </p>
           </div>
         )}
-      </div>
-
-      {/* Presentation quick-toggle -- only shown when locations exist, so it
-          disappears entirely for an atrium with no saved views. Lets the user
-          flip presentation mode on/off (and see the current stop) without
-          opening the Locations panel. */}
-      {workingLocations.length > 0 && (
-        <button
-          onClick={togglePresentationMode}
-          className={`pointer-events-auto relative px-3 py-2 border-2 font-mono text-[10px] tracking-[0.15em] uppercase transition-all shadow-lg ${
-            presentationMode
-              ? 'bg-emerald-500 border-emerald-400 text-black'
-              : 'bg-black/90 border-white text-white hover:bg-gray-800'
-          }`}
-          title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
-        >
-          <span className="opacity-70 mr-1.5">▶</span>
-          {presentationMode ? `Present ${presentationIndex + 1}/${workingLocations.length}` : 'Present'}
-        </button>
-      )}
       </div>
 
       {/* Theme Customization Modal */}
