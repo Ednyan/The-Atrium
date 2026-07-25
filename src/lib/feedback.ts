@@ -9,6 +9,10 @@ import { supabase, isDesktop } from './supabase'
 
 export interface FeedbackReport {
   motive: 'bug' | 'feature' | 'other'
+  // User-written subject line, appended after the motive label -- e.g.
+  // "Bug Report - Traces disappear on zoom". Optional; the Edge Function
+  // falls back to just the motive label if left blank.
+  subject?: string
   description: string
   username?: string
   atriumName?: string

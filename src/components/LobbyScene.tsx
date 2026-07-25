@@ -430,6 +430,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
   const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')
+  const [reportSubject, setReportSubject] = useState('')
   const [reportDescription, setReportDescription] = useState('')
   const [isSendingReport, setIsSendingReport] = useState(false)
   const [reportSentMessage, setReportSentMessage] = useState<string | null>(null)
@@ -3158,6 +3159,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   <option value="other">Other</option>
                 </select>
 
+                <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Subject</label>
+                <input
+                  type="text"
+                  value={reportSubject}
+                  onChange={(e) => setReportSubject(e.target.value)}
+                  disabled={isSendingReport}
+                  placeholder="Short summary..."
+                  maxLength={100}
+                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider disabled:opacity-50"
+                />
+
                 <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Description</label>
                 <textarea
                   autoFocus
@@ -3174,10 +3186,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     onClick={async () => {
                       if (!reportDescription.trim() || isSendingReport) return
 
+                      const motiveLabel = reportMotive === 'bug' ? 'Bug Report' : reportMotive === 'feature' ? 'Feature Suggestion' : 'Other'
+                      const emailSubjectLine = reportSubject.trim() ? `${motiveLabel} - ${reportSubject.trim()}` : motiveLabel
+
                       if (canSendFeedbackDirectly()) {
                         setIsSendingReport(true)
                         const result = await sendFeedbackReport({
                           motive: reportMotive,
+                          subject: reportSubject.trim(),
                           description: reportDescription.trim(),
                           username,
                           atriumName: currentLobby?.name ?? lobbyId,
@@ -3188,6 +3204,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                           setTimeout(() => {
                             setShowReportForm(false)
                             setReportSentMessage(null)
+                            setReportSubject('')
                             setReportDescription('')
                             setReportMotive('bug')
                           }, 1500)
@@ -3196,8 +3213,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                         // Fall through to the mailto: fallback below.
                       }
 
-                      const motiveLabel = reportMotive === 'bug' ? 'Bug Report' : reportMotive === 'feature' ? 'Feature Suggestion' : 'Other'
-                      const subject = encodeURIComponent(`[The Atrium] ${motiveLabel}`)
+                      const subject = encodeURIComponent(emailSubjectLine)
                       const bodyLines = [
                         reportDescription.trim(),
                         '',
@@ -3210,6 +3226,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       const body = encodeURIComponent(bodyLines.join('\n'))
                       window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
                       setShowReportForm(false)
+                      setReportSubject('')
                       setReportDescription('')
                       setReportMotive('bug')
                     }}

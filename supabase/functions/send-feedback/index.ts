@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { motive, description, username, atriumName, platform } = await req.json()
+    const { motive, subject: userSubject, description, username, atriumName, platform } = await req.json()
 
     if (!description || typeof description !== 'string' || !description.trim()) {
       return new Response(JSON.stringify({ error: 'Description is required' }), {
@@ -57,7 +57,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const motiveLabel = motive === 'feature' ? 'Feature Suggestion' : motive === 'other' ? 'Other' : 'Bug Report'
-    const subject = `[The Atrium] ${motiveLabel}`
+    const trimmedUserSubject = typeof userSubject === 'string' ? userSubject.trim() : ''
+    const subject = trimmedUserSubject ? `${motiveLabel} - ${trimmedUserSubject}` : motiveLabel
     const text = [
       String(description).trim(),
       '',
