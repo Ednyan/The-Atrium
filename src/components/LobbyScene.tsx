@@ -19,6 +19,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
+import { sendFeedbackReport, canSendFeedbackDirectly } from '../lib/feedback'
 import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
@@ -430,6 +431,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showReportForm, setShowReportForm] = useState(false)
   const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')
   const [reportDescription, setReportDescription] = useState('')
+  const [isSendingReport, setIsSendingReport] = useState(false)
+  const [reportSentMessage, setReportSentMessage] = useState<string | null>(null)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -3114,14 +3117,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )
       })()}
 
-      {/* Report a problem / suggest a feature -- builds a mailto: link (opens
-          the user's own mail client with the subject/body pre-filled) rather
-          than sending server-side, so this needs no backend/email-service
-          setup. */}
+      {/* Report a problem / suggest a feature -- tries to send directly via
+          the send-feedback Edge Function (so the user never leaves the
+          page); falls back to a mailto: link (opens the user's own mail
+          client, subject/body pre-filled) if direct sending isn't available
+          on this platform (desktop) or the call fails for any reason (e.g.
+          the Resend API key isn't configured yet), so the feature never
+          fully breaks. */}
       {showReportForm && (
         <div
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10000200] pointer-events-auto"
-          onClick={() => setShowReportForm(false)}
+          onClick={() => { if (!isSendingReport) setShowReportForm(false) }}
         >
           <div
             className="bg-black border-2 border-white p-5 w-full max-w-sm relative mx-4"
@@ -3136,60 +3142,92 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <span className="text-gray-400 mr-2">◇</span>Report / Suggest
             </h3>
 
-            <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Motive</label>
-            <select
-              value={reportMotive}
-              onChange={(e) => setReportMotive(e.target.value as 'bug' | 'feature' | 'other')}
-              className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider"
-            >
-              <option value="bug">Report a Problem</option>
-              <option value="feature">Suggest a Feature</option>
-              <option value="other">Other</option>
-            </select>
+            {reportSentMessage ? (
+              <p className="text-gray-300 text-xs tracking-wider text-center py-4">{reportSentMessage}</p>
+            ) : (
+              <>
+                <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Motive</label>
+                <select
+                  value={reportMotive}
+                  onChange={(e) => setReportMotive(e.target.value as 'bug' | 'feature' | 'other')}
+                  disabled={isSendingReport}
+                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider disabled:opacity-50"
+                >
+                  <option value="bug">Report a Problem</option>
+                  <option value="feature">Suggest a Feature</option>
+                  <option value="other">Other</option>
+                </select>
 
-            <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Description</label>
-            <textarea
-              autoFocus
-              value={reportDescription}
-              onChange={(e) => setReportDescription(e.target.value)}
-              rows={5}
-              placeholder={reportMotive === 'feature' ? "What would you like to see added?" : "What happened? Steps to reproduce, if it's a bug..."}
-              className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-4 focus:border-white focus:outline-none tracking-wider resize-none"
-            />
+                <label className="block text-gray-400 text-[9px] tracking-[0.15em] uppercase mb-1.5">Description</label>
+                <textarea
+                  autoFocus
+                  value={reportDescription}
+                  onChange={(e) => setReportDescription(e.target.value)}
+                  rows={5}
+                  disabled={isSendingReport}
+                  placeholder={reportMotive === 'feature' ? "What would you like to see added?" : "What happened? Steps to reproduce, if it's a bug..."}
+                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-4 focus:border-white focus:outline-none tracking-wider resize-none disabled:opacity-50"
+                />
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  if (!reportDescription.trim()) return
-                  const motiveLabel = reportMotive === 'bug' ? 'Bug Report' : reportMotive === 'feature' ? 'Feature Suggestion' : 'Other'
-                  const subject = encodeURIComponent(`[The Atrium] ${motiveLabel}`)
-                  const bodyLines = [
-                    reportDescription.trim(),
-                    '',
-                    '---',
-                    `Motive: ${motiveLabel}`,
-                    `User: ${username || 'Unknown'}`,
-                    `Atrium: ${currentLobby?.name ?? lobbyId}`,
-                    `Platform: ${isDesktop ? 'Desktop' : 'Web'}`,
-                  ]
-                  const body = encodeURIComponent(bodyLines.join('\n'))
-                  window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
-                  setShowReportForm(false)
-                  setReportDescription('')
-                  setReportMotive('bug')
-                }}
-                disabled={!reportDescription.trim()}
-                className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Open Email
-              </button>
-              <button
-                onClick={() => setShowReportForm(false)}
-                className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!reportDescription.trim() || isSendingReport) return
+
+                      if (canSendFeedbackDirectly()) {
+                        setIsSendingReport(true)
+                        const result = await sendFeedbackReport({
+                          motive: reportMotive,
+                          description: reportDescription.trim(),
+                          username,
+                          atriumName: currentLobby?.name ?? lobbyId,
+                        })
+                        setIsSendingReport(false)
+                        if (result.success) {
+                          setReportSentMessage('✓ Sent — thank you!')
+                          setTimeout(() => {
+                            setShowReportForm(false)
+                            setReportSentMessage(null)
+                            setReportDescription('')
+                            setReportMotive('bug')
+                          }, 1500)
+                          return
+                        }
+                        // Fall through to the mailto: fallback below.
+                      }
+
+                      const motiveLabel = reportMotive === 'bug' ? 'Bug Report' : reportMotive === 'feature' ? 'Feature Suggestion' : 'Other'
+                      const subject = encodeURIComponent(`[The Atrium] ${motiveLabel}`)
+                      const bodyLines = [
+                        reportDescription.trim(),
+                        '',
+                        '---',
+                        `Motive: ${motiveLabel}`,
+                        `User: ${username || 'Unknown'}`,
+                        `Atrium: ${currentLobby?.name ?? lobbyId}`,
+                        `Platform: ${isDesktop ? 'Desktop' : 'Web'}`,
+                      ]
+                      const body = encodeURIComponent(bodyLines.join('\n'))
+                      window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
+                      setShowReportForm(false)
+                      setReportDescription('')
+                      setReportMotive('bug')
+                    }}
+                    disabled={!reportDescription.trim() || isSendingReport}
+                    className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    {isSendingReport ? 'Sending…' : canSendFeedbackDirectly() ? 'Send' : 'Open Email'}
+                  </button>
+                  <button
+                    onClick={() => setShowReportForm(false)}
+                    disabled={isSendingReport}
+                    className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-30"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
