@@ -952,10 +952,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // longer be safely replayed once the rows it was computed against have
   // been persisted (other collaborators' realtime edits may land in between).
   // This is a deliberate simplification: undo does not cross a save boundary.
+  //
+  // Also drop the local drag-preview overrides (localTraceTransforms /
+  // localShapePoints). These render ON TOP of the store's trace data so a
+  // drag feels instant, but they're never cleared after a normal save -- so
+  // once you'd resized/moved a trace and saved it, your client kept
+  // rendering that stale local copy and silently ignored every later
+  // realtime UPDATE another user made to the same trace (e.g. someone else
+  // rescaling a shape you'd previously touched), until a full page reload
+  // reset this component's state. The store stays authoritative now.
   useEffect(() => {
     const handleSaveCompleted = () => {
       undoStackRef.current = []
       redoStackRef.current = []
+      setLocalTraceTransforms({})
+      setLocalShapePoints({})
     }
     window.addEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
     return () => window.removeEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)

@@ -16,7 +16,7 @@ import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { computeZIndexForNewTraceInLayer, getTraceBaseZIndex } from '../lib/layerZIndex'
+import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import PinterestImportPanel from './PinterestImportPanel'
@@ -923,7 +923,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             traces.filter(t => t.layerId === activeLayerId).length
           ),
         }
-      : {}
+      : { z_index: computeZIndexForNewUngroupedTrace(traces) }
 
     const { data, error } = await supabase.from('traces').insert({
       user_id: userId,
@@ -1187,13 +1187,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // instead of once per item -- z_index for each row is then computed
       // locally, mirroring how LayerPanel's moveTracesToLayer avoids
       // recomputing "next free slot" from the same stale count per item.
-      let layerFields: { layer_id: string; z_index: number }[] | null = null
+      let layerFields: { layer_id?: string; z_index: number }[] | null = null
       if (activeLayerId) {
         const { data: layerData } = await supabase.from('layers').select('z_index').eq('id', activeLayerId).single()
         const layerZIndex = (layerData as any)?.z_index
         const baseZ = layerZIndex !== undefined && layerZIndex !== null ? getTraceBaseZIndex(layerZIndex) : 0
         const existingCount = traces.filter(t => t.layerId === activeLayerId).length
         layerFields = urls.map((_, i) => ({ layer_id: activeLayerId, z_index: baseZ + existingCount + i + 1 }))
+      } else {
+        // Ungrouped: stack each pasted embed one above the last, all above the
+        // current highest ungrouped z (base 0, so still below every group).
+        const baseZ = computeZIndexForNewUngroupedTrace(traces) - 1
+        layerFields = urls.map((_, i) => ({ z_index: baseZ + i + 1 }))
       }
 
       const rows = urls.map((url, i) => ({
@@ -2698,15 +2703,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     y: number,
   ) => {
     if (supabase) {
+      // Read the live store (not the render-time `traces` closure) so a
+      // multi-file/URL drop loop -- which addTrace's each inserted row back
+      // synchronously -- keeps computing a fresh, higher ungrouped z-index
+      // per item instead of colliding them all at the same value.
+      const liveTraces = useGameStore.getState().traces
       const layerFields = activeLayerId
         ? {
             layer_id: activeLayerId,
             z_index: await computeZIndexForNewTraceInLayer(
               activeLayerId,
-              traces.filter(t => t.layerId === activeLayerId).length
+              liveTraces.filter(t => t.layerId === activeLayerId).length
             ),
           }
-        : {}
+        : { z_index: computeZIndexForNewUngroupedTrace(liveTraces) }
 
       const { data, error } = await supabase.from('traces').insert({
         user_id: userId,
@@ -3033,21 +3043,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
       </div>
 
-      {/* Presentation quick-toggle -- only shown when locations exist. Collapsed
-          to just the play icon; reveals the "Present" label on hover. Green
-          while presentation mode is active. */}
+      {/* Presentation quick-toggle -- only shown when locations exist. A fixed
+          square matching the HUD header's height (so it stays that size even
+          when the HUD is expanded), collapsed to just the centered play icon;
+          reveals the "Present" label on hover (where it may grow past square).
+          Green while presentation mode is active. */}
       {workingLocations.length > 0 && (
         <button
           onClick={togglePresentationMode}
-          className={`group pointer-events-auto relative border-2 font-mono text-[10px] tracking-[0.15em] uppercase transition-all shadow-lg flex items-center h-8 px-2 ${
+          className={`group pointer-events-auto h-9 w-9 hover:w-auto hover:px-3 border-2 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors shadow-lg flex items-center justify-center ${
             presentationMode
               ? 'bg-emerald-500 border-emerald-400 text-black'
               : 'bg-black/90 border-white text-white hover:bg-gray-800'
           }`}
           title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
         >
-          <span className="text-[11px] leading-none">▶</span>
-          <span className="overflow-hidden max-w-0 group-hover:max-w-[70px] group-hover:ml-1.5 transition-all duration-200 whitespace-nowrap">Present</span>
+          <span className="text-[12px] leading-none">▶</span>
+          <span className="hidden group-hover:inline ml-1.5 whitespace-nowrap leading-none">Present</span>
         </button>
       )}
       </div>

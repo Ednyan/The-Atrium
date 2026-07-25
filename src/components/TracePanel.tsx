@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
-import { computeZIndexForNewTraceInLayer } from '../lib/layerZIndex'
+import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace } from '../lib/layerZIndex'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import type { Trace } from '../types/database'
@@ -242,7 +242,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 traces.filter(t => t.layerId === activeLayerId).length
               ),
             }
-          : {}
+          : { z_index: computeZIndexForNewUngroupedTrace(traces) }
 
         const { data, error} = await supabase.from('traces').insert({
           // Don't specify id - let database generate UUID

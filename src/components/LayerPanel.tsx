@@ -705,6 +705,29 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // ungrouped section appears to do nothing.
   const ungroupedTraces = getTracesForLayer(null)
 
+  // Self-heal ungrouped z-indexes. A trace created with no active layer is
+  // inserted at z_index 0 (the DB default), so multiple ungrouped traces
+  // collide at 0 with no defined stacking order -- which is why the top of
+  // the ungrouped section wasn't actually the highest-z trace. When we detect
+  // colliding z-indexes among ungrouped traces, renumber them into a proper
+  // distinct sequence, preserving their current top-to-bottom display order.
+  // Ungrouped traces get base 0 (z = 1..N), always below any group (base
+  // >= 100), so the whole section stays stacked beneath every group. Editors
+  // only; the ref guards against re-entrancy while the async renumber's
+  // optimistic updates land, and the distinct-z check stops it re-running
+  // once healed.
+  const isHealingUngroupedRef = useRef(false)
+  useEffect(() => {
+    if (!canEdit || isHealingUngroupedRef.current) return
+    const ung = getTracesForLayer(null)
+    if (ung.length < 2) return
+    const zs = ung.map(t => t.zIndex ?? 0)
+    if (new Set(zs).size === zs.length) return // already distinct -- nothing to heal
+    isHealingUngroupedRef.current = true
+    persistTraceOrder(null, ung, undefined).finally(() => { isHealingUngroupedRef.current = false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traces, canEdit])
+
   // Sort layers by z-index (highest first)
   const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
 

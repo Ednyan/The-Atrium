@@ -26,3 +26,16 @@ export async function computeZIndexForNewTraceInLayer(
 
   return getTraceBaseZIndex(layerZIndex) + existingTracesInLayerCount + 1
 }
+
+// Places a new UNGROUPED trace at the top of the ungrouped section: one above
+// the current highest ungrouped z-index (base 0, so always below any group's
+// base >= TRACE_LAYER_MULTIPLIER). Without this, ungrouped inserts all landed
+// at the DB default z_index of 0, colliding with no defined stacking order.
+export function computeZIndexForNewUngroupedTrace(
+  traces: { layerId?: string | null; zIndex?: number | null }[]
+): number {
+  const maxUngrouped = traces
+    .filter(t => (t.layerId ?? null) === null)
+    .reduce((max, t) => Math.max(max, t.zIndex ?? 0), 0)
+  return maxUngrouped + 1
+}

@@ -195,8 +195,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     let lastBroadcastTime = 0
     let lastBroadcastX = position.x
     let lastBroadcastY = position.y
-    const MIN_BROADCAST_INTERVAL = 2000 // 2000ms = 1 update per 2 seconds max
-    const MIN_MOVEMENT_DISTANCE = 12 // Only update if moved at least 12 pixels
+    const MIN_BROADCAST_INTERVAL = 5000 // 5000ms = 1 update per 5 seconds max
+    const MIN_MOVEMENT_DISTANCE = 42 // Only update if moved at least 42 pixels
 
     const updateInterval = setInterval(async () => {
       if (channelRef.current) {
