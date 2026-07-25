@@ -90,8 +90,51 @@ const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
   { value: 'cursive', label: 'Cursive' },
   { value: 'fantasy', label: 'Fantasy' },
   { value: 'system-ui', label: 'System UI' },
+  // Web-safe OS fonts -- no files to bundle, just relying on what's
+  // typically installed, with a real CSS fallback stack (see
+  // FONT_FAMILY_CSS_MAP) unlike the single-token entries above.
+  { value: 'arial', label: 'Arial' },
+  { value: 'times', label: 'Times New Roman' },
+  { value: 'georgia', label: 'Georgia' },
+  { value: 'courier', label: 'Courier New' },
+  { value: 'verdana', label: 'Verdana' },
+  { value: 'tahoma', label: 'Tahoma' },
+  { value: 'trebuchet', label: 'Trebuchet MS' },
+  { value: 'segoe', label: 'Segoe UI' },
+  { value: 'calibri', label: 'Calibri' },
+  { value: 'consolas', label: 'Consolas' },
+  { value: 'century-gothic', label: 'Century Gothic' },
   ...CUSTOM_FONTS.map(({ name }) => ({ value: name, label: name })),
 ].sort((a, b) => a.label.localeCompare(b.label))
+
+// Maps a stored fontFamily value to the actual CSS font-family used to
+// render it. Generic keywords (sans/serif/mono) and the new web-safe OS
+// fonts get a real fallback stack; everything else (palatino, impact,
+// cursive, fantasy, system-ui, and any custom font name) passes through
+// unchanged -- those are already valid single-token CSS values on their own.
+// One shared function instead of four copies of the same lookup object (one
+// per place a font actually gets applied/measured) so adding a font only
+// means editing this one map.
+const FONT_FAMILY_CSS_MAP: Record<string, string> = {
+  sans: 'sans-serif',
+  serif: 'serif',
+  mono: 'monospace',
+  arial: 'Arial, Helvetica, sans-serif',
+  times: "'Times New Roman', Times, serif",
+  georgia: "Georgia, 'Times New Roman', serif",
+  courier: "'Courier New', Courier, monospace",
+  verdana: 'Verdana, Geneva, sans-serif',
+  tahoma: 'Tahoma, Verdana, sans-serif',
+  trebuchet: "'Trebuchet MS', 'Lucida Grande', sans-serif",
+  segoe: "'Segoe UI', Tahoma, sans-serif",
+  calibri: 'Calibri, Candara, sans-serif',
+  consolas: "Consolas, 'Courier New', monospace",
+  'century-gothic': "'Century Gothic', 'Apple Gothic', sans-serif",
+}
+
+function resolveFontFamilyCss(key: string): string {
+  return FONT_FAMILY_CSS_MAP[key] || key
+}
 
 interface TraceOverlayProps {
   traces: Trace[]
@@ -3223,8 +3266,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const fontSize = trace.fontSize ?? 'medium'
         const fontFamily = trace.fontFamily ?? 'sans'
 
-        const fontFamilyMap = { sans: 'sans-serif', serif: 'serif', mono: 'monospace' }
-
         // Apply crop to border size
         const cropX = trace.cropX ?? 0
         const cropY = trace.cropY ?? 0
@@ -3910,7 +3951,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 const scaledFontSize = baseFontSize * zoom
                 const textStyles = {
                   fontSize: `${scaledFontSize}px`,
-                  fontFamily: fontFamilyMap[fontFamily as 'sans' | 'serif' | 'mono'] || fontFamily,
+                  fontFamily: resolveFontFamilyCss(fontFamily),
                   lineHeight: '1.3',
                   fontWeight: (trace.textBold ? 'bold' : 'normal') as React.CSSProperties['fontWeight'],
                   fontStyle: (trace.textItalic ? 'italic' : 'normal') as React.CSSProperties['fontStyle'],
@@ -5308,7 +5349,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           ? editingTrace.fontSize
                           : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
                         const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
-                        const effectiveFontFamily = ({ sans: 'sans-serif', serif: 'serif', mono: 'monospace' } as Record<string, string>)[effectiveFontFamilyKey] || effectiveFontFamilyKey
+                        const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
                         const textSize = computeAutoFitTextSize(e.target.value, effectiveFontSize, { fontFamily: effectiveFontFamily })
                         updateTraceCustomization(editingTrace.id, { content: e.target.value, width: textSize.width, height: textSize.height })
                       }}
@@ -5329,7 +5370,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={e => {
                         const value = parseInt(e.target.value) || 16;
                         const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
-                        const effectiveFontFamily = ({ sans: 'sans-serif', serif: 'serif', mono: 'monospace' } as Record<string, string>)[effectiveFontFamilyKey] || effectiveFontFamilyKey
+                        const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
                         const textSize = computeAutoFitTextSize(editingTrace.content ?? '', value, { fontFamily: effectiveFontFamily })
                         const updated = { ...editingTrace, fontSize: value, width: textSize.width, height: textSize.height };
                         setEditingTrace(updated);
@@ -5353,7 +5394,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         const effectiveFontSize = typeof editingTrace.fontSize === 'number'
                           ? editingTrace.fontSize
                           : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
-                        const effectiveFontFamily = ({ sans: 'sans-serif', serif: 'serif', mono: 'monospace' } as Record<string, string>)[e.target.value] || e.target.value
+                        const effectiveFontFamily = resolveFontFamilyCss(e.target.value)
                         const textSize = computeAutoFitTextSize(editingTrace.content ?? '', effectiveFontSize, { fontFamily: effectiveFontFamily })
                         const updated = { ...editingTrace, fontFamily: e.target.value, width: textSize.width, height: textSize.height };
                         setEditingTrace(updated);
