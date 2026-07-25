@@ -75,6 +75,24 @@ const CUSTOM_FONTS: { name: string; url: string }[] = (() => {
     .sort((a, b) => a.name.localeCompare(b.name))
 })()
 
+// The Font Family dropdown's full option list: the built-in generic fonts
+// plus every custom family, all sorted together alphabetically by label
+// (rather than built-ins first, customs after) so the whole list reads as
+// one alphabetical menu.
+const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'sans', label: 'Sans-serif' },
+  { value: 'serif', label: 'Serif' },
+  { value: 'mono', label: 'Monospace' },
+  { value: 'palatino', label: 'Palatino' },
+  { value: 'garamond', label: 'Garamond' },
+  { value: 'comic', label: 'Comic Sans MS' },
+  { value: 'impact', label: 'Impact' },
+  { value: 'cursive', label: 'Cursive' },
+  { value: 'fantasy', label: 'Fantasy' },
+  { value: 'system-ui', label: 'System UI' },
+  ...CUSTOM_FONTS.map(({ name }) => ({ value: name, label: name })),
+].sort((a, b) => a.label.localeCompare(b.label))
+
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -5343,18 +5361,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     >
-                      <option value="sans">Sans-serif</option>
-                      <option value="serif">Serif</option>
-                      <option value="mono">Monospace</option>
-                      <option value="palatino">Palatino</option>
-                      <option value="garamond">Garamond</option>
-                      <option value="comic">Comic Sans MS</option>
-                      <option value="impact">Impact</option>
-                      <option value="cursive">Cursive</option>
-                      <option value="fantasy">Fantasy</option>
-                      <option value="system-ui">System UI</option>
-                      {CUSTOM_FONTS.map(({ name }) => (
-                        <option key={name} value={name}>{name} (Custom)</option>
+                      {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
                   </div>
