@@ -33,3 +33,9 @@ src-tauri/target/
 
 # Supabase CLI local link state (project ref/version cache, no secrets, but not project source)
 supabase/.temp/
+
+# Unused per-weight static font files from Google-Fonts-style family folders.
+# The build (import.meta.glob in TraceOverlay.tsx) only uses each family's
+# root variable/Regular font; the static/ weights are hundreds of MB and are
+# excluded from the bundle, so they must not bloat the repo. Local copies stay.
+src/assets/fonts/**/static/

@@ -19,6 +19,62 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
+
+// Custom fonts: drop a font file -- or a whole Google-Fonts-style family
+// folder -- into src/assets/fonts. Each family becomes ONE Font Family
+// dropdown entry, named after its folder (or the filename for a bare file),
+// using the family's variable font when present (else its Regular weight).
+// Bundled at build time via import.meta.glob, so there's no runtime directory
+// listing (works on any host).
+//
+// Two patterns, both only ONE level deep: bare files directly in fonts/, and
+// files at the ROOT of a family folder. Deliberately NOT recursive -- a Google
+// Fonts download nests every individual weight under a static/ subfolder (54
+// files for Roboto alone, 72 for Datatype), and bundling all of those would
+// bloat the app for no benefit since the root-level variable font already
+// covers every weight.
+const CUSTOM_FONT_URL_MAP = import.meta.glob(
+  [
+    '../assets/fonts/*.{ttf,otf,woff,woff2,TTF,OTF,WOFF,WOFF2}',
+    '../assets/fonts/*/*.{ttf,otf,woff,woff2,TTF,OTF,WOFF,WOFF2}',
+    // Exclude italic files -- we only surface one (roman) entry per family, so
+    // an eager glob would otherwise still emit every family's italic variable
+    // font as a bundled asset for nothing. Italic text still works via the
+    // textItalic toggle (browser-synthesized slant).
+    '!../assets/fonts/**/*[Ii]talic*',
+  ],
+  { eager: true, query: '?url', import: 'default' }
+) as Record<string, string>
+
+// One entry per family. The name (dropdown label + @font-face family) is the
+// family-folder name (or the bare filename), sanitized to alphanumerics/_/-.
+const CUSTOM_FONTS: { name: string; url: string }[] = (() => {
+  const byFamily: Record<string, { file: string; url: string }[]> = {}
+  for (const [path, url] of Object.entries(CUSTOM_FONT_URL_MAP)) {
+    const rest = path.split('assets/fonts/')[1] ?? path
+    const seg0 = rest.split('/')[0]
+    const isBareFile = seg0.includes('.')
+    const rawName = isBareFile ? seg0.replace(/\.[^.]+$/, '') : seg0
+    const name = rawName.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const file = path.split('/').pop() || path
+    ;(byFamily[name] ??= []).push({ file, url })
+  }
+  const isVariable = (f: string) => /variablefont|\[.*\]/i.test(f)
+  const isItalic = (f: string) => /italic/i.test(f)
+  const isRegular = (f: string) => /-regular\.|(^|[^a-z])regular\b/i.test(f)
+  return Object.entries(byFamily)
+    .map(([name, files]) => {
+      const chosen =
+        files.find(f => isVariable(f.file) && !isItalic(f.file)) ||
+        files.find(f => isVariable(f.file)) ||
+        files.find(f => isRegular(f.file) && !isItalic(f.file)) ||
+        files.find(f => !isItalic(f.file)) ||
+        files[0]
+      return { name, url: chosen.url }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+})()
+
 interface TraceOverlayProps {
   traces: Trace[]
   lobbyWidth: number
@@ -251,34 +307,20 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
 }
 
 export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
-    const [customFonts, setCustomFonts] = useState<string[]>([]);
-
-    // Load font files from public/fonts folder - only once, with cleanup
+    // Register an @font-face for each custom font bundled from
+    // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
+    // runtime directory listing is involved.
     useEffect(() => {
       const styleElements: HTMLStyleElement[] = []
-      
-      fetch('/fonts/')
-        .then(async res => {
-          if (!res.ok) return [];
-          const text = await res.text();
-          const matches = Array.from(text.matchAll(/href="([^"]+\.(ttf|otf|woff2?|TTF|OTF|WOFF2?|woff|ttf|otf))"/g));
-          const files = matches.map(m => m[1]);
-          setCustomFonts(files);
-          files.forEach(fontFile => {
-            const fontName = fontFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const fontUrl = `/fonts/${fontFile}`;
-            // Check if font already exists to avoid duplicates
-            if (!document.querySelector(`style[data-font="${fontName}"]`)) {
-              const style = document.createElement('style');
-              style.setAttribute('data-font', fontName);
-              style.innerHTML = `@font-face { font-family: '${fontName}'; src: url('${fontUrl}'); font-display: swap; }`;
-              document.head.appendChild(style);
-              styleElements.push(style);
-            }
-          });
-        });
-      
-      // Cleanup: remove style elements we added
+      CUSTOM_FONTS.forEach(({ name, url }) => {
+        if (!document.querySelector(`style[data-font="${name}"]`)) {
+          const style = document.createElement('style');
+          style.setAttribute('data-font', name);
+          style.innerHTML = `@font-face { font-family: '${name}'; src: url('${url}'); font-display: swap; }`;
+          document.head.appendChild(style);
+          styleElements.push(style);
+        }
+      });
       return () => {
         styleElements.forEach(style => {
           if (style.parentNode) {
@@ -5311,10 +5353,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       <option value="cursive">Cursive</option>
                       <option value="fantasy">Fantasy</option>
                       <option value="system-ui">System UI</option>
-                      {customFonts.map(fontFile => {
-                        const fontName = fontFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-                        return <option key={fontName} value={fontName}>{fontName} (Custom)</option>;
-                      })}
+                      {CUSTOM_FONTS.map(({ name }) => (
+                        <option key={name} value={name}>{name} (Custom)</option>
+                      ))}
                     </select>
                   </div>
 
