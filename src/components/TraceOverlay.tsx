@@ -171,7 +171,7 @@ interface TraceOverlayProps {
   // callers that don't pass it (none currently) aren't silently locked out.
   canEdit?: boolean
 }
-type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path'
+type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path' | 'group-scale' | 'group-rotate'
 
 const TRACE_CLIPBOARD_MIME = 'application/x-digital-atrium-traces'
 const TRACE_CLIPBOARD_TEXT_SENTINEL = '__DIGITAL_ATRIUM_TRACE_CLIPBOARD__'
@@ -574,7 +574,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // itself is never reset between drags, so it can't be used on its own to tell
   // whether the drag that just ended was a batch move or a lone single-trace one.
   const isMultiDragActiveRef = useRef(false)
-  
+  // Start state for a group scale/rotate drag: the shared world-space pivot
+  // every selected trace orbits around, plus each trace's own starting
+  // transform (and path points, which live in world space and so must be
+  // transformed individually rather than via x/y+scale).
+  const groupStartRef = useRef<{
+    center: { x: number; y: number }
+    traces: Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number; shapePoints?: any[] }>
+  }>({ center: { x: 0, y: 0 }, traces: {} })
+
   // Refs to store latest values for event handlers (to avoid stale closures)
   const tracesRef = useRef(traces)
   const editingTraceRef = useRef(editingTrace)
@@ -1905,10 +1913,128 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     centerRef.current = { x: screenX, y: screenY }
   }
 
+  // Starts a scale/rotate drag on the multi-selection as a whole. Unlike
+  // handleMouseDown this isn't anchored to any one trace -- the pivot is the
+  // shared bounding-box center, so every selected trace orbits it together.
+  const handleGroupMouseDown = (e: React.MouseEvent, mode: 'group-scale' | 'group-rotate') => {
+    if (!canEdit) return
+    e.stopPropagation()
+    e.preventDefault()
+
+    const ids = Array.from(multiSelectedIds)
+    const bounds = getGroupBounds(ids)
+    if (!bounds) return
+
+    const startTraces: Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number; shapePoints?: any[] }> = {}
+    for (const id of ids) {
+      const t = traces.find(tr => tr.id === id)
+      if (!t) continue
+      const tf = localTraceTransforms[id] || getTraceTransform(t)
+      const entry: any = { x: tf.x, y: tf.y, scaleX: tf.scaleX, scaleY: tf.scaleY, rotation: tf.rotation }
+      if (t.type === 'shape' && t.shapeType === 'path') {
+        const pts = localShapePoints[id] || t.shapePoints
+        if (pts) entry.shapePoints = pts.map((p: any) => ({ ...p }))
+      }
+      startTraces[id] = entry
+    }
+
+    groupStartRef.current = { center: { x: bounds.centerX, y: bounds.centerY }, traces: startTraces }
+
+    setTransformMode(mode)
+    transformModeRef.current = mode
+    startPosRef.current = { x: e.clientX, y: e.clientY, corner: 'group' }
+    const { screenX, screenY } = getScreenPosition(bounds.centerX, bounds.centerY)
+    centerRef.current = { x: screenX, y: screenY }
+    isMultiDragActiveRef.current = true
+    setCursorState('grabbing')
+    document.body.classList.add('dragging')
+  }
+
+  const handleGroupTouchDown = (e: React.TouchEvent, mode: 'group-scale' | 'group-rotate') => {
+    if (e.touches.length !== 1) return
+    e.preventDefault()
+    const touch = e.touches[0]
+    const synth = {
+      button: 0,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      shiftKey: false,
+      stopPropagation: () => e.stopPropagation(),
+      preventDefault: () => e.preventDefault(),
+    } as unknown as React.MouseEvent
+    handleGroupMouseDown(synth, mode)
+  }
+
   const handleMouseMove = (e: MouseEvent) => {
     const activeTransformMode = transformModeRef.current
     const activeSelectedTraceId = selectedTraceIdRef.current
-    if (activeTransformMode === 'none' || !activeSelectedTraceId) return
+    if (activeTransformMode === 'none') return
+
+    // Group transforms pivot around the shared bounding-box center rather
+    // than any one trace, so they run before (and independently of) the
+    // single-trace lookup below.
+    if (activeTransformMode === 'group-scale' || activeTransformMode === 'group-rotate') {
+      justDraggedRef.current = true
+      const { center, traces: startTraces } = groupStartRef.current
+      const startAngle = Math.atan2(startPosRef.current.y - centerRef.current.y, startPosRef.current.x - centerRef.current.x)
+      const currentAngle = Math.atan2(e.clientY - centerRef.current.y, e.clientX - centerRef.current.x)
+
+      let factor = 1
+      let angleDeg = 0
+      if (activeTransformMode === 'group-scale') {
+        const startDist = Math.hypot(startPosRef.current.x - centerRef.current.x, startPosRef.current.y - centerRef.current.y)
+        const currentDist = Math.hypot(e.clientX - centerRef.current.x, e.clientY - centerRef.current.y)
+        factor = startDist > 0 ? Math.max(0.01, currentDist / startDist) : 1
+      } else {
+        angleDeg = (currentAngle - startAngle) * (180 / Math.PI)
+      }
+
+      const rad = (angleDeg * Math.PI) / 180
+      const cos = Math.cos(rad)
+      const sin = Math.sin(rad)
+      // Maps a world point through the group transform: scale outward from
+      // the pivot, or orbit around it.
+      const mapPoint = (px: number, py: number) => {
+        const dx = px - center.x
+        const dy = py - center.y
+        if (activeTransformMode === 'group-scale') {
+          return { x: center.x + dx * factor, y: center.y + dy * factor }
+        }
+        return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos }
+      }
+
+      for (const [id, start] of Object.entries(startTraces)) {
+        if (start.shapePoints) {
+          const newPoints = start.shapePoints.map((p: any) => {
+            const moved = mapPoint(p.x, p.y)
+            const next: any = { ...p, x: moved.x, y: moved.y }
+            if (p.cp1x !== undefined && p.cp1y !== undefined) {
+              const c1 = mapPoint(p.cp1x, p.cp1y)
+              next.cp1x = c1.x; next.cp1y = c1.y
+            }
+            if (p.cp2x !== undefined && p.cp2y !== undefined) {
+              const c2 = mapPoint(p.cp2x, p.cp2y)
+              next.cp2x = c2.x; next.cp2y = c2.y
+            }
+            return next
+          })
+          setLocalShapePoints(prev => ({ ...prev, [id]: newPoints }))
+          updateTraceCustomization(id, { shapePoints: newPoints }, { skipUndo: true })
+        } else {
+          const moved = mapPoint(start.x, start.y)
+          updateTraceTransform(id, {
+            x: moved.x,
+            y: moved.y,
+            scaleX: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleX * factor) : start.scaleX,
+            scaleY: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleY * factor) : start.scaleY,
+            rotation: activeTransformMode === 'group-rotate' ? start.rotation + angleDeg : start.rotation,
+          }, { skipUndo: true })
+        }
+      }
+      return
+    }
+
+    if (!activeSelectedTraceId) return
 
     // Use refs to get latest values (avoid stale closures)
     const currentTraces = tracesRef.current
@@ -2084,8 +2210,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const startDist = Math.hypot(startPosRef.current.x - centerRef.current.x, startPosRef.current.y - centerRef.current.y)
         const currentDist = Math.hypot(e.clientX - centerRef.current.x, e.clientY - centerRef.current.y)
         const scaleFactor = startDist > 0 ? currentDist / startDist : 1
-        newScaleX = Math.max(0.1, startScaleX * scaleFactor)
-        newScaleY = Math.max(0.1, startScaleY * scaleFactor)
+        newScaleX = Math.max(0.01, startScaleX * scaleFactor)
+        newScaleY = Math.max(0.01, startScaleY * scaleFactor)
 
         const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
         const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
@@ -2094,13 +2220,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       } else if (corner === 'l' || corner === 'r') {
         // Horizontal edge - scale X only
         const sign = corner === 'r' ? 1 : -1
-        newScaleX = Math.max(0.1, startScaleX + (sign * worldDeltaX) / baseWidth)
+        newScaleX = Math.max(0.01, startScaleX + (sign * worldDeltaX) / baseWidth)
         const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
         localDx = corner === 'r' ? widthDelta : -widthDelta
       } else if (corner === 't' || corner === 'b') {
         // Vertical edge - scale Y only
         const sign = corner === 'b' ? 1 : -1
-        newScaleY = Math.max(0.1, startScaleY + (sign * worldDeltaY) / baseHeight)
+        newScaleY = Math.max(0.01, startScaleY + (sign * worldDeltaY) / baseHeight)
         const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
         localDy = corner === 'b' ? heightDelta : -heightDelta
       }
@@ -2331,6 +2457,37 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       }
       pushBatchUpdateOp(batchOps)
     }
+
+    // Same one-step-per-drag treatment for a group scale/rotate: every
+    // per-trace update during the drag was pushed with skipUndo.
+    if (activeTransformMode === 'group-scale' || activeTransformMode === 'group-rotate') {
+      const batchOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+      for (const [id, start] of Object.entries(groupStartRef.current.traces)) {
+        const finalTrace = currentTraces.find(t => t.id === id)
+        if (!finalTrace) continue
+        if (start.shapePoints) {
+          const finalPoints = currentLocalShapePoints[id] || finalTrace.shapePoints
+          batchOps.push({ traceId: id, before: { shapePoints: start.shapePoints }, after: { shapePoints: finalPoints } })
+          if (currentLocalShapePoints[id]) {
+            await updateTraceCustomization(id, { shapePoints: currentLocalShapePoints[id] }, { skipUndo: true })
+          }
+        } else {
+          batchOps.push({
+            traceId: id,
+            before: { x: start.x, y: start.y, scaleX: start.scaleX, scaleY: start.scaleY, rotation: start.rotation },
+            after: { x: finalTrace.x, y: finalTrace.y, scaleX: finalTrace.scaleX, scaleY: finalTrace.scaleY, rotation: finalTrace.rotation },
+          })
+        }
+      }
+      pushBatchUpdateOp(batchOps)
+      setLocalShapePoints(prev => {
+        const next = { ...prev }
+        for (const id of Object.keys(groupStartRef.current.traces)) delete next[id]
+        return next
+      })
+      groupStartRef.current = { center: { x: 0, y: 0 }, traces: {} }
+    }
+
     isMultiDragActiveRef.current = false
     multiStartTransformsRef.current = {}
     multiStartPathPointsRef.current = {}
@@ -2595,6 +2752,47 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         return { width: 120, height: 80 }
     }
   }, [imageDimensions])
+
+  // World-space bounding box across a set of traces, used to place the
+  // multi-select group handles and to derive the shared pivot they transform
+  // around. Path shapes are measured from their points (their x/y only
+  // records where they were last moved as a whole, not where the points
+  // actually are); everything else from its rotated size box.
+  const getGroupBounds = useCallback((ids: string[]) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+
+    for (const id of ids) {
+      const trace = traces.find(t => t.id === id)
+      if (!trace) continue
+      const transform = localTraceTransforms[id] || getTraceTransform(trace)
+
+      if (trace.type === 'shape' && trace.shapeType === 'path') {
+        const points = localShapePoints[id] || trace.shapePoints
+        if (points && points.length > 0) {
+          for (const p of points) {
+            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
+            minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+          }
+          continue
+        }
+      }
+
+      const { width, height } = getTraceSize(trace)
+      const halfW = (width * transform.scaleX) / 2
+      const halfH = (height * transform.scaleY) / 2
+      const rad = (transform.rotation * Math.PI) / 180
+      const cos = Math.abs(Math.cos(rad))
+      const sin = Math.abs(Math.sin(rad))
+      const extentX = halfW * cos + halfH * sin
+      const extentY = halfW * sin + halfH * cos
+
+      minX = Math.min(minX, transform.x - extentX); maxX = Math.max(maxX, transform.x + extentX)
+      minY = Math.min(minY, transform.y - extentY); maxY = Math.max(maxY, transform.y + extentY)
+    }
+
+    if (!isFinite(minX)) return null
+    return { minX, minY, maxX, maxY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2 }
+  }, [traces, localTraceTransforms, localShapePoints, getTraceTransform, getTraceSize])
 
   const getBorderColor = useCallback((type: string) => {
     switch (type) {
@@ -3123,7 +3321,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     return (
                       <svg {...baseProps}>
                         <path
-                          d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,2.5,0,2.5"
+                          d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
                           fill={playerColor}
                           stroke="white"
                           strokeWidth="1.5"
@@ -4525,7 +4723,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
         {/* Render regular handles (corner, edge, rotation) as absolute overlay for non-path shapes */}
         {/* Also show for paths when they're part of a multi-selection so they can be moved together */}
-        {selectedTraceId && !isCropMode && (() => {
+        {/* Suppressed once a real multi-selection exists -- the group handles
+            below take over, and showing both would put two overlapping,
+            differently-pivoted handle sets on the same trace. */}
+        {selectedTraceId && !isCropMode && multiSelectedIds.size <= 1 && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
           // Must check membership (has), not just multiSelectedIds.size > 0 --
           // that alone made ANY solo-selected path get the full non-path
@@ -4627,6 +4828,63 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 }}
                 onMouseDown={(e) => handleMouseDown(e, trace, 'rotate')}
                 onTouchStart={(e) => handleTouchDown(e, trace, 'rotate')}
+              />
+            </>
+          )
+        })()}
+
+        {/* Group transform handles -- one shared box around the whole
+            multi-selection. Corners scale and the top handle rotates, both
+            pivoting on the box's center so the selection transforms as a
+            single rigid unit. Corner-only (no edge handles): a non-uniform
+            group scale would shear any child that has its own rotation. */}
+        {multiSelectedIds.size > 1 && canEdit && !isCropMode && (() => {
+          const bounds = getGroupBounds(Array.from(multiSelectedIds))
+          if (!bounds) return null
+
+          const topLeft = getScreenPosition(bounds.minX, bounds.minY)
+          const bottomRight = getScreenPosition(bounds.maxX, bounds.maxY)
+          const boxLeft = topLeft.screenX
+          const boxTop = topLeft.screenY
+          const boxWidth = bottomRight.screenX - topLeft.screenX
+          const boxHeight = bottomRight.screenY - topLeft.screenY
+
+          return (
+            <>
+              <div
+                className="absolute pointer-events-none z-[999998]"
+                style={{
+                  left: `${boxLeft}px`,
+                  top: `${boxTop}px`,
+                  width: `${boxWidth}px`,
+                  height: `${boxHeight}px`,
+                  border: '1px dashed rgba(134, 239, 172, 0.7)',
+                }}
+              />
+              {['tl', 'tr', 'bl', 'br'].map((corner) => (
+                <div
+                  key={`group-${corner}`}
+                  data-trace-element="true"
+                  className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000001]"
+                  style={{
+                    left: `${corner.includes('r') ? boxLeft + boxWidth : boxLeft}px`,
+                    top: `${corner.includes('b') ? boxTop + boxHeight : boxTop}px`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  onMouseDown={(e) => handleGroupMouseDown(e, 'group-scale')}
+                  onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale')}
+                />
+              ))}
+              <div
+                data-trace-element="true"
+                className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000001]"
+                style={{
+                  left: `${boxLeft + boxWidth / 2}px`,
+                  top: `${boxTop - 20}px`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                onMouseDown={(e) => handleGroupMouseDown(e, 'group-rotate')}
+                onTouchStart={(e) => handleGroupTouchDown(e, 'group-rotate')}
               />
             </>
           )
