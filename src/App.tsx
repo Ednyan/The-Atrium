@@ -420,6 +420,27 @@ function AppInner() {
   // sign-in, or a profile the trigger failed to create. Holds the username
   // screen open until they pick one.
   const [pendingUsernameUser, setPendingUsernameUser] = useState<{ id: string; email: string } | null>(null)
+  // An OAuth failure handed back on the return URL. Supabase reports these as
+  // ?error=...&error_description=... rather than throwing, so without this the
+  // app just rendered the landing page and the user saw an unexplained bounce
+  // back to the homepage -- the actual reason was sitting in the address bar.
+  const [oauthError, setOauthError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Supabase puts these in the query string; the app's own routing lives in
+    // the hash, so both can be present at once.
+    const params = new URLSearchParams(window.location.search)
+    const description = params.get('error_description')
+    const code = params.get('error')
+    if (!description && !code) return
+
+    setOauthError(description || code)
+    // Strip them so a refresh doesn't keep re-reporting a stale failure,
+    // preserving the hash route.
+    const cleaned = window.location.pathname + window.location.hash
+    window.history.replaceState({}, '', cleaned)
+    navigate('/login')
+  }, [])
   const [loading, setLoading] = useState(true)
   const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(() => {
     return localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
@@ -1051,7 +1072,13 @@ function AppInner() {
       )
     }
     if (currentPage === 'login') {
-      return <AuthScreen onAuthSuccess={handleAuthSuccess} onBackToLanding={handleBackToLanding} />
+      return (
+        <AuthScreen
+          onAuthSuccess={handleAuthSuccess}
+          onBackToLanding={handleBackToLanding}
+          initialError={oauthError ?? undefined}
+        />
+      )
     }
     // Default to landing page for unauthenticated users
     return <LandingPage onGetStarted={handleLandingGetStarted} />

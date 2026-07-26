@@ -4,16 +4,19 @@ import { supabase, isDesktop } from '../lib/supabase'
 interface AuthScreenProps {
   onAuthSuccess: (userId: string, username: string) => void
   onBackToLanding?: () => void
+  // A failure handed back on an OAuth return URL, surfaced here so the user
+  // sees why they were bounced instead of a silent trip to the homepage.
+  initialError?: string
 }
 
-export default function AuthScreen({ onAuthSuccess, onBackToLanding }: AuthScreenProps) {
+export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialError }: AuthScreenProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [emailOrUsername, setEmailOrUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [username, setUsername] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError ?? '')
   const [loading, setLoading] = useState(false)
   const [checkEmail, setCheckEmail] = useState(false)
   const [resetEmailSent, setResetEmailSent] = useState(false)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
+import PortalLoop from './PortalLoop'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -256,8 +257,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <br />
             <span className="text-white">ATRIUM</span>
           </h1>
-          
-          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-4">
+
+          <PortalLoop className="h-28 md:h-36" />
+
+          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-4 mt-6">
             A museum of references created by you.
           </p>
           <p className="text-nier-border/60 text-xs md:text-sm font-light tracking-wide mb-10">

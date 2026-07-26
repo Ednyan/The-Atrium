@@ -1,6 +1,7 @@
 import { useState, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
+import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
 
 // Lazy load desktop-only components to avoid importing Tauri deps in web mode
@@ -181,30 +182,10 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <span className="text-nier-border/60 text-[10px] tracking-[0.3em] uppercase">Welcome to the</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
-            {/* The same looping portal that plays while entering an atrium,
-                standing in for the wordmark.
-
-                mix-blend-mode: screen rather than an alpha video -- the source
-                is white-on-pure-black, and screen maps black to fully
-                transparent against this dark page while leaving the highlights
-                intact. That avoids re-encoding to VP9+alpha (patchier support,
-                bigger file) and works in every browser.
-
-                Encoded from loading_animation/ the same way entering-animation
-                .mp4 was, cropped to the subject: 120 full-frame JPEGs is ~8MB
-                and decodes on the main thread, this is 454KB and hardware
-                decoded. */}
-            <h1 className="sr-only">Digital Atrium</h1>
-            <video
-              src="/idle-animation.mp4"
-              autoPlay
-              loop
-              muted
-              playsInline
-              aria-hidden="true"
-              className="mx-auto h-40 md:h-48 w-auto pointer-events-none select-none"
-              style={{ mixBlendMode: 'screen' }}
-            />
+            <h1 className="text-4xl md:text-5xl text-white tracking-[0.3em] uppercase font-light">
+              DIGITAL ATRIUM
+            </h1>
+            <PortalLoop className="h-32 md:h-40" />
             <p className="text-nier-border text-xs tracking-[0.2em] uppercase">
               A quiet space for creative presence
             </p>
