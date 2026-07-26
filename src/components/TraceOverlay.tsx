@@ -3445,40 +3445,41 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // Debug logging for image dimensions
         // Selected trace rendering
 
-        // Calculate distance from viewport center for fade effect
+        // Edge fade, measured per axis against the actual screen edges (the
+        // same rectangular vignette the ground elements use). This was a
+        // CIRCLE sized to the viewport's diagonal half-length, which is why
+        // the fade behaved so oddly: on a 16:9 screen the left/right edges
+        // sit inside that circle's fade band (visible dimming) while the
+        // top/bottom edges never reach it (no fade at all). Normalizing each
+        // axis to its own half-extent makes 1.0 mean "at the edge" in every
+        // direction, so all four sides behave identically.
         const viewportCenterX = lobbyWidth / 2
         const viewportCenterY = lobbyHeight / 2
-        const distanceFromCenter = Math.sqrt(
-          Math.pow(screenX - viewportCenterX, 2) + 
-          Math.pow(screenY - viewportCenterY, 2)
-        )
-        
-        // Define fade zones. These used to be 0.6/1.2, which meant traces
-        // started ghosting while still comfortably on screen -- the radius is
-        // the viewport's DIAGONAL half-length, so 0.6 of it falls well inside
-        // the visible area. Starting at 1.0 keeps everything on screen fully
-        // solid (the corner sits exactly at 1.0, edges even closer in), with
-        // the falloff living just past the edge as a soft exit instead of an
-        // in-view dimming effect.
-        const viewportRadius = Math.sqrt(Math.pow(lobbyWidth / 2, 2) + Math.pow(lobbyHeight / 2, 2))
-        const fadeStartRadius = viewportRadius * 1.0 // On-screen traces never dim
-        const fadeEndRadius = viewportRadius * 1.35 // Fully transparent just past the edge
-        
-        // Calculate opacity based on distance. With the fade toggled off
-        // (Profile -> Trace Edge Fade), traces hold full opacity right up to
-        // the cull boundary below, which stays either way -- the fade is a
-        // visual preference, the cull is what keeps off-screen DOM cheap.
+        const normalizedX = Math.abs(screenX - viewportCenterX) / viewportCenterX
+        const normalizedY = Math.abs(screenY - viewportCenterY) / viewportCenterY
+        const normalizedDistance = Math.max(normalizedX, normalizedY)
+
+        // Fade begins just inside the edge (a trace sitting exactly on the
+        // edge renders at ~2/3 opacity) and finishes a quarter-viewport past
+        // it -- present enough to notice, without dimming the working area.
+        const fadeStart = 0.88
+        const fadeEnd = 1.25
+
+        // With the fade toggled off (Profile -> Trace Edge Fade), traces hold
+        // full opacity right up to the cull boundary below, which stays either
+        // way -- the fade is a visual preference, the cull is what keeps
+        // off-screen DOM cheap.
         let traceOpacity = 1.0
-        if (traceFadeEnabled && distanceFromCenter > fadeStartRadius) {
-          const fadeProgress = (distanceFromCenter - fadeStartRadius) / (fadeEndRadius - fadeStartRadius)
+        if (traceFadeEnabled && normalizedDistance > fadeStart) {
+          const fadeProgress = (normalizedDistance - fadeStart) / (fadeEnd - fadeStart)
           traceOpacity = Math.max(0, 1 - fadeProgress)
         }
-        
+
         // Don't render if completely transparent or far outside viewport
         // EXCEPTION: Keep rendering if media is playing (video/audio) OR if it's an interactive embed
         const isPlayingMedia = playingMedia.has(trace.id)
         const isInteractiveEmbed = trace.type === 'embed' && trace.enableInteraction
-        if (!isPlayingMedia && !isInteractiveEmbed && (traceOpacity <= 0 || distanceFromCenter > fadeEndRadius)) {
+        if (!isPlayingMedia && !isInteractiveEmbed && (traceOpacity <= 0 || normalizedDistance > fadeEnd)) {
           return null
         }
 
