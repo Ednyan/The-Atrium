@@ -3453,10 +3453,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           Math.pow(screenY - viewportCenterY, 2)
         )
         
-        // Define fade zones
+        // Define fade zones. These used to be 0.6/1.2, which meant traces
+        // started ghosting while still comfortably on screen -- the radius is
+        // the viewport's DIAGONAL half-length, so 0.6 of it falls well inside
+        // the visible area. Starting at 1.0 keeps everything on screen fully
+        // solid (the corner sits exactly at 1.0, edges even closer in), with
+        // the falloff living just past the edge as a soft exit instead of an
+        // in-view dimming effect.
         const viewportRadius = Math.sqrt(Math.pow(lobbyWidth / 2, 2) + Math.pow(lobbyHeight / 2, 2))
-        const fadeStartRadius = viewportRadius * 0.6 // Start fading at 60% of viewport radius
-        const fadeEndRadius = viewportRadius * 1.2 // Fully transparent at 120% of viewport radius
+        const fadeStartRadius = viewportRadius * 1.0 // On-screen traces never dim
+        const fadeEndRadius = viewportRadius * 1.35 // Fully transparent just past the edge
         
         // Calculate opacity based on distance
         let traceOpacity = 1.0
