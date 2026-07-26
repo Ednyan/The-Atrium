@@ -40,6 +40,7 @@ export function buildTraceInsertRow(
     text_bold: trace.textBold ?? false,
     text_italic: trace.textItalic ?? false,
     text_scale_with_box: trace.textScaleWithBox ?? true,
+    show_shadow: trace.showShadow ?? true,
     text_underline: trace.textUnderline ?? false,
     text_align: trace.textAlign ?? 'center',
     text_color: trace.textColor ?? '#ffffff',

@@ -160,6 +160,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             text_bold: trace.text_bold,
             text_italic: trace.text_italic,
             text_scale_with_box: trace.text_scale_with_box,
+            show_shadow: trace.show_shadow,
             text_underline: trace.text_underline,
             text_align: trace.text_align,
             text_color: trace.text_color,

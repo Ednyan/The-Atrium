@@ -130,6 +130,9 @@ export interface Trace {
   // resizing the trace resizes the text. When false the font size is fixed
   // and resizing only changes how much room the text has to reflow in.
   textScaleWithBox?: boolean
+  // Soft ambient drop shadow under the trace frame. Default true; turning it
+  // off leaves the trace flat against the canvas.
+  showShadow?: boolean
   isLocked?: boolean
   borderRadius?: number // Border radius for trace container (0-50px)
   // Image cropping (values between 0 and 1, representing percentage)

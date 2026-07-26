@@ -3755,7 +3755,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
                       : isMultiSelected
                       ? '0 0 0 2px rgba(134, 239, 172, 0.95), 0 0 24px rgba(134, 239, 172, 0.7), 0 0 38px rgba(134, 239, 172, 0.4)'
-                      : (showBackground ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(203, 203, 203, 0.06)' : 'none'),
+                      // Ambient shadow, toggleable per trace (Customize ->
+                      // Soft Shadow). Still gated on showBackground, since a
+                      // background-less trace has no surface to cast from.
+                      : (showBackground && (trace.showShadow ?? true)
+                        ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(203, 203, 203, 0.06)'
+                        : 'none'),
                     overflow: 'hidden',
                   }}
                 >
@@ -5417,6 +5422,78 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   />
                   <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                 </label>
+
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showFilename ?? true}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showFilename: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showFilename: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-wider uppercase text-[10px]">Show Username</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showDescription ?? false}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showDescription: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showDescription: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-wider uppercase text-[10px]">Show Description</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showShadow ?? true}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showShadow: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showShadow: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-wider uppercase text-[10px]" title="Soft drop shadow under the trace. Needs Show Background on to be visible.">Soft Shadow</span>
+                </label>
+
+                {/* Embed-only, but grouped with the other toggles rather than
+                    left further down in the embed section. */}
+                {editingTrace.type === 'embed' && (
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editingTrace.enableInteraction ?? false}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, enableInteraction: e.target.checked }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
+                      }}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]">Enable Interaction</span>
+                  </label>
+                )}
               </div>
               )}
 
@@ -5573,41 +5650,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </>
               )}
 
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showDescription ?? false}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showDescription: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showDescription: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">Show Description</span>
-                </label>
-
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showFilename ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showFilename: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showFilename: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">Show Username</span>
-                </label>
-              </div>
 
               {/* Font Settings for Text Traces */}
               {editingTrace.type === 'text' && (
@@ -5923,22 +5965,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                   </div>
 
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mt-3 group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editingTrace.enableInteraction ?? false}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, enableInteraction: e.target.checked }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
-                      }}
-                      className="hidden"
-                    />
-                    <span className="tracking-wider uppercase text-[10px]">Enable Interaction</span>
-                  </label>
                 </>
               )}
 

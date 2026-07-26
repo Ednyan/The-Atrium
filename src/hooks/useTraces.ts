@@ -38,6 +38,7 @@ export function mapRowToTrace(row: any): Trace {
     textBold: row.text_bold ?? false,
     textItalic: row.text_italic ?? false,
     textScaleWithBox: row.text_scale_with_box ?? true,
+    showShadow: row.show_shadow ?? true,
     textUnderline: row.text_underline ?? false,
     textAlign: row.text_align ?? 'center',
     textColor: row.text_color ?? '#ffffff',

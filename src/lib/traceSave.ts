@@ -117,6 +117,7 @@ export async function saveAllChanges(): Promise<void> {
         text_bold: trace.textBold,
         text_italic: trace.textItalic,
         text_scale_with_box: trace.textScaleWithBox ?? true,
+        show_shadow: trace.showShadow ?? true,
         text_underline: trace.textUnderline,
         text_align: trace.textAlign,
         text_color: trace.textColor,
