@@ -2374,6 +2374,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         groundParticleOpacity: themeSettings?.groundParticleOpacity ?? 1.0,
         groundPatternMode: themeSettings?.groundPatternMode ?? 'grid',
         gridSpacing: themeSettings?.gridSpacing ?? 100,
+        groundCoverFullView: themeSettings?.groundCoverFullView ?? true,
       })
 
       // Recreate particles with new settings

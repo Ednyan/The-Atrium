@@ -17,6 +17,10 @@ export interface ThemeConfig {
   groundParticleOpacity?: number // Opacity for ground particles (0-1)
   groundPatternMode?: 'grid' | 'random' // Placement pattern for ground elements
   gridSpacing?: number // Grid spacing in pixels for grid pattern mode (default 100)
+  // When true (default), ground elements fill the whole visible canvas. When
+  // false, they only appear near the player or a trace, leaving the rest of
+  // the view bare -- see cullGroundElements.
+  groundCoverFullView?: boolean
 }
 
 export interface GroundElement {
@@ -142,10 +146,45 @@ export class ThemeManager {
       .map(r => r.value)
   }
 
-  // Seeded random for consistent placement
+  // Seeded random for consistent placement. Returns [0, 1).
+  //
+  // `% 1` alone left this in (-1, 1), since sin() is negative half the time.
+  // Every negative value trivially passed the `rand > densityChance` density
+  // test, so roughly half of all grid points appeared no matter how low the
+  // density was -- and negative texture indices clamped to 0, making ~half of
+  // all elements use the first texture. Subtracting the floor wraps into
+  // [0, 1) properly and keeps placement deterministic for a given seed.
   private seededRandom(x: number, y: number): number {
     const seed = this.seed + x * 12.9898 + y * 78.233
-    return (Math.sin(seed) * 43758.5453123) % 1
+    const value = Math.sin(seed) * 43758.5453123
+    return value - Math.floor(value)
+  }
+
+  // Whether a ground element belongs at this lattice point.
+  //
+  // Grid mode is a true checkerboard: fill every other cell so the result is
+  // a regular alternating lattice. It deliberately does NOT consult the
+  // density random -- any random thinning puts holes in the checker, which is
+  // exactly what made the pattern look "almost right but wrong in places".
+  // In grid mode the Grid Spacing control is what varies how many elements
+  // appear; density only acts as an on/off (handled by the caller's
+  // densityChance <= 0 early return).
+  //
+  // Random mode keeps the seeded-random density test for organic placement.
+  private shouldPlaceGroundElement(
+    x: number,
+    y: number,
+    patternMode: 'grid' | 'random',
+    gridSize: number,
+    densityChance: number,
+  ): boolean {
+    if (patternMode === 'grid') {
+      const col = Math.round(x / gridSize)
+      const row = Math.round(y / gridSize)
+      // Guard against negative operands -- JS % keeps the sign of the dividend.
+      return (((col + row) % 2) + 2) % 2 === 0
+    }
+    return this.seededRandom(x, y) <= densityChance
   }
 
   private _lastGroundGenTime = 0
@@ -177,11 +216,15 @@ export class ThemeManager {
     const normalizedDensity = Math.max(0, Math.min(1, (this.config.groundDensity ?? 0) / 3))
     const densityChance = Math.pow(normalizedDensity, 2.8)
 
-    // If density was lowered, remove already-created elements that no longer pass the density threshold.
-    // This makes slider changes feel immediate instead of keeping old clutter around.
+    const gridSize = this.config.gridSpacing ?? 100
+
+    // If density (or spacing, or pattern mode) changed, remove already-created
+    // elements that no longer belong. This makes slider changes feel immediate
+    // instead of keeping old clutter around. Must use the same predicate as
+    // placement below, or elements get destroyed the moment they're created.
     for (let i = this.groundElements.length - 1; i >= 0; i--) {
       const el = this.groundElements[i]
-      if (this.seededRandom(el.worldX, el.worldY) > densityChance) {
+      if (!this.shouldPlaceGroundElement(el.worldX, el.worldY, patternMode, gridSize, densityChance)) {
         this.groundContainer.removeChild(el.sprite)
         el.sprite.destroy()
         this.groundElements.splice(i, 1)
@@ -191,51 +234,26 @@ export class ThemeManager {
     if (densityChance <= 0) {
       return
     }
-    const gridSize = this.config.gridSpacing ?? 100
-    let created = 0
-
-    if (patternMode === 'grid') {
-      // Infinite grid: generate points across the visible area
-      const gridSize = this.config.gridSpacing ?? 100;
-      for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
-        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
-          // Apply density in grid mode too, so slider has effect.
-          const rand = this.seededRandom(x, y)
-          if (rand > densityChance) {
-            continue
-          }
-          const exists = this.groundElements.some(
-            el => el.worldX === x && el.worldY === y
-          );
-          if (!exists) {
-            this.createGroundElement(x, y);
-            created++;
-          }
+    // Walk the lattice across the visible area. Both pattern modes share this
+    // traversal -- only shouldPlaceGroundElement differs between them (grid =
+    // checkerboard, random = seeded density test).
+    for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
+      for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+        if (!this.shouldPlaceGroundElement(x, y, patternMode, gridSize, densityChance)) {
+          continue
         }
-      }
-    } else {
-      // RANDOM MODE: Grid-based with density and offsets (procedural)
-      for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
-        for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
-          // Use seeded random to determine if element should exist at this grid point
-          const rand = this.seededRandom(x, y)
-          if (rand > densityChance) {
-            continue
-          }
-          
-          // Check if we already have an element at this grid position
-          const exists = this.groundElements.some(
-            el => el.worldX === x && el.worldY === y
-          )
-          
-          if (!exists) {
-            this.createGroundElement(x, y)
-            created++
-          }
+
+        const exists = this.groundElements.some(
+          el => el.worldX === x && el.worldY === y
+        )
+
+        if (!exists) {
+          this.createGroundElement(x, y)
         }
       }
     }
-    
+
+
     // Silent generation - only log if there are issues
   }
 
@@ -474,10 +492,18 @@ export class ThemeManager {
     const worldViewportWidth = viewportWidth / zoom
     const worldViewportHeight = viewportHeight / zoom
     
-    // Fade zones as multipliers of half-width/half-height
-    const fadeStartMultiplier = 0.85 // Start fade at 85% of viewport edge (more gradual)
+    const coverFullView = this.config.groundCoverFullView ?? true
+
+    // Fade zones as multipliers of half-width/half-height.
+    //
+    // With full-view coverage the fade starts at the viewport edge, so the
+    // whole rendered canvas is solidly covered and the falloff happens just
+    // outside it. The old 0.85 start dimmed the outer 15% of the screen,
+    // which works against "cover the entire view", so it's kept only for the
+    // proximity mode it was tuned for.
+    const fadeStartMultiplier = coverFullView ? 1.0 : 0.85
     const fadeEndMultiplier = 1.4 // Fully fade at 140% of viewport edge (more buffer)
-    
+
     const generationRadius = 800 // Same as generation radius
     
     this.groundElements = this.groundElements.filter(element => {
@@ -492,21 +518,25 @@ export class ThemeManager {
       // Use the maximum of the two to create rectangular vignette
       const normalizedDistance = Math.max(normalizedX, normalizedY)
       
-      // Check if element is still near player or any trace
-      const distToPlayer = Math.sqrt(Math.pow(element.worldX - playerX, 2) + Math.pow(element.worldY - playerY, 2))
-      let nearTrace = false
-      
-      for (const trace of traces) {
-        const distToTrace = Math.sqrt(Math.pow(element.worldX - trace.x, 2) + Math.pow(element.worldY - trace.y, 2))
-        if (distToTrace < generationRadius) {
-          nearTrace = true
-          break
+      // With full-view coverage on (the default), every element in range of
+      // the camera stays -- the ground fills the whole rendered canvas and
+      // only the vignette below fades it. With it off, elements survive only
+      // near the player or a trace, leaving the rest of the view bare.
+      let shouldExist = true
+      if (!coverFullView) {
+        const distToPlayer = Math.hypot(element.worldX - playerX, element.worldY - playerY)
+        let nearTrace = false
+
+        for (const trace of traces) {
+          if (Math.hypot(element.worldX - trace.x, element.worldY - trace.y) < generationRadius) {
+            nearTrace = true
+            break
+          }
         }
+
+        shouldExist = distToPlayer < generationRadius || nearTrace
       }
-      
-      // Element should exist if near player OR near any trace
-      const shouldExist = distToPlayer < generationRadius || nearTrace
-      
+
       // Calculate target fade based on:
       // 1. Whether it should exist (near player/trace)
       // 2. Distance from camera (for rectangular vignette effect)

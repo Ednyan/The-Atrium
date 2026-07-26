@@ -205,6 +205,7 @@ export interface ThemeSettings {
   groundParticleOpacity?: number
   groundPatternMode?: 'grid' | 'random'
   gridSpacing?: number
+  groundCoverFullView?: boolean
 }
 
 export interface Lobby {

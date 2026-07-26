@@ -19,6 +19,7 @@ interface ThemeSettings {
   groundParticleOpacity?: number
   groundPatternMode?: 'grid' | 'random'
   gridSpacing?: number
+  groundCoverFullView?: boolean
 }
 
 interface ThemeCustomizationProps {
@@ -590,7 +591,31 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       <p className="text-[10px] text-nier-border/40 tracking-wider">Distance between grid elements (smaller = denser)</p>
                     </div>
                   )}
-                  
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                        (settings.groundCoverFullView ?? true) ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                      }`}>
+                        {(settings.groundCoverFullView ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                      </div>
+                      <input
+                        type="checkbox"
+                        id="groundCoverFullView"
+                        checked={settings.groundCoverFullView ?? true}
+                        onChange={(e) => setSettings({ ...settings, groundCoverFullView: e.target.checked })}
+                        className="hidden"
+                      />
+                      <span className="text-nier-border text-[10px] tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                        Cover entire view
+                      </span>
+                    </label>
+                    <p className="text-[10px] text-nier-border/40 tracking-wider">
+                      On = elements fill the whole visible canvas. Off = they only appear around your cursor and traces, leaving the rest bare.
+                    </p>
+                  </div>
+
+
                   <div className="space-y-2">
                     <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase">
                       Base Scale: {(settings.groundElementScale ?? 0.0625).toFixed(4)} ({Math.round((settings.groundElementScale ?? 0.0625) * 100)}%)
@@ -636,7 +661,11 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onChange={(e) => setSettings({ ...settings, groundElementDensity: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-[10px] text-nier-border/40 tracking-wider">How many ground elements appear (0 = off, 3.0 = dense)</p>
+                    <p className="text-[10px] text-nier-border/40 tracking-wider">
+                      {settings.groundPatternMode === 'random'
+                        ? 'How many ground elements appear (0 = off, 3.0 = dense)'
+                        : 'In Grid mode this only toggles elements on/off (0 = off) — use Grid Spacing above to control how many appear, so the checker pattern stays even.'}
+                    </p>
                   </div>
                 </div>
               </div>
