@@ -280,6 +280,7 @@ function buildTraceInsertRow(
     font_family: trace.fontFamily ?? 'sans',
     text_bold: trace.textBold ?? false,
     text_italic: trace.textItalic ?? false,
+    text_scale_with_box: trace.textScaleWithBox ?? true,
     text_underline: trace.textUnderline ?? false,
     text_align: trace.textAlign ?? 'center',
     text_color: trace.textColor ?? '#ffffff',
@@ -4166,10 +4167,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 // had vanished when zoomed out. The geometric mean tracks the
                 // box's overall area instead, so a one-axis stretch never
                 // shrinks text below its unscaled size.
+                // Per-trace opt-out: with textScaleWithBox off the font size is
+                // fixed and resizing the trace only changes how much room the
+                // text has to reflow in.
                 const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
                 const rawScaleX = (transform as any).scaleX ?? 1
                 const rawScaleY = (transform as any).scaleY ?? 1
-                const traceScale = Math.sqrt(Math.max(0, rawScaleX * rawScaleY)) || 1
+                const scaleWithBox = trace.textScaleWithBox ?? true
+                const traceScale = scaleWithBox
+                  ? (Math.sqrt(Math.max(0, rawScaleX * rawScaleY)) || 1)
+                  : 1
                 const scaledFontSize = baseFontSize * traceScale * zoom
                 const textStyles = {
                   fontSize: `${scaledFontSize}px`,
@@ -5737,6 +5744,38 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         U
                       </button>
                     </div>
+                  </div>
+
+                  {/* Text Sizing -- whether the font follows the trace's own
+                      scale, or stays fixed and lets the box only control
+                      how much room the text has to reflow in. */}
+                  <div>
+                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: true, label: 'Scales With Box' },
+                        { value: false, label: 'Fixed Size' },
+                      ] as const).map(({ value, label }) => (
+                        <button
+                          key={String(value)}
+                          onClick={() => {
+                            const updated = { ...editingTrace, textScaleWithBox: value };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { textScaleWithBox: value });
+                          }}
+                          className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                            (editingTrace.textScaleWithBox ?? true) === value
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-nier-border/40 tracking-wider mt-1">
+                      Fixed keeps the font size when you resize the trace — the text just reflows.
+                    </p>
                   </div>
 
                   {/* Text Alignment */}

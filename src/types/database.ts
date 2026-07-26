@@ -126,6 +126,10 @@ export interface Trace {
   textUnderline?: boolean
   textAlign?: 'left' | 'center' | 'right' | 'justify'
   textColor?: string
+  // When true (default), font size scales with the trace's own box, so
+  // resizing the trace resizes the text. When false the font size is fixed
+  // and resizing only changes how much room the text has to reflow in.
+  textScaleWithBox?: boolean
   isLocked?: boolean
   borderRadius?: number // Border radius for trace container (0-50px)
   // Image cropping (values between 0 and 1, representing percentage)

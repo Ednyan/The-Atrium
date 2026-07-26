@@ -682,6 +682,7 @@ export async function initLocalDb(): Promise<void> {
       text_underline INTEGER DEFAULT 0,
       text_align TEXT DEFAULT 'center',
       text_color TEXT DEFAULT '#ffffff',
+      text_scale_with_box INTEGER DEFAULT 1,
       is_locked INTEGER DEFAULT 0,
       border_radius REAL DEFAULT 0,
       crop_x REAL DEFAULT 0,
@@ -851,6 +852,12 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE traces ADD COLUMN link_url TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    // Defaults to 1 so existing traces keep the scale-with-box behavior.
+    await db.execute('ALTER TABLE traces ADD COLUMN text_scale_with_box INTEGER DEFAULT 1')
   } catch {
     // Column already exists — ignore
   }
@@ -1167,7 +1174,7 @@ function convertRowFromSql(table: string, row: any): any {
     traces: ['show_border', 'show_background', 'show_description', 'show_filename',
       'text_bold', 'text_italic', 'text_underline', 'is_locked', 'illuminate',
       'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
-      'flip_horizontal', 'flip_vertical'],
+      'flip_horizontal', 'flip_vertical', 'text_scale_with_box'],
     lobbies: ['is_public', 'autosave_enabled'],
     layers: ['is_group'],
     profiles: [],
@@ -1209,7 +1216,7 @@ function convertRowToSql(table: string, row: any): any {
     traces: ['show_border', 'show_background', 'show_description', 'show_filename',
       'text_bold', 'text_italic', 'text_underline', 'is_locked', 'illuminate',
       'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
-      'flip_horizontal', 'flip_vertical'],
+      'flip_horizontal', 'flip_vertical', 'text_scale_with_box'],
     lobbies: ['is_public', 'autosave_enabled'],
     layers: ['is_group'],
     profiles: [],
