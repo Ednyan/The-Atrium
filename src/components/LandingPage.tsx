@@ -13,6 +13,17 @@ interface Section {
   subtitle: string
 }
 
+// A small accent set, kept deliberately narrow. The app is otherwise
+// monochrome, so colour only earns its place where it marks something -- the
+// three ideas the product is built on, and the primary action. Amber leads
+// because it matches the portal's own warm core; the other two are only ever
+// used alongside it in the feature row, never on their own.
+const ACCENT = {
+  amber: '#E8B15C',
+  emerald: '#7FD1A6',
+  sky: '#7FB6D9',
+} as const
+
 // Drop a demo reel at this path in public/ and the hero picks it up with no
 // code change. Until then the frame shows a still of a real atrium, so the
 // slot always holds something rather than reserving an empty box.
@@ -334,12 +345,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 </div>
                 
                 {/* Center diamond */}
-                <div 
+                {/* Accented only while active -- it marks where you are, which
+                    is exactly the kind of live state colour is good at. */}
+                <div
                   className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 transition-all duration-300 ${
-                    isActive 
-                      ? 'bg-nier-bg border-nier-bg' 
-                      : 'bg-transparent border border-nier-border/60 group-hover:border-nier-border'
+                    isActive ? '' : 'bg-transparent border border-nier-border/60 group-hover:border-nier-border'
                   }`}
+                  style={isActive ? { backgroundColor: ACCENT.amber, boxShadow: `0 0 10px ${ACCENT.amber}AA` } : undefined}
                 />
                 
                 {/* Distance line (when not active) */}
@@ -374,7 +386,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 1: Hero */}
       <section 
         ref={el => sectionRefs.current[0] = el}
-        className="min-h-screen flex flex-col items-center justify-center px-5 sm:px-12 relative"
+        // py-24 so the top label can't sit against the viewport edge now that
+        // the showcase frame has made this section's content much taller.
+        className="min-h-screen flex flex-col items-center justify-center px-5 sm:px-12 py-24 relative"
       >
         {/* Corner brackets */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30" />
@@ -384,9 +398,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
         <div className="text-center max-w-4xl mx-auto w-full">
           <div className="flex items-center justify-center gap-4 mb-6">
-            <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/50" />
-            <span className="text-nier-border/70 text-xs tracking-[0.3em] uppercase">A Shared Canvas Experience</span>
-            <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/50" />
+            <div className="w-12 h-[1px] bg-gradient-to-r from-transparent" style={{ backgroundImage: `linear-gradient(to right, transparent, ${ACCENT.amber}66)` }} />
+            <span className="text-xs tracking-[0.3em] uppercase" style={{ color: `${ACCENT.amber}CC` }}>A Shared Canvas Experience</span>
+            <div className="w-12 h-[1px]" style={{ backgroundImage: `linear-gradient(to left, transparent, ${ACCENT.amber}66)` }} />
           </div>
 
           {/* Title and portal share a line now instead of stacking. The portal
@@ -416,52 +430,75 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             Create your atrium. Discover others. Leave traces
           </p>
 
-          {/* Feature highlights */}
-          <div className="flex flex-wrap justify-center gap-5 mb-10 text-[10px] tracking-[0.15em] uppercase text-nier-border/50">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/40" />
-              <span>Infinite Canvas</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/40" />
-              <span>Private Atriums</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/40" />
-              <span>Live Presence</span>
-            </div>
+          {/* Feature highlights -- one accent each, so the three pillars are
+              distinguishable at a glance rather than reading as one grey list. */}
+          <div className="flex flex-wrap justify-center gap-6 mb-10 text-[10px] tracking-[0.15em] uppercase text-nier-border/70">
+            {([
+              { label: 'Infinite Canvas', color: ACCENT.amber },
+              { label: 'Private Atriums', color: ACCENT.emerald },
+              { label: 'Live Presence', color: ACCENT.sky },
+            ] as const).map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-2 group/feat">
+                <div
+                  className="w-1.5 h-1.5 rotate-45 transition-shadow duration-300"
+                  style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}99` }}
+                />
+                <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{label}</span>
+              </div>
+            ))}
           </div>
 
           {/* Diamond separator */}
           <div className="flex items-center justify-center gap-3 mb-10">
-            <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
-            <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
+            <div className="w-2 h-2 rotate-45 border" style={{ borderColor: `${ACCENT.amber}55` }} />
+            <div
+              className="w-3 h-3 rotate-45 border bg-nier-blackLight"
+              style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 12px ${ACCENT.amber}55` }}
+            />
+            <div className="w-2 h-2 rotate-45 border" style={{ borderColor: `${ACCENT.amber}55` }} />
           </div>
 
           {/* CTA Button */}
+          {/* The one unambiguously primary action on the page, so it's the one
+              place the accent is allowed to fill rather than merely tint. */}
           <button
             onClick={onGetStarted}
-            className="group relative px-10 py-3 bg-transparent border border-nier-border/50 hover:border-nier-bg hover:bg-nier-bg/5 transition-all duration-300"
+            className="group relative px-10 py-3 bg-transparent border transition-all duration-300"
+            style={{ borderColor: `${ACCENT.amber}80` }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = ACCENT.amber
+              e.currentTarget.style.backgroundColor = `${ACCENT.amber}14`
+              e.currentTarget.style.boxShadow = `0 0 28px ${ACCENT.amber}33`
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${ACCENT.amber}80`
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
           >
-            <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            
-            <span className="text-sm tracking-[0.2em] uppercase text-nier-border group-hover:text-nier-bg transition-colors">
+            <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
+            <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
+            <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
+
+            <span className="text-sm tracking-[0.2em] uppercase transition-colors" style={{ color: ACCENT.amber }}>
               {isAuthenticated ? '◇ Continue to Atrium' : '◇ Enter The Atrium'}
             </span>
           </button>
 
-          <p className="mt-8 text-nier-border/40 text-xs tracking-wider">
-            {isAuthenticated ? 'Welcome back' : 'Free to use • No credit card required'}
-          </p>
-        </div>
+          {/* Shown only when signed out -- it's a reason to sign up, and there
+              was nothing worth saying to someone already signed in. */}
+          {!isAuthenticated && (
+            <p className="mt-8 text-nier-border/40 text-xs tracking-wider">
+              Free to use • No credit card required
+            </p>
+          )}
 
-        {/* Scroll indicator */}
-        <div className="absolute bottom-12 inset-x-0 flex justify-center">
-          <div className="flex flex-col items-center gap-2 animate-pulse">
+          {/* In normal flow rather than absolutely positioned at the bottom.
+              Pinning it to the section's bottom edge worked when the hero was
+              short, but the showcase frame pushed the content down onto it, so
+              it collided with the call to action. */}
+          <div className="mt-16 flex flex-col items-center gap-2 animate-pulse">
             <span className="text-[10px] text-nier-border/40 tracking-[0.2em] uppercase">Scroll</span>
             <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
           </div>
@@ -476,7 +513,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               What Is This
             </h2>
@@ -501,7 +538,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="space-y-4">
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45 bg-nier-border/60" />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.amber, boxShadow: `0 0 8px ${ACCENT.amber}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Traces</span>
                 </div>
                 <p className="text-nier-border/60 text-sm leading-relaxed">
@@ -511,7 +548,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45 bg-nier-border/60" />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.emerald, boxShadow: `0 0 8px ${ACCENT.emerald}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Atriums</span>
                 </div>
                 <p className="text-nier-border/60 text-sm leading-relaxed">
@@ -522,7 +559,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45 bg-nier-border/60" />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.sky, boxShadow: `0 0 8px ${ACCENT.sky}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Presence</span>
                 </div>
                 <p className="text-nier-border/60 text-sm leading-relaxed">
@@ -542,7 +579,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               How It Works
             </h2>
@@ -677,11 +714,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               But How?
             </h2>
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
           </div>
 
@@ -742,11 +779,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               Who and Why?
             </h2>
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
           </div>
 
