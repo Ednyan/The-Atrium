@@ -173,6 +173,14 @@ interface TraceOverlayProps {
 }
 type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | 'control-in' | 'control-out' | 'move-path' | 'group-scale' | 'group-rotate'
 
+// Holding Shift while rotating snaps to these increments. Read from the live
+// mousemove event rather than latched at drag start, so Shift can be pressed
+// or released mid-rotation and take effect immediately.
+const ROTATION_SNAP_DEGREES = 5
+
+// Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
+const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
+
 const TRACE_CLIPBOARD_MIME = 'application/x-digital-atrium-traces'
 const TRACE_CLIPBOARD_TEXT_SENTINEL = '__DIGITAL_ATRIUM_TRACE_CLIPBOARD__'
 
@@ -583,6 +591,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     center: { x: number; y: number }
     traces: Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number; shapePoints?: any[] }>
   }>({ center: { x: 0, y: 0 }, traces: {} })
+
+  // Live angle badge shown while a rotation drag is in progress. `delta` marks
+  // a group rotation, where the useful number is how far the selection turned
+  // rather than any one trace's absolute angle.
+  const [rotationReadout, setRotationReadout] = useState<
+    { screenX: number; screenY: number; angle: number; snapped: boolean; delta: boolean } | null
+  >(null)
 
   // Refs to store latest values for event handlers (to avoid stale closures)
   const tracesRef = useRef(traces)
@@ -1988,6 +2003,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         factor = startDist > 0 ? Math.max(0.01, currentDist / startDist) : 1
       } else {
         angleDeg = (currentAngle - startAngle) * (180 / Math.PI)
+        // A group has no single "current angle" to snap onto -- its members
+        // each carry their own rotation -- so the delta itself is snapped,
+        // keeping the turn a clean multiple while preserving the relative
+        // angles within the selection.
+        if (e.shiftKey) {
+          angleDeg = Math.round(angleDeg / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES
+        }
+        setRotationReadout({
+          screenX: e.clientX,
+          screenY: e.clientY,
+          angle: angleDeg,
+          snapped: e.shiftKey,
+          delta: true,
+        })
       }
 
       const rad = (angleDeg * Math.PI) / 180
@@ -2256,9 +2285,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       )
       
       const angleDelta = (currentAngle - startAngle) * (180 / Math.PI)
-      const newRotation = (startTransformRef.current.rotation + angleDelta) % 360
-      
+      // Snap the resulting absolute angle, not the delta, so shift-rotating
+      // always lands on a clean multiple of the increment regardless of what
+      // angle the trace started at.
+      const snap = e.shiftKey
+      const rawRotation = startTransformRef.current.rotation + angleDelta
+      const newRotation = normalizeAngle(
+        snap ? Math.round(rawRotation / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES : rawRotation
+      )
+
       updateTraceTransform(activeSelectedTraceId, { rotation: newRotation })
+      setRotationReadout({
+        screenX: e.clientX,
+        screenY: e.clientY,
+        angle: newRotation,
+        snapped: snap,
+        delta: false,
+      })
     } else if (activeTransformMode === 'point') {
       // Edit individual points for path shapes using world coordinates
       const pointIndex = parseInt(startPosRef.current.corner)
@@ -2396,6 +2439,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const activeTransformMode = transformModeRef.current
     const activeSelectedTraceId = selectedTraceIdRef.current
     transformModeRef.current = 'none'
+
+    // Cleared unconditionally: this runs before every early return below, so
+    // the badge can't outlive its drag.
+    setRotationReadout(null)
 
     // Remove dragging class from body
     document.body.classList.remove('dragging')
@@ -4997,6 +5044,35 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
           )
         })}
+
+      {/* Live rotation angle, shown only during a rotate drag. Offset from the
+          cursor so it never sits under the pointer, and pointer-events-none so
+          it can't intercept the drag it's reporting on. */}
+      {rotationReadout && (
+        <div
+          style={{
+            position: 'fixed',
+            left: rotationReadout.screenX + 18,
+            top: rotationReadout.screenY - 34,
+            zIndex: 10000300,
+            pointerEvents: 'none',
+            background: 'rgba(0,0,0,0.9)',
+            border: `1px solid ${rotationReadout.snapped ? '#86efac' : '#cbcbcb'}`,
+            color: rotationReadout.snapped ? '#86efac' : '#cbcbcb',
+            padding: '3px 8px',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            letterSpacing: '0.08em',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {rotationReadout.delta && rotationReadout.angle >= 0 ? '+' : ''}
+          {rotationReadout.angle.toFixed(rotationReadout.snapped ? 0 : 1)}°
+          {rotationReadout.snapped && (
+            <span style={{ opacity: 0.7, marginLeft: 6 }}>SNAP {ROTATION_SNAP_DEGREES}°</span>
+          )}
+        </div>
+      )}
 
       {/* Context Menu -- hidden entirely (not just the edit items) when
           canEdit is false, since even inspecting via this menu leads only to
