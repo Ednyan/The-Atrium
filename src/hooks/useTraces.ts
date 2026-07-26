@@ -8,6 +8,46 @@ import type { Trace } from '../types/database'
 // dead image host is a brief pause rather than a hang.
 const IMAGE_PRELOAD_TIMEOUT_MS = 10000
 
+// PostgREST caps a single response (Supabase's db-max-rows defaults to 1000),
+// so large atriums are read in pages rather than one request.
+const TRACE_PAGE_SIZE = 1000
+
+// Loads EVERY trace in a lobby.
+//
+// This used to be a flat `.limit(100)`. Traces arriving live were appended to
+// the store, so an atrium could hold more than 100 while you worked -- but any
+// reload fetched only the 100 newest by created_at, and the oldest silently
+// never came back. That read as traces "randomly disappearing" after a reload
+// (the missing ones are the oldest, which has no visual pattern), and refreshing
+// never recovered them because the fetch itself was what dropped them. The rows
+// were never deleted -- just never asked for.
+//
+// Desktop takes the single-query path: its SQLite shim has no .range(), and an
+// unbounded select against a local database is cheap anyway.
+export async function fetchAllLobbyTraces(client: any, lobbyId: string): Promise<any[]> {
+  const base = () => client
+    .from('traces')
+    .select('*')
+    .eq('lobby_id', lobbyId)
+    .order('created_at', { ascending: false })
+
+  if (isDesktop) {
+    const { data, error } = await base()
+    if (error) throw error
+    return data ?? []
+  }
+
+  const rows: any[] = []
+  for (let from = 0; ; from += TRACE_PAGE_SIZE) {
+    const { data, error } = await base().range(from, from + TRACE_PAGE_SIZE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < TRACE_PAGE_SIZE) break
+  }
+  return rows
+}
+
 export function mapRowToTrace(row: any): Trace {
   return {
     id: row.id,
@@ -121,16 +161,7 @@ export function useTraces(lobbyId: string | null) {
           return
         }
 
-        const { data, error } = await supabase
-          .from('traces')
-          .select('*')
-          .eq('lobby_id', lobbyId)
-          .order('created_at', { ascending: false })
-          .limit(100)
-
-        if (error) {
-          throw error
-        }
+        const data = await fetchAllLobbyTraces(supabase, lobbyId)
 
         if (data) {
           const traces: Trace[] = data.map(mapRowToTrace)

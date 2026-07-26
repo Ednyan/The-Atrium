@@ -1,6 +1,6 @@
 import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
-import { mapRowToTrace } from '../hooks/useTraces'
+import { mapRowToTrace, fetchAllLobbyTraces } from '../hooks/useTraces'
 
 // Fired on window whenever a saveAllChanges() call completes successfully.
 // Undo/redo history (see TraceOverlay.tsx) listens for this to clear its
@@ -30,14 +30,11 @@ export async function discardAllChanges(lobbyId: string): Promise<boolean> {
   if (!store.hasPendingChanges()) return false
 
   try {
-    const { data, error } = await supabase
-      .from('traces')
-      .select('*')
-      .eq('lobby_id', lobbyId)
-      .order('created_at', { ascending: false })
-      .limit(100)
-
-    if (error || !data) return false
+    // Must load the whole atrium, not a capped page -- this REPLACES the
+    // store's traces, so a truncated read would silently drop everything past
+    // the cap from the session.
+    const data = await fetchAllLobbyTraces(supabase, lobbyId)
+    if (!data) return false
 
     const traces = data.map(mapRowToTrace)
 
