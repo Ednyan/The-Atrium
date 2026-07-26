@@ -27,9 +27,10 @@ const ACCENT = {
   sky: '#7FB6D9',
 } as const
 
-// Drop a demo reel at this path in public/ and the hero picks it up with no
-// code change. Until then the frame shows a still of a real atrium, so the
-// slot always holds something rather than reserving an empty box.
+// Drop a demo reel at this path in public/ and the In Motion section below
+// the hero appears with it, no code change. The hero itself keeps the CSS
+// diorama permanently -- the two do different jobs (a living sketch of the
+// interactions vs. real footage) and both earned their place.
 const SHOWCASE_VIDEO_SRC = '/atrium-showcase.mp4'
 const SHOWCASE_POSTER_SRC = '/glass_dome.png'
 
@@ -37,8 +38,6 @@ const SHOWCASE_POSTER_SRC = '/glass_dome.png'
 // element in the hero: the page could describe an atrium at length but never
 // showed one, which is the single thing copy is worst at conveying.
 function ShowcaseFrame() {
-  const [hasVideo, setHasVideo] = useState(true)
-
   return (
     <div className="relative mx-auto w-full">
       {/* Corner brackets, matching the atrium's own HUD framing */}
@@ -57,24 +56,7 @@ function ShowcaseFrame() {
           transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
-        {hasVideo ? (
-          <video
-            src={SHOWCASE_VIDEO_SRC}
-            poster={SHOWCASE_POSTER_SRC}
-            autoPlay
-            loop
-            muted
-            playsInline
-            // A missing file is the expected state until the reel exists, so
-            // it falls back quietly instead of leaving a broken player.
-            onError={() => setHasVideo(false)}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          // Until the reel exists, the frame holds a working diorama of the
-          // app instead of a still -- cursors, a drag, a trace typing itself.
-          <LivingAtriumScene />
-        )}
+        <LivingAtriumScene />
 
         {/* Scanline wash tying the frame to the app's own look */}
         <div
@@ -92,6 +74,51 @@ function ShowcaseFrame() {
         />
       </div>
     </div>
+  )
+}
+
+// The demo reel's own band, directly under the hero. Renders nothing at all
+// until the file exists (the <video> errors on a missing source), so there's
+// no placeholder box to explain -- the section simply appears the day the
+// reel is dropped into public/. Deliberately has no entry in the right-rail
+// nav: it's a short interlude, not a stop, and keeping it out of `sections`
+// means its presence can't shift every nav index below it.
+function VideoShowcaseSection() {
+  const [available, setAvailable] = useState(true)
+  if (!available) return null
+
+  return (
+    <section className="flex items-center justify-center px-5 sm:px-12 py-24 relative">
+      <div className="max-w-4xl w-full mx-auto" data-reveal>
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+            In Motion
+          </h2>
+          <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
+        </div>
+
+        <div className="relative">
+          <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 z-10 pointer-events-none" />
+          <div className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60 z-10 pointer-events-none" />
+          <div className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60 z-10 pointer-events-none" />
+          <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 z-10 pointer-events-none" />
+          <div className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video" style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.55)' }}>
+            <video
+              src={SHOWCASE_VIDEO_SRC}
+              poster={SHOWCASE_POSTER_SRC}
+              autoPlay
+              loop
+              muted
+              playsInline
+              controls
+              onError={() => setAvailable(false)}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -395,6 +422,26 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-nier-border/30 pointer-events-none" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-nier-border/30 pointer-events-none" />
 
+        {/* The portal as an emblem: scaled far past its natural size and sunk
+            to low opacity behind the type. Cropped by the section edge on
+            purpose -- a partially out-of-frame mark reads as monumental where
+            a neatly contained one reads as an icon. The luminance filter in
+            PortalLoop keeps its black genuinely transparent at any scale, and
+            its own parallax shift is slower than every foreground layer, which
+            is what makes it sit at the very back. */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: '-12%',
+            top: '50%',
+            opacity: 0.14,
+            transform: 'translateY(-50%) translate3d(calc(var(--px, 0) * -8px), calc(var(--py, 0) * -8px), 0)',
+            transition: 'transform 0.7s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
+        >
+          <PortalLoop className="h-[60vh] lg:h-[85vh] max-h-[820px]" />
+        </div>
+
         {/* Warm bloom anchored behind the headline. Gives the type something to
             sit in front of, so the left column reads as lit rather than as text
             floating on a flat panel. */}
@@ -524,12 +571,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* RIGHT: the product */}
           <div className="relative">
             <ShowcaseFrame />
-            {/* The portal, demoted to a corner mark. At full size it competed
-                with the showcase for the same job; small and overlapping, it
-                ties the two together instead. */}
-            <div className="absolute -bottom-8 -left-6 hidden lg:block pointer-events-none">
-              <PortalLoop className="h-24 opacity-90" />
-            </div>
           </div>
         </div>
 
@@ -539,6 +580,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
         </div>
       </section>
+
+      {/* The demo reel, once it exists (renders nothing until then) */}
+      <VideoShowcaseSection />
 
       {/* SECTION 2: What Is This */}
       <section 
