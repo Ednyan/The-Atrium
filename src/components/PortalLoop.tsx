@@ -1,6 +1,9 @@
 interface PortalLoopProps {
   // Tailwind height classes, e.g. "h-32 md:h-40". Width follows the aspect.
   className?: string
+  // 1 = the clip's natural speed. The giant hero emblem runs slower -- at
+  // backdrop scale the natural pace reads as busy rather than ambient.
+  playbackRate?: number
 }
 
 // The looping portal from the atrium-entry animation, reused as page ornament.
@@ -22,7 +25,7 @@ interface PortalLoopProps {
 // backing plate.
 const LUMA_TO_ALPHA_FILTER_ID = 'portal-luma-alpha'
 
-export default function PortalLoop({ className = 'h-32 md:h-40' }: PortalLoopProps) {
+export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 1 }: PortalLoopProps) {
   return (
     <div className="mx-auto w-fit leading-none" aria-hidden="true">
       {/* Rec. 709 luma coefficients in the alpha row; RGB passes through
@@ -43,6 +46,9 @@ export default function PortalLoop({ className = 'h-32 md:h-40' }: PortalLoopPro
 
       <video
         src="/idle-animation.mp4"
+        // Ref callback rather than an effect: it runs on mount and playbackRate
+        // survives loop restarts, so this is the whole implementation.
+        ref={el => { if (el) el.playbackRate = playbackRate }}
         autoPlay
         loop
         muted

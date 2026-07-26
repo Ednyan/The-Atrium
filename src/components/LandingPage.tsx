@@ -439,7 +439,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             transition: 'transform 0.7s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
-          <PortalLoop className="h-[60vh] lg:h-[85vh] max-h-[820px]" />
+          <PortalLoop className="h-[60vh] lg:h-[85vh] max-h-[820px]" playbackRate={0.5} />
         </div>
 
         {/* Warm bloom anchored behind the headline. Gives the type something to
