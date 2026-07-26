@@ -765,6 +765,10 @@ function AppInner() {
             // on the landing page again.
             if (!data || !hasChosenUsername(data)) {
               setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+              // Must clear loading before returning: the `if (loading)` splash
+              // is rendered ahead of the username screen, so bailing out here
+              // without it left the app stuck on "Initializing" forever.
+              setLoading(false)
               return
             }
             if (data) {
@@ -849,6 +853,9 @@ function AppInner() {
           if (!data) {
             if (attempt >= 3) {
               setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+              // Same reason as the getSession path: the loading splash renders
+              // ahead of the username screen, so it has to be cleared here too.
+              setLoading(false)
               return
             }
             await new Promise(r => setTimeout(r, 300 * (attempt + 1)))
@@ -860,6 +867,7 @@ function AppInner() {
           // but nothing usable as a username. Send them through the same screen.
           if (!hasChosenUsername(data)) {
             setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+            setLoading(false)
             return
           }
 
