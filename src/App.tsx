@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
+import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -13,6 +14,11 @@ import { handlePinterestCallback } from './lib/pinterest'
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | 'ready'
 
 const ANIMATION_FPS = 40
+
+// The username handle_new_user falls back to when the auth provider supplies
+// none: 'user_' || substring(id::text, 1, 8). Anyone still carrying one never
+// picked a username, so they get sent to the username screen.
+const AUTO_USERNAME_PATTERN = /^user_[0-9a-f]{8}$/
 
 const LOADING_ANIMATION_FRAMES = Object.entries(
   import.meta.glob('/loading_animation/*.jpg', { eager: true, import: 'default' }) as Record<string, string>
@@ -410,6 +416,10 @@ function AppInner() {
   }, [])
   
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // Set when a session exists but has no usable username yet -- a first OAuth
+  // sign-in, or a profile the trigger failed to create. Holds the username
+  // screen open until they pick one.
+  const [pendingUsernameUser, setPendingUsernameUser] = useState<{ id: string; email: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(() => {
     return localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
@@ -720,8 +730,16 @@ function AppInner() {
           .from('profiles') as any)
           .select('username, display_name, player_color, active_lobby_id')
           .eq('id', session.user.id)
-          .single()
+          .maybeSingle()
           .then(async ({ data }: any) => {
+            // Same recovery as onAuthStateChange: a session with no profile, or
+            // one still on the trigger's auto-generated username, means no
+            // username was ever chosen. Without this a reload would strand them
+            // on the landing page again.
+            if (!data || AUTO_USERNAME_PATTERN.test(data.username)) {
+              setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+              return
+            }
             if (data) {
               setUserId(session.user.id)
               setUsername(data.display_name || data.username)
@@ -786,10 +804,14 @@ function AppInner() {
       if (session?.user && supabase) {
         // Retried rather than read once: profiles are created by the
         // on_auth_user_created trigger, and on a first-ever OAuth sign-in the
-        // session can arrive before that row is readable here. A single miss
-        // used to leave the user authenticated-but-stuck on the login screen,
-        // since nothing below runs without a profile. maybeSingle() so "not
-        // found" is an empty result to retry, not an error to swallow.
+        // session can arrive before that row is readable here. maybeSingle() so
+        // "not found" is an empty result to retry, not an error to swallow.
+        //
+        // If it's still missing after the retries, the trigger genuinely failed
+        // (it swallows its own errors, so nothing surfaces). Rather than leave
+        // the user authenticated-but-stuck on the homepage -- which is exactly
+        // what a first Google sign-in did -- hand them the username screen,
+        // which creates the profile itself.
         const loadProfile = async (attempt = 0): Promise<void> => {
           const { data } = await (supabase!
             .from('profiles') as any)
@@ -798,12 +820,21 @@ function AppInner() {
             .maybeSingle()
 
           if (!data) {
-            if (attempt >= 5) {
-              console.error('Profile still missing for signed-in user', session.user.id)
+            if (attempt >= 3) {
+              setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
               return
             }
             await new Promise(r => setTimeout(r, 300 * (attempt + 1)))
             return loadProfile(attempt + 1)
+          }
+
+          // A profile whose username is still the trigger's auto-generated
+          // "user_<id-prefix>" means the person never actually chose one --
+          // true for any OAuth sign-up, since the provider supplies no
+          // username. Send them through the same screen.
+          if (AUTO_USERNAME_PATTERN.test(data.username)) {
+            setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+            return
           }
 
           setUserId(session.user.id)
@@ -819,6 +850,9 @@ function AppInner() {
         loadProfile()
       } else {
         setIsAuthenticated(false)
+        // Cleared too, or signing out mid-way through picking a username would
+        // leave that screen up with no session behind it.
+        setPendingUsernameUser(null)
         setCurrentLobbyId(null)
         // Clear persisted state on logout
         localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
@@ -982,6 +1016,25 @@ function AppInner() {
   // URL-based routing
   const currentPage = route.page
   
+  // Checked before the !isAuthenticated branch below: these users DO have a
+  // valid session, they just have no username yet, so falling through to the
+  // landing page is what stranded them there in the first place.
+  if (pendingUsernameUser) {
+    return (
+      <ChooseUsernameScreen
+        userId={pendingUsernameUser.id}
+        email={pendingUsernameUser.email}
+        onComplete={(chosen) => {
+          setUserId(pendingUsernameUser.id)
+          setUsername(chosen)
+          setIsAuthenticated(true)
+          setPendingUsernameUser(null)
+          navigate('/welcome')
+        }}
+      />
+    )
+  }
+
   // If not authenticated, only allow landing and login pages
   if (!isAuthenticated) {
     // In desktop mode, never show auth/landing (auto-auth handles it)
