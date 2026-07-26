@@ -248,9 +248,24 @@ export function AtriumMapDiagram() {
         />
       ))}
 
-      {/* two other visitors, elsewhere on the map */}
-      <div className="absolute w-1.5 h-1.5 rotate-45" style={{ backgroundColor: C.emerald, boxShadow: `0 0 6px ${C.emerald}`, animation: 'ldMapVisitorA 17s ease-in-out infinite' }} />
-      <div className="absolute w-1.5 h-1.5 rotate-45" style={{ backgroundColor: C.sky, boxShadow: `0 0 6px ${C.sky}`, animation: 'ldMapVisitorB 23s ease-in-out infinite' }} />
+      {/* two other visitors, elsewhere on the map -- warm player colours
+          (like the in-app cursor palette users actually pick) rather than
+          the section-accent hues, with the same name tags the hero cursors
+          carry so they read as people, not markers */}
+      {([
+        { name: 'Drifter', color: '#E8C55C', anim: 'ldMapVisitorA 17s ease-in-out infinite' },
+        { name: 'Echo', color: '#E87A6D', anim: 'ldMapVisitorB 23s ease-in-out infinite' },
+      ] as const).map(({ name, color, anim }) => (
+        <div key={name} className="absolute" style={{ animation: anim }}>
+          <div className="w-1.5 h-1.5 rotate-45" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+          <span
+            className="absolute left-2.5 top-0.5 font-mono text-[8px] tracking-wider whitespace-nowrap px-1 py-px"
+            style={{ color, backgroundColor: 'rgba(25,25,25,0.75)', border: `1px solid ${color}55` }}
+          >
+            {name}
+          </span>
+        </div>
+      ))}
 
       {/* your camera: a bracket viewport that pans between clusters */}
       <div className="absolute w-24 h-14" style={{ animation: 'ldMapViewport 18s ease-in-out infinite' }}>
