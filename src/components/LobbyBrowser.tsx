@@ -242,16 +242,34 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       // same "Manage" affordance as owned atriums (just without the
       // owner-only Admins tab), so an admin doesn't have to enter the
       // atrium first to change its settings/whitelist/blacklist/editors.
-      const { data: adminLobbyData, error: adminError } = await (supabase
-        .from('lobbies') as any)
-        .select('*')
-        .contains('admin_user_ids', [user.id])
-        .neq('owner_user_id', user.id)
-        .order('created_at', { ascending: false })
+      //
+      // Web only. Administering someone else's atrium is inherently a
+      // multi-user idea, and desktop's single local user owns everything in
+      // its own vault, so there's nothing for this to find there. It also
+      // uses .contains(), which the desktop SQLite shim doesn't implement --
+      // that threw a TypeError rather than returning an error, so it escaped
+      // the adminError check below and aborted loadLobbies entirely, leaving
+      // the browser empty and showing "contains is not a function" instead of
+      // the user's own local atriums.
+      //
+      // Wrapped defensively as well as gated: this list is supplementary, and
+      // failing to load it should never take the whole browser down with it.
+      if (!isDesktop) {
+        try {
+          const { data: adminLobbyData, error: adminError } = await (supabase
+            .from('lobbies') as any)
+            .select('*')
+            .contains('admin_user_ids', [user.id])
+            .neq('owner_user_id', user.id)
+            .order('created_at', { ascending: false })
 
-      if (!adminError) {
-        const enrichedAdmin = await enrichLobbiesWithData(adminLobbyData || [])
-        setAdminLobbies(enrichedAdmin)
+          if (!adminError) {
+            const enrichedAdmin = await enrichLobbiesWithData(adminLobbyData || [])
+            setAdminLobbies(enrichedAdmin)
+          }
+        } catch (adminErr) {
+          console.error('Error loading administered atriums:', adminErr)
+        }
       }
 
       // Combine public and whitelisted private lobbies, remove duplicates
