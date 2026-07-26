@@ -784,24 +784,39 @@ function AppInner() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (session?.user && supabase) {
-        (supabase
-          .from('profiles') as any)
-          .select('username, display_name, player_color')
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data }: any) => {
-            if (data) {
-              setUserId(session.user.id)
-              setUsername(data.display_name || data.username)
-              setPlayerColor(data.player_color || '#ffffff')
-              setIsAuthenticated(true)
-              // Navigate to welcome after login
-              const currentRoute = parseRoute()
-              if (currentRoute.page === 'landing' || currentRoute.page === 'login') {
-                navigate('/welcome')
-              }
+        // Retried rather than read once: profiles are created by the
+        // on_auth_user_created trigger, and on a first-ever OAuth sign-in the
+        // session can arrive before that row is readable here. A single miss
+        // used to leave the user authenticated-but-stuck on the login screen,
+        // since nothing below runs without a profile. maybeSingle() so "not
+        // found" is an empty result to retry, not an error to swallow.
+        const loadProfile = async (attempt = 0): Promise<void> => {
+          const { data } = await (supabase!
+            .from('profiles') as any)
+            .select('username, display_name, player_color')
+            .eq('id', session.user.id)
+            .maybeSingle()
+
+          if (!data) {
+            if (attempt >= 5) {
+              console.error('Profile still missing for signed-in user', session.user.id)
+              return
             }
-          })
+            await new Promise(r => setTimeout(r, 300 * (attempt + 1)))
+            return loadProfile(attempt + 1)
+          }
+
+          setUserId(session.user.id)
+          setUsername(data.display_name || data.username)
+          setPlayerColor(data.player_color || '#ffffff')
+          setIsAuthenticated(true)
+          // Navigate to welcome after login
+          const currentRoute = parseRoute()
+          if (currentRoute.page === 'landing' || currentRoute.page === 'login') {
+            navigate('/welcome')
+          }
+        }
+        loadProfile()
       } else {
         setIsAuthenticated(false)
         setCurrentLobbyId(null)
