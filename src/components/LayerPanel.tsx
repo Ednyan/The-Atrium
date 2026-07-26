@@ -19,6 +19,37 @@ export const TRACE_DRAG_DATA_KEY = 'application/x-atrium-trace-id'
 const LAYER_DRAG_DATA_KEY = 'application/x-atrium-layer-id'
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
 
+// Module scope on purpose. Defined inside LayerPanel's render body, this would
+// be a brand-new component type on every render, so React would unmount and
+// remount each button rather than update it. LayerPanel calls useGameStore()
+// with no selector, so it re-renders on any store change -- including the local
+// player's `position`, which updates on every mouse move. The button therefore
+// got replaced between mousedown and mouseup and no click event ever fired,
+// making the whole menu look dead.
+function MenuItem({ label, onClick, danger, disabled, busy, hint }: {
+  label: string
+  onClick: () => void
+  danger?: boolean
+  disabled?: boolean
+  // Set while a duplicate/insert round-trip is in flight, so a second click
+  // can't kick off a duplicate of the duplicate.
+  busy?: boolean
+  hint?: string
+}) {
+  return (
+    <button
+      disabled={disabled || busy}
+      onClick={onClick}
+      className={`w-full text-left px-3 py-1.5 text-[11px] tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+        danger ? 'text-red-400/80 hover:bg-red-900/30 hover:text-red-300' : 'text-white hover:bg-gray-700'
+      }`}
+      title={hint}
+    >
+      {label}
+    </button>
+  )
+}
+
 interface LayerPanelProps {
   lobbyId: string
   onClose: () => void
@@ -1323,25 +1354,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     >
                       →
                     </button>
-                    <select
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const layerId = e.target.value || null
-                        if (multiSelectedSet.has(trace.id) && multiSelectedSet.size > 1) {
-                          moveTracesToLayer(Array.from(multiSelectedSet), layerId)
-                        } else {
-                          moveTraceToLayer(trace.id, layerId)
-                        }
-                      }}
-                      className="bg-gray-800 text-white text-[10px] border border-gray-600 px-2 py-1 focus:border-gray-400"
-                    >
-                      <option value="">Move to...</option>
-                      {sortedLayers.map(layer => (
-                        <option key={layer.id} value={layer.id}>
-                          {layer.name}
-                        </option>
-                      ))}
-                    </select>
+                    {/* The "Move to..." dropdown that used to sit here is now
+                        the right-click menu's Move to Group flyout. */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -1377,27 +1391,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         const left = Math.min(rowMenu.x, window.innerWidth - MENU_WIDTH - 8)
         const top = Math.min(rowMenu.y, Math.max(8, window.innerHeight - estimatedHeight))
 
-        const Item = ({ label, onClick, danger, disabled, hint }: {
-          label: string; onClick: () => void; danger?: boolean; disabled?: boolean; hint?: string
-        }) => (
-          <button
-            disabled={disabled || isBusy}
-            onClick={() => { onClick(); closeRowMenu() }}
-            className={`w-full text-left px-3 py-1.5 text-[11px] tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-              danger ? 'text-red-400/80 hover:bg-red-900/30 hover:text-red-300' : 'text-white hover:bg-gray-700'
-            }`}
-            title={hint}
-          >
-            {label}
-          </button>
-        )
-
         return (
           <div
             data-layer-row-menu
             className="fixed bg-black border border-gray-500 shadow-xl z-[10000400] py-1"
             style={{ left, top, width: MENU_WIDTH }}
             onContextMenu={(e) => e.preventDefault()}
+            // Delegated close: an item's own onClick runs first, then bubbles
+            // here. Saves threading a close call through every item, and a
+            // disabled button doesn't emit a click at all so it can't close
+            // the menu by accident. The Move to Group toggle stops propagation
+            // since it expands in place rather than completing an action.
+            onClick={closeRowMenu}
           >
             <div className="px-3 py-1 text-[9px] tracking-[0.15em] uppercase text-gray-500 truncate border-b border-gray-700 mb-1">
               {isGroup ? layer!.name : (trace!.content.substring(0, 18) || 'Untitled')}
@@ -1405,13 +1410,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
             {isGroup ? (
               <>
-                <Item label="Duplicate Group" onClick={() => duplicateGroup(rowMenu.id)} />
-                <Item label="Rename" onClick={() => renameGroup(rowMenu.id, layer!.name)} />
-                <Item
+                <MenuItem label="Duplicate Group" onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
+                <MenuItem label="Rename" onClick={() => renameGroup(rowMenu.id, layer!.name)} />
+                <MenuItem
                   label={isExpanded ? 'Collapse' : 'Expand'}
                   onClick={() => toggleGroup(rowMenu.id)}
                 />
-                <Item
+                <MenuItem
                   label="Select All Traces"
                   onClick={() => {
                     onSelectGroupTraces?.(groupTraces.map(t => t.id))
@@ -1419,37 +1424,37 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   }}
                   disabled={groupTraces.length === 0}
                 />
-                <Item
+                <MenuItem
                   label="Go to Group"
                   onClick={() => onGoToTraces?.(groupTraces.map(t => t.id))}
                   disabled={groupTraces.length === 0}
                   hint="Frame the camera on everything in this group"
                 />
                 <div className="h-[1px] bg-gray-700 my-1" />
-                <Item
+                <MenuItem
                   label="Ungroup All"
                   onClick={() => moveTracesToLayer(groupTraces.map(t => t.id), null)}
                   disabled={groupTraces.length === 0}
                   hint="Move every trace out to Ungrouped, keeping the group"
                 />
-                <Item
+                <MenuItem
                   label="Lock All"
                   onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, true)) }}
                   disabled={groupTraces.length === 0}
                 />
-                <Item
+                <MenuItem
                   label="Unlock All"
                   onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, false)) }}
                   disabled={groupTraces.length === 0}
                 />
                 <div className="h-[1px] bg-gray-700 my-1" />
-                <Item
+                <MenuItem
                   label="Delete Group Only"
                   onClick={() => doDeleteGroupKeepTraces(rowMenu.id)}
                   danger
                   hint="Traces move to Ungrouped"
                 />
-                <Item
+                <MenuItem
                   label={`Delete + ${groupTraces.length} Trace${groupTraces.length === 1 ? '' : 's'}`}
                   onClick={() => deleteGroup(rowMenu.id)}
                   danger
@@ -1458,10 +1463,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               </>
             ) : (
               <>
-                <Item label="Duplicate" onClick={() => duplicateSingleTrace(rowMenu.id)} />
-                <Item label="Select" onClick={() => onSelectTrace?.(rowMenu.id)} />
-                <Item label="Go to Trace" onClick={() => onGoToTrace?.(rowMenu.id)} />
-                <Item
+                <MenuItem label="Duplicate" onClick={() => duplicateSingleTrace(rowMenu.id)} busy={isBusy} />
+                <MenuItem label="Select" onClick={() => onSelectTrace?.(rowMenu.id)} />
+                <MenuItem label="Go to Trace" onClick={() => onGoToTrace?.(rowMenu.id)} />
+                <MenuItem
                   label={trace!.isLocked ? 'Unlock' : 'Lock'}
                   onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
                   hint={trace!.isLocked ? 'Allow selecting/dragging on the canvas' : 'Prevent selecting/dragging on the canvas'}
@@ -1471,7 +1476,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     narrow and a side flyout would open off-screen as often as
                     not. */}
                 <button
-                  onClick={() => setMoveToGroupOpen(o => !o)}
+                  onClick={(e) => { e.stopPropagation(); setMoveToGroupOpen(o => !o) }}
                   className="w-full text-left px-3 py-1.5 text-[11px] tracking-wider text-white hover:bg-gray-700 flex items-center justify-between"
                 >
                   Move to Group <span className="text-gray-500">{moveToGroupOpen ? '▾' : '▸'}</span>
@@ -1494,14 +1499,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   </div>
                 )}
                 {trace!.layerId && (
-                  <Item
+                  <MenuItem
                     label="Ungroup"
                     onClick={() => moveTraceToLayer(rowMenu.id, null)}
                     hint="Move this trace out to Ungrouped"
                   />
                 )}
                 <div className="h-[1px] bg-gray-700 my-1" />
-                <Item label="Delete" onClick={() => doDeleteTrace(rowMenu.id)} danger />
+                <MenuItem label="Delete" onClick={() => doDeleteTrace(rowMenu.id)} danger />
               </>
             )}
           </div>
