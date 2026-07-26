@@ -14,3 +14,17 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Tuned so the release build fits in this machine's available commit rather
+# than for maximum optimization. Compiling the final binary at the stock
+# release profile repeatedly aborted with "memory allocation of 19592 bytes
+# failed" (STATUS_STACK_BUFFER_OVERRUN): rustc ballooned past the ~5GB of
+# free commit and then died on the next small allocation.
+#
+# codegen-units is the lever that actually matters here -- more units means
+# each is optimized separately, so peak working set drops sharply. opt-level
+# 2 vs 3 costs very little for an app that spends nearly all its time in the
+# webview rather than in Rust, and trims the peak further.
+[profile.release]
+codegen-units = 32
+opt-level = 2
