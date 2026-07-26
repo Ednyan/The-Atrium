@@ -3,6 +3,11 @@ import { useGameStore } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
+// Ceiling on how long atrium entry will wait for images to decode. Generous
+// enough for a normal atrium over a slow connection, short enough that a
+// dead image host is a brief pause rather than a hang.
+const IMAGE_PRELOAD_TIMEOUT_MS = 10000
+
 export function mapRowToTrace(row: any): Trace {
   return {
     id: row.id,
@@ -136,7 +141,11 @@ export function useTraces(lobbyId: string | null) {
           // Desktop: pre-warm the local media blob-URL cache so images/audio/
           // video are already resolved by the time the atrium becomes visible,
           // instead of popping in one-by-one after the loading screen ends.
-          if (isDesktop) {
+          const resolveLocalUrl = isDesktop
+            ? (await import('../lib/localDb')).resolveLocalUrl
+            : null
+
+          if (resolveLocalUrl) {
             const localUrls = new Set<string>()
             for (const trace of traces) {
               for (const url of [trace.mediaUrl, trace.imageUrl]) {
@@ -144,8 +153,47 @@ export function useTraces(lobbyId: string | null) {
               }
             }
             if (localUrls.size > 0) {
-              const { resolveLocalUrl } = await import('../lib/localDb')
               await Promise.allSettled(Array.from(localUrls).map(url => resolveLocalUrl(url)))
+            }
+          }
+
+          // Resolving a URL isn't the same as the picture being ready to
+          // paint -- the browser still has to fetch and decode it. Without
+          // this the loading screen ended as soon as the trace *rows* landed,
+          // so images visibly popped in afterwards. Decoding them here moves
+          // that wait into the loading screen where it belongs.
+          if (!cancelled) {
+            const imageUrls: string[] = []
+            for (const trace of traces) {
+              if (trace.type !== 'image') continue
+              const raw = trace.mediaUrl || trace.imageUrl
+              if (!raw) continue
+              if (raw.startsWith('local://')) {
+                // Already resolved above, so this hits the cache.
+                if (resolveLocalUrl) {
+                  const resolved = await resolveLocalUrl(raw)
+                  if (resolved) imageUrls.push(resolved)
+                }
+              } else {
+                imageUrls.push(raw)
+              }
+            }
+
+            if (imageUrls.length > 0) {
+              // Raced against a timeout on purpose: a slow or dead host must
+              // not hold atrium entry hostage. Whatever hasn't finished by
+              // then just keeps loading in the background, exactly as it did
+              // before. onerror resolves too -- a broken image shouldn't
+              // stall the others.
+              await Promise.race([
+                Promise.all(imageUrls.map(url => new Promise<void>(resolve => {
+                  const img = new Image()
+                  img.onload = () => resolve()
+                  img.onerror = () => resolve()
+                  img.src = url
+                }))),
+                new Promise<void>(resolve => setTimeout(resolve, IMAGE_PRELOAD_TIMEOUT_MS)),
+              ])
             }
           }
         }

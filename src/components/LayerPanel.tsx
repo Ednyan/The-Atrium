@@ -381,7 +381,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         return
       }
 
-      const sourceTraces = getTracesForLayer(layerId)
+      // getTracesForLayer returns top-of-stack first, but getTraceZIndexForOrder
+      // treats a higher orderIndex as higher in the stack. Feeding it the list
+      // as-is handed the topmost trace the lowest z-index, so every duplicated
+      // group came out with its contents flipped. Reversing to bottom-first
+      // makes orderIndex ascend with z-index.
+      const sourceTraces = [...getTracesForLayer(layerId)].reverse()
       if (sourceTraces.length > 0) {
         const rows = sourceTraces.map((trace, index) => ({
           ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0),
