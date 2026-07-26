@@ -31,6 +31,14 @@ const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.15
 const DEFAULT_ZOOM_SENSITIVITY = 0.16
 
+// Dark halo for HUD text that floats directly over the canvas. The atrium's
+// background is user-themeable, so these labels can end up on any colour --
+// a single drop shadow only works in one direction, whereas offsets on all
+// four sides plus a soft blur keep the text legible against a light theme
+// without looking heavy against a dark one.
+const HUD_TEXT_OUTLINE =
+  '0 0 4px rgba(0,0,0,0.95), 1px 0 2px rgba(0,0,0,0.9), -1px 0 2px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9), 0 -1px 2px rgba(0,0,0,0.9)'
+
 const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
 function mapLocationRow(row: any): LobbyLocation {
@@ -3096,12 +3104,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         return (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
             {!canEdit && (
-              <p className="text-[9px] font-mono tracking-[0.12em] uppercase" style={{ color: '#FF6161' }}>
+              <p
+                className="text-[9px] font-mono tracking-[0.12em] uppercase"
+                style={{ color: '#FF6161', textShadow: HUD_TEXT_OUTLINE }}
+              >
                 ◇ View Only — You don't have permission to edit this atrium
               </p>
             )}
             {multiSelectedTraceIds.length > 1 && (
-              <p className="text-green-400 text-[9px] font-mono tracking-[0.12em] uppercase">
+              <p
+                className="text-green-400 text-[9px] font-mono tracking-[0.12em] uppercase"
+                style={{ textShadow: HUD_TEXT_OUTLINE }}
+              >
                 {multiSelectedTraceIds.length} traces selected
               </p>
             )}
