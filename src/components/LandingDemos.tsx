@@ -1,0 +1,397 @@
+// Animated show-don't-tell vignettes for the landing page. Pure HTML/CSS --
+// no timers, no rAF loops: every scene is CSS keyframes, so an off-screen
+// or backgrounded page costs nothing and prefers-reduced-motion can freeze
+// the lot into a readable still with one media query.
+//
+// Each scene is a tiny diorama built from the app's own visual vocabulary
+// (bracket-framed trace cards, diamond cursors with name tags, the grid) so
+// the demos read as the product, not as marketing illustrations of it.
+
+// Mirrors LandingPage's ACCENT set -- duplicated rather than exported since
+// these two files are the only consumers and a shared module for three hex
+// strings is more plumbing than it saves.
+const C = {
+  silver: '#D9D9D9',
+  emerald: '#7FD1A6',
+  sky: '#7FB6D9',
+} as const
+
+const GRID_BG = {
+  backgroundImage:
+    'linear-gradient(rgba(203,203,203,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(203,203,203,0.09) 1px, transparent 1px)',
+  backgroundSize: '36px 36px',
+} as const
+
+// ---------------------------------------------------------------------------
+// Shared primitives
+// ---------------------------------------------------------------------------
+
+// The in-app arrow cursor (same path TraceOverlay renders), with a name tag.
+function DemoCursor({ name, color, className, style }: {
+  name?: string
+  color: string
+  className?: string
+  style?: React.CSSProperties
+}) {
+  return (
+    <div className={`absolute pointer-events-none ${className ?? ''}`} style={{ zIndex: 30, ...style }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" style={{ filter: `drop-shadow(0 0 6px ${color}66) drop-shadow(0 1px 2px rgba(0,0,0,0.6))` }}>
+        <path
+          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+          fill={color}
+          stroke="rgba(25,25,25,0.9)"
+          strokeWidth="1.2"
+        />
+      </svg>
+      {name && (
+        <span
+          className="absolute left-3.5 top-4 font-mono text-[8px] tracking-wider whitespace-nowrap px-1 py-px"
+          style={{ color, backgroundColor: 'rgba(25,25,25,0.75)', border: `1px solid ${color}55` }}
+        >
+          {name}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// Corner brackets used on every card; `glow` drives the selection flash.
+function Brackets({ color = 'rgba(203,203,203,0.55)', className }: { color?: string; className?: string }) {
+  const seg = { borderColor: color }
+  return (
+    <span className={`absolute inset-0 pointer-events-none ${className ?? ''}`}>
+      <span className="absolute -top-px -left-px w-2 h-2 border-l border-t" style={seg} />
+      <span className="absolute -top-px -right-px w-2 h-2 border-r border-t" style={seg} />
+      <span className="absolute -bottom-px -left-px w-2 h-2 border-l border-b" style={seg} />
+      <span className="absolute -bottom-px -right-px w-2 h-2 border-r border-b" style={seg} />
+    </span>
+  )
+}
+
+// A miniature trace card. `kind` picks the placeholder content.
+function DemoTrace({ kind, className, style, children }: {
+  kind: 'text' | 'image' | 'shape' | 'embed'
+  className?: string
+  style?: React.CSSProperties
+  children?: React.ReactNode
+}) {
+  return (
+    <div
+      className={`absolute border border-nier-border/40 ${className ?? ''}`}
+      style={{ backgroundColor: 'rgba(25,25,25,0.92)', boxShadow: '0 4px 14px rgba(0,0,0,0.5)', ...style }}
+    >
+      <Brackets />
+      <div className="w-full h-full p-1.5 flex flex-col justify-center gap-1 overflow-hidden">
+        {kind === 'text' && (
+          <>
+            <div className="h-[3px] w-4/5 bg-nier-border/50" />
+            <div className="h-[3px] w-3/5 bg-nier-border/35" />
+            <div className="h-[3px] w-2/3 bg-nier-border/35" />
+          </>
+        )}
+        {kind === 'image' && (
+          <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(203,203,203,0.14), rgba(203,203,203,0.04))' }}>
+            <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
+          </div>
+        )}
+        {kind === 'shape' && (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="w-5 h-5 rotate-45 border-2" style={{ borderColor: C.sky }} />
+          </div>
+        )}
+        {kind === 'embed' && (
+          <div className="w-full h-full flex items-center justify-center gap-1.5">
+            <div className="w-0 h-0 border-y-[4px] border-y-transparent border-l-[7px]" style={{ borderLeftColor: C.emerald }} />
+            <div className="flex-1 h-[3px] bg-nier-border/40 max-w-[60%]" />
+          </div>
+        )}
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 1. Hero: the living atrium
+// ---------------------------------------------------------------------------
+//
+// One 22s master timeline. "You" approaches the image trace, selection
+// brackets flash, drags it out and (second leg) back -- so the loop closes
+// without a snap. "Wanderer" ambles around the typing trace while it writes
+// itself out. The whole world breathes: a slow pan + zoom-out that lets
+// edge traces peek in, selling "this keeps going past the frame".
+
+export function LivingAtriumScene() {
+  return (
+    <div className="absolute inset-0 overflow-hidden landing-demo" aria-hidden="true">
+      {/* world: oversized so the drift never shows an edge */}
+      <div className="absolute -inset-[12%]" style={{ ...GRID_BG, animation: 'ldWorldDrift 22s ease-in-out infinite' }}>
+
+        {/* static dressing traces near the edges -- revealed by the zoom-out */}
+        <DemoTrace kind="shape" className="w-14 h-12" style={{ left: '6%', top: '12%', opacity: 0.65 }} />
+        <DemoTrace kind="text" className="w-20 h-12" style={{ left: '82%', top: '18%', opacity: 0.65 }} />
+        <DemoTrace kind="embed" className="w-24 h-10" style={{ left: '78%', top: '76%', opacity: 0.65 }} />
+        <DemoTrace kind="image" className="w-16 h-16" style={{ left: '8%', top: '70%', opacity: 0.65 }} />
+
+        {/* the dragged trace -- movement mirrors the cursor's drag windows */}
+        <div className="absolute w-20 h-16" style={{ left: '34%', top: '52%', animation: 'ldDragTrace 22s ease-in-out infinite' }}>
+          <DemoTrace kind="image" className="w-full h-full" style={{ position: 'relative' }} />
+          {/* selection glow, only during the drag windows */}
+          <span
+            className="absolute -inset-1 border pointer-events-none"
+            style={{ borderColor: C.silver, boxShadow: `0 0 14px ${C.silver}55`, opacity: 0, animation: 'ldSelectFlash 22s linear infinite' }}
+          />
+        </div>
+
+        {/* the typing trace */}
+        <div
+          className="absolute w-28 border border-nier-border/40 p-2"
+          style={{ left: '56%', top: '30%', backgroundColor: 'rgba(25,25,25,0.92)', boxShadow: '0 4px 14px rgba(0,0,0,0.5)' }}
+        >
+          <Brackets />
+          <span
+            className="block font-mono text-[9px] text-nier-bg/90 whitespace-nowrap overflow-hidden border-r"
+            style={{ borderColor: `${C.silver}AA`, animation: 'ldTyping 9s steps(14) infinite' }}
+          >
+            a shared canvas
+          </span>
+        </div>
+
+        {/* cursors */}
+        <DemoCursor name="You" color={C.silver} style={{ left: 0, top: 0, animation: 'ldCursorYou 22s ease-in-out infinite' }} />
+        <DemoCursor name="Wanderer" color={C.emerald} style={{ left: 0, top: 0, animation: 'ldCursorWanderer 22s ease-in-out infinite' }} />
+      </div>
+
+      <style>{`
+        @keyframes ldWorldDrift {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          38%      { transform: translate(-2.5%, -1.5%) scale(1); }
+          58%      { transform: translate(-1%, 0.5%) scale(0.9); }
+          80%      { transform: translate(1.5%, 1%) scale(0.96); }
+        }
+        /* Drag legs: out at 14-36%, back at 60-82%. Identical deltas to the
+           cursor's, so the card tracks under the pointer. */
+        @keyframes ldDragTrace {
+          0%, 14%   { transform: translate(0, 0); }
+          36%, 60%  { transform: translate(140%, -90%); }
+          82%, 100% { transform: translate(0, 0); }
+        }
+        @keyframes ldSelectFlash {
+          0%, 9%    { opacity: 0; }
+          11%, 38%  { opacity: 1; }
+          42%, 56%  { opacity: 0; }
+          58%, 84%  { opacity: 1; }
+          88%, 100% { opacity: 0; }
+        }
+        /* Percentage-of-world coordinates; the trace sits at ~(34,52)..(42,62). */
+        @keyframes ldCursorYou {
+          0%        { left: 68%; top: 80%; }
+          10%, 14%  { left: 40%; top: 58%; }
+          36%, 60%  { left: 68%; top: 40%; }   /* = trace +140%/-90% of its size */
+          82%       { left: 40%; top: 58%; }
+          90%, 100% { left: 68%; top: 80%; }
+        }
+        @keyframes ldCursorWanderer {
+          0%, 100%  { left: 16%; top: 30%; }
+          25%       { left: 50%; top: 22%; }
+          45%, 55%  { left: 62%; top: 38%; }   /* pauses to read the typing */
+          75%       { left: 30%; top: 66%; }
+        }
+        @keyframes ldTyping {
+          0%        { width: 0; }
+          55%, 90%  { width: 14ch; }
+          100%      { width: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 2. What Is This: the atrium as a map
+// ---------------------------------------------------------------------------
+//
+// A zoomed-out field of tiny traces with a bracket viewport gliding between
+// clusters -- the "camera" someone is panning around a much larger space.
+
+export function AtriumMapDiagram() {
+  // Deterministic scatter, weighted into three loose clusters so the
+  // viewport's stations have something to visit.
+  const dots = Array.from({ length: 26 }, (_, i) => {
+    const cluster = i % 3
+    const cx = [22, 64, 44][cluster]
+    const cy = [30, 26, 68][cluster]
+    return {
+      left: (cx + ((i * 13) % 28) - 14) + '%',
+      top: (cy + ((i * 29) % 24) - 12) + '%',
+      w: 5 + ((i * 7) % 9),
+      h: 4 + ((i * 11) % 7),
+      bright: i % 5 === 0,
+    }
+  })
+
+  return (
+    <div
+      className="relative w-full h-44 border border-nier-border/25 overflow-hidden landing-demo"
+      style={{ backgroundColor: 'rgba(25,25,25,0.5)', ...GRID_BG }}
+      aria-hidden="true"
+    >
+      {dots.map((d, i) => (
+        <div
+          key={i}
+          className="absolute border"
+          style={{
+            left: d.left, top: d.top, width: d.w, height: d.h,
+            borderColor: d.bright ? `${C.silver}88` : 'rgba(203,203,203,0.28)',
+            backgroundColor: d.bright ? `${C.silver}22` : 'rgba(203,203,203,0.07)',
+          }}
+        />
+      ))}
+
+      {/* two other visitors, elsewhere on the map */}
+      <div className="absolute w-1.5 h-1.5 rotate-45" style={{ backgroundColor: C.emerald, boxShadow: `0 0 6px ${C.emerald}`, animation: 'ldMapVisitorA 17s ease-in-out infinite' }} />
+      <div className="absolute w-1.5 h-1.5 rotate-45" style={{ backgroundColor: C.sky, boxShadow: `0 0 6px ${C.sky}`, animation: 'ldMapVisitorB 23s ease-in-out infinite' }} />
+
+      {/* your camera: a bracket viewport that pans between clusters */}
+      <div className="absolute w-24 h-14" style={{ animation: 'ldMapViewport 18s ease-in-out infinite' }}>
+        <Brackets color={C.silver} />
+        <span
+          className="absolute -bottom-4 left-0 font-mono text-[8px] tracking-[0.18em] uppercase"
+          style={{ color: `${C.silver}99` }}
+        >
+          you
+        </span>
+      </div>
+
+      <style>{`
+        @keyframes ldMapViewport {
+          0%, 12%   { left: 12%; top: 18%; }
+          30%, 45%  { left: 52%; top: 14%; }
+          62%, 78%  { left: 34%; top: 55%; }
+          95%, 100% { left: 12%; top: 18%; }
+        }
+        @keyframes ldMapVisitorA {
+          0%, 100% { left: 70%; top: 30%; } 40% { left: 60%; top: 40%; } 70% { left: 74%; top: 22%; }
+        }
+        @keyframes ldMapVisitorB {
+          0%, 100% { left: 28%; top: 72%; } 50% { left: 46%; top: 64%; } 80% { left: 34%; top: 78%; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 3. How It Works / 01: pan + zoom
+// ---------------------------------------------------------------------------
+//
+// The cursor drags and the WORLD moves (opposite direction), then the scroll
+// pulse zooms it -- the two navigation gestures, shown not listed.
+
+export function PanZoomDemo() {
+  return (
+    <div className="relative w-full h-36 border border-nier-border/25 overflow-hidden mb-5 landing-demo" style={{ backgroundColor: 'rgba(25,25,25,0.5)' }} aria-hidden="true">
+      <div className="absolute -inset-[25%]" style={{ ...GRID_BG, animation: 'ldPanWorld 12s ease-in-out infinite' }}>
+        <DemoTrace kind="text" className="w-16 h-10" style={{ left: '30%', top: '30%' }} />
+        <DemoTrace kind="image" className="w-12 h-12" style={{ left: '58%', top: '52%' }} />
+        <DemoTrace kind="shape" className="w-10 h-10" style={{ left: '44%', top: '64%' }} />
+      </div>
+      <DemoCursor color={C.silver} style={{ left: 0, top: 0, animation: 'ldPanCursor 12s ease-in-out infinite' }} />
+      {/* pressed indicator under the cursor while "dragging" */}
+      <div
+        className="absolute w-4 h-4 rounded-full border"
+        style={{ borderColor: `${C.silver}66`, opacity: 0, animation: 'ldPanPress 12s linear infinite' }}
+      />
+      <span className="absolute bottom-1.5 right-2 font-mono text-[8px] tracking-[0.18em] uppercase text-nier-border/40">
+        drag to pan · scroll to zoom
+      </span>
+
+      <style>{`
+        @keyframes ldPanWorld {
+          0%, 12%   { transform: translate(0,0) scale(1); }
+          38%, 46%  { transform: translate(9%, 5%) scale(1); }   /* pan (opposite the cursor) */
+          58%, 66%  { transform: translate(9%, 5%) scale(1.28); } /* zoom in */
+          80%, 88%  { transform: translate(9%, 5%) scale(0.92); } /* zoom out */
+          100%      { transform: translate(0,0) scale(1); }
+        }
+        @keyframes ldPanCursor {
+          0%, 12%   { left: 62%; top: 62%; }
+          38%, 46%  { left: 34%; top: 40%; }
+          58%       { left: 40%; top: 48%; }
+          88%, 100% { left: 62%; top: 62%; }
+        }
+        @keyframes ldPanPress {
+          0%, 10%  { opacity: 0; }
+          14%, 40% { opacity: 1; left: calc(62% - 5px); top: calc(62% - 5px); }
+          14.1%    { left: calc(62% - 5px); top: calc(62% - 5px); }
+          40.1%    { left: calc(34% - 5px); top: calc(40% - 5px); }
+          46%, 100%{ opacity: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 4. How It Works / 02: one trace, three shapes
+// ---------------------------------------------------------------------------
+//
+// The bracket frame holds still while the content cycles text -> embed ->
+// shape, matching the three types the adjacent copy lists.
+
+export function TraceCycleDemo() {
+  const phase = (name: string, delay: string) => ({
+    animation: `${name} 9s linear infinite`,
+    animationDelay: delay,
+  })
+  return (
+    <div className="relative w-28 h-24 shrink-0 landing-demo" aria-hidden="true">
+      <div className="absolute inset-0 border border-nier-border/40" style={{ backgroundColor: 'rgba(25,25,25,0.92)' }}>
+        <Brackets color={`${C.silver}AA`} />
+        {/* text */}
+        <div className="absolute inset-0 p-3 flex flex-col justify-center gap-1.5" style={{ opacity: 0, ...phase('ldCycle', '0s') }}>
+          <div className="h-[3px] w-4/5 bg-nier-border/60" />
+          <div className="h-[3px] w-3/5 bg-nier-border/40" />
+          <div className="h-[3px] w-2/3 bg-nier-border/40" />
+        </div>
+        {/* embed */}
+        <div className="absolute inset-0 flex items-center justify-center gap-2" style={{ opacity: 0, ...phase('ldCycle', '3s') }}>
+          <div className="w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px]" style={{ borderLeftColor: C.emerald }} />
+          <div className="w-10 h-[3px] bg-nier-border/50" />
+        </div>
+        {/* shape */}
+        <div className="absolute inset-0 flex items-center justify-center" style={{ opacity: 0, ...phase('ldCycle', '6s') }}>
+          <div className="w-8 h-8 rotate-45 border-2" style={{ borderColor: C.sky }} />
+        </div>
+      </div>
+      <span className="absolute -bottom-5 inset-x-0 text-center font-mono text-[8px] tracking-[0.18em] uppercase text-nier-border/40">
+        one trace, any form
+      </span>
+
+      <style>{`
+        /* Each layer owns a 3s window of the 9s loop via its delay. */
+        @keyframes ldCycle {
+          0%, 3%    { opacity: 0; }
+          8%, 28%   { opacity: 1; }
+          33%, 100% { opacity: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// Shared reduced-motion freeze for every scene above: a single class on each
+// container, one media query, and the dioramas become readable stills.
+export function DemoMotionStyles() {
+  return (
+    <style>{`
+      @media (prefers-reduced-motion: reduce) {
+        .landing-demo *, .landing-demo { animation: none !important; }
+        /* The cycle demo's layers all start invisible; show only the first
+           (the sibling selector re-hides the ones after it). */
+        .landing-demo [style*="ldCycle"] { opacity: 1 !important; }
+        .landing-demo [style*="ldCycle"] ~ [style*="ldCycle"] { opacity: 0 !important; }
+      }
+    `}</style>
+  )
+}

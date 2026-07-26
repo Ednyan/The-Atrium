@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
+import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, DemoMotionStyles } from './LandingDemos'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -70,11 +71,9 @@ function ShowcaseFrame() {
             className="w-full h-full object-cover"
           />
         ) : (
-          <img
-            src={SHOWCASE_POSTER_SRC}
-            alt="A view inside an atrium"
-            className="w-full h-full object-cover opacity-90"
-          />
+          // Until the reel exists, the frame holds a working diorama of the
+          // app instead of a still -- cursors, a drag, a trace typing itself.
+          <LivingAtriumScene />
         )}
 
         {/* Scanline wash tying the frame to the app's own look */}
@@ -566,8 +565,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 Like a grand entrance hall in a museum, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
               </p>
               <p className="text-nier-border/70 text-sm leading-relaxed">
-               Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium walls. 
+               Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium walls.
                It's a living document of collective expression for sharing and brainstorming. Have you heard of mind maps?
+              </p>
+
+              {/* An atrium from above: scattered traces, other visitors, and
+                  the bracket viewport is you -- the concept the paragraphs
+                  describe, drawn instead of described. */}
+              <AtriumMapDiagram />
+              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-border/40 -mt-2">
+                an atrium, from above
               </p>
             </div>
 
@@ -629,6 +636,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <span className="text-nier-border/40">01</span>
                 Navigation
               </h3>
+              {/* The two gestures, performed: the cursor drags and the world
+                  moves, then the scroll pulse zooms it. */}
+              <PanZoomDemo />
               <div className="grid sm:grid-cols-3 gap-4">
                 {[
                   { key: 'Click + Drag', desc: 'Pan around the canvas' },
@@ -649,7 +659,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <span className="text-nier-border/40">02</span>
                 Leaving Traces
               </h3>
-              <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
+              <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30 sm:flex sm:items-center sm:gap-6">
+                <div className="flex-1">
                 <p className="text-nier-border/70 text-sm leading-relaxed mb-3">
                   Click the Leave trace button (or T key shortcut) to leave a trace. Choose between:
                 </p>
@@ -666,6 +677,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
                     <span className="text-nier-border"><span className="text-nier-bg">Shape</span> — Visual elements</span>
                   </div>
+                </div>
+                </div>
+                {/* the same card cycling through those three forms */}
+                <div className="hidden sm:block pb-4">
+                  <TraceCycleDemo />
                 </div>
               </div>
             </div>
@@ -970,6 +986,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           }
         }
       `}</style>
+      <DemoMotionStyles />
     </div>
   )
 }
