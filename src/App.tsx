@@ -15,10 +15,16 @@ type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | '
 
 const ANIMATION_FPS = 40
 
-// The username handle_new_user falls back to when the auth provider supplies
-// none: 'user_' || substring(id::text, 1, 8). Anyone still carrying one never
-// picked a username, so they get sent to the username screen.
-const AUTO_USERNAME_PATTERN = /^user_[0-9a-f]{8}$/
+// Whether this profile's username was picked by the person or derived for them
+// by handle_new_user. Read from the profiles.username_chosen flag, with a
+// permissive fallback: if the column isn't there yet (migration not applied),
+// treat the name as chosen rather than re-prompting everyone.
+//
+// This used to regex-match the trigger's fallback name (user_<id-prefix>), which
+// silently stopped working once the trigger began preferring the provider's real
+// name for OAuth -- the generated username no longer looked generated, so Google
+// users were never asked to choose one.
+const hasChosenUsername = (profile: any) => profile?.username_chosen !== false
 
 const LOADING_ANIMATION_FRAMES = Object.entries(
   import.meta.glob('/loading_animation/*.jpg', { eager: true, import: 'default' }) as Record<string, string>
@@ -749,7 +755,7 @@ function AppInner() {
         // Get user profile
         (supabase
           .from('profiles') as any)
-          .select('username, display_name, player_color, active_lobby_id')
+          .select('username, display_name, player_color, active_lobby_id, username_chosen')
           .eq('id', session.user.id)
           .maybeSingle()
           .then(async ({ data }: any) => {
@@ -757,7 +763,7 @@ function AppInner() {
             // one still on the trigger's auto-generated username, means no
             // username was ever chosen. Without this a reload would strand them
             // on the landing page again.
-            if (!data || AUTO_USERNAME_PATTERN.test(data.username)) {
+            if (!data || !hasChosenUsername(data)) {
               setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
               return
             }
@@ -836,7 +842,7 @@ function AppInner() {
         const loadProfile = async (attempt = 0): Promise<void> => {
           const { data } = await (supabase!
             .from('profiles') as any)
-            .select('username, display_name, player_color')
+            .select('username, display_name, player_color, username_chosen')
             .eq('id', session.user.id)
             .maybeSingle()
 
@@ -849,11 +855,10 @@ function AppInner() {
             return loadProfile(attempt + 1)
           }
 
-          // A profile whose username is still the trigger's auto-generated
-          // "user_<id-prefix>" means the person never actually chose one --
-          // true for any OAuth sign-up, since the provider supplies no
-          // username. Send them through the same screen.
-          if (AUTO_USERNAME_PATTERN.test(data.username)) {
+          // A derived username means the person never actually chose one --
+          // true for any OAuth sign-up, since providers supply a display name
+          // but nothing usable as a username. Send them through the same screen.
+          if (!hasChosenUsername(data)) {
             setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
             return
           }

@@ -69,6 +69,9 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
           username: trimmed,
           display_name: trimmed,
           email,
+          // Marks the name as deliberately picked, so this screen doesn't
+          // reappear on the next sign-in.
+          username_chosen: true,
         }, { onConflict: 'id' })
 
       if (upsertError) throw upsertError
