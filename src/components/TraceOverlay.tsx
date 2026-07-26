@@ -4154,15 +4154,22 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 // the trace's own scale -- without the latter, resizing a text
                 // trace grew its box while the glyphs stayed put.
                 //
-                // min(scaleX, scaleY) rather than an average: font-size is a
-                // single scalar, so a non-uniform stretch has to pick one. The
-                // smaller axis is the one that can clip (the text container is
-                // overflow-hidden), so this keeps text inside its box and lets
-                // a one-axis stretch just reflow the text instead of resizing
-                // it. Uniform scaling -- including every group transform, which
-                // is corner-only -- has scaleX === scaleY, so it's exact there.
+                // Geometric mean, not min(scaleX, scaleY): font-size is a
+                // single scalar, so a non-uniform stretch has to pick one.
+                // sqrt(sx*sy) is exact for uniform scaling -- including every
+                // group transform, which is corner-only -- while staying
+                // balanced when the axes differ.
+                //
+                // min() was wrong: a trace stretched wide and short (say
+                // sx=2.2, sy=0.57) rendered its text at 0.57x, so text that
+                // used to be legible shrank to a few pixels and looked like it
+                // had vanished when zoomed out. The geometric mean tracks the
+                // box's overall area instead, so a one-axis stretch never
+                // shrinks text below its unscaled size.
                 const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
-                const traceScale = Math.min((transform as any).scaleX ?? 1, (transform as any).scaleY ?? 1)
+                const rawScaleX = (transform as any).scaleX ?? 1
+                const rawScaleY = (transform as any).scaleY ?? 1
+                const traceScale = Math.sqrt(Math.max(0, rawScaleX * rawScaleY)) || 1
                 const scaledFontSize = baseFontSize * traceScale * zoom
                 const textStyles = {
                   fontSize: `${scaledFontSize}px`,
