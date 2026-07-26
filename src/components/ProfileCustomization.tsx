@@ -25,7 +25,7 @@ const PRESET_COLORS = [
 ]
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -413,6 +413,29 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           </div>
           <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
             Completely hide other users' cursor indicators
+          </p>
+
+          {/* Trace Edge Fade Toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+              Trace Edge Fade
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                traceFadeEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+              }`}>
+                {traceFadeEnabled && <span className="text-nier-bg text-[10px]">✓</span>}
+              </div>
+              <input
+                type="checkbox"
+                checked={traceFadeEnabled}
+                onChange={() => setTraceFadeEnabled(!traceFadeEnabled)}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+            Softly fade traces out as they leave the edge of your view
           </p>
 
           {/* Undo History Depth (per-atrium) */}

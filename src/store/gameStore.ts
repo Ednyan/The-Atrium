@@ -41,6 +41,9 @@ interface GameState {
   hideOwnNameTag: boolean
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
+  // Soft fade-out of traces as they approach the viewport edge. Purely a
+  // visual preference, so it lives with the other localStorage toggles.
+  traceFadeEnabled: boolean
   cursorState: CursorState
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
@@ -64,6 +67,7 @@ interface GameState {
   setHideOwnNameTag: (hide: boolean) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
+  setTraceFadeEnabled: (enabled: boolean) => void
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   updateOtherUserPosition: (userId: string, x: number, y: number) => void
@@ -120,6 +124,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('hideOtherCursors')
     return stored !== null ? stored === 'true' : false
   })(),
+  traceFadeEnabled: (() => {
+    const stored = localStorage.getItem('traceFadeEnabled')
+    return stored !== null ? stored === 'true' : true
+  })(),
   cursorState: 'default',
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
@@ -163,6 +171,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setHideOtherCursors: (hide) => {
     localStorage.setItem('hideOtherCursors', String(hide))
     set({ hideOtherCursors: hide })
+  },
+  setTraceFadeEnabled: (enabled) => {
+    localStorage.setItem('traceFadeEnabled', String(enabled))
+    set({ traceFadeEnabled: enabled })
   },
   setCursorState: (cursorState) => set({ cursorState }),
   

@@ -310,7 +310,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -3464,9 +3464,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const fadeStartRadius = viewportRadius * 1.0 // On-screen traces never dim
         const fadeEndRadius = viewportRadius * 1.35 // Fully transparent just past the edge
         
-        // Calculate opacity based on distance
+        // Calculate opacity based on distance. With the fade toggled off
+        // (Profile -> Trace Edge Fade), traces hold full opacity right up to
+        // the cull boundary below, which stays either way -- the fade is a
+        // visual preference, the cull is what keeps off-screen DOM cheap.
         let traceOpacity = 1.0
-        if (distanceFromCenter > fadeStartRadius) {
+        if (traceFadeEnabled && distanceFromCenter > fadeStartRadius) {
           const fadeProgress = (distanceFromCenter - fadeStartRadius) / (fadeEndRadius - fadeStartRadius)
           traceOpacity = Math.max(0, 1 - fadeProgress)
         }
