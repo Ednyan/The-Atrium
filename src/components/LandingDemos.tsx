@@ -395,6 +395,114 @@ export function TraceCycleDemo() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// 5-7. The Ecosystem: create / populate / explore
+// ---------------------------------------------------------------------------
+//
+// One compact vignette per step, sharing a frame style so the row reads as a
+// triptych. Each animates the verb it sits under: a trace being made, a
+// canvas filling up, a camera roaming.
+
+const ECO_FRAME: React.CSSProperties = { backgroundColor: 'rgba(25,25,25,0.5)', ...GRID_BG }
+
+// Create: the cursor clicks and a trace comes into being under it.
+export function CreateTraceDemo() {
+  return (
+    <div className="relative w-full h-24 border border-nier-border/25 overflow-hidden mt-4 landing-demo" style={ECO_FRAME} aria-hidden="true">
+      {/* click ring */}
+      <div
+        className="absolute w-5 h-5 rounded-full border"
+        style={{ left: 'calc(50% - 10px)', top: 'calc(50% - 10px)', borderColor: `${C.silver}88`, opacity: 0, animation: 'ldCreateRing 8s linear infinite' }}
+      />
+      {/* the trace that gets created */}
+      <div className="absolute w-24 h-14" style={{ left: 'calc(50% - 48px)', top: 'calc(50% - 28px)', opacity: 0, animation: 'ldCreateCard 8s ease-out infinite' }}>
+        <div className="absolute inset-0 border border-nier-border/50" style={{ backgroundColor: 'rgba(25,25,25,0.94)' }}>
+          <Brackets color={`${C.silver}88`} />
+          <div className="p-2 flex flex-col gap-1.5 justify-center h-full">
+            <div className="h-[3px] bg-nier-border/55" style={{ width: 0, animation: 'ldCreateLine1 8s linear infinite' }} />
+            <div className="h-[3px] bg-nier-border/35" style={{ width: 0, animation: 'ldCreateLine2 8s linear infinite' }} />
+          </div>
+        </div>
+      </div>
+      <DemoCursor color={C.silver} style={{ left: 0, top: 0, animation: 'ldCreateCursor 8s ease-in-out infinite' }} />
+
+      <style>{`
+        @keyframes ldCreateCursor {
+          0%        { left: 80%; top: 78%; }
+          18%, 30%  { left: 50%; top: 48%; }
+          55%, 100% { left: 72%; top: 70%; }
+        }
+        @keyframes ldCreateRing {
+          0%, 18%  { opacity: 0; transform: scale(0.4); }
+          21%      { opacity: 1; transform: scale(1); }
+          27%, 100%{ opacity: 0; transform: scale(1.6); }
+        }
+        @keyframes ldCreateCard {
+          0%, 20%   { opacity: 0; transform: scale(0.7); }
+          28%, 88%  { opacity: 1; transform: scale(1); }
+          96%, 100% { opacity: 0; transform: scale(0.98); }
+        }
+        @keyframes ldCreateLine1 { 0%, 30% { width: 0; } 48%, 100% { width: 80%; } }
+        @keyframes ldCreateLine2 { 0%, 40% { width: 0; } 58%, 100% { width: 55%; } }
+      `}</style>
+    </div>
+  )
+}
+
+// Populate: traces of different kinds pop in one after another until the
+// little canvas is full, then it clears and begins again.
+export function PopulateDemo() {
+  const cards = [
+    { kind: 'text' as const, cls: 'w-16 h-10', left: '8%', top: '14%', anim: 'ldPop1' },
+    { kind: 'image' as const, cls: 'w-12 h-12', left: '58%', top: '10%', anim: 'ldPop2' },
+    { kind: 'embed' as const, cls: 'w-20 h-9', left: '30%', top: '52%', anim: 'ldPop3' },
+    { kind: 'shape' as const, cls: 'w-10 h-10', left: '72%', top: '55%', anim: 'ldPop4' },
+  ]
+  return (
+    <div className="relative w-full h-24 border border-nier-border/25 overflow-hidden mt-4 landing-demo" style={ECO_FRAME} aria-hidden="true">
+      {cards.map(c => (
+        <div key={c.anim} className={`absolute ${c.cls}`} style={{ left: c.left, top: c.top, opacity: 0, animation: `${c.anim} 10s ease-out infinite` }}>
+          <DemoTrace kind={c.kind} className="w-full h-full" style={{ position: 'relative' }} />
+        </div>
+      ))}
+      <style>{`
+        @keyframes ldPop1 { 0%, 8%  { opacity: 0; transform: scale(0.7); } 14%, 88% { opacity: 1; transform: scale(1); } 96%, 100% { opacity: 0; } }
+        @keyframes ldPop2 { 0%, 26% { opacity: 0; transform: scale(0.7); } 32%, 88% { opacity: 1; transform: scale(1); } 96%, 100% { opacity: 0; } }
+        @keyframes ldPop3 { 0%, 44% { opacity: 0; transform: scale(0.7); } 50%, 88% { opacity: 1; transform: scale(1); } 96%, 100% { opacity: 0; } }
+        @keyframes ldPop4 { 0%, 62% { opacity: 0; transform: scale(0.7); } 68%, 88% { opacity: 1; transform: scale(1); } 96%, 100% { opacity: 0; } }
+      `}</style>
+    </div>
+  )
+}
+
+// Explore: the world glides beneath a fixed viewport bracket -- the camera
+// roaming an atrium that is bigger than the frame.
+export function ExploreDemo() {
+  return (
+    <div className="relative w-full h-24 border border-nier-border/25 overflow-hidden mt-4 landing-demo" style={{ backgroundColor: 'rgba(25,25,25,0.5)' }} aria-hidden="true">
+      <div className="absolute -inset-[35%]" style={{ ...GRID_BG, animation: 'ldExploreWorld 16s ease-in-out infinite' }}>
+        <DemoTrace kind="text" className="w-14 h-9" style={{ left: '16%', top: '24%' }} />
+        <DemoTrace kind="image" className="w-11 h-11" style={{ left: '44%', top: '48%' }} />
+        <DemoTrace kind="embed" className="w-16 h-8" style={{ left: '66%', top: '20%' }} />
+        <DemoTrace kind="shape" className="w-9 h-9" style={{ left: '76%', top: '60%' }} />
+        <DemoTrace kind="text" className="w-12 h-8" style={{ left: '28%', top: '68%' }} />
+      </div>
+      {/* the fixed camera frame the world moves under */}
+      <div className="absolute inset-[22%]">
+        <Brackets color={`${C.silver}77`} />
+      </div>
+      <style>{`
+        @keyframes ldExploreWorld {
+          0%, 100% { transform: translate(0, 0); }
+          28%      { transform: translate(-9%, -4%); }
+          55%      { transform: translate(-3%, 5%); }
+          78%      { transform: translate(6%, -2%); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 // Shared reduced-motion freeze for every scene above: a single class on each
 // container, one media query, and the dioramas become readable stills.
 export function DemoMotionStyles() {
@@ -406,6 +514,10 @@ export function DemoMotionStyles() {
            (the sibling selector re-hides the ones after it). */
         .landing-demo [style*="ldCycle"] { opacity: 1 !important; }
         .landing-demo [style*="ldCycle"] ~ [style*="ldCycle"] { opacity: 0 !important; }
+        /* Pop-in/creation layers also start invisible; freeze them shown. */
+        .landing-demo [style*="ldPop"], .landing-demo [style*="ldCreateCard"] { opacity: 1 !important; transform: none !important; }
+        .landing-demo [style*="ldCreateLine1"] { width: 80% !important; }
+        .landing-demo [style*="ldCreateLine2"] { width: 55% !important; }
       }
     `}</style>
   )

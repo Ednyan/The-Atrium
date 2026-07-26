@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
-import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, DemoMotionStyles } from './LandingDemos'
+import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo, DemoMotionStyles } from './LandingDemos'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -77,15 +77,15 @@ function ShowcaseFrame() {
   )
 }
 
-// The demo reel's own band, directly under the hero. Renders nothing at all
-// until the file exists (the <video> errors on a missing source), so there's
-// no placeholder box to explain -- the section simply appears the day the
-// reel is dropped into public/. Deliberately has no entry in the right-rail
-// nav: it's a short interlude, not a stop, and keeping it out of `sections`
-// means its presence can't shift every nav index below it.
+// The demo reel's own band, directly under the hero. Until the file exists
+// at public/atrium-showcase.mp4 (the <video> errors on the missing source),
+// the frame shows a deliberate "transmission incoming" placeholder -- the
+// slot is visible and styled, and swaps to the reel the day the file is
+// dropped in, with no code change. Deliberately has no entry in the
+// right-rail nav: it's a short interlude, not a stop, and keeping it out of
+// `sections` means its presence can't shift every nav index below it.
 function VideoShowcaseSection() {
   const [available, setAvailable] = useState(true)
-  if (!available) return null
 
   return (
     <section className="flex items-center justify-center px-5 sm:px-12 py-24 relative">
@@ -104,17 +104,34 @@ function VideoShowcaseSection() {
           <div className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60 z-10 pointer-events-none" />
           <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 z-10 pointer-events-none" />
           <div className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video" style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.55)' }}>
-            <video
-              src={SHOWCASE_VIDEO_SRC}
-              poster={SHOWCASE_POSTER_SRC}
-              autoPlay
-              loop
-              muted
-              playsInline
-              controls
-              onError={() => setAvailable(false)}
-              className="w-full h-full object-cover"
-            />
+            {available ? (
+              <video
+                src={SHOWCASE_VIDEO_SRC}
+                poster={SHOWCASE_POSTER_SRC}
+                autoPlay
+                loop
+                muted
+                playsInline
+                controls
+                onError={() => setAvailable(false)}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              // The reel isn't recorded yet -- hold the slot with something
+              // that reads as intentional rather than broken.
+              <div
+                className="absolute inset-0 flex flex-col items-center justify-center gap-4"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(rgba(203,203,203,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(203,203,203,0.05) 1px, transparent 1px)',
+                  backgroundSize: '36px 36px',
+                }}
+              >
+                <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 12px ${ACCENT.silver}55` }} />
+                <p className="font-mono text-[11px] tracking-[0.3em] uppercase text-nier-border/70">Transmission incoming</p>
+                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-border/40">A tour of the atrium is being recorded</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -776,6 +793,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <p className="text-nier-border/60 text-xs leading-relaxed">
                     Set up your atrium. Define its purpose and who can access it.
                   </p>
+                  <CreateTraceDemo />
                 </div>
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
@@ -785,6 +803,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <p className="text-nier-border/60 text-xs leading-relaxed">
                     Invite others or leave traces yourself. Build a collection of ideas.
                   </p>
+                  <PopulateDemo />
                 </div>
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
@@ -794,6 +813,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <p className="text-nier-border/60 text-xs leading-relaxed">
                     Navigate the infinite canvas. Discover traces left by others.
                   </p>
+                  <ExploreDemo />
                 </div>
               </div>
             </div>
