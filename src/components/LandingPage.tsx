@@ -37,7 +37,7 @@ function ShowcaseFrame() {
   const [hasVideo, setHasVideo] = useState(true)
 
   return (
-    <div className="relative mx-auto w-full max-w-3xl">
+    <div className="relative mx-auto w-full">
       {/* Corner brackets, matching the atrium's own HUD framing */}
       <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 z-10 pointer-events-none" />
       <div className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60 z-10 pointer-events-none" />
@@ -384,124 +384,158 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       </div>
 
       {/* SECTION 1: Hero */}
-      <section 
+      <section
         ref={el => sectionRefs.current[0] = el}
-        // py-24 so the top label can't sit against the viewport edge now that
-        // the showcase frame has made this section's content much taller.
-        className="min-h-screen flex flex-col items-center justify-center px-5 sm:px-12 py-24 relative"
+        className="min-h-screen flex items-center px-5 sm:px-10 lg:px-16 py-28 relative overflow-hidden"
       >
         {/* Corner brackets */}
-        <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30" />
-        <div className="absolute top-8 right-8 w-16 h-16 border-r-2 border-t-2 border-nier-border/30" />
-        <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-nier-border/30" />
-        <div className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-nier-border/30" />
+        <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30 pointer-events-none" />
+        <div className="absolute top-8 right-8 w-16 h-16 border-r-2 border-t-2 border-nier-border/30 pointer-events-none" />
+        <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-nier-border/30 pointer-events-none" />
+        <div className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-nier-border/30 pointer-events-none" />
 
-        <div className="text-center max-w-4xl mx-auto w-full">
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <div className="w-12 h-[1px] bg-gradient-to-r from-transparent" style={{ backgroundImage: `linear-gradient(to right, transparent, ${ACCENT.amber}66)` }} />
-            <span className="text-xs tracking-[0.3em] uppercase" style={{ color: `${ACCENT.amber}CC` }}>A Shared Canvas Experience</span>
-            <div className="w-12 h-[1px]" style={{ backgroundImage: `linear-gradient(to left, transparent, ${ACCENT.amber}66)` }} />
-          </div>
+        {/* Warm bloom anchored behind the headline. Gives the type something to
+            sit in front of, so the left column reads as lit rather than as text
+            floating on a flat panel. */}
+        <div
+          className="absolute pointer-events-none -z-0"
+          style={{
+            left: '-10%',
+            top: '20%',
+            width: '55vw',
+            height: '55vw',
+            maxWidth: 780,
+            maxHeight: 780,
+            background: `radial-gradient(circle, ${ACCENT.amber}1F, transparent 68%)`,
+            filter: 'blur(30px)',
+            transform: 'translate3d(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -18px), 0)',
+            transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
+        />
 
-          {/* Title and portal share a line now instead of stacking. The portal
-              anchors the wordmark rather than competing with it for vertical
-              space, which is what pushed the actual product below the fold. */}
-          <div className="flex items-center justify-center gap-5 sm:gap-8 mb-6">
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-extralight tracking-wider text-left">
-              <span className="text-nier-border/60">THE</span>{' '}
-              <span className="text-white">DIGITAL</span>
-              <br />
-              <span className="text-white">ATRIUM</span>
+        {/* Asymmetric split. Everything used to be centred and evenly weighted,
+            so nothing led -- the eye had no entry point. Type anchors the left,
+            the product holds the right, and on narrow screens it stacks with
+            the product directly under the headline. */}
+        <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-center">
+
+          {/* LEFT: type + actions */}
+          <div className="text-left">
+            {/* Status strip, styled like the app's own HUD readouts */}
+            <div className="inline-flex items-center gap-3 border px-3 py-1.5 mb-8" style={{ borderColor: `${ACCENT.amber}40`, backgroundColor: `${ACCENT.amber}0A` }}>
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: ACCENT.amber }} />
+                <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: ACCENT.amber }} />
+              </span>
+              <span className="text-[10px] tracking-[0.28em] uppercase" style={{ color: `${ACCENT.amber}E6` }}>
+                A Shared Canvas Experience
+              </span>
+            </div>
+
+            {/* Oversized and tightly set. The old headline was font-extralight
+                with wide tracking -- elegant, but it read as delicate at exactly
+                the moment the page needed to assert itself. Weight and leading
+                do the work now; the wide tracking stays on the small labels,
+                which is where that NieR texture actually belongs. */}
+            <h1 className="font-light leading-[0.86] tracking-[-0.02em] mb-7">
+              <span className="block text-nier-border/50 text-[clamp(2rem,5vw,3.5rem)] tracking-[0.12em] font-extralight mb-2">
+                THE
+              </span>
+              <span
+                className="block text-[clamp(3.4rem,9vw,7.5rem)] text-white"
+                style={{ textShadow: '0 0 60px rgba(255,255,255,0.14)' }}
+              >
+                DIGITAL
+              </span>
+              <span
+                className="block text-[clamp(3.4rem,9vw,7.5rem)]"
+                style={{
+                  backgroundImage: `linear-gradient(100deg, #FFFFFF 8%, ${ACCENT.amber} 58%, #FFFFFF 96%)`,
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                  filter: `drop-shadow(0 0 34px ${ACCENT.amber}40)`,
+                }}
+              >
+                ATRIUM
+              </span>
             </h1>
-            <PortalLoop className="h-24 md:h-32 lg:h-36 shrink-0" />
-          </div>
 
-          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-8">
-            A museum of references created by you.
-          </p>
-
-          {/* The product itself, above the fold. Nothing on this page said what
-              an atrium actually looks like, which is the hardest thing to carry
-              in copy alone. Falls back to a still frame until the demo video is
-              dropped in at the path below -- so the slot is never an empty box. */}
-          <ShowcaseFrame />
-
-          <p className="text-nier-border/60 text-xs md:text-sm font-light tracking-wide mb-10 mt-8">
-            Create your atrium. Discover others. Leave traces
-          </p>
-
-          {/* Feature highlights -- one accent each, so the three pillars are
-              distinguishable at a glance rather than reading as one grey list. */}
-          <div className="flex flex-wrap justify-center gap-6 mb-10 text-[10px] tracking-[0.15em] uppercase text-nier-border/70">
-            {([
-              { label: 'Infinite Canvas', color: ACCENT.amber },
-              { label: 'Private Atriums', color: ACCENT.emerald },
-              { label: 'Live Presence', color: ACCENT.sky },
-            ] as const).map(({ label, color }) => (
-              <div key={label} className="flex items-center gap-2 group/feat">
-                <div
-                  className="w-1.5 h-1.5 rotate-45 transition-shadow duration-300"
-                  style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}99` }}
-                />
-                <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Diamond separator */}
-          <div className="flex items-center justify-center gap-3 mb-10">
-            <div className="w-2 h-2 rotate-45 border" style={{ borderColor: `${ACCENT.amber}55` }} />
-            <div
-              className="w-3 h-3 rotate-45 border bg-nier-blackLight"
-              style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 12px ${ACCENT.amber}55` }}
-            />
-            <div className="w-2 h-2 rotate-45 border" style={{ borderColor: `${ACCENT.amber}55` }} />
-          </div>
-
-          {/* CTA Button */}
-          {/* The one unambiguously primary action on the page, so it's the one
-              place the accent is allowed to fill rather than merely tint. */}
-          <button
-            onClick={onGetStarted}
-            className="group relative px-10 py-3 bg-transparent border transition-all duration-300"
-            style={{ borderColor: `${ACCENT.amber}80` }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = ACCENT.amber
-              e.currentTarget.style.backgroundColor = `${ACCENT.amber}14`
-              e.currentTarget.style.boxShadow = `0 0 28px ${ACCENT.amber}33`
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = `${ACCENT.amber}80`
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.boxShadow = 'none'
-            }}
-          >
-            <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
-            <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
-            <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
-            <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b transition-colors" style={{ borderColor: `${ACCENT.amber}99` }} />
-
-            <span className="text-sm tracking-[0.2em] uppercase transition-colors" style={{ color: ACCENT.amber }}>
-              {isAuthenticated ? '◇ Continue to Atrium' : '◇ Enter The Atrium'}
-            </span>
-          </button>
-
-          {/* Shown only when signed out -- it's a reason to sign up, and there
-              was nothing worth saying to someone already signed in. */}
-          {!isAuthenticated && (
-            <p className="mt-8 text-nier-border/40 text-xs tracking-wider">
-              Free to use • No credit card required
+            <p className="text-nier-border text-base md:text-lg font-light leading-relaxed max-w-md mb-9">
+              A museum of references created by you.
+              <span className="block text-nier-border/50 text-sm mt-2">
+                Create your atrium. Discover others. Leave traces.
+              </span>
             </p>
-          )}
 
-          {/* In normal flow rather than absolutely positioned at the bottom.
-              Pinning it to the section's bottom edge worked when the hero was
-              short, but the showcase frame pushed the content down onto it, so
-              it collided with the call to action. */}
-          <div className="mt-16 flex flex-col items-center gap-2 animate-pulse">
-            <span className="text-[10px] text-nier-border/40 tracking-[0.2em] uppercase">Scroll</span>
-            <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
+            {/* Filled rather than outlined. Previously the call to action had
+                the same visual weight as every other bordered box on the page,
+                so the one thing a visitor should do didn't stand out. */}
+            <div className="flex flex-wrap items-center gap-4 mb-10">
+              <button
+                onClick={onGetStarted}
+                className="group relative px-8 py-3.5 text-sm tracking-[0.18em] uppercase font-medium transition-all duration-300"
+                style={{
+                  backgroundColor: ACCENT.amber,
+                  color: '#191919',
+                  boxShadow: `0 0 0 rgba(0,0,0,0)`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = `0 10px 40px ${ACCENT.amber}55`
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = '0 0 0 rgba(0,0,0,0)'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                }}
+              >
+                <span className="absolute -top-1 -left-1 w-3 h-3 border-l border-t" style={{ borderColor: `${ACCENT.amber}` }} />
+                <span className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b" style={{ borderColor: `${ACCENT.amber}` }} />
+                {isAuthenticated ? 'Continue to Atrium' : 'Enter The Atrium'}
+              </button>
+
+              {!isAuthenticated && (
+                <span className="text-nier-border/40 text-[11px] tracking-wider">
+                  Free to use • No credit card
+                </span>
+              )}
+            </div>
+
+            {/* Three pillars as a rule-separated row rather than floating chips,
+                so they read as one grounded line under the actions. */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-[10px] tracking-[0.16em] uppercase text-nier-border/70">
+              {([
+                { label: 'Infinite Canvas', color: ACCENT.amber },
+                { label: 'Private Atriums', color: ACCENT.emerald },
+                { label: 'Live Presence', color: ACCENT.sky },
+              ] as const).map(({ label, color }) => (
+                <div key={label} className="flex items-center gap-2 group/feat">
+                  <div
+                    className="w-1.5 h-1.5 rotate-45 transition-transform duration-300 group-hover/feat:scale-150"
+                    style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}AA` }}
+                  />
+                  <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{label}</span>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* RIGHT: the product */}
+          <div className="relative">
+            <ShowcaseFrame />
+            {/* The portal, demoted to a corner mark. At full size it competed
+                with the showcase for the same job; small and overlapping, it
+                ties the two together instead. */}
+            <div className="absolute -bottom-8 -left-6 hidden lg:block pointer-events-none">
+              <PortalLoop className="h-24 opacity-90" />
+            </div>
+          </div>
+        </div>
+
+        {/* Scroll hint, pinned low but out of the content's way */}
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-pulse pointer-events-none">
+          <span className="text-[10px] text-nier-border/40 tracking-[0.2em] uppercase">Scroll</span>
+          <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
         </div>
       </section>
 
