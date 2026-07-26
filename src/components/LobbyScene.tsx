@@ -1869,14 +1869,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
           const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
           
-          // Only GENERATE ground elements when zoom is stable and not hidden (expensive)
-          if (frameCounter % 2 === 0 && zoomIsStable && !themeManager.isGroundHidden()) {
-            const margin = 500
-            const minX = camX - viewportWidth / zoomRef.current - margin
-            const minY = camY - viewportHeight / zoomRef.current - margin
-            const maxX = camX + viewportWidth / zoomRef.current + margin
-            const maxY = camY + viewportHeight / zoomRef.current + margin
-            
+          // Only GENERATE ground elements when zoom is stable (expensive)
+          if (frameCounter % 2 === 0 && zoomIsStable) {
+            // Cover the visible canvas plus a 30% ring for pan pre-loading.
+            //
+            // Expressed as a multiple of the half-viewport, not an absolute
+            // pixel margin: cullGroundElements measures distance normalized
+            // per axis, so a fixed margin lands at a different normalized
+            // depth horizontally than vertically, and the short axis could
+            // generate past the cull threshold and thrash. This extent stays
+            // below that threshold (1.6) on both axes.
+            //
+            // The old bounds spanned a FULL viewport on each side, i.e. 4x
+            // the visible area, most of it never seen.
+            const GROUND_GEN_EXTENT = 1.3
+            const worldHalfW = (viewportWidth / zoomRef.current) / 2
+            const worldHalfH = (viewportHeight / zoomRef.current) / 2
+            const minX = camX - worldHalfW * GROUND_GEN_EXTENT
+            const minY = camY - worldHalfH * GROUND_GEN_EXTENT
+            const maxX = camX + worldHalfW * GROUND_GEN_EXTENT
+            const maxY = camY + worldHalfH * GROUND_GEN_EXTENT
+
             themeManager.generateGroundElements(
               minX, minY, maxX, maxY
             )

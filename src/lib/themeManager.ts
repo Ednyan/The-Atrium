@@ -205,11 +205,17 @@ export class ThemeManager {
     }
     this._lastGroundGenTime = now
 
-    // Limit max ground elements to prevent memory issues
-    const MAX_GROUND_ELEMENTS = 500
-    if (this.groundElements.length >= MAX_GROUND_ELEMENTS) {
-      return
-    }
+    // Safety valve so a tiny grid spacing at low zoom can't spawn sprites
+    // without bound. Deliberately NOT an early return: bailing here also
+    // skipped the removal pass below, so once the cap was hit generation
+    // stopped permanently and panning revealed bare ground forever. It's
+    // enforced inside the creation loop instead, letting culling free slots
+    // as the camera moves away from old elements.
+    // Covering the visible world at low zoom legitimately needs thousands of
+    // elements (they're all one of a few textures, so Pixi batches them).
+    // Past this the view is so far out that gaps are preferable to the sprite
+    // count; raise Grid Spacing if you hit it.
+    const MAX_GROUND_ELEMENTS = 6000
 
     const patternMode = this.config.groundPatternMode ?? 'grid'
     // Density slider is 0..3. Use an eased curve so low values are truly sparse.
@@ -234,21 +240,30 @@ export class ThemeManager {
     if (densityChance <= 0) {
       return
     }
+    // Occupancy set instead of a linear scan per lattice point -- the old
+    // `groundElements.some(...)` made this O(elements x points), which at
+    // full-view coverage is millions of comparisons per pass.
+    const occupied = new Set<string>()
+    for (const el of this.groundElements) {
+      occupied.add(`${el.worldX},${el.worldY}`)
+    }
+
     // Walk the lattice across the visible area. Both pattern modes share this
     // traversal -- only shouldPlaceGroundElement differs between them (grid =
     // checkerboard, random = seeded density test).
     for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
       for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+        if (this.groundElements.length >= MAX_GROUND_ELEMENTS) {
+          return
+        }
         if (!this.shouldPlaceGroundElement(x, y, patternMode, gridSize, densityChance)) {
           continue
         }
 
-        const exists = this.groundElements.some(
-          el => el.worldX === x && el.worldY === y
-        )
-
-        if (!exists) {
+        const key = `${x},${y}`
+        if (!occupied.has(key)) {
           this.createGroundElement(x, y)
+          occupied.add(key)
         }
       }
     }
@@ -437,45 +452,11 @@ export class ThemeManager {
   }
 
   private _cullFrameCounter = 0
-  private _groundHidden = false
-  
-  isGroundHidden(): boolean {
-    return this._groundHidden
-  }
-  
+
   cullGroundElements(cameraX: number, cameraY: number, viewportWidth: number, viewportHeight: number, playerX: number, playerY: number, traces: Array<{x: number, y: number}>, zoom: number) {
     // Only cull every 10 frames for performance, but always run fade animations
     this._cullFrameCounter++
-    
-    // Simple zoom threshold: hide ground elements below 0.35 zoom, show above 0.4
-    const zoomHideThreshold = 0.35
-    const zoomShowThreshold = 0.4
-    
-    // Determine if ground should be hidden (with hysteresis to prevent flicker)
-    if (!this._groundHidden && zoom < zoomHideThreshold) {
-      this._groundHidden = true
-    } else if (this._groundHidden && zoom > zoomShowThreshold) {
-      this._groundHidden = false
-    }
-    
-    // If hidden, fade all elements out and skip the rest
-    if (this._groundHidden) {
-      this.groundElements.forEach(element => {
-        element.targetAlpha = 0
-        element.sprite.alpha = Math.max(0, element.sprite.alpha - element.fadeSpeed * 3)
-      })
-      // Remove fully faded elements
-      this.groundElements = this.groundElements.filter(element => {
-        if (element.sprite.alpha <= 0.01) {
-          this.groundContainer.removeChild(element.sprite)
-          element.sprite.destroy()
-          return false
-        }
-        return true
-      })
-      return
-    }
-    
+
     if (this._cullFrameCounter % 10 !== 0) {
       // Still update fade animations but skip culling logic
       this.groundElements.forEach(element => {
@@ -564,10 +545,20 @@ export class ThemeManager {
         element.sprite.alpha = Math.max(element.targetAlpha, element.sprite.alpha - element.fadeSpeed)
       }
       
-      // Only remove elements that are VERY far from viewport to prevent re-creation flicker
-      // Keep faded elements in memory if they're within reasonable distance
-      const isFarFromViewport = normalizedDistance > 2.5 // Much larger buffer
-      if (element.sprite.alpha <= 0.01 && isFarFromViewport && !shouldExist) {
+      // Drop elements once they're off-screen and fully faded, so the live
+      // set stays proportional to the viewport instead of growing forever.
+      //
+      // This deliberately no longer requires !shouldExist: with full-view
+      // coverage shouldExist is always true, so that clause made the whole
+      // condition unreachable. Elements accumulated until they hit the
+      // generation cap, and generation then stopped -- which is why panning
+      // revealed bare ground beyond the first chunk.
+      //
+      // CULL_DISTANCE sits above the generation extent (GROUND_GEN_EXTENT in
+      // LobbyScene) so there's hysteresis between "created" and "destroyed"
+      // and elements can't thrash at the boundary.
+      const isFarFromViewport = normalizedDistance > 1.6
+      if (element.sprite.alpha <= 0.01 && isFarFromViewport) {
         this.groundContainer.removeChild(element.sprite)
         element.sprite.destroy()
         return false
