@@ -3766,6 +3766,42 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               console.warn('Trace not found:', traceId)
             }
           }}
+          onGoToTraces={(traceIds) => {
+            // Frames a whole group: centers on its bounding box and picks the
+            // zoom that fits it on screen, reusing the Locations fly-to easing
+            // so it reads as the same kind of movement.
+            const ids = new Set(traceIds)
+            const targets = traces.filter(t => ids.has(t.id))
+            if (targets.length === 0) return
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+            for (const t of targets) {
+              // Include each trace's own extent, not just its center point, so
+              // a group of large traces isn't cropped at the viewport edges.
+              const halfW = ((t.width ?? getDefaultTraceBoxSize(t.type).width) * (t.scaleX ?? t.scale ?? 1)) / 2
+              const halfH = ((t.height ?? getDefaultTraceBoxSize(t.type).height) * (t.scaleY ?? t.scale ?? 1)) / 2
+              minX = Math.min(minX, t.x - halfW)
+              maxX = Math.max(maxX, t.x + halfW)
+              minY = Math.min(minY, t.y - halfH)
+              maxY = Math.max(maxY, t.y + halfH)
+            }
+
+            const PADDING = 1.25 // leave a margin so nothing sits on the edge
+            const spanX = Math.max(1, (maxX - minX) * PADDING)
+            const spanY = Math.max(1, (maxY - minY) * PADDING)
+            const fitZoom = Math.min(window.innerWidth / spanX, window.innerHeight / spanY)
+
+            cameraFlyToRef.current = {
+              startX: cameraPositionRef.current.x,
+              startY: cameraPositionRef.current.y,
+              startZoom: zoomRef.current,
+              targetX: (minX + maxX) / 2,
+              targetY: (minY + maxY) / 2,
+              targetZoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom)),
+              startTime: performance.now(),
+              duration: 900,
+            }
+          }}
         />
       )}
 

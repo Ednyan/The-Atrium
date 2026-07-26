@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
 import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
+import { buildTraceInsertRow } from '../lib/traceInsert'
 
 // Exported so LobbyScene's canvas-wide file/URL drop handlers can recognize
 // (and ignore) this in-app drag, since native drag events bubble through the
@@ -34,6 +35,9 @@ interface LayerPanelProps {
   activeLayerId?: string | null
   onSetActiveLayer?: (layerId: string | null) => void
   onSelectGroupTraces?: (traceIds: string[]) => void
+  // Frames the camera on a whole set of traces at once (Go to Group), as
+  // opposed to onGoToTrace which centers a single one at the current zoom.
+  onGoToTraces?: (traceIds: string[]) => void
   // Mirrors LobbyScene's canEdit (per lobbies.edit_permission_mode). Server
   // enforcement lives in RLS (user_can_edit_lobby on layers/traces); this
   // hides the mutating controls (create/rename/delete group, reordering,
@@ -42,9 +46,9 @@ interface LayerPanelProps {
   canEdit?: boolean
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, canEdit = true }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
-  const { traces, username, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
+  const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
@@ -65,6 +69,46 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const [dialogMode, setDialogMode] = useState<'create' | 'rename' | 'delete' | null>(null)
   const [dialogInput, setDialogInput] = useState('')
   const [dialogTargetId, setDialogTargetId] = useState<string | null>(null)
+
+  // Right-click menu for rows. `kind` decides which actions apply -- groups
+  // and traces share the menu component but expose different items, and a
+  // grouped trace gets Ungroup while an ungrouped one doesn't.
+  const [rowMenu, setRowMenu] = useState<
+    { x: number; y: number; kind: 'group' | 'trace'; id: string } | null
+  >(null)
+  // Whether the Move to Group flyout is open (its own state so the flyout
+  // closes when the menu is re-opened elsewhere).
+  const [moveToGroupOpen, setMoveToGroupOpen] = useState(false)
+  const [isBusy, setIsBusy] = useState(false)
+
+  const openRowMenu = (e: React.MouseEvent, kind: 'group' | 'trace', id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMoveToGroupOpen(false)
+    setRowMenu({ x: e.clientX, y: e.clientY, kind, id })
+  }
+  const closeRowMenu = () => {
+    setRowMenu(null)
+    setMoveToGroupOpen(false)
+  }
+
+  // Dismiss on any outside click, Escape, or scroll -- a fixed-position menu
+  // would otherwise hang in place while the list scrolls underneath it.
+  useEffect(() => {
+    if (!rowMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.('[data-layer-row-menu]')) closeRowMenu()
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRowMenu() }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', closeRowMenu, true)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', closeRowMenu, true)
+    }
+  }, [rowMenu])
 
   const loadLayers = useCallback(async () => {
     if (!supabase) {
@@ -255,6 +299,111 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
 
     await loadLayers()
+  }
+
+  // Deletes the group but keeps its traces, moving them out to Ungrouped.
+  // Separate from doDeleteGroup, which takes the contents down with it --
+  // as a one-click menu item that needed to be an explicit, distinct choice
+  // rather than the only meaning of "Delete".
+  const doDeleteGroupKeepTraces = async (layerId: string) => {
+    if (!supabase || !canEdit) return
+
+    const groupTraces = getTracesForLayer(layerId)
+    if (groupTraces.length > 0) {
+      await moveTracesToLayer(groupTraces.map(t => t.id), null)
+    }
+
+    const { error } = await supabase.from('layers').delete().eq('id', layerId)
+    if (error) {
+      console.error('Error deleting group:', error)
+      return
+    }
+
+    if (layerId === activeLayerId) onSetActiveLayer?.(null)
+    await loadLayers()
+  }
+
+  // Copies a group and everything in it into a brand-new group, so the copies
+  // are independently groupable rather than piling into the original (which is
+  // what duplicating the traces alone would do -- they inherit layer_id).
+  const duplicateGroup = async (layerId: string) => {
+    if (!supabase || !canEdit || !userId) return
+    const source = layers.find(l => l.id === layerId)
+    if (!source) return
+
+    setIsBusy(true)
+    try {
+      const maxZIndex = Math.max(...layers.map(l => l.zIndex), 0)
+      const { data: created, error: layerError } = await (supabase.from('layers') as any)
+        .insert({
+          name: `${source.name} copy`,
+          z_index: maxZIndex + 1,
+          is_group: true,
+          user_id: userId,
+          lobby_id: lobbyId,
+        })
+        .select()
+        .single()
+
+      if (layerError || !created) {
+        console.error('Error duplicating group:', layerError)
+        return
+      }
+
+      const sourceTraces = getTracesForLayer(layerId)
+      if (sourceTraces.length > 0) {
+        const rows = sourceTraces.map((trace, index) => ({
+          ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0),
+          layer_id: created.id,
+          z_index: getTraceZIndexForOrder(created.id, created.z_index, index),
+        }))
+        const { error: tracesError } = await (supabase.from('traces') as any).insert(rows)
+        if (tracesError) {
+          console.error('Error duplicating group traces:', tracesError)
+        }
+      }
+
+      await loadLayers()
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const duplicateSingleTrace = async (traceId: string) => {
+    if (!supabase || !canEdit || !userId) return
+    const trace = traces.find(t => t.id === traceId)
+    if (!trace) return
+
+    setIsBusy(true)
+    try {
+      // Same 20px nudge the canvas duplicate uses, so the copy is visibly
+      // offset instead of hiding exactly behind the original.
+      const row = buildTraceInsertRow(trace, userId, username, lobbyId, 20, 20)
+      const { data, error } = await (supabase.from('traces') as any).insert(row).select().single()
+      if (error || !data) {
+        console.error('Error duplicating trace:', error)
+        return
+      }
+      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, createdAt: data.created_at })
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const setTraceLocked = async (traceId: string, locked: boolean) => {
+    if (!supabase || !canEdit) return
+    const { error } = await (supabase.from('traces') as any)
+      .update({ is_locked: locked })
+      .eq('id', traceId)
+    if (error) {
+      console.error('Error updating lock:', error)
+      return
+    }
+    const trace = traces.find(t => t.id === traceId)
+    if (trace) {
+      removeTrace(traceId)
+      addTrace({ ...trace, isLocked: locked })
+    }
   }
 
   const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
@@ -831,7 +980,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               onDragLeave={() => handleDropTargetLeave(layer.id)}
             >
               {/* Group header */}
-              <div className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer">
+              <div
+                className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer"
+                onContextMenu={(e) => openRowMenu(e, 'group', layer.id)}
+              >
                 <div
                   className="flex items-center gap-1 flex-1"
                   title="Drag the grip to reorder groups. Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group."
@@ -930,25 +1082,15 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   >
                     ▼
                   </button>
+                  {/* Rename moved to the right-click menu, along with the rest
+                      of the group actions -- the header row was running out of
+                      space as features accumulated. */}
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      renameGroup(layer.id, layer.name)
-                    }}
+                    onClick={(e) => openRowMenu(e, 'group', layer.id)}
                     className="text-gray-400 hover:text-white text-[10px] px-2 py-1"
-                    title="Rename group"
+                    title="More actions (or right-click the group)"
                   >
-                    ✎
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteGroup(layer.id)
-                    }}
-                    className="text-red-400/60 hover:text-red-400 text-[10px] px-2 py-1"
-                    title="Delete group"
-                  >
-                    ×
+                    ⋯
                   </button>
                 </div>
               </div>
@@ -969,6 +1111,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       }`}
                       onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                       onDrop={(e) => handleTraceRowDrop(e, trace.id)}
+                      onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
                       onClick={() => {
                         onSelectTrace?.(trace.id)
                       }}
@@ -1110,6 +1253,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   }`}
                   onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                   onDrop={(e) => handleTraceRowDrop(e, trace.id)}
+                  onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
                   onClick={() => {
                     onSelectTrace?.(trace.id)
                   }}
@@ -1215,6 +1359,154 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           </div>
         )}
       </div>
+
+      {/* Row right-click menu. Fixed-positioned against the viewport (the
+          panel itself scrolls), flipped back on-screen when opened near an
+          edge so items never land outside the window. */}
+      {rowMenu && canEdit && (() => {
+        const isGroup = rowMenu.kind === 'group'
+        const layer = isGroup ? layers.find(l => l.id === rowMenu.id) : null
+        const trace = !isGroup ? traces.find(t => t.id === rowMenu.id) : null
+        if (isGroup && !layer) return null
+        if (!isGroup && !trace) return null
+
+        const groupTraces = isGroup ? getTracesForLayer(rowMenu.id) : []
+        const isExpanded = isGroup ? expandedGroups.has(rowMenu.id) : false
+        const MENU_WIDTH = 190
+        const estimatedHeight = isGroup ? 300 : 260
+        const left = Math.min(rowMenu.x, window.innerWidth - MENU_WIDTH - 8)
+        const top = Math.min(rowMenu.y, Math.max(8, window.innerHeight - estimatedHeight))
+
+        const Item = ({ label, onClick, danger, disabled, hint }: {
+          label: string; onClick: () => void; danger?: boolean; disabled?: boolean; hint?: string
+        }) => (
+          <button
+            disabled={disabled || isBusy}
+            onClick={() => { onClick(); closeRowMenu() }}
+            className={`w-full text-left px-3 py-1.5 text-[11px] tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+              danger ? 'text-red-400/80 hover:bg-red-900/30 hover:text-red-300' : 'text-white hover:bg-gray-700'
+            }`}
+            title={hint}
+          >
+            {label}
+          </button>
+        )
+
+        return (
+          <div
+            data-layer-row-menu
+            className="fixed bg-black border border-gray-500 shadow-xl z-[10000400] py-1"
+            style={{ left, top, width: MENU_WIDTH }}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <div className="px-3 py-1 text-[9px] tracking-[0.15em] uppercase text-gray-500 truncate border-b border-gray-700 mb-1">
+              {isGroup ? layer!.name : (trace!.content.substring(0, 18) || 'Untitled')}
+            </div>
+
+            {isGroup ? (
+              <>
+                <Item label="Duplicate Group" onClick={() => duplicateGroup(rowMenu.id)} />
+                <Item label="Rename" onClick={() => renameGroup(rowMenu.id, layer!.name)} />
+                <Item
+                  label={isExpanded ? 'Collapse' : 'Expand'}
+                  onClick={() => toggleGroup(rowMenu.id)}
+                />
+                <Item
+                  label="Select All Traces"
+                  onClick={() => {
+                    onSelectGroupTraces?.(groupTraces.map(t => t.id))
+                    onSetActiveLayer?.(rowMenu.id)
+                  }}
+                  disabled={groupTraces.length === 0}
+                />
+                <Item
+                  label="Go to Group"
+                  onClick={() => onGoToTraces?.(groupTraces.map(t => t.id))}
+                  disabled={groupTraces.length === 0}
+                  hint="Frame the camera on everything in this group"
+                />
+                <div className="h-[1px] bg-gray-700 my-1" />
+                <Item
+                  label="Ungroup All"
+                  onClick={() => moveTracesToLayer(groupTraces.map(t => t.id), null)}
+                  disabled={groupTraces.length === 0}
+                  hint="Move every trace out to Ungrouped, keeping the group"
+                />
+                <Item
+                  label="Lock All"
+                  onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, true)) }}
+                  disabled={groupTraces.length === 0}
+                />
+                <Item
+                  label="Unlock All"
+                  onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, false)) }}
+                  disabled={groupTraces.length === 0}
+                />
+                <div className="h-[1px] bg-gray-700 my-1" />
+                <Item
+                  label="Delete Group Only"
+                  onClick={() => doDeleteGroupKeepTraces(rowMenu.id)}
+                  danger
+                  hint="Traces move to Ungrouped"
+                />
+                <Item
+                  label={`Delete + ${groupTraces.length} Trace${groupTraces.length === 1 ? '' : 's'}`}
+                  onClick={() => deleteGroup(rowMenu.id)}
+                  danger
+                  hint="Deletes the group and everything inside it"
+                />
+              </>
+            ) : (
+              <>
+                <Item label="Duplicate" onClick={() => duplicateSingleTrace(rowMenu.id)} />
+                <Item label="Select" onClick={() => onSelectTrace?.(rowMenu.id)} />
+                <Item label="Go to Trace" onClick={() => onGoToTrace?.(rowMenu.id)} />
+                <Item
+                  label={trace!.isLocked ? 'Unlock' : 'Lock'}
+                  onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
+                  hint={trace!.isLocked ? 'Allow selecting/dragging on the canvas' : 'Prevent selecting/dragging on the canvas'}
+                />
+                <div className="h-[1px] bg-gray-700 my-1" />
+                {/* Inline flyout rather than a hover submenu -- the panel is
+                    narrow and a side flyout would open off-screen as often as
+                    not. */}
+                <button
+                  onClick={() => setMoveToGroupOpen(o => !o)}
+                  className="w-full text-left px-3 py-1.5 text-[11px] tracking-wider text-white hover:bg-gray-700 flex items-center justify-between"
+                >
+                  Move to Group <span className="text-gray-500">{moveToGroupOpen ? '▾' : '▸'}</span>
+                </button>
+                {moveToGroupOpen && (
+                  <div className="max-h-40 overflow-y-auto border-y border-gray-700 my-1 bg-gray-900/60">
+                    {layers.length === 0 && (
+                      <div className="px-4 py-1.5 text-[10px] text-gray-500 italic">No groups yet</div>
+                    )}
+                    {layers.map(l => (
+                      <button
+                        key={l.id}
+                        disabled={(trace!.layerId ?? null) === l.id}
+                        onClick={() => { moveTraceToLayer(rowMenu.id, l.id); closeRowMenu() }}
+                        className="w-full text-left px-4 py-1.5 text-[10px] tracking-wider text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed truncate"
+                      >
+                        {l.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {trace!.layerId && (
+                  <Item
+                    label="Ungroup"
+                    onClick={() => moveTraceToLayer(rowMenu.id, null)}
+                    hint="Move this trace out to Ungrouped"
+                  />
+                )}
+                <div className="h-[1px] bg-gray-700 my-1" />
+                <Item label="Delete" onClick={() => doDeleteTrace(rowMenu.id)} danger />
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Dialog for create/rename/delete */}
       {dialogMode && (
