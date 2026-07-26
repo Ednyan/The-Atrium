@@ -13,6 +13,76 @@ interface Section {
   subtitle: string
 }
 
+// Drop a demo reel at this path in public/ and the hero picks it up with no
+// code change. Until then the frame shows a still of a real atrium, so the
+// slot always holds something rather than reserving an empty box.
+const SHOWCASE_VIDEO_SRC = '/atrium-showcase.mp4'
+const SHOWCASE_POSTER_SRC = '/glass_dome.png'
+
+// The product, framed like a window into an atrium. Deliberately the largest
+// element in the hero: the page could describe an atrium at length but never
+// showed one, which is the single thing copy is worst at conveying.
+function ShowcaseFrame() {
+  const [hasVideo, setHasVideo] = useState(true)
+
+  return (
+    <div className="relative mx-auto w-full max-w-3xl">
+      {/* Corner brackets, matching the atrium's own HUD framing */}
+      <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 z-10 pointer-events-none" />
+      <div className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60 z-10 pointer-events-none" />
+      <div className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60 z-10 pointer-events-none" />
+      <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 z-10 pointer-events-none" />
+
+      <div
+        className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video"
+        style={{
+          boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
+          // Lifts very slightly against the pointer, so the frame reads as
+          // sitting in front of the parallax layers rather than pasted on.
+          transform: 'translate3d(calc(var(--px, 0) * 6px), calc(var(--py, 0) * 6px), 0)',
+          transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      >
+        {hasVideo ? (
+          <video
+            src={SHOWCASE_VIDEO_SRC}
+            poster={SHOWCASE_POSTER_SRC}
+            autoPlay
+            loop
+            muted
+            playsInline
+            // A missing file is the expected state until the reel exists, so
+            // it falls back quietly instead of leaving a broken player.
+            onError={() => setHasVideo(false)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <img
+            src={SHOWCASE_POSTER_SRC}
+            alt="A view inside an atrium"
+            className="w-full h-full object-cover opacity-90"
+          />
+        )}
+
+        {/* Scanline wash tying the frame to the app's own look */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.06]"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203,203,203,0.5) 2px, rgba(203,203,203,0.5) 4px)',
+          }}
+        />
+        {/* Vignette so the frame's edges sink into the page instead of ending
+            on a hard rectangle */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ boxShadow: 'inset 0 0 90px 20px rgba(25,25,25,0.9)' }}
+        />
+      </div>
+    </div>
+  )
+}
+
 const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
   { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
@@ -22,7 +92,6 @@ const sections: Section[] = [
 ]
 
 export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPageProps) {
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const [activeSection, setActiveSection] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -50,13 +119,62 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
     })), []
   )
 
+  // Pointer parallax, published as CSS custom properties instead of React
+  // state. This was a setState on every mousemove, which re-rendered the whole
+  // page continuously -- so the effect had to be kept almost invisible (0.01x)
+  // to stay affordable. Writing two variables on the container lets each layer
+  // pick its own depth, at a real magnitude, for no render cost.
+  //
+  // Coalesced into a single rAF so a burst of pointer events can't write style
+  // more than once a frame, and skipped entirely for people who ask for reduced
+  // motion.
   useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    let frame = 0
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY })
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        // -1..1 from centre, so layers can shift either way.
+        const nx = (e.clientX / window.innerWidth) * 2 - 1
+        const ny = (e.clientY / window.innerHeight) * 2 - 1
+        el.style.setProperty('--px', nx.toFixed(4))
+        el.style.setProperty('--py', ny.toFixed(4))
+      })
     }
-    
-    window.addEventListener('mousemove', handleMouseMove)
-    return () => window.removeEventListener('mousemove', handleMouseMove)
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [])
+
+  // Reveals each section as it scrolls into view. A long page where everything
+  // is simply already there is the main reason it reads as static.
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.querySelectorAll('[data-reveal]').forEach(n => n.classList.add('is-revealed'))
+      return
+    }
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-revealed')
+            // One-way: re-hiding on scroll-up is distracting on a page people
+            // scroll back and forth through.
+            observer.unobserve(entry.target)
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -10% 0px' },
+    )
+    document.querySelectorAll('[data-reveal]').forEach(n => observer.observe(n))
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
@@ -103,26 +221,46 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         }}
       />
 
-      {/* Animated background grid */}
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-10"
+      {/* Animated background grid -- the deepest parallax layer, so it moves
+          least. Scaled slightly past the viewport so the shift can't expose an
+          edge. */}
+      <div
+        className="fixed pointer-events-none opacity-[0.14]"
         style={{
+          inset: '-40px',
           backgroundImage: `
-            linear-gradient(rgba(203, 203, 203, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(203, 203, 203, 0.15) 1px, transparent 1px)
+            linear-gradient(rgba(203, 203, 203, 0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(203, 203, 203, 0.2) 1px, transparent 1px)
           `,
           backgroundSize: '60px 60px',
-          transform: `translate(${mousePos.x * 0.01}px, ${mousePos.y * 0.01}px)`,
-          transition: 'transform 0.5s ease-out',
+          transform: 'translate3d(calc(var(--px, 0) * 12px), calc(var(--py, 0) * 12px), 0)',
+          transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       />
 
-      {/* Background rectangles (trace-like elements) */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      {/* Slow radial breath behind everything -- gives the page a pulse without
+          any element visibly "animating". */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle at 50% 45%, rgba(203,203,203,0.07), transparent 62%)',
+          animation: 'atriumBreathe 11s ease-in-out infinite',
+        }}
+      />
+
+      {/* Background rectangles (trace-like elements) -- mid parallax layer,
+          moving roughly twice the grid so the two separate in depth. */}
+      <div
+        className="fixed inset-0 pointer-events-none overflow-hidden"
+        style={{
+          transform: 'translate3d(calc(var(--px, 0) * -26px), calc(var(--py, 0) * -26px), 0)',
+          transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      >
         {backgroundRects.map((rect, i) => (
           <div
             key={i}
-            className="absolute border border-nier-border/[0.08] bg-nier-border/[0.02]"
+            className="absolute border border-nier-border/[0.14] bg-nier-border/[0.04]"
             style={{
               left: rect.left,
               top: rect.top,
@@ -244,26 +382,37 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-nier-border/30" />
 
-        <div className="text-center max-w-2xl mx-auto">
+        <div className="text-center max-w-4xl mx-auto w-full">
           <div className="flex items-center justify-center gap-4 mb-6">
             <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/50" />
             <span className="text-nier-border/70 text-xs tracking-[0.3em] uppercase">A Shared Canvas Experience</span>
             <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/50" />
           </div>
-          
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-extralight tracking-wider mb-6">
-            <span className="text-nier-border/60">THE</span>{' '}
-            <span className="text-white">DIGITAL</span>
-            <br />
-            <span className="text-white">ATRIUM</span>
-          </h1>
 
-          <PortalLoop className="h-28 md:h-36" />
+          {/* Title and portal share a line now instead of stacking. The portal
+              anchors the wordmark rather than competing with it for vertical
+              space, which is what pushed the actual product below the fold. */}
+          <div className="flex items-center justify-center gap-5 sm:gap-8 mb-6">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-extralight tracking-wider text-left">
+              <span className="text-nier-border/60">THE</span>{' '}
+              <span className="text-white">DIGITAL</span>
+              <br />
+              <span className="text-white">ATRIUM</span>
+            </h1>
+            <PortalLoop className="h-24 md:h-32 lg:h-36 shrink-0" />
+          </div>
 
-          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-4 mt-6">
+          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-8">
             A museum of references created by you.
           </p>
-          <p className="text-nier-border/60 text-xs md:text-sm font-light tracking-wide mb-10">
+
+          {/* The product itself, above the fold. Nothing on this page said what
+              an atrium actually looks like, which is the hardest thing to carry
+              in copy alone. Falls back to a still frame until the demo video is
+              dropped in at the path below -- so the slot is never an empty box. */}
+          <ShowcaseFrame />
+
+          <p className="text-nier-border/60 text-xs md:text-sm font-light tracking-wide mb-10 mt-8">
             Create your atrium. Discover others. Leave traces
           </p>
 
@@ -324,7 +473,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         ref={el => sectionRefs.current[1] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-3xl w-full mx-auto">
+        <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
@@ -390,7 +539,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         ref={el => sectionRefs.current[2] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-3xl w-full mx-auto">
+        <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border border-nier-border/60" />
@@ -524,7 +673,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         ref={el => sectionRefs.current[3] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-2xl w-full mx-auto text-center">
+        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
@@ -589,7 +738,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         ref={el => sectionRefs.current[4] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-2xl w-full mx-auto text-center">
+        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
@@ -706,13 +855,45 @@ The result became what seems like a mix between pinterest, pureref and miro but 
         }
         
         @keyframes rectFloat {
-          0%, 100% { 
-            opacity: 0.6; 
-            transform: rotate(var(--rotation, 0deg)) translateY(0px); 
+          0%, 100% {
+            opacity: 0.6;
+            transform: rotate(var(--rotation, 0deg)) translateY(0px);
           }
-          50% { 
-            opacity: 0.9; 
-            transform: rotate(var(--rotation, 0deg)) translateY(-10px); 
+          50% {
+            opacity: 0.9;
+            transform: rotate(var(--rotation, 0deg)) translateY(-10px);
+          }
+        }
+
+        /* Slow ambient pulse behind the whole page. Long and low-contrast on
+           purpose -- it should register as atmosphere, not as an animation. */
+        @keyframes atriumBreathe {
+          0%, 100% { opacity: 0.55; transform: scale(1); }
+          50%      { opacity: 1;    transform: scale(1.08); }
+        }
+
+        /* Scroll reveal. Sections start slightly low and transparent, and the
+           observer adds .is-revealed as each enters view. */
+        [data-reveal] {
+          opacity: 0;
+          transform: translateY(28px);
+          transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+          will-change: opacity, transform;
+        }
+        [data-reveal].is-revealed {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        /* Honour the OS setting: no reveal offset, no breathing, no parallax
+           transitions. The observer also marks everything revealed up front so
+           content can never be left invisible. */
+        @media (prefers-reduced-motion: reduce) {
+          [data-reveal] {
+            opacity: 1;
+            transform: none;
+            transition: none;
           }
         }
       `}</style>
