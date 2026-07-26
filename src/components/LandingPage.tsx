@@ -15,11 +15,13 @@ interface Section {
 
 // A small accent set, kept deliberately narrow. The app is otherwise
 // monochrome, so colour only earns its place where it marks something -- the
-// three ideas the product is built on, and the primary action. Amber leads
-// because it matches the portal's own warm core; the other two are only ever
-// used alongside it in the feature row, never on their own.
+// three ideas the product is built on, and the primary action. Silver leads
+// (an amber lead was tried and read as too yellow against the palette): it
+// stays in the NieR greyscale family while still sitting a step brighter
+// than nier-bg, so glows and the filled CTA read as light, not colour. The
+// two real hues only ever appear alongside it in the feature rows.
 const ACCENT = {
-  amber: '#E8B15C',
+  silver: '#D9D9D9',
   emerald: '#7FD1A6',
   sky: '#7FB6D9',
 } as const
@@ -351,7 +353,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 transition-all duration-300 ${
                     isActive ? '' : 'bg-transparent border border-nier-border/60 group-hover:border-nier-border'
                   }`}
-                  style={isActive ? { backgroundColor: ACCENT.amber, boxShadow: `0 0 10px ${ACCENT.amber}AA` } : undefined}
+                  style={isActive ? { backgroundColor: ACCENT.silver, boxShadow: `0 0 10px ${ACCENT.silver}AA` } : undefined}
                 />
                 
                 {/* Distance line (when not active) */}
@@ -406,7 +408,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             height: '55vw',
             maxWidth: 780,
             maxHeight: 780,
-            background: `radial-gradient(circle, ${ACCENT.amber}1F, transparent 68%)`,
+            background: `radial-gradient(circle, ${ACCENT.silver}1F, transparent 68%)`,
             filter: 'blur(30px)',
             transform: 'translate3d(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -18px), 0)',
             transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
@@ -422,12 +424,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* LEFT: type + actions */}
           <div className="text-left">
             {/* Status strip, styled like the app's own HUD readouts */}
-            <div className="inline-flex items-center gap-3 border px-3 py-1.5 mb-8" style={{ borderColor: `${ACCENT.amber}40`, backgroundColor: `${ACCENT.amber}0A` }}>
+            <div className="inline-flex items-center gap-3 border px-3 py-1.5 mb-8" style={{ borderColor: `${ACCENT.silver}40`, backgroundColor: `${ACCENT.silver}0A` }}>
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: ACCENT.amber }} />
-                <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: ACCENT.amber }} />
+                <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: ACCENT.silver }} />
+                <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: ACCENT.silver }} />
               </span>
-              <span className="text-[10px] tracking-[0.28em] uppercase" style={{ color: `${ACCENT.amber}E6` }}>
+              <span className="text-[10px] tracking-[0.28em] uppercase" style={{ color: `${ACCENT.silver}E6` }}>
                 A Shared Canvas Experience
               </span>
             </div>
@@ -450,11 +452,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <span
                 className="block text-[clamp(3.4rem,9vw,7.5rem)]"
                 style={{
-                  backgroundImage: `linear-gradient(100deg, #FFFFFF 8%, ${ACCENT.amber} 58%, #FFFFFF 96%)`,
+                  backgroundImage: `linear-gradient(100deg, #FFFFFF 8%, ${ACCENT.silver} 58%, #FFFFFF 96%)`,
                   WebkitBackgroundClip: 'text',
                   backgroundClip: 'text',
                   color: 'transparent',
-                  filter: `drop-shadow(0 0 34px ${ACCENT.amber}40)`,
+                  filter: `drop-shadow(0 0 34px ${ACCENT.silver}40)`,
                 }}
               >
                 ATRIUM
@@ -476,12 +478,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 onClick={onGetStarted}
                 className="group relative px-8 py-3.5 text-sm tracking-[0.18em] uppercase font-medium transition-all duration-300"
                 style={{
-                  backgroundColor: ACCENT.amber,
+                  backgroundColor: ACCENT.silver,
                   color: '#191919',
                   boxShadow: `0 0 0 rgba(0,0,0,0)`,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = `0 10px 40px ${ACCENT.amber}55`
+                  e.currentTarget.style.boxShadow = `0 10px 40px ${ACCENT.silver}55`
                   e.currentTarget.style.transform = 'translateY(-2px)'
                 }}
                 onMouseLeave={(e) => {
@@ -489,8 +491,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                <span className="absolute -top-1 -left-1 w-3 h-3 border-l border-t" style={{ borderColor: `${ACCENT.amber}` }} />
-                <span className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b" style={{ borderColor: `${ACCENT.amber}` }} />
+                <span className="absolute -top-1 -left-1 w-3 h-3 border-l border-t" style={{ borderColor: `${ACCENT.silver}` }} />
+                <span className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b" style={{ borderColor: `${ACCENT.silver}` }} />
                 {isAuthenticated ? 'Continue to Atrium' : 'Enter The Atrium'}
               </button>
 
@@ -505,7 +507,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 so they read as one grounded line under the actions. */}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-[10px] tracking-[0.16em] uppercase text-nier-border/70">
               {([
-                { label: 'Infinite Canvas', color: ACCENT.amber },
+                { label: 'Infinite Canvas', color: ACCENT.silver },
                 { label: 'Private Atriums', color: ACCENT.emerald },
                 { label: 'Live Presence', color: ACCENT.sky },
               ] as const).map(({ label, color }) => (
@@ -547,7 +549,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               What Is This
             </h2>
@@ -572,7 +574,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="space-y-4">
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.amber, boxShadow: `0 0 8px ${ACCENT.amber}88` }} />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.silver, boxShadow: `0 0 8px ${ACCENT.silver}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Traces</span>
                 </div>
                 <p className="text-nier-border/60 text-sm leading-relaxed">
@@ -613,7 +615,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               How It Works
             </h2>
@@ -748,11 +750,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               But How?
             </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
           </div>
 
@@ -813,11 +815,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
               Who and Why?
             </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.amber}AA`, boxShadow: `0 0 10px ${ACCENT.amber}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
           </div>
 
