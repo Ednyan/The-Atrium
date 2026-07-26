@@ -791,14 +791,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
             <p className="text-nier-border/60 text-sm leading-relaxed mb-6 italic">
               My name is Eduardo Paranhos (aka Mindeformer or Red Puer).
-I’m a 3D artist that was FED UP by having a bunch of random images stored in my computer for reference and inspiration and no good alternative. That’s the reason I developed The Atrium.
+              I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
             </p>
-            
+
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
-            
+
             <p className="text-nier-border/60 text-sm leading-relaxed italic">
-              I wanted to create something simple to use and fast to iterate, like if you where creating a collage of images in a piece of paper.
-The result became what seems like a mix between pinterest, pureref and miro but with no paywalls, without storing hundreds of images in your pc and with the flexibility most platforms don’t have.
+              I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
+              What came out feels like a mix of Pinterest, PureRef and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
             </p>
           </div>
 
