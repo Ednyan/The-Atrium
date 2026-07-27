@@ -127,12 +127,22 @@ COMMENT ON FUNCTION public.user_can_access_lobby IS 'Membership (see user_has_me
 
 -- Atrium browser: the operator sees every atrium, not just public ones.
 --
--- WARNING: the version originally written here included an EXISTS subquery
--- into lobby_access_lists, copied from an older migration. That reintroduced
--- the exact cycle fix_lobby_admin_recursion_v2.sql had removed (that table's
--- policies subquery into lobbies), and Postgres rejected every read with
--- "infinite recursion detected in policy for relation lobbies".
--- fix_platform_admin_recursion.sql replaces this with plain column checks.
+-- WARNING: SUPERSEDED TWICE -- the authoritative version of this policy now
+-- lives in fix_lobbies_policy_restore_whitelist.sql. Do not copy the one
+-- below.
+--
+-- As originally written it included an EXISTS subquery into
+-- lobby_access_lists, copied from fix_rls_performance.sql (01-04). That
+-- reintroduced the exact cycle fix_lobby_admin_recursion_v2.sql had removed
+-- (that table's policies subquery into lobbies), so Postgres rejected every
+-- read with "infinite recursion detected in policy for relation lobbies".
+--
+-- The replacement below fixed the recursion but was based on the 07-15
+-- migration, which predates whitelisted_user_ids, so it silently dropped
+-- whitelist visibility instead.
+--
+-- Both mistakes had the same cause: rewriting this policy from a stale file
+-- instead of the most recently applied one. Read the newest version first.
 DROP POLICY IF EXISTS "Anyone can view public lobbies" ON public.lobbies;
 CREATE POLICY "Anyone can view public lobbies" ON public.lobbies
   FOR SELECT

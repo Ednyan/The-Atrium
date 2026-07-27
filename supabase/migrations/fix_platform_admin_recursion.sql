@@ -36,10 +36,15 @@ CREATE POLICY "Admins can check their own status" ON public.platform_admins
   FOR SELECT
   USING (user_id = (select auth.uid()));
 
--- Back to plain column checks, plus the operator override. Whitelisted access
--- to private atriums is deliberately NOT expressed here for the reason above;
--- it is handled by the app querying lobby_access_lists directly, exactly as
--- it did before add_platform_admin.sql.
+-- SUPERSEDED by fix_lobbies_policy_restore_whitelist.sql -- run that too.
+--
+-- The policy below is missing its whitelist branch, and the claim that once
+-- accompanied it (that whitelist access is "handled by the app querying
+-- lobby_access_lists directly") was simply wrong. The app does read that table
+-- for the user's own entries, but it then reads the lobbies rows by id, and
+-- this policy is what refuses them. fix_whitelist_private_access.sql (07-23)
+-- had already solved it with a whitelisted_user_ids column; this rewrite was
+-- based on the 07-15 migration and dropped it.
 DROP POLICY IF EXISTS "Anyone can view public lobbies" ON public.lobbies;
 CREATE POLICY "Anyone can view public lobbies" ON public.lobbies
   FOR SELECT
