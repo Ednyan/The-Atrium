@@ -27,14 +27,22 @@ unsigned.
 
 ## Every release
 
-1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`), commit,
-   push.
-2. Tag and push the tag:
+All four commands, in order. The bump has to be committed **before** the tag,
+since the tag must point at a commit that already carries the new version:
 
-   ```bash
-   git tag v1.0.2
-   git push origin v1.0.2
-   ```
+```bash
+# 1. Edit the version in src-tauri/tauri.conf.json AND package.json first, then:
+git commit -am "Release v1.0.2"
+git push
+git tag v1.0.2
+git push origin v1.0.2
+```
+
+If the tag and the version disagree, the workflow fails immediately with an
+explanation rather than building. That guard exists because the failure it
+prevents is invisible: the release would build, upload and look entirely
+successful, while every installed app quietly saw its own version in
+`latest.json` and offered no update.
 
 3. Watch the run in the **Actions** tab. Three jobs build in parallel; expect
    roughly 10–20 minutes.
