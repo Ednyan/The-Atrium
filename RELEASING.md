@@ -1,72 +1,136 @@
-# Releasing a desktop update
+# Publishing a desktop update — step by step
 
-The desktop app checks for updates at launch and hourly, and can install one
-in place. This is what has to happen for it to find anything.
+The desktop app checks for updates at launch, hourly after that, and again
+whenever the machine reconnects. Right now it finds nothing, because no
+release exists yet. This is the whole process.
 
-## One-time setup
+---
 
-The signing keypair already exists (generated once, and it must never be
-regenerated — existing installs only trust updates signed by the key whose
-public half is baked into `src-tauri/tauri.conf.json`).
+## Before the first release (once, ever)
 
-- **Private key:** `C:\Users\Ednyan\Desktop\atrium-updater-keys\atrium-updater.key`
-- **Public key:** already in `tauri.conf.json` under `plugins.updater.pubkey`
+### 1. Back up the signing key
 
-Back the private key up somewhere durable. If it is lost, every installed
-copy of the app becomes un-updatable — they will reject anything signed by a
-new key, and the only fix is for each user to reinstall by hand. `*.key` is
-gitignored so it cannot be committed by accident.
+```
+C:\Users\Ednyan\Desktop\atrium-updater-keys\atrium-updater.key
+```
 
-## Publishing a release
+Copy it somewhere safe that isn't this machine — a password manager, an
+encrypted drive, wherever you keep things you can't lose.
 
-1. **Bump the version** in `src-tauri/tauri.conf.json`. The updater compares
-   this against the version in the release manifest, so an unchanged version
-   means no update is offered.
+**Why it matters:** installed copies of the app only accept updates signed by
+this exact key. If it's lost, every existing install becomes permanently
+un-updatable and each user has to reinstall by hand. There is no recovery and
+no way to "re-issue" it. `*.key` is gitignored so it can't be committed by
+accident.
 
-2. **Build with the signing key in the environment.** Without it the bundler
-   produces no `.sig` files and the update will be rejected as unsigned:
+The matching public key is already in `src-tauri/tauri.conf.json` and gets
+compiled into the app. Don't change it.
 
-   ```bash
-   export TAURI_SIGNING_PRIVATE_KEY="$(cat /c/Users/Ednyan/Desktop/atrium-updater-keys/atrium-updater.key)"
-   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-   npm run tauri:build
-   ```
+---
 
-   `createUpdaterArtifacts` is enabled, so this emits an updater bundle plus a
-   matching `.sig` alongside the normal installers.
+## Every release
 
-3. **Create a GitHub release** tagged with the new version, and upload:
-   - `The Digital Atrium_<version>_x64-setup.exe` (the NSIS installer)
-   - its `.sig` file
-   - `latest.json` (below)
+### 2. Bump the version
 
-4. **Write `latest.json`** and attach it to the same release. The app fetches
-   it from `releases/latest/download/latest.json`, which always resolves to
-   the newest release:
+Edit **`src-tauri/tauri.conf.json`**:
 
-   ```json
-   {
-     "version": "1.1.0",
-     "notes": "What changed in this release.",
-     "pub_date": "2026-07-27T00:00:00Z",
-     "platforms": {
-       "windows-x86_64": {
-         "signature": "<contents of the .sig file>",
-         "url": "https://github.com/Ednyan/The-Atrium/releases/download/v1.1.0/The.Digital.Atrium_1.1.0_x64-setup.exe"
-       }
-     }
-   }
-   ```
+```json
+"version": "1.0.1",
+```
 
-   `signature` is the **contents** of the `.sig` file, not a link to it. The
-   `url` must match how GitHub actually names the uploaded asset — it replaces
-   spaces with dots, which is easy to get wrong.
+This is the number the updater compares against. If it doesn't go up, installed
+apps will decide they're already current and offer nothing. Bump
+`package.json` too so they don't drift apart.
+
+Version numbers must be `MAJOR.MINOR.PATCH` — `1.0.1`, not `v1.0.1` or `1.0.1-beta`.
+
+### 3. Build, with the signing key in the environment
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat /c/Users/Ednyan/Desktop/atrium-updater-keys/atrium-updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+npm run tauri:build
+```
+
+Both lines matter. The password is empty because the key was generated without
+one, but the variable still has to be set or the build will sit waiting for
+input.
+
+**If you skip the key entirely**, the build still succeeds and still produces
+installers — it just silently produces no `.sig` file, and the update will be
+rejected by every client as unsigned. That's the easiest mistake to make here.
+
+Output lands in:
+
+```
+src-tauri\target\release\bundle\nsis\
+```
+
+You need **two** files from there:
+- `The Digital Atrium_<version>_x64-setup.exe`
+- `The Digital Atrium_<version>_x64-setup.exe.sig`
+
+### 4. Create the GitHub release
+
+On <https://github.com/Ednyan/The-Atrium/releases> → **Draft a new release**.
+
+- **Tag:** `v1.0.1` (matching the version, with a leading `v` by convention)
+- **Title:** anything you like
+- **Attach:** the `.exe` **and** the `.sig` from step 3
+
+Don't publish yet — one more file to add.
+
+### 5. Generate `latest.json`
+
+This is the manifest the app actually reads. Generate it rather than writing
+it by hand:
+
+```bash
+node scripts/make-release-manifest.mjs "Fixed the thing. Added the other thing."
+```
+
+The argument is the release note **shown to the user** in the update prompt,
+so write it for them rather than as a changelog for yourself.
+
+It writes `latest.json` in the repo root, and handles the two things that are
+easy to get wrong by hand: the `signature` field takes the `.sig` file's
+*contents* (not a path), and the download URL has to use dots where the
+filename has spaces, because that's how GitHub serves the asset.
+
+It also refuses to run if the `.sig` is missing — i.e. if step 3 was run
+without the signing key — rather than producing a manifest every client will
+reject.
+
+Attach `latest.json` to the same release, then **Publish**.
+
+### 6. Verify
+
+The app fetches `releases/latest/download/latest.json`, which always resolves
+to your newest release. Check it's reachable:
+
+```bash
+curl -sL https://github.com/Ednyan/The-Atrium/releases/latest/download/latest.json
+```
+
+If that prints your JSON, an installed older copy will offer the update within
+the hour — or immediately on next launch.
+
+---
+
+## Testing it actually works
+
+The only real test is a version gap between an installed app and a release:
+
+1. Install the current build (run the `.exe` — not the app from
+   `target/release`, which has nothing sane to install over).
+2. Bump to a higher version, build, and publish as above.
+3. Launch the installed copy. The prompt should appear bottom-right.
+4. Click **Update Now** — it downloads, installs, and relaunches itself.
 
 ## Notes
 
-- The in-app `notes` field is shown to the user in the update prompt, so write
-  it for them rather than as a changelog for yourself.
-- A failed check is silent by design (offline, no releases yet, GitHub down);
-  it just retries next hour, and immediately if the machine comes back online.
-- Updates only apply to **installed** copies. Running the app straight from
-  `target/release` will find updates but has nothing sane to install over.
+- A failed check is deliberately silent: offline, no releases yet, or GitHub
+  being down are all normal for a background poll. Details go to the console.
+- Updates apply to **installed** copies only.
+- macOS and Linux would each need their own `platforms` entry and their own
+  builds; the manifest above is Windows-only, which matches what you ship.
