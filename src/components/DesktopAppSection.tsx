@@ -18,13 +18,15 @@ interface Build {
   note: string
 }
 
-// Only Windows is built today. Tauri can't meaningfully cross-compile these --
-// a macOS build needs a Mac, a Linux build needs Linux -- so the other two
-// stay listed but unlinked rather than pretending.
+// Every platform is matched by asset filename against the latest release, so
+// each button lights up on its own once a build for it exists and stays
+// greyed out until then. That matters because the three are produced by
+// separate CI runners (Tauri can't cross-compile), so a release can genuinely
+// arrive with only some platforms present if one job fails.
 const BUILDS: Build[] = [
   { os: 'Windows', match: /\.exe$/, note: 'Windows 10 or later' },
-  { os: 'macOS', note: 'Not built yet' },
-  { os: 'Linux', note: 'Not built yet' },
+  { os: 'macOS', match: /\.dmg$/, note: 'Apple Silicon & Intel' },
+  { os: 'Linux', match: /\.AppImage$/, note: 'AppImage, most distros' },
 ]
 
 // Web vs desktop, drawn from what the code actually enforces rather than
@@ -92,7 +94,9 @@ export default function DesktopAppSection() {
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
         {BUILDS.map(build => {
           const url = assets[build.os]
-          const available = !!build.match
+          // Availability follows the actual release contents, not a hardcoded
+          // list, so a platform whose CI job failed doesn't offer a dead link.
+          const available = !!url
           return (
             <a
               key={build.os}
@@ -109,7 +113,7 @@ export default function DesktopAppSection() {
                 {available ? '↓ ' : ''}{build.os}
               </div>
               <div className="text-nier-border/50 text-[10px] tracking-wider">
-                {build.note}
+                {available ? build.note : 'Not available yet'}
               </div>
             </a>
           )

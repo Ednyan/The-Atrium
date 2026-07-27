@@ -1,4 +1,54 @@
-# Publishing a desktop update — step by step
+# Publishing a desktop update
+
+Two routes. **Use CI** unless you have a reason not to — it's the only one that
+produces macOS and Linux builds, since Tauri can't cross-compile and each
+artifact has to be built on its own OS.
+
+---
+
+# Route A — GitHub Actions (all platforms)
+
+## One-time: add the signing key as a repository secret
+
+Settings → Secrets and variables → Actions → **New repository secret**:
+
+| Name | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | the entire contents of `atrium-updater.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | leave empty (the key has no password) |
+
+Both must exist. Without them the build still succeeds and still produces
+installers — it just emits no signatures, and every installed app rejects the
+update as unsigned.
+
+## Every release
+
+1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`), commit,
+   push.
+2. Tag and push the tag:
+
+   ```bash
+   git tag v1.0.2
+   git push origin v1.0.2
+   ```
+
+3. Watch the run in the **Actions** tab. Three jobs build in parallel; expect
+   roughly 10–20 minutes.
+4. The release is created as a **draft**. Open it, check all three platforms
+   uploaded plus `latest.json`, write the notes, and **Publish**.
+
+Publishing the draft is what makes installed apps start offering the update,
+which is why it isn't automatic.
+
+Only a tag triggers this — ordinary pushes to the branch never ship anything.
+
+---
+
+# Route B — locally, Windows only
+
+Kept for quick one-offs. Produces no macOS or Linux build.
+
+## Step by step
 
 The desktop app checks for updates at launch, hourly after that, and again
 whenever the machine reconnects. Right now it finds nothing, because no
