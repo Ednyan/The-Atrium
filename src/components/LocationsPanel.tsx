@@ -16,6 +16,9 @@ interface LocationsPanelProps {
   dirty: boolean
   onAdd: (name: string) => void
   onRename: (id: string, name: string) => void
+  // Overwrites a saved location's camera with wherever the user is looking
+  // right now -- the way to "re-shoot" a location without delete+recreate.
+  onUpdateCamera: (id: string) => void
   onDelete: (id: string) => void
   onReorder: (sourceId: string, targetId: string) => void
   onSave: () => void
@@ -33,6 +36,7 @@ export default function LocationsPanel({
   dirty,
   onAdd,
   onRename,
+  onUpdateCamera,
   onDelete,
   onReorder,
   onSave,
@@ -181,6 +185,13 @@ export default function LocationsPanel({
                 </button>
                 {canEdit && (
                   <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUpdateCamera(loc.id) }}
+                      className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 transition-colors"
+                      title="Set this location to the current camera view"
+                    >
+                      ⌖
+                    </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('rename'); setDialogInput(loc.name); setDialogTargetId(loc.id) }}
                       className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 transition-colors"

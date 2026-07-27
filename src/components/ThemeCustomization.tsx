@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby } from '../types/database'
 
 interface ThemeSettings {
@@ -70,16 +70,19 @@ const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSet
     },
   },
   {
-    name: 'Archive',
-    description: 'Dusty monochrome memory vault',
+    // Replaced the old "Archive" preset (dusty dark monochrome). A bright
+    // gallery: near-white walls, faint grey grid, sparse dark particles so
+    // they read against the light ground.
+    name: 'White Room',
+    description: 'A bright, empty gallery',
     values: {
-      gridColor: '#7a7568',
-      gridOpacity: 0.16,
-      backgroundColor: '#151412',
+      gridColor: '#9a9a9a',
+      gridOpacity: 0.18,
+      backgroundColor: '#F2F2EF',
       particlesEnabled: true,
-      particleColor: '#cbc7ba',
-      particleOpacity: 0.35,
-      particleDensity: 0.5,
+      particleColor: '#5a5a5a',
+      particleOpacity: 0.25,
+      particleDensity: 0.4,
       groundParticlesEnabled: false,
       groundParticleOpacity: 0.68,
       groundPatternMode: 'random',
@@ -176,6 +179,24 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
       groundParticleUrls: [...(settings.groundParticleUrls || []), newGroundUrl.trim()]
     })
     setNewGroundUrl('')
+  }
+
+  // Desktop only: pick an image off the local disk and store it in the vault,
+  // mirroring TracePanel's instant-blob-then-background-write flow -- the
+  // blob URL renders immediately while the storage shim persists the file,
+  // and the saved theme carries a local:// URL that themeManager resolves.
+  const addLocalGroundImage = (file: File) => {
+    if (!supabase || !isDesktop) return
+    const fileExt = file.name.split('.').pop() || 'png'
+    const storagePath = `${lobby.id}/ground_${Date.now()}.${fileExt}`
+    const blobUrl = URL.createObjectURL(file)
+    const localUrl = `local://traces/${storagePath}`
+    import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
+    supabase.storage.from('traces').upload(storagePath, file)
+    setSettings(prev => ({
+      ...prev,
+      groundParticleUrls: [...(prev.groundParticleUrls || []), localUrl],
+    }))
   }
 
   const removeGroundUrl = (index: number) => {
@@ -488,6 +509,22 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     >
                       Add
                     </button>
+                    {isDesktop && (
+                      <label className="px-4 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors cursor-pointer flex items-center">
+                        Browse
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) addLocalGroundImage(file)
+                            // Same file picked twice in a row still fires.
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 

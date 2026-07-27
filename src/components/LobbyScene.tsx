@@ -1058,6 +1058,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     setLocationsDirty(true)
   }
 
+  // Re-shoots a saved location: overwrites its stored camera with wherever
+  // the user is currently looking. Same working-copy/dirty flow as every
+  // other location edit, so nothing persists until Save Changes.
+  const updateLocationCamera = (id: string) => {
+    const cam = getCurrentCamera()
+    setWorkingLocations(prev => prev.map(l => (
+      l.id === id ? { ...l, positionX: cam.x, positionY: cam.y, zoom: cam.zoom } : l
+    )))
+    setLocationsDirty(true)
+  }
+
   const deleteLocation = (id: string) => {
     setWorkingLocations(prev => prev.filter(l => l.id !== id))
     setLocationsDirty(true)
@@ -2850,7 +2861,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           it shows for autosave, Ctrl+S, and the manual Save Changes button alike */}
       {isAutosaving && (
         <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
-          <p className="text-white text-base tracking-[0.2em] uppercase animate-saving-fade">
+          <p
+            className="text-white text-base tracking-[0.2em] uppercase animate-saving-fade"
+            style={{ textShadow: HUD_TEXT_OUTLINE }}
+          >
             ◇ Saving...
           </p>
         </div>
@@ -3742,6 +3756,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           dirty={locationsDirty}
           onAdd={addLocation}
           onRename={renameLocation}
+          onUpdateCamera={updateLocationCamera}
           onDelete={deleteLocation}
           onReorder={reorderLocations}
           onSave={saveLocationChanges}

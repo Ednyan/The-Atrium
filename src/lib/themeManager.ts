@@ -105,7 +105,17 @@ export class ThemeManager {
           break;
         }
         try {
-          const texture = await PIXI.Texture.from(path);
+          // Desktop vault images arrive as local:// URLs, which Pixi can't
+          // fetch -- resolve them to blob URLs first. Keyed by the ORIGINAL
+          // path so every other lookup (createGroundElement etc.) is
+          // unaffected. Dynamic import keeps the Tauri-backed localDb module
+          // out of the web bundle, where local:// never occurs.
+          let loadPath = path
+          if (path.startsWith('local://')) {
+            const { resolveLocalUrl } = await import('./localDb')
+            loadPath = await resolveLocalUrl(path)
+          }
+          const texture = await PIXI.Texture.from(loadPath);
           this.loadedTextures.set(path, texture);
           loaded = true;
         } catch (e) {

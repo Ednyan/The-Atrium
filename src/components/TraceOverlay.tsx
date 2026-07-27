@@ -3455,8 +3455,29 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // direction, so all four sides behave identically.
         const viewportCenterX = lobbyWidth / 2
         const viewportCenterY = lobbyHeight / 2
-        const normalizedX = Math.abs(screenX - viewportCenterX) / viewportCenterX
-        const normalizedY = Math.abs(screenY - viewportCenterY) / viewportCenterY
+
+        // Measure from the trace's nearest EDGE, not its center. Center-only
+        // distance made zoomed-in traces vanish outright: zoom a large trace
+        // until it fills the screen and its center can sit well past the cull
+        // boundary while its body still covers the viewport -- observable as
+        // "the trace disappears once more than half of it leaves the view".
+        // Subtracting the on-screen half-extent means a trace only fades/culls
+        // once the whole thing has actually left the neighbourhood of the
+        // screen. Rotated traces use their half-diagonal on both axes -- a
+        // conservative bound, since an axis-aligned extent understates how far
+        // a rotated corner can reach.
+        const { width: cullBaseW, height: cullBaseH } = getTraceSize(trace)
+        const cullW = trace.type === 'shape' ? (trace.width || 200) : cullBaseW * (trace.cropWidth ?? 1)
+        const cullH = trace.type === 'shape' ? (trace.height || 200) : cullBaseH * (trace.cropHeight ?? 1)
+        let halfW = (cullW * ((transform as any).scaleX ?? 1) * zoom) / 2
+        let halfH = (cullH * ((transform as any).scaleY ?? 1) * zoom) / 2
+        if ((transform.rotation ?? 0) % 360 !== 0) {
+          const halfDiag = Math.hypot(halfW, halfH)
+          halfW = halfDiag
+          halfH = halfDiag
+        }
+        const normalizedX = Math.max(0, Math.abs(screenX - viewportCenterX) - halfW) / viewportCenterX
+        const normalizedY = Math.max(0, Math.abs(screenY - viewportCenterY) - halfH) / viewportCenterY
         const normalizedDistance = Math.max(normalizedX, normalizedY)
 
         // Fade begins just inside the edge (a trace sitting exactly on the
@@ -3571,8 +3592,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation()
-                // For text traces owned by user, open modal for preview/copy (not inline edit)
-                // For all other traces, open modal too
+                // Text traces edit in place on double-click -- the preview
+                // modal was a detour nobody used for text (it exists for
+                // media, where "see it big" means something). Falls back to
+                // the modal when editing isn't possible (view-only atrium or
+                // a locked trace), where it still serves reading/copying.
+                if (trace.type === 'text' && canEdit && !trace.isLocked) {
+                  setSelectedTraceId(trace.id)
+                  setInlineEditingTraceId(trace.id)
+                  setInlineEditText(trace.content ?? '')
+                  return
+                }
                 setModalTrace(trace)
               }}
               onContextMenu={(e) => {
@@ -5508,7 +5538,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               )}
 
               {/* Border & Fill Color Controls (for text and embed traces) */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed') && (
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image') && (
                 <>
                   {/* NieR Presets */}
                   <div>
@@ -6767,7 +6797,78 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                     <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                   </label>
+
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(seedTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={seedTrace.showFilename ?? true}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showFilename: e.target.checked })}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]">Show Username</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(seedTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={seedTrace.showDescription ?? false}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showDescription: e.target.checked })}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]">Show Description</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(seedTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={seedTrace.showShadow ?? true}
+                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showShadow: e.target.checked })}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]">Soft Shadow</span>
+                  </label>
                 </div>
+
+                {/* Text Sizing -- gated like Border Radius below: shown as long
+                    as ANY selected trace is text, not just the seed. */}
+                {(() => {
+                  const textSeed = batchIds
+                    .map(id => traces.find(t => t.id === id))
+                    .find((t): t is Trace => !!t && t.type === 'text')
+                  if (!textSeed) return null
+                  return (
+                    <div>
+                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
+                      <div className="flex gap-2">
+                        {([
+                          { value: true, label: 'Scales With Box' },
+                          { value: false, label: 'Fixed Size' },
+                        ] as const).map(({ value, label }) => (
+                          <button
+                            key={String(value)}
+                            onClick={() => updateTraceCustomizationForMany(batchIds, { textScaleWithBox: value })}
+                            className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                              (textSeed.textScaleWithBox ?? true) === value
+                                ? 'bg-nier-bg text-nier-black border-nier-bg'
+                                : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Border Color & Opacity */}
                 {(seedTrace.showBorder ?? true) && (
