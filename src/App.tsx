@@ -3,6 +3,7 @@ import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
 import ChooseUsernameScreen from './components/ChooseUsernameScreen'
+import UpdateChecker from './components/UpdateChecker'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -1398,6 +1399,9 @@ function App() {
     <>
       <AppInner />
       <CloseSaveDialog />
+      {/* Mounted at the root so the update prompt survives navigation between
+          the landing page, browser and an atrium. No-ops on web. */}
+      <UpdateChecker />
     </>
   )
 }

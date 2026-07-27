@@ -39,3 +39,8 @@ supabase/.temp/
 # root variable/Regular font; the static/ weights are hundreds of MB and are
 # excluded from the bundle, so they must not bloat the repo. Local copies stay.
 src/assets/fonts/**/static/
+
+# Updater signing keys -- the private key must never be committed. Losing it
+# means never being able to sign an update existing installs will accept.
+*.key
+*.key.pub
