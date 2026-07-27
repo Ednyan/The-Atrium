@@ -20,6 +20,7 @@ import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, get
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
+import { downloadAtrium } from '../lib/atriumDownload'
 import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
@@ -435,6 +436,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
+  const [isDownloadingAtrium, setIsDownloadingAtrium] = useState(false)
+  const [downloadAtriumStatus, setDownloadAtriumStatus] = useState('')
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -3075,6 +3078,34 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
           >
             Theme
+          </button>
+        )}
+        {/* Web only, editors only: downloads this atrium as the same
+            .atrium.json the desktop app already imports. Desktop has its own
+            Export Atrium on the welcome screen, and a viewer shouldn't be
+            able to take a copy of someone else's space. */}
+        {!isDesktop && canEdit && (
+          <button
+            onClick={async () => {
+              if (isDownloadingAtrium) return
+              setIsDownloadingAtrium(true)
+              setDownloadAtriumStatus('Preparing...')
+              try {
+                const result = await downloadAtrium(lobbyId, setDownloadAtriumStatus)
+                setDownloadAtriumStatus(`✓ ${result.traceCount} traces (${result.sizeMB} MB)`)
+              } catch (err: any) {
+                console.error('Atrium download failed:', err)
+                setDownloadAtriumStatus(err?.message || 'Download failed')
+              } finally {
+                setIsDownloadingAtrium(false)
+                setTimeout(() => setDownloadAtriumStatus(''), 4000)
+              }
+            }}
+            disabled={isDownloadingAtrium}
+            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Download this atrium as a file you can import into the desktop app"
+          >
+            {downloadAtriumStatus || 'Download Atrium'}
           </button>
         )}
         <button

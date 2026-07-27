@@ -993,11 +993,17 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </section>
           )}
 
-          {/* Import Atrium (web only) */}
-          {!isDesktop && (
+          {/* Import Atrium -- now on both platforms. It used to be web-only,
+              which left desktop with an Export but no way back in; the web
+              side can now download the same .atrium.json (see
+              lib/atriumDownload), so the transfer works in both directions.
+              The heading names the source rather than the destination. */}
+          {(
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Import from Desktop</span>
+                <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
+                  {isDesktop ? 'Import from Web' : 'Import from Desktop'}
+                </span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
               <button
