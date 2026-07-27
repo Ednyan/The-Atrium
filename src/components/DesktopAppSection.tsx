@@ -120,6 +120,22 @@ export default function DesktopAppSection() {
         })}
       </div>
 
+      {/* macOS builds aren't code-signed (that needs a paid Apple Developer
+          account), so Gatekeeper blocks them on first launch with a message
+          that reads like the app is broken. Saying so up front turns a scary
+          dead end into a known extra click. */}
+      {assets['macOS'] && (
+        <div className="border border-nier-border/25 bg-nier-black/40 p-3 mb-4">
+          <p className="text-nier-border/70 text-[10px] tracking-wider leading-relaxed">
+            <span className="text-nier-bg">On macOS,</span> the first launch will say the app
+            "cannot be opened because the developer cannot be verified". That's because the
+            build isn't signed with an Apple Developer certificate, not because anything is
+            wrong with it. Right-click the app and choose <span className="text-nier-bg">Open</span>,
+            then confirm — macOS remembers the choice afterwards.
+          </p>
+        </div>
+      )}
+
       <p className="text-nier-border/40 text-[10px] tracking-wider mb-10">
         {version ? `Latest release ${version} · ` : ''}
         <a

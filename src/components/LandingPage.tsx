@@ -567,12 +567,41 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 {isAuthenticated ? 'Continue to Atrium' : 'Enter The Atrium'}
               </button>
 
-              {!isAuthenticated && (
-                <span className="text-nier-border/40 text-[11px] tracking-wider">
-                  Free to use • No credit card
-                </span>
+              {/* Secondary path, inline with the primary one. Scrolls rather
+                  than downloading: the desktop section explains what actually
+                  differs and which platform to pick, which is worth reading
+                  before committing to a 20MB install. Web only -- inside the
+                  desktop build it would scroll to a section that isn't there. */}
+              {!isDesktop && (
+                <>
+                  <span className="text-nier-border/30 text-[11px] tracking-[0.2em] uppercase">or</span>
+                  <button
+                    onClick={() => scrollToSection(3)}
+                    className="group px-6 py-3.5 border text-sm tracking-[0.18em] uppercase transition-all duration-300"
+                    style={{ borderColor: `${ACCENT.silver}55`, color: `${ACCENT.silver}DD` }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = ACCENT.silver
+                      e.currentTarget.style.backgroundColor = `${ACCENT.silver}0F`
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = `${ACCENT.silver}55`
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    ↓ Download Desktop App
+                  </button>
+                </>
               )}
             </div>
+
+            {/* Moved below the buttons rather than sitting beside them: with
+                two actions inline, a third inline item made the row read as
+                three peers. */}
+            {!isAuthenticated && (
+              <p className="text-nier-border/40 text-[11px] tracking-wider mb-10 -mt-6">
+                Free to use • No credit card
+              </p>
+            )}
 
             {/* Three pillars as a rule-separated row rather than floating chips,
                 so they read as one grounded line under the actions. */}
