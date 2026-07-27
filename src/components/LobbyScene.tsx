@@ -14,6 +14,7 @@ import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
+import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
@@ -1364,17 +1365,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     let cancelled = false
 
     const resolve = async () => {
-      try {
-        const [{ data: isAdmin }, { data: hasMemberAccess }] = await Promise.all([
-          (supabase as any).rpc('is_platform_admin'),
-          (supabase as any).rpc('user_has_member_access', { p_lobby_id: lobbyId }),
-        ])
-        if (cancelled) return
-        setIsGhostEntry(!!isAdmin && hasMemberAccess === false)
-      } catch {
-        // Functions not deployed yet, or offline: behave as a normal user.
-        if (!cancelled) setIsGhostEntry(false)
-      }
+      const ghost = await resolveGhostEntry(lobbyId)
+      if (!cancelled) setIsGhostEntry(ghost)
     }
     resolve()
 

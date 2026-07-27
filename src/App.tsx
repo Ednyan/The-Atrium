@@ -12,6 +12,7 @@ import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
 import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback } from './lib/pinterest'
+import { isGhostEntry } from './lib/operatorGhost'
 
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | 'ready'
 
@@ -637,12 +638,36 @@ function AppInner() {
           return
         }
         
+        // Privileged entry: admitted on operator rights rather than
+        // membership. Checked before everything below to mirror
+        // can_user_join_lobby, which tests the operator first -- so the client
+        // and the server agree on who gets in and under what terms.
+        //
+        // It matters most on refresh: the operator never enters a password, so
+        // it never has a lobby_sessions row, and the password branch below
+        // would bounce it out of an atrium the server would readmit it to.
+        //
+        // Note this is the *ghost* check, not merely "am I the operator". In a
+        // plain public atrium the operator is an ordinary member, so it falls
+        // through and is counted like anyone else.
+        if (await isGhostEntry(route.lobbyId)) {
+          setVerifiedLobbyId(route.lobbyId)
+          setCurrentLobbyId(route.lobbyId)
+          localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+          // Deliberately does NOT write profiles.active_lobby_id. The atrium
+          // browser derives its player counts from that column, so setting it
+          // would put the operator in a private atrium's headcount -- visible
+          // to exactly the people the presence suppression is hiding it from.
+          setVerifyingAccess(false)
+          return
+        }
+
         // Check access status using RPC
         const { data: accessStatus } = await (supabase as any).rpc('get_user_lobby_access_status', {
           p_lobby_id: route.lobbyId,
           p_user_id: user.id,
         })
-        
+
         if (accessStatus === 'blacklisted') {
           setLobbyAccessError('You have been blocked from this atrium')
           setVerifyingAccess(false)
@@ -803,10 +828,15 @@ function AppInner() {
                   setVerifiedLobbyId(lobbyIdToRestore)
                   localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, lobbyIdToRestore)
                   navigate(`/atrium/${lobbyIdToRestore}`)
-                  await (supabase
-                    .from('profiles') as any)
-                    .update({ active_lobby_id: lobbyIdToRestore })
-                    .eq('id', session.user.id)
+                  // Same reasoning as the join path: restoring this column for
+                  // a privileged entry would put the operator back into the
+                  // atrium's visible player count on every reload.
+                  if (!(await isGhostEntry(lobbyIdToRestore))) {
+                    await (supabase
+                      .from('profiles') as any)
+                      .update({ active_lobby_id: lobbyIdToRestore })
+                      .eq('id', session.user.id)
+                  }
                 }
               } else if (urlRoute.page === 'browse') {
                 // User is at browse page, stay there
@@ -991,11 +1021,16 @@ function AppInner() {
         return
       }
 
-      // Update user's active lobby
-      await (supabase!
-        .from('profiles') as any)
-        .update({ active_lobby_id: lobbyId })
-        .eq('id', user.id)
+      // Update user's active lobby -- unless this is a privileged entry, in
+      // which case leave it alone: the atrium browser counts players by
+      // reading this column, so writing it would announce the operator in the
+      // headcount of an atrium it is entering invisibly.
+      if (!(await isGhostEntry(lobbyId))) {
+        await (supabase!
+          .from('profiles') as any)
+          .update({ active_lobby_id: lobbyId })
+          .eq('id', user.id)
+      }
 
       setCurrentLobbyId(lobbyId)
       setVerifiedLobbyId(lobbyId) // Mark as verified since we just passed the access check

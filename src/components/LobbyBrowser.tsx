@@ -42,6 +42,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [joinByIdError, setJoinByIdError] = useState<string | null>(null)
   const [joinByIdLoading, setJoinByIdLoading] = useState(false)
+  // Resolved once per browser load (see loadLobbies) and reused by both join
+  // paths, so the operator isn't asked for a password it doesn't need. This is
+  // presentation only -- can_user_join_lobby is what actually grants entry,
+  // and it already lets the operator through before reaching the password
+  // check. Faking this flag locally would only skip a prompt, not a gate.
+  const [isOperator, setIsOperator] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -210,6 +216,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           // Function not deployed: browse as a normal user.
         }
       }
+      setIsOperator(isPlatformAdmin)
 
       let publicLobbies: any[] = []
       let privateLobbies: any[] = []
@@ -471,7 +478,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       // a plain whitelisted user, who can enter a private atrium but still
       // isn't trusted with its password) falls through to the password
       // check below like a normal visitor would.
-      if (accessStatus === 'owner' || accessStatus === 'admin') {
+      // The platform operator skips it too. Prompting would be theatre: the
+      // server grants it entry either way, so the prompt could only be
+      // answered wrongly and refused by a client that had already decided to
+      // let it in.
+      if (accessStatus === 'owner' || accessStatus === 'admin' || isOperator) {
         onJoinLobby(lobby.id)
         return
       }
@@ -552,10 +563,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return
       }
 
-      // Owner or admin always skip the password -- a plain whitelisted user
-      // can still enter a private atrium by ID, but falls through to the
-      // password check below like anyone else would.
-      if (accessStatus === 'owner' || accessStatus === 'admin') {
+      // Owner, admin or the platform operator always skip the password -- a
+      // plain whitelisted user can still enter a private atrium by ID, but
+      // falls through to the password check below like anyone else would.
+      if (accessStatus === 'owner' || accessStatus === 'admin' || isOperator) {
         setShowJoinById(false)
         setLobbyIdInput('')
         setJoinByIdLoading(false)
