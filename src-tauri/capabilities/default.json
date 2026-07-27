@@ -19,6 +19,7 @@
       "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "**" }]
     },
+    "core:app:allow-version",
     "updater:default",
     "process:allow-restart",
     "core:window:allow-set-fullscreen",

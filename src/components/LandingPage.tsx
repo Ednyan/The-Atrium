@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
+import DesktopAppSection from './DesktopAppSection'
 import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo, DemoMotionStyles } from './LandingDemos'
 
 interface LandingPageProps {
@@ -143,6 +144,7 @@ const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
   { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
   { id: 'how', title: 'How It Works', subtitle: 'Navigate, create, collaborate' },
+  { id: 'desktop', title: 'Desktop App', subtitle: 'Your atriums, stored locally' },
   { id: 'free', title: 'But How', subtitle: 'How this stays free' },
   { id: 'who', title: 'Who Am I', subtitle: 'The creator behind the project' },
 ]
@@ -356,10 +358,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* Section indicators (Nier-style, on the right) */}
       <div className="fixed right-2 sm:right-8 top-1/2 -translate-y-1/2 z-40 flex flex-col items-end gap-4 sm:gap-6">
-        {sections.map((section, index) => {
+        {/* Indices stay tied to sectionRefs, so the Desktop entry is filtered
+            out AFTER indexing rather than removed from the array -- dropping
+            it would shift every section below it out of sync with its ref. */}
+        {sections
+          .map((section, index) => ({ section, index }))
+          .filter(({ section }) => !(isDesktop && section.id === 'desktop'))
+          .map(({ section, index }) => {
           const isActive = activeSection === index
           const distance = Math.abs(activeSection - index)
-          
+
           return (
             <button
               key={section.id}
@@ -821,9 +829,21 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         </div>
       </section>
 
-      {/* SECTION 4: But How Is This Free? */}
-      <section 
-        ref={el => sectionRefs.current[3] = el}
+      {/* SECTION 4: Desktop App -- web only. Inside the desktop build this is
+          an advert for the thing you're already running, and its download
+          links would be nonsense there. */}
+      {!isDesktop && (
+        <section
+          ref={el => sectionRefs.current[3] = el}
+          className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
+        >
+          <DesktopAppSection />
+        </section>
+      )}
+
+      {/* SECTION 5: But How Is This Free? */}
+      <section
+        ref={el => sectionRefs.current[4] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
@@ -888,7 +908,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* SECTION 5: Who Am I */}
       <section 
-        ref={el => sectionRefs.current[4] = el}
+        ref={el => sectionRefs.current[5] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
@@ -914,7 +934,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             <p className="text-nier-border/60 text-sm leading-relaxed italic">
               I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
-              What came out feels like a mix of Pinterest, PureRef and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
+              What came out feels like a mix of Pinterest, PureRef, Canva and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
             </p>
           </div>
 

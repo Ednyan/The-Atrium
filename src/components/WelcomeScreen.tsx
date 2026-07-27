@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import PortalLoop from './PortalLoop'
@@ -42,6 +42,40 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
     window.location.hash = '/'
     window.location.reload()
   }
+
+  // The label was driven by state that started at false and was only ever
+  // updated by this screen's own button, so it disagreed with reality whenever
+  // fullscreen was entered anywhere else -- F11, or an atrium's own toggle
+  // before navigating back here. Sync from the window on mount, and keep
+  // following it afterwards.
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+
+    if (isDesktop) {
+      import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+        const win = getCurrentWindow()
+        const actual = await win.isFullscreen()
+        if (!cancelled) setIsFullscreen(actual)
+        // Tauri has no dedicated fullscreen event; a resize always accompanies
+        // the transition, so that's the signal to re-read it.
+        unlisten = await win.onResized(async () => {
+          const now = await win.isFullscreen()
+          if (!cancelled) setIsFullscreen(now)
+        })
+      }).catch(() => { /* leave the label as-is rather than guessing */ })
+    } else {
+      const sync = () => setIsFullscreen(!!document.fullscreenElement)
+      sync()
+      document.addEventListener('fullscreenchange', sync)
+      return () => document.removeEventListener('fullscreenchange', sync)
+    }
+
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
 
   const toggleFullscreen = async () => {
     if (isDesktop) {
@@ -258,18 +292,23 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onMouseLeave={() => setIsHovered(null)}
               className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
             >
-              <span className="relative z-10">◇ {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+              <span className="relative z-10">◇ {isFullscreen ? 'Windowed' : 'Fullscreen'}</span>
             </button>
 
-            {/* Log Out button */}
-            <button
-              onClick={handleLogout}
-              onMouseEnter={() => setIsHovered('logout')}
-              onMouseLeave={() => setIsHovered(null)}
-              className="relative w-full py-3 border border-nier-red/40 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-red/80 hover:bg-nier-red/20 hover:text-nier-bg"
-            >
-              <span className="relative z-10">◇ Log Out</span>
-            </button>
+            {/* Web only: desktop signs in automatically against the local
+                vault, so there's no account to log out of -- and logging out
+                there just bounced the user through a sign-in they never
+                performed. */}
+            {!isDesktop && (
+              <button
+                onClick={handleLogout}
+                onMouseEnter={() => setIsHovered('logout')}
+                onMouseLeave={() => setIsHovered(null)}
+                className="relative w-full py-3 border border-nier-red/40 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-red/80 hover:bg-nier-red/20 hover:text-nier-bg"
+              >
+                <span className="relative z-10">◇ Log Out</span>
+              </button>
+            )}
 
             {/* Exit button (desktop only) */}
             {isDesktop && (
@@ -294,10 +333,10 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             <p>◦ Share presence with others</p>
           </div>
 
-          {/* Version/footer */}
-          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[9px] text-nier-border/30 tracking-[0.2em]">
-            v.1.0.0
-          </div>
+          {/* The hardcoded "v.1.0.0" that used to sit here would have gone
+              stale the moment the app updated itself. Desktop now shows its
+              real running version top-right (AppVersionBadge); web has no
+              version worth showing, since a refresh is always current. */}
         </div>
 
         {/* CSS for animations */}
