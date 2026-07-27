@@ -6,6 +6,9 @@ export interface ThemeConfig {
   particleCount: number // Number of floating particles
   groundDensity: number // Elements per 1000x1000 area
   particleColor?: number // Hex color for particles
+  // The atrium's background, so particle rendering can adapt to it. Additive
+  // blending only reads as a glow against a dark ground.
+  backgroundColor?: number
   gridColor?: number // Hex color for grid
   gridOpacity?: number // Opacity for grid (0-1)
   particlesEnabled?: boolean // Toggle particles
@@ -347,6 +350,17 @@ export class ThemeManager {
     }
 
     const particleColor = this.config.particleColor ?? 0xffffff
+
+    // Perceived luminance of the atrium background, used to pick a blend mode
+    // (and to strengthen the glow ring, which is likewise near-invisible when
+    // it isn't adding light).
+    const bg = this.config.backgroundColor ?? 0x0a0a0f
+    const bgLuma = (
+      0.299 * ((bg >> 16) & 0xff) +
+      0.587 * ((bg >> 8) & 0xff) +
+      0.114 * (bg & 0xff)
+    )
+    const isLightBackground = bgLuma > 140
     const baseOpacity = this.config.particleOpacity ?? 0.6
     const densityMultiplier = this.config.particleDensity ?? 1.0
     const particleCount = Math.floor(this.config.particleCount * densityMultiplier)
@@ -363,8 +377,10 @@ export class ThemeManager {
       graphics.drawCircle(0, 0, size)
       graphics.endFill()
       
-      // Add glow effect with outer circle
-      graphics.lineStyle(1, particleColor, 0.1)
+      // Add glow effect with outer circle. At 0.1 alpha this only registers
+      // when it's adding light; on a light background it needs real opacity
+      // to be a visible ring at all.
+      graphics.lineStyle(1, particleColor, isLightBackground ? 0.35 : 0.1)
       graphics.drawCircle(0, 0, size + 2)
       
       // Random position in viewport, centered on the camera rather than raw
@@ -379,8 +395,11 @@ export class ThemeManager {
       const vx = (Math.random() - 0.5) * 0.3
       const vy = (Math.random() - 0.5) * 0.3
       
-      // Additive blend for glow
-      graphics.blendMode = PIXI.BLEND_MODES.ADD
+      // Additive blend only reads as a glow against a dark ground: ADD pushes
+      // the result toward white, so on a light background (White Room) it
+      // lands on near-white and the particles vanish. Fall back to NORMAL
+      // there so a dark particle colour actually paints.
+      graphics.blendMode = isLightBackground ? PIXI.BLEND_MODES.NORMAL : PIXI.BLEND_MODES.ADD
 
       this.particleContainer.addChild(graphics)
       this.particles.push({ 
@@ -627,10 +646,27 @@ export class ThemeManager {
 
     for (const url of urls) {
       try {
+        // Desktop vault images arrive as local:// URLs. An <img> can't fetch
+        // that scheme, so without resolving it first this failed the direct
+        // load, then failed the CORS proxy fallback (which is for remote
+        // hosts and equally can't see a local path), and reported it as an
+        // inaccessible image. The other loader above was already fixed; this
+        // is the path user-supplied ground URLs actually take.
+        let loadUrl = url
+        if (url.startsWith('local://')) {
+          const { resolveLocalUrl } = await import('./localDb')
+          loadUrl = await resolveLocalUrl(url)
+          if (loadUrl === url) throw new Error('Local file not found in vault')
+        }
+
         // Try method 1: Direct loading with CORS
         const img = new Image()
-        img.crossOrigin = 'anonymous'
-        
+        // crossOrigin on a blob: URL makes some browsers refuse it, and it's
+        // pointless for same-origin data anyway.
+        if (!loadUrl.startsWith('blob:') && !loadUrl.startsWith('data:')) {
+          img.crossOrigin = 'anonymous'
+        }
+
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error('Timeout')), 5000)
           img.onload = () => {
@@ -641,7 +677,7 @@ export class ThemeManager {
             clearTimeout(timeout)
             reject(new Error('CORS blocked'))
           }
-          img.src = url
+          img.src = loadUrl
         })
 
         const texture = await PIXI.Texture.from(img)
@@ -655,6 +691,14 @@ export class ThemeManager {
           throw new Error('Invalid texture')
         }
       } catch (firstError) {
+        // The proxy exists to get around a remote host's CORS policy, so it
+        // has nothing to offer a vault file -- skip straight to reporting.
+        if (url.startsWith('local://')) {
+          failedUrls.push(url)
+          console.error(`Failed to load vault ground image: ${url}`, firstError)
+          continue
+        }
+
         // Method 2: Try using proxy for CORS-blocked images
         try {
           const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`

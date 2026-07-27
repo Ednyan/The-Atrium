@@ -77,7 +77,7 @@ const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSet
     description: 'A bright, empty gallery',
     values: {
       gridColor: '#9a9a9a',
-      gridOpacity: 0.18,
+      gridOpacity: 0.3,
       backgroundColor: '#F2F2EF',
       particlesEnabled: true,
       particleColor: '#5a5a5a',

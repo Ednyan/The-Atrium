@@ -3804,7 +3804,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     overflow: 'hidden',
                   }}
                 >
-                  {(isSelected || showTraceTypeLabels) && <div className="trace-nier-type-badge">{getTraceTypeLabel(trace.type)}</div>}
+                  {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && <div className="trace-nier-type-badge">{getTraceTypeLabel(trace.type)}</div>}
                   {showBorder && (
                     <>
                       <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
@@ -4293,7 +4293,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
 
             {/* Transform controls (only for selected trace, not in crop mode, and only when this user can actually edit) */}
-            {isSelected && !isCropMode && canEdit && (
+            {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && (
               <>
                 {/* Special handles for path shapes */}
                 {(trace.type === 'shape' && trace.shapeType === 'path') ? (

@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
+import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import type { Lobby } from '../types/database'
 
 interface LobbyWithOwner extends Lobby {
@@ -42,6 +43,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [joinByIdError, setJoinByIdError] = useState<string | null>(null)
   const [joinByIdLoading, setJoinByIdLoading] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showDownload, setShowDownload] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vaultPath, setVaultPath] = useState<string | null>(null)
@@ -1013,6 +1015,18 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               >
                 ◇ Import Atrium (.json)
               </button>
+
+              {/* Paired with Import so both directions of the transfer live
+                  together. Web only -- desktop's equivalent is Export Atrium
+                  on the welcome screen, which writes the same format. */}
+              {!isDesktop && (
+                <button
+                  onClick={() => setShowDownload(true)}
+                  className="w-full mt-2 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                >
+                  ◇ Download Atrium (.json)
+                </button>
+              )}
               {!canCreateMore && (
                 <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
               )}
@@ -1236,6 +1250,30 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         <ImportAtrium
           onClose={() => setShowImport(false)}
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
+        />
+      )}
+
+      {/* Download picker. Owned and administered atriums first (the ones the
+          user is most likely to want), then public ones, de-duplicated since
+          an owned atrium that's also public appears in both lists. */}
+      {showDownload && (
+        <DownloadAtriumPanel
+          onClose={() => setShowDownload(false)}
+          atriums={(() => {
+            const seen = new Set<string>()
+            const out: DownloadableAtrium[] = []
+            const add = (list: LobbyWithOwner[], access: DownloadableAtrium['access']) => {
+              for (const l of list) {
+                if (seen.has(l.id)) continue
+                seen.add(l.id)
+                out.push({ id: l.id, name: l.name, ownerUsername: l.ownerUsername, access })
+              }
+            }
+            add(userLobbies, 'owner')
+            add(adminLobbies, 'admin')
+            add(lobbies, 'public')
+            return out
+          })()}
         />
       )}
 
