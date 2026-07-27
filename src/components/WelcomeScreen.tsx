@@ -187,8 +187,10 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l border-b border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r border-b border-nier-border/30" />
 
-        {/* Back to landing button */}
-        {onBackToLanding && (
+        {/* Web only: on desktop the About button below already goes to the
+            landing page, so this was a second control for the same
+            destination. */}
+        {onBackToLanding && !isDesktop && (
           <button
             onClick={onBackToLanding}
             className="absolute top-12 left-12 group z-20"
