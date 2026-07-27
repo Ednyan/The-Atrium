@@ -762,6 +762,13 @@ function AppInner() {
     verifyLobbyAccess()
   }, [route.page, route.lobbyId, isAuthenticated, verifiedLobbyId])
 
+  // Tracks whether a session was already in hand, so "just signed in" can be
+  // told apart from "already signed in". onAuthStateChange fires for plenty of
+  // things that aren't a login -- INITIAL_SESSION on every page load, token
+  // refreshes, and SIGNED_IN again when a tab regains focus -- and the
+  // post-login redirect must only run on a genuine transition.
+  const wasSignedInRef = useRef(false)
+
   // Check if user is already logged in
   useEffect(() => {
     if (!supabase) {
@@ -803,13 +810,36 @@ function AppInner() {
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
-              
+              // This path and onAuthStateChange race on load; whichever lands
+              // first must record that a session already existed, so the other
+              // doesn't mistake it for a fresh login and redirect.
+              wasSignedInRef.current = true
+
               // Verify persisted lobby still exists and user has access
               const storedLobbyId = localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
               // Also check URL for lobby ID
               const urlRoute = parseRoute()
-              const lobbyIdToRestore = urlRoute.page === 'atrium' && urlRoute.lobbyId ? urlRoute.lobbyId : storedLobbyId
-              
+
+              // Routes the user asked for explicitly, which auto-restore must
+              // not override. "/" is a deliberate request for the landing page
+              // -- a refresh while reading it, or Back to Landing from inside
+              // the app -- and restoring over it made the page impossible to
+              // stay on: with a stored atrium you were thrown into the atrium,
+              // and without one you were sent to /welcome.
+              //
+              // /browse gets the same treatment. It already had a "stay here"
+              // branch below, but that branch was unreachable whenever a
+              // stored atrium existed, because the restore above ran first and
+              // navigated away. Same bug, just harder to notice.
+              const explicitRoute = urlRoute.page === 'landing' || urlRoute.page === 'browse'
+
+              // A lobby id in the URL still wins -- that IS a request to open
+              // that atrium. Only the fallback to the *stored* lobby is
+              // suppressed, since nothing about "/" implies resuming it.
+              const lobbyIdToRestore = urlRoute.page === 'atrium' && urlRoute.lobbyId
+                ? urlRoute.lobbyId
+                : (explicitRoute ? null : storedLobbyId)
+
               if (lobbyIdToRestore && supabase) {
                 const { data: lobbyExists } = await (supabase as any)
                   .from('lobbies')
@@ -838,8 +868,10 @@ function AppInner() {
                       .eq('id', session.user.id)
                   }
                 }
-              } else if (urlRoute.page === 'browse') {
-                // User is at browse page, stay there
+              } else if (explicitRoute) {
+                // Already where the user asked to be -- landing or browse.
+                // The stored atrium is deliberately left in localStorage so
+                // Continue to Atrium still resumes it on demand.
               } else if (!storedLobbyId) {
                 // No lobby stored, go to welcome
                 navigate('/welcome')
@@ -863,7 +895,7 @@ function AppInner() {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+    } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       if (session?.user && supabase) {
         // Retried rather than read once: profiles are created by the
         // on_auth_user_created trigger, and on a first-ever OAuth sign-in the
@@ -907,15 +939,31 @@ function AppInner() {
           setUsername(data.display_name || data.username)
           setPlayerColor(data.player_color || '#ffffff')
           setIsAuthenticated(true)
-          // Navigate to welcome after login
+
+          // Only on a real login. This used to run for any authenticated
+          // session, and since INITIAL_SESSION fires on every page load, it
+          // bounced the landing page to /welcome the moment you refreshed it
+          // while signed in -- which made the page impossible to sit on.
+          //
+          // Both guards are needed, and neither alone would do:
+          //   - INITIAL_SESSION is what fires on a refresh, and it's the FIRST
+          //     callback, so it looks exactly like a transition to the ref.
+          //   - SIGNED_IN re-fires on a tab regaining focus, which the event
+          //     name alone can't tell from a real login.
+          const justSignedIn = !wasSignedInRef.current
+          wasSignedInRef.current = true
           const currentRoute = parseRoute()
-          if (currentRoute.page === 'landing' || currentRoute.page === 'login') {
+          const isRealLogin = event !== 'INITIAL_SESSION' && justSignedIn
+          if (isRealLogin && (currentRoute.page === 'landing' || currentRoute.page === 'login')) {
             navigate('/welcome')
           }
         }
         loadProfile()
       } else {
         setIsAuthenticated(false)
+        // Reset so the next sign-in counts as a real transition and does
+        // redirect to /welcome.
+        wasSignedInRef.current = false
         // Cleared too, or signing out mid-way through picking a username would
         // leave that screen up with no session behind it.
         setPendingUsernameUser(null)
