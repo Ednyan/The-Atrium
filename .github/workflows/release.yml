@@ -72,11 +72,16 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Without these the build still succeeds but produces no signatures,
+          # Without this the build still succeeds but produces no signatures,
           # and every installed app rejects the update as unsigned. The key
           # must be the same one whose public half is in tauri.conf.json.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Hardcoded empty rather than read from a secret: the key was
+          # generated without a password, and GitHub refuses to store a secret
+          # with an empty value. The variable still has to be present -- if it
+          # is unset entirely the signer waits for a password on stdin, which
+          # in CI means the job hangs until it times out.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}

@@ -15,11 +15,15 @@ Settings → Secrets and variables → Actions → **New repository secret**:
 | Name | Value |
 |---|---|
 | `TAURI_SIGNING_PRIVATE_KEY` | the entire contents of `atrium-updater.key` |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | leave empty (the key has no password) |
 
-Both must exist. Without them the build still succeeds and still produces
-installers — it just emits no signatures, and every installed app rejects the
-update as unsigned.
+That is the only secret needed. There is deliberately no
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret — the key was generated without a
+password, GitHub won't store a secret with an empty value, and the workflow
+already passes an empty string directly.
+
+Without the key the build still succeeds and still produces installers — it
+just emits no signatures, and every installed app rejects the update as
+unsigned.
 
 ## Every release
 
