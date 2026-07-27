@@ -1348,10 +1348,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // (unknown) and only becomes true once the server has confirmed both halves
   // -- so a slow or failed check leaves presence behaving normally rather than
   // silently hiding someone who should be visible.
-  const [isGhostEntry, setIsGhostEntry] = useState(false)
+  const [isGhostEntry, setIsGhostEntry] = useState<boolean | null>(null)
 
   useEffect(() => {
-    if (!supabase || !lobbyId || isDesktop) return
+    // Desktop has no Supabase and no other users to hide from, so resolve it
+    // to false immediately -- usePresence waits for a non-null answer before
+    // connecting, and leaving it null here would strand presence forever.
+    if (!supabase || !lobbyId || isDesktop) {
+      setIsGhostEntry(false)
+      return
+    }
+    // Re-resolve from scratch when moving between atriums: privileged entry is
+    // per-atrium, so the previous answer must not carry over.
+    setIsGhostEntry(null)
     let cancelled = false
 
     const resolve = async () => {

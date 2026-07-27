@@ -194,36 +194,66 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         return
       }
 
-      // Load public lobbies
-      const { data: publicLobbies, error: publicError } = await supabase
-        .from('lobbies')
-        .select('*')
-        .eq('is_public', true)
-        .order('created_at', { ascending: false })
-      
-      if (publicError) throw publicError
+      // The platform operator browses every atrium, so it skips the
+      // public + whitelisted pair below and asks for the lot.
+      //
+      // RLS alone was never enough here: it governs which rows are *readable*,
+      // while this function decides which rows are *requested*. Widening the
+      // lobbies SELECT policy for the operator therefore changed nothing
+      // visible until this query stopped filtering on is_public itself.
+      let isPlatformAdmin = false
+      if (!isDesktop) {
+        try {
+          const { data } = await (supabase as any).rpc('is_platform_admin')
+          isPlatformAdmin = !!data
+        } catch {
+          // Function not deployed: browse as a normal user.
+        }
+      }
 
-      // Load private lobbies where user is whitelisted
-      const { data: whitelistEntries, error: whitelistError } = await (supabase
-        .from('lobby_access_lists')
-        .select('lobby_id')
-        .eq('user_id', user.id)
-        .eq('list_type', 'whitelist') as any)
-      
-      if (whitelistError) throw whitelistError
-
-      const whitelistedLobbyIds = whitelistEntries?.map((entry: any) => entry.lobby_id) || []
-      
+      let publicLobbies: any[] = []
       let privateLobbies: any[] = []
-      if (whitelistedLobbyIds.length > 0) {
-        const { data: privateLobbyData, error: privateError } = await (supabase
+
+      if (isPlatformAdmin) {
+        const { data: everyLobby, error: everyError } = await supabase
           .from('lobbies')
           .select('*')
-          .in('id', whitelistedLobbyIds)
-          .eq('is_public', false) as any)
-        
-        if (!privateError) {
-          privateLobbies = privateLobbyData || []
+          .order('created_at', { ascending: false })
+
+        if (everyError) throw everyError
+        publicLobbies = everyLobby || []
+      } else {
+        // Load public lobbies
+        const { data: publicData, error: publicError } = await supabase
+          .from('lobbies')
+          .select('*')
+          .eq('is_public', true)
+          .order('created_at', { ascending: false })
+
+        if (publicError) throw publicError
+        publicLobbies = publicData || []
+
+        // Load private lobbies where user is whitelisted
+        const { data: whitelistEntries, error: whitelistError } = await (supabase
+          .from('lobby_access_lists')
+          .select('lobby_id')
+          .eq('user_id', user.id)
+          .eq('list_type', 'whitelist') as any)
+
+        if (whitelistError) throw whitelistError
+
+        const whitelistedLobbyIds = whitelistEntries?.map((entry: any) => entry.lobby_id) || []
+
+        if (whitelistedLobbyIds.length > 0) {
+          const { data: privateLobbyData, error: privateError } = await (supabase
+            .from('lobbies')
+            .select('*')
+            .in('id', whitelistedLobbyIds)
+            .eq('is_public', false) as any)
+
+          if (!privateError) {
+            privateLobbies = privateLobbyData || []
+          }
         }
       }
 
@@ -275,7 +305,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       }
 
       // Combine public and whitelisted private lobbies, remove duplicates
-      const allLobbies = [...(publicLobbies || []), ...privateLobbies]
+      const allLobbies = [...publicLobbies, ...privateLobbies]
       const uniqueLobbies = Array.from(new Map(allLobbies.map(lobby => [lobby.id, lobby])).values())
       const enrichedPublic = await enrichLobbiesWithData(uniqueLobbies)
       setLobbies(enrichedPublic)

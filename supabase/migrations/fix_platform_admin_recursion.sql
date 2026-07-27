@@ -13,16 +13,15 @@
 -- plain per-row column comparisons only. Never a subquery into another table
 -- whose policies can reach back.
 --
--- 2. is_platform_admin() COULD NEVER RETURN TRUE
+-- 2. BELT-AND-BRACES: a SELECT policy on platform_admins
 --
--- platform_admins was created with RLS enabled and no policies, on the
--- assumption that SECURITY DEFINER bypasses RLS. v2's comments record that it
--- does NOT in this project -- the function owner isn't treated as exempt. So
--- the function read a table it had no policy to read, found nothing, and
--- would have reported everyone as a non-admin even once the recursion was
--- fixed.
+-- The table was created with RLS enabled and no policies at all, relying on
+-- SECURITY DEFINER to read it. That is probably fine -- can_user_join_lobby
+-- reads platform_admins the same way and demonstrably works -- but v2's
+-- comments claim SECURITY DEFINER does not reliably bypass RLS here, and a
+-- table that nothing can read is an unpleasant thing to be unsure about.
 --
--- Fixed with a SELECT policy scoped to the caller's own row. That is exactly
+-- So: a SELECT policy scoped to the caller's own row. That is exactly
 -- what the function needs, and it leaks nothing: it only lets someone learn
 -- whether they themselves are an admin, which they can already tell from
 -- whether the app grants them access. Writes stay impossible -- there are

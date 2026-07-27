@@ -12,7 +12,13 @@ const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 // Passed in rather than resolved here so the decision is made once, from the
 // server's answer to user_has_member_access, instead of being re-derived by a
 // hook that has no way to know how entry was granted.
-export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void, ghost = false) {
+//
+// `null` means "not yet known", and the channel deliberately does not connect
+// until it resolves. Defaulting to false instead caused the bug this replaced:
+// the channel subscribed and track()'d immediately on mount while the check
+// was still in flight, so the operator was announced to everyone before ghost
+// ever flipped true -- and nothing untracks after the fact.
+export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void, ghost: boolean | null = false) {
   const { userId, username, position, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
@@ -73,7 +79,11 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
   }, [setPosition])
 
   useEffect(() => {
-    if (!supabase || !userId || !username || !lobbyId) {
+    // ghost === null: the privileged-entry check hasn't answered yet. Waiting
+    // costs one RPC round-trip before others see you arrive; not waiting means
+    // announcing yourself in an atrium you're meant to be invisible in, which
+    // can't be taken back.
+    if (!supabase || !userId || !username || !lobbyId || ghost === null) {
       return
     }
 
@@ -252,7 +262,11 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       clearInterval(reconcileInterval)
       channel.unsubscribe()
     }
-  }, [userId, username, lobbyId])
+    // ghost belongs here so the effect re-runs the moment the check resolves --
+    // the early return above means the first pass connected nothing. It only
+    // ever transitions null -> boolean once per atrium, so this doesn't cause
+    // repeated resubscribes.
+  }, [userId, username, lobbyId, ghost])
 
   // Fire-and-forget: there's no server-side session control to force-close
   // another client's connection, so "kicking" is a broadcast the target's

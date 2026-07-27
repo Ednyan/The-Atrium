@@ -17,11 +17,11 @@ CREATE TABLE IF NOT EXISTS public.platform_admins (
 );
 
 ALTER TABLE public.platform_admins ENABLE ROW LEVEL SECURITY;
--- NOTE: superseded by fix_platform_admin_recursion.sql, which adds a SELECT
--- policy scoped to the caller's own row. Leaving this table with no policies
--- at all assumed SECURITY DEFINER bypasses RLS; in this project it does not,
--- so is_platform_admin() could never see a row. Writes are still impossible
--- (no INSERT/UPDATE/DELETE policies), which is the part that matters.
+-- NOTE: fix_platform_admin_recursion.sql adds a SELECT policy scoped to the
+-- caller's own row, so the functions below don't depend on SECURITY DEFINER
+-- bypassing RLS (which v2's comments cast doubt on). Writes stay impossible
+-- either way -- no INSERT/UPDATE/DELETE policies -- which is the part that
+-- keeps this table from becoming a privilege-escalation route.
 
 INSERT INTO public.platform_admins (user_id, note)
 VALUES ('7b4ccdce-bd4f-4d4a-b5b5-ad3f69939999', 'Red_Puer / eduardoparanhos1@gmail.com -- platform operator')
