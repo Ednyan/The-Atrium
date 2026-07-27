@@ -17,7 +17,11 @@ CREATE TABLE IF NOT EXISTS public.platform_admins (
 );
 
 ALTER TABLE public.platform_admins ENABLE ROW LEVEL SECURITY;
--- No policies on purpose. See above.
+-- NOTE: superseded by fix_platform_admin_recursion.sql, which adds a SELECT
+-- policy scoped to the caller's own row. Leaving this table with no policies
+-- at all assumed SECURITY DEFINER bypasses RLS; in this project it does not,
+-- so is_platform_admin() could never see a row. Writes are still impossible
+-- (no INSERT/UPDATE/DELETE policies), which is the part that matters.
 
 INSERT INTO public.platform_admins (user_id, note)
 VALUES ('7b4ccdce-bd4f-4d4a-b5b5-ad3f69939999', 'Red_Puer / eduardoparanhos1@gmail.com -- platform operator')
@@ -122,6 +126,13 @@ $$;
 COMMENT ON FUNCTION public.user_can_access_lobby IS 'Membership (see user_has_member_access) OR the platform operator. Used by traces/layers/locations RLS.';
 
 -- Atrium browser: the operator sees every atrium, not just public ones.
+--
+-- WARNING: the version originally written here included an EXISTS subquery
+-- into lobby_access_lists, copied from an older migration. That reintroduced
+-- the exact cycle fix_lobby_admin_recursion_v2.sql had removed (that table's
+-- policies subquery into lobbies), and Postgres rejected every read with
+-- "infinite recursion detected in policy for relation lobbies".
+-- fix_platform_admin_recursion.sql replaces this with plain column checks.
 DROP POLICY IF EXISTS "Anyone can view public lobbies" ON public.lobbies;
 CREATE POLICY "Anyone can view public lobbies" ON public.lobbies
   FOR SELECT
@@ -129,12 +140,6 @@ CREATE POLICY "Anyone can view public lobbies" ON public.lobbies
     is_public = true
     OR owner_user_id = (select auth.uid())
     OR (select auth.uid()) = ANY(admin_user_ids)
-    OR EXISTS (
-      SELECT 1 FROM public.lobby_access_lists
-      WHERE lobby_access_lists.lobby_id = lobbies.id
-      AND lobby_access_lists.user_id = (select auth.uid())
-      AND lobby_access_lists.list_type = 'whitelist'
-    )
     OR public.is_platform_admin()
   );
 
