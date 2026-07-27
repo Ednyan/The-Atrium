@@ -1343,7 +1343,36 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       : 'You have been kicked from this atrium.')
     onLeaveLobby()
   }, [onLeaveLobby])
-  const { updateCursorPosition, getJoinedAt, kickUser } = usePresence(lobbyId, handleKicked)
+  // True when this atrium was entered on operator privilege rather than
+  // membership, which is the trigger for entering invisibly. Starts null
+  // (unknown) and only becomes true once the server has confirmed both halves
+  // -- so a slow or failed check leaves presence behaving normally rather than
+  // silently hiding someone who should be visible.
+  const [isGhostEntry, setIsGhostEntry] = useState(false)
+
+  useEffect(() => {
+    if (!supabase || !lobbyId || isDesktop) return
+    let cancelled = false
+
+    const resolve = async () => {
+      try {
+        const [{ data: isAdmin }, { data: hasMemberAccess }] = await Promise.all([
+          (supabase as any).rpc('is_platform_admin'),
+          (supabase as any).rpc('user_has_member_access', { p_lobby_id: lobbyId }),
+        ])
+        if (cancelled) return
+        setIsGhostEntry(!!isAdmin && hasMemberAccess === false)
+      } catch {
+        // Functions not deployed yet, or offline: behave as a normal user.
+        if (!cancelled) setIsGhostEntry(false)
+      }
+    }
+    resolve()
+
+    return () => { cancelled = true }
+  }, [lobbyId])
+
+  const { updateCursorPosition, getJoinedAt, kickUser } = usePresence(lobbyId, handleKicked, isGhostEntry)
 
   const executeKick = async (targetUserId: string, blacklist: boolean) => {
     setIsKicking(true)
@@ -3122,6 +3151,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const isFull = !isDesktop && sizeBytes >= LOBBY_SIZE_LIMIT
         return (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+            {/* Only the operator sees this, and only when actually hidden.
+                Without it there's no way to tell this atrium is being viewed
+                invisibly, which is exactly the state where acting as though
+                others can see you would be a mistake. */}
+            {isGhostEntry && (
+              <p
+                className="text-[9px] font-mono tracking-[0.12em] uppercase"
+                style={{ color: '#A78BFA', textShadow: HUD_TEXT_OUTLINE }}
+              >
+                ◇ Hidden — You are not visible to anyone in this atrium
+              </p>
+            )}
             {!canEdit && (
               <p
                 className="text-[9px] font-mono tracking-[0.12em] uppercase"

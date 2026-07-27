@@ -5,7 +5,14 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
 
-export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void) {
+// Ghost mode: the platform operator entering an atrium it wouldn't otherwise
+// have access to. It still subscribes -- it needs to see who is present -- but
+// never announces itself, so it appears in nobody's roster and emits no cursor.
+//
+// Passed in rather than resolved here so the decision is made once, from the
+// server's answer to user_has_member_access, instead of being re-derived by a
+// hook that has no way to know how entry was granted.
+export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void, ghost = false) {
   const { userId, username, position, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
@@ -21,6 +28,13 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     onKickedRef.current = onKicked
   }, [onKicked])
 
+  // Read inside callbacks that outlive a render, so flipping ghost can't leave
+  // a stale value announcing the user after the fact.
+  const ghostRef = useRef(ghost)
+  useEffect(() => {
+    ghostRef.current = ghost
+  }, [ghost])
+
   // Keep position ref up to date
   useEffect(() => {
     positionRef.current = position
@@ -31,7 +45,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     playerColorRef.current = playerColor
     
     // Immediately broadcast color change to other users
-    if (channelRef.current && userId && username) {
+    if (channelRef.current && userId && username && !ghostRef.current) {
       channelRef.current.track({
         username,
         x: positionRef.current.x,
@@ -170,7 +184,11 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
         }
       })
       .subscribe(async (status: string) => {
-        if (status === 'SUBSCRIBED') {
+        // track() is what puts a user in everyone else's roster. Skipping it
+        // is the whole of the invisibility: the channel is still subscribed,
+        // so presence and cursors from others arrive normally, but nothing
+        // about this user is ever published.
+        if (status === 'SUBSCRIBED' && !ghostRef.current) {
           await channel.track({
             username,
             x: position.x,
@@ -199,7 +217,10 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     const MIN_MOVEMENT_DISTANCE = 42 // Only update if moved at least 42 pixels
 
     const updateInterval = setInterval(async () => {
-      if (channelRef.current) {
+      // Second outbound path: the cursor broadcast. Suppressed too, or the
+      // operator would be invisible in the roster while still painting a
+      // moving cursor on everyone's canvas.
+      if (channelRef.current && !ghostRef.current) {
         const now = Date.now()
         const dx = Math.abs(positionRef.current.x - lastBroadcastX)
         const dy = Math.abs(positionRef.current.y - lastBroadcastY)
