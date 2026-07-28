@@ -155,6 +155,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       let skipped = 0
       let failed = 0
       let firstFailure = ''
+      let firstSkipReason = ''
       const total = parsed.traces.length
 
       // Columns this database doesn't have, learned as we go (see insertTrace).
@@ -171,25 +172,51 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // column (PGRST204), so drop it and retry, remembering it for the rest
       // of the run. Unknown columns then cost one wasted insert in total
       // instead of failing the entire import.
+      // Columns where the desktop row holds NULL but Postgres declares NOT
+      // NULL -- crop_x/crop_y/crop_width/crop_height are the ones seen in
+      // practice. SQLite is content with a null in a column that has a
+      // DEFAULT; Postgres is not, and rejects the row outright.
+      //
+      // The fix is to omit the key rather than send null, which lets the
+      // column's own DEFAULT apply. Deliberately not done by stripping every
+      // null in the payload up front: for a nullable column, null is a real
+      // value that means something (no media, no layer), and replacing it
+      // with a default would quietly change the trace. Only columns the
+      // database has actually complained about get this treatment.
+      const nullRejectedColumns = new Set<string>()
+
       const UNKNOWN_COLUMN = /Could not find the '([^']+)' column/
+      const NOT_NULL_VIOLATION = /null value in column "([^"]+)"/
       const insertTrace = async (payload: Record<string, any>): Promise<string | null> => {
         // Bounded: each pass either succeeds, fails for an unrelated reason,
-        // or removes one column, so it cannot spin.
-        for (let attempt = 0; attempt < 12; attempt++) {
+        // or learns one new column, so it cannot spin.
+        for (let attempt = 0; attempt < 24; attempt++) {
           const body = { ...payload }
           for (const col of droppedColumns) delete body[col]
+          for (const col of nullRejectedColumns) {
+            if (body[col] === null || body[col] === undefined) delete body[col]
+          }
 
           const { error: insertErr } = await (supabase!.from('traces') as any).insert(body)
           if (!insertErr) return null
 
-          const match = UNKNOWN_COLUMN.exec(insertErr.message || '')
-          if (match && !droppedColumns.has(match[1])) {
-            droppedColumns.add(match[1])
+          const message = insertErr.message || ''
+
+          const missing = UNKNOWN_COLUMN.exec(message)
+          if (missing && !droppedColumns.has(missing[1])) {
+            droppedColumns.add(missing[1])
             continue
           }
-          return insertErr.message || 'Unknown error'
+
+          const notNull = NOT_NULL_VIOLATION.exec(message)
+          if (notNull && !nullRejectedColumns.has(notNull[1])) {
+            nullRejectedColumns.add(notNull[1])
+            continue
+          }
+
+          return message || 'Unknown error'
         }
-        return 'Too many unknown columns'
+        return 'Too many rejected columns'
       }
 
       for (const trace of parsed.traces) {
@@ -201,56 +228,70 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         if (needsLocalStorage(trace.media_url) || needsLocalStorage(trace.image_url)) {
           skipped++
+          if (!firstSkipReason) {
+            firstSkipReason = 'media still pointed at the source machine’s vault, so the file was never embedded in the export'
+          }
           continue
         }
 
-        // Handle base64 data URLs — upload to Supabase Storage
-        let mediaUrl = trace.media_url
-        if (mediaUrl && mediaUrl.startsWith('data:')) {
+        // Uploads a base64 data URL to Storage and returns its public URL.
+        // Returns the reason on failure instead of just null, so a trace that
+        // loses its media can say why rather than arriving blank.
+        const uploadDataUrl = async (
+          dataUrl: string,
+          suffix: string,
+        ): Promise<{ url: string } | { error: string }> => {
           try {
-            const resp = await fetch(mediaUrl)
+            const resp = await fetch(dataUrl)
             const blob = await resp.blob()
             const ext = blob.type.split('/')[1]?.split(';')[0] || 'png'
-            const fileName = `import_${user.id}_${Date.now()}_${imported}.${ext}`
-            const { error: uploadErr } = await supabase.storage
+            const fileName = `import_${user.id}_${Date.now()}_${suffix}_${imported}.${ext}`
+            const { error: uploadErr } = await supabase!.storage
               .from('traces')
               .upload(fileName, blob, { contentType: blob.type })
 
-            if (!uploadErr) {
-              const { data: { publicUrl } } = supabase.storage
-                .from('traces')
-                .getPublicUrl(fileName)
-              mediaUrl = publicUrl
-            } else {
-              mediaUrl = null // Skip if upload fails
-            }
-          } catch {
-            mediaUrl = null
+            if (uploadErr) return { error: uploadErr.message || 'upload rejected' }
+
+            const { data: { publicUrl } } = supabase!.storage
+              .from('traces')
+              .getPublicUrl(fileName)
+            return { url: publicUrl }
+          } catch (e: any) {
+            return { error: e?.message || 'could not read the embedded file' }
           }
         }
 
+        let mediaUrl = trace.media_url
         let imageUrl = trace.image_url
-        if (imageUrl && imageUrl.startsWith('data:')) {
-          try {
-            const resp = await fetch(imageUrl)
-            const blob = await resp.blob()
-            const ext = blob.type.split('/')[1]?.split(';')[0] || 'png'
-            const fileName = `import_${user.id}_${Date.now()}_img_${imported}.${ext}`
-            const { error: uploadErr } = await supabase.storage
-              .from('traces')
-              .upload(fileName, blob, { contentType: blob.type })
+        let mediaError = ''
 
-            if (!uploadErr) {
-              const { data: { publicUrl } } = supabase.storage
-                .from('traces')
-                .getPublicUrl(fileName)
-              imageUrl = publicUrl
-            } else {
-              imageUrl = null
-            }
-          } catch {
-            imageUrl = null
+        if (mediaUrl && mediaUrl.startsWith('data:')) {
+          const result = await uploadDataUrl(mediaUrl, 'media')
+          if ('url' in result) mediaUrl = result.url
+          else { mediaUrl = null; mediaError = result.error }
+        }
+
+        if (imageUrl && imageUrl.startsWith('data:')) {
+          const result = await uploadDataUrl(imageUrl, 'img')
+          if ('url' in result) imageUrl = result.url
+          else { imageUrl = null; if (!mediaError) mediaError = result.error }
+        }
+
+        // A trace whose whole point is its media must not be created without
+        // it. Previously an upload failure left media_url null and the trace
+        // was inserted anyway, producing an image frame with nothing in it and
+        // counted as a success -- which read as "imported fine" while being
+        // the opposite. Media-bearing types now only import if their file
+        // actually made it across.
+        const MEDIA_TYPES = ['image', 'audio', 'video']
+        if (MEDIA_TYPES.includes(trace.type) && !mediaUrl && !imageUrl) {
+          skipped++
+          if (!firstSkipReason) {
+            firstSkipReason = mediaError
+              ? `${trace.type} media could not be uploaded (${mediaError})`
+              : `${trace.type} traces carried no embedded file`
           }
+          continue
         }
 
         // Strip local-only fields and remap IDs. `vault_media_path` /
@@ -289,17 +330,23 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
       setStatus('done')
       const summary = [`${imported} traces`]
-      if (skipped > 0) summary.push(`${skipped} skipped (local-only media)`)
+      if (skipped > 0) summary.push(`${skipped} skipped (media)`)
       if (failed > 0) summary.push(`${failed} failed`)
       setProgress(`Imported "${atriumName}" — ${summary.join(', ')}, ${Object.keys(layerIdMap).length} layers`)
 
-      // Surfaced, not buried: a dropped column means data silently didn't make
-      // the trip, and a failure the user can't see is one they can't report.
-      if (droppedColumns.size > 0) {
-        setNotice(`This database has no ${[...droppedColumns].join(', ')} column, so those values were dropped. Traces imported otherwise intact.`)
-      } else if (firstFailure) {
-        setNotice(`${failed} trace${failed === 1 ? '' : 's'} could not be imported: ${firstFailure}`)
+      // Surfaced, not buried: anything dropped or skipped means data didn't
+      // make the trip, and a loss the user can't see is one they can't report.
+      const notices: string[] = []
+      if (failed > 0 && firstFailure) {
+        notices.push(`${failed} trace${failed === 1 ? '' : 's'} could not be imported: ${firstFailure}`)
       }
+      if (skipped > 0 && firstSkipReason) {
+        notices.push(`${skipped} skipped — ${firstSkipReason}.`)
+      }
+      if (droppedColumns.size > 0) {
+        notices.push(`This database has no ${[...droppedColumns].join(', ')} column, so those values were dropped.`)
+      }
+      setNotice(notices.join(' '))
     } catch (e: any) {
       setError(e.message || String(e))
       setStatus('error')

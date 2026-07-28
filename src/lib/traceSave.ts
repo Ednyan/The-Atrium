@@ -120,10 +120,17 @@ export async function saveAllChanges(): Promise<void> {
         text_color: trace.textColor,
         is_locked: trace.isLocked,
         border_radius: trace.borderRadius,
-        crop_x: trace.cropX,
-        crop_y: trace.cropY,
-        crop_width: trace.cropWidth,
-        crop_height: trace.cropHeight,
+        // Defaulted the same way traceInsert does. Without the fallback an
+        // uncropped trace sends undefined here, which the web harmlessly drops
+        // from the JSON body (so the column default applies) but the desktop
+        // SQLite shim binds as a real NULL. Those nulls are invisible on
+        // desktop -- reads default them back to 0/1 -- and only surface when
+        // the atrium is exported and imported into Postgres, where these
+        // columns are NOT NULL and reject the whole row.
+        crop_x: trace.cropX ?? 0,
+        crop_y: trace.cropY ?? 0,
+        crop_width: trace.cropWidth ?? 1,
+        crop_height: trace.cropHeight ?? 1,
         illuminate: trace.illuminate,
         light_color: trace.lightColor,
         light_intensity: trace.lightIntensity,
