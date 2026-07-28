@@ -623,14 +623,25 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           >
             {mode === 'login' ? "◇ Don't have an account? Sign up" : mode === 'signup' ? '◇ Already have an account? Log in' : '◇ Back to Login'}
           </button>
-          <a
-            href="/privacy.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
-          >
-            Privacy Policy
-          </a>
+          <div className="flex items-center justify-center gap-3">
+            <a
+              href="/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+            >
+              Privacy Policy
+            </a>
+            <span className="text-nier-border/20 text-[9px]">◇</span>
+            <a
+              href="/terms.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+            >
+              Terms of Service
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -993,7 +993,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
 
           {!isDesktop && (
-            <div className="flex items-center justify-center mt-4">
+            <div className="flex items-center justify-center gap-4 mt-4">
               <a
                 href="/privacy.html"
                 target="_blank"
@@ -1002,8 +1002,25 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               >
                 Privacy Policy
               </a>
+              <span className="text-nier-border/20 text-[10px]">◇</span>
+              <a
+                href="/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-border/40 hover:text-nier-border/70 text-[10px] tracking-wider uppercase transition-colors"
+              >
+                Terms of Service
+              </a>
             </div>
           )}
+
+          {/* Shown on desktop too -- the copyright applies to the app itself,
+              not just the website. */}
+          <div className="flex items-center justify-center mt-3">
+            <span className="text-nier-border/30 text-[10px] tracking-wider">
+              © 2026 Eduardo Paranhos. All rights reserved.
+            </span>
+          </div>
 
           {/* Final CTA */}
           <div className="mt-12">

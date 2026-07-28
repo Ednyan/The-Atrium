@@ -181,6 +181,9 @@ export interface LobbyLocation {
   zoom: number
   orderIndex: number
   userId?: string | null
+  // Blocks "set to current view" only -- rename and delete stay available,
+  // since those already confirm before acting.
+  isLocked?: boolean
 }
 
 export interface Profile {

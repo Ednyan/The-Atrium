@@ -9,10 +9,26 @@ interface LocalLobby {
   id: string
   name: string
   created_at: string
-  theme_settings: string | null
+  // Already an object by the time it gets here: SQLite stores it as TEXT, but
+  // localDb's convertRowFromSql parses it on the way out. Typing it as `string`
+  // is what led to it being JSON.parse'd a second time below.
+  theme_settings: Record<string, any> | null
   password_hash: string | null
   max_players: number
   is_public: number
+}
+
+// Tolerates either shape. Malformed JSON exports as null rather than taking
+// the whole export down with it -- theme settings are cosmetic, and losing
+// them is a far better outcome than losing the atrium.
+function parseThemeSettings(value: unknown): Record<string, any> | null {
+  if (!value) return null
+  if (typeof value !== 'string') return value as Record<string, any>
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
 }
 
 export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
@@ -86,7 +102,12 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
         app: 'Digital Atrium Desktop',
         lobby: {
           name: lobby.name,
-          theme_settings: lobby.theme_settings ? JSON.parse(lobby.theme_settings) : null,
+          // NOT JSON.parse'd. localDb already parsed it on read, so parsing
+          // again threw `"[object Object]" is not valid JSON` -- the string
+          // form of the object it was handed -- and aborted every export.
+          // The string branch is kept only for vaults old enough to predate
+          // that conversion.
+          theme_settings: parseThemeSettings(lobby.theme_settings),
           is_public: lobby.is_public,
           max_players: lobby.max_players,
         },

@@ -421,14 +421,25 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           )}
 
           {!isDesktop && (
-            <a
-              href="/privacy.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block text-center text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors pt-1"
-            >
-              Privacy Policy
-            </a>
+            <div className="flex items-center justify-center gap-3 pt-1">
+              <a
+                href="/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+              >
+                Privacy Policy
+              </a>
+              <span className="text-nier-border/20 text-[9px]">◇</span>
+              <a
+                href="/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+              >
+                Terms of Service
+              </a>
+            </div>
           )}
 
           {/* Delete Account -- web only, irreversible */}

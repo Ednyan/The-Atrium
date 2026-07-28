@@ -19,6 +19,9 @@ interface LocationsPanelProps {
   // Overwrites a saved location's camera with wherever the user is looking
   // right now -- the way to "re-shoot" a location without delete+recreate.
   onUpdateCamera: (id: string) => void
+  // Locking guards the camera overwrite above, which is the only destructive
+  // action here with no confirmation step.
+  onToggleLock: (id: string) => void
   onDelete: (id: string) => void
   onReorder: (sourceId: string, targetId: string) => void
   onSave: () => void
@@ -37,6 +40,7 @@ export default function LocationsPanel({
   onAdd,
   onRename,
   onUpdateCamera,
+  onToggleLock,
   onDelete,
   onReorder,
   onSave,
@@ -187,10 +191,30 @@ export default function LocationsPanel({
                   <>
                     <button
                       onClick={(e) => { e.stopPropagation(); onUpdateCamera(loc.id) }}
-                      className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 transition-colors"
-                      title="Set this location to the current camera view"
+                      disabled={loc.isLocked}
+                      className={`text-[10px] px-1.5 py-0.5 transition-colors ${
+                        loc.isLocked
+                          ? 'text-gray-700 cursor-not-allowed'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                      title={loc.isLocked
+                        ? 'Locked -- unlock to overwrite this view'
+                        : 'Set this location to the current camera view'}
                     >
                       ⌖
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onToggleLock(loc.id) }}
+                      className={`text-[10px] px-1.5 py-0.5 transition-colors ${
+                        loc.isLocked
+                          ? 'text-amber-400 hover:text-amber-300'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                      title={loc.isLocked
+                        ? 'Unlock -- allow this view to be overwritten'
+                        : 'Lock -- protect this view from being overwritten'}
+                    >
+                      {loc.isLocked ? '🔒' : '🔓'}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('rename'); setDialogInput(loc.name); setDialogTargetId(loc.id) }}

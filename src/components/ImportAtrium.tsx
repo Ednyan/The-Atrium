@@ -35,6 +35,9 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
   const [fileSizeMB, setFileSizeMB] = useState('')
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
+  // Import succeeded but something was lost or refused -- distinct from
+  // `error`, which means the import didn't happen.
+  const [notice, setNotice] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,7 +154,43 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       let imported = 0
       let skipped = 0
       let failed = 0
+      let firstFailure = ''
       const total = parsed.traces.length
+
+      // Columns this database doesn't have, learned as we go (see insertTrace).
+      const droppedColumns = new Set<string>()
+
+      // Desktop and web schemas drift: the desktop vault has carried
+      // traces.link_url since the Pinterest work, and any web database whose
+      // add_pinterest_integration.sql migration hasn't been applied does not.
+      // Every exported trace carries that key, so a single missing column
+      // failed all of them and reported nothing but a count.
+      //
+      // Rather than hardcode a column list that would need updating on both
+      // sides forever, learn from the rejection: PostgREST names the offending
+      // column (PGRST204), so drop it and retry, remembering it for the rest
+      // of the run. Unknown columns then cost one wasted insert in total
+      // instead of failing the entire import.
+      const UNKNOWN_COLUMN = /Could not find the '([^']+)' column/
+      const insertTrace = async (payload: Record<string, any>): Promise<string | null> => {
+        // Bounded: each pass either succeeds, fails for an unrelated reason,
+        // or removes one column, so it cannot spin.
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const body = { ...payload }
+          for (const col of droppedColumns) delete body[col]
+
+          const { error: insertErr } = await (supabase!.from('traces') as any).insert(body)
+          if (!insertErr) return null
+
+          const match = UNKNOWN_COLUMN.exec(insertErr.message || '')
+          if (match && !droppedColumns.has(match[1])) {
+            droppedColumns.add(match[1])
+            continue
+          }
+          return insertErr.message || 'Unknown error'
+        }
+        return 'Too many unknown columns'
+      }
 
       for (const trace of parsed.traces) {
         // Traces referencing desktop-local vault storage (not embeds, not
@@ -234,9 +273,12 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           image_url: imageUrl || null,
         }
 
-        const { error: insertErr } = await (supabase.from('traces') as any).insert(traceData)
-        if (insertErr) {
+        const failure = await insertTrace(traceData)
+        if (failure) {
           failed++
+          // Kept so the summary can say *why*. Silently counting failures is
+          // what made this look like "traces just don't load".
+          if (!firstFailure) firstFailure = failure
         } else {
           imported++
         }
@@ -250,6 +292,14 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       if (skipped > 0) summary.push(`${skipped} skipped (local-only media)`)
       if (failed > 0) summary.push(`${failed} failed`)
       setProgress(`Imported "${atriumName}" — ${summary.join(', ')}, ${Object.keys(layerIdMap).length} layers`)
+
+      // Surfaced, not buried: a dropped column means data silently didn't make
+      // the trip, and a failure the user can't see is one they can't report.
+      if (droppedColumns.size > 0) {
+        setNotice(`This database has no ${[...droppedColumns].join(', ')} column, so those values were dropped. Traces imported otherwise intact.`)
+      } else if (firstFailure) {
+        setNotice(`${failed} trace${failed === 1 ? '' : 's'} could not be imported: ${firstFailure}`)
+      }
     } catch (e: any) {
       setError(e.message || String(e))
       setStatus('error')
@@ -338,6 +388,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         {status === 'done' && (
           <div className="text-center py-4">
             <p className="text-green-400 text-xs tracking-wider mb-2">{progress}</p>
+            {notice && (
+              <p className="text-yellow-400/80 text-[10px] tracking-wider leading-relaxed mb-2 text-left">
+                {notice}
+              </p>
+            )}
             <p className="text-nier-border/50 text-[10px] tracking-wider">
               You can now enter the atrium from the browser.
             </p>
@@ -381,7 +436,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           )}
           {status === 'error' && (
             <button
-              onClick={() => { setStatus('select'); setError(''); setProgress(''); setParsed(null); }}
+              onClick={() => { setStatus('select'); setError(''); setProgress(''); setNotice(''); setParsed(null); }}
               className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
             >
               ◇ Try Again

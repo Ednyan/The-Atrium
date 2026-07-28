@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
+import ToastHost from './components/ToastHost.tsx'
 import './index.css'
 import { localDbReady } from './lib/supabase'
 
@@ -11,6 +12,10 @@ localDbReady.then(() => {
   root.render(
     <React.StrictMode>
       <App />
+      {/* Sibling of App, not inside it: App returns a different screen from
+          each of its many early returns, so there is no single place within
+          it that stays mounted across every route. */}
+      <ToastHost />
     </React.StrictMode>,
   )
 }).catch((error) => {

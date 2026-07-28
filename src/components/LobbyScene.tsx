@@ -15,6 +15,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
+import { copyLobbyId } from '../lib/clipboard'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
@@ -53,6 +54,7 @@ function mapLocationRow(row: any): LobbyLocation {
     zoom: row.zoom ?? 1,
     orderIndex: row.order_index ?? 0,
     userId: row.user_id,
+    isLocked: !!row.is_locked,
   }
 }
 
@@ -1064,9 +1066,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // other location edit, so nothing persists until Save Changes.
   const updateLocationCamera = (id: string) => {
     const cam = getCurrentCamera()
+    // Enforced here as well as disabled in the panel: the button being greyed
+    // out is a hint, this is the actual guarantee.
+    if (workingLocationsRef.current.find(l => l.id === id)?.isLocked) return
     setWorkingLocations(prev => prev.map(l => (
       l.id === id ? { ...l, positionX: cam.x, positionY: cam.y, zoom: cam.zoom } : l
     )))
+    setLocationsDirty(true)
+  }
+
+  const toggleLocationLock = (id: string) => {
+    setWorkingLocations(prev => prev.map(l => (l.id === id ? { ...l, isLocked: !l.isLocked } : l)))
     setLocationsDirty(true)
   }
 
@@ -1119,16 +1129,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           zoom: w.zoom,
           order_index: i,
           user_id: username,
+          is_locked: !!w.isLocked,
         })
       } else {
         const orig = saved.find(s => s.id === w.id)
-        if (!orig || orig.name !== w.name || orig.orderIndex !== i || orig.positionX !== w.positionX || orig.positionY !== w.positionY || orig.zoom !== w.zoom) {
+        if (!orig || orig.name !== w.name || orig.orderIndex !== i || orig.positionX !== w.positionX || orig.positionY !== w.positionY || orig.zoom !== w.zoom || !!orig.isLocked !== !!w.isLocked) {
           await (supabase.from('lobby_locations') as any).update({
             name: w.name,
             order_index: i,
             position_x: w.positionX,
             position_y: w.positionY,
             zoom: w.zoom,
+            is_locked: !!w.isLocked,
           }).eq('id', w.id)
         }
       }
@@ -3053,10 +3065,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         {currentLobby && (
           <button
-            onClick={() => {
-              navigator.clipboard.writeText(currentLobby.id)
-              alert('Lobby ID copied! Share this with others to invite them.')
-            }}
+            onClick={() => copyLobbyId(currentLobby.id)}
             className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
           >
             Copy ID
@@ -3804,6 +3813,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onAdd={addLocation}
           onRename={renameLocation}
           onUpdateCamera={updateLocationCamera}
+          onToggleLock={toggleLocationLock}
           onDelete={deleteLocation}
           onReorder={reorderLocations}
           onSave={saveLocationChanges}

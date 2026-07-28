@@ -54,6 +54,7 @@ export default {
         'nier-flicker': 'nier-flicker 0.15s ease-in-out',
         'nier-slide': 'nier-slide 1.2s ease-in-out infinite',
         'saving-fade': 'saving-fade 1.4s ease-in-out infinite',
+        'nier-toast': 'nier-toast 0.22s ease-out',
       },
       keyframes: {
         'nier-pulse': {
@@ -71,6 +72,10 @@ export default {
         'nier-flicker': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.8' },
+        },
+        'nier-toast': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'nier-slide': {
           '0%': { width: '0%', marginLeft: '0%' },

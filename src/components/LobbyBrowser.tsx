@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
+import { copyLobbyId } from '../lib/clipboard'
 import { useGameStore } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
@@ -973,6 +974,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           Enter
                         </button>
                         <button
+                          onClick={() => copyLobbyId(lobby.id)}
+                          className="px-3 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          title="Copy this atrium's ID to share it"
+                        >
+                          Copy ID
+                        </button>
+                        <button
                           onClick={() => setManagingLobbyId(lobby.id)}
                           className="px-3 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           title="Manage access, password, and autosave without entering"
@@ -1020,6 +1028,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
                         >
                           Enter
+                        </button>
+                        <button
+                          onClick={() => copyLobbyId(lobby.id)}
+                          className="px-3 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          title="Copy this atrium's ID to share it"
+                        >
+                          Copy ID
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
@@ -1130,12 +1145,21 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           {!lobby.isPublic && <span>{isDesktop ? '◦ Local Private' : '◦ Whitelisted'}</span>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleJoinClick(lobby)}
-                        className="px-4 py-2 border border-nier-border/40 text-nier-bg text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
-                      >
-                        Enter
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => copyLobbyId(lobby.id)}
+                          className="px-3 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          title="Copy this atrium's ID to share it"
+                        >
+                          Copy ID
+                        </button>
+                        <button
+                          onClick={() => handleJoinClick(lobby)}
+                          className="px-4 py-2 border border-nier-border/40 text-nier-bg text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
+                        >
+                          Enter
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))

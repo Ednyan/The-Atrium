@@ -1,21 +1,40 @@
-MIT License
+Copyright (c) 2026 Eduardo Paranhos. All rights reserved.
 
-Copyright (c) 2025 The Lobby Contributors
+The Atrium (also referred to as Digital Atrium), including its source code,
+design, user interface, artwork, and name, is the exclusive property of
+Eduardo Paranhos.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This source code is made publicly viewable for transparency. It is NOT open
+source, and no license is granted to use it. Specifically, you may not, without
+prior written permission from the copyright holder:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  - copy, modify, or create derivative works from this software;
+  - redistribute this software, in source or compiled form;
+  - build, publish, or operate a competing or derivative service from it;
+  - use the name "The Atrium" or "Digital Atrium", or the project's branding
+    or artwork, for any purpose.
+
+You may view and read this source code, and you may fork it on the hosting
+platform for the sole purpose of proposing a contribution back to this project.
+
+Contributions submitted to this project are licensed to the copyright holder
+for inclusion in the project under these same terms.
+
+Third-party dependencies are covered by their own licenses, which are unaffected
+by this notice and remain in effect for their respective components.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+NOTE ON THE PREVIOUS LICENSE
+
+Until 2026-07-28 this repository carried an MIT license. That grant cannot be
+retroactively withdrawn: anyone who obtained a copy of a version published
+under MIT keeps MIT rights to that version. This notice governs this version
+and all later ones.

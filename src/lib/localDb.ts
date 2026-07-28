@@ -756,7 +756,8 @@ export async function initLocalDb(): Promise<void> {
       position_y REAL NOT NULL,
       zoom REAL NOT NULL DEFAULT 1,
       order_index INTEGER NOT NULL DEFAULT 0,
-      user_id TEXT
+      user_id TEXT,
+      is_locked INTEGER DEFAULT 0
     )
   `)
 
@@ -848,6 +849,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE traces ADD COLUMN shape_outline_opacity REAL')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE lobby_locations ADD COLUMN is_locked INTEGER DEFAULT 0')
   } catch {
     // Column already exists — ignore
   }
@@ -1186,6 +1192,7 @@ function convertRowFromSql(table: string, row: any): any {
     layers: ['is_group'],
     profiles: [],
     lobby_access_lists: [],
+    lobby_locations: ['is_locked'],
   }
 
   const cols = boolColumns[table] || []
@@ -1228,6 +1235,7 @@ function convertRowToSql(table: string, row: any): any {
     layers: ['is_group'],
     profiles: [],
     lobby_access_lists: [],
+    lobby_locations: ['is_locked'],
   }
 
   const cols = boolColumns[table] || []
