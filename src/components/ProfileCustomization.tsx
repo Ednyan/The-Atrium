@@ -483,6 +483,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </div>
               <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
                 How dropping or pasting multiple files at once gets arranged in this atrium.
+                Reorganize Selected asks for a shape each time and ignores this.
               </p>
             </div>
           )}

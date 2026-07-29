@@ -1350,42 +1350,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // App.tsx, so they're already in the store (and local media pre-resolved
   // on desktop) by the time this scene mounts, instead of popping in after
   // the atrium-entry loading screen finishes.
+  // Shown as a panel rather than an alert(): leaving is deferred until the
+  // user acknowledges it, so the message can't be dismissed by reflex before
+  // it's read -- and on desktop alert() renders as a native Windows dialog,
+  // which is jarring on the way out of an atrium.
+  const [kickedNotice, setKickedNotice] = useState<{ blacklisted: boolean } | null>(null)
+
   const handleKicked = useCallback((blacklisted: boolean) => {
-    alert(blacklisted
-      ? 'You have been kicked from this atrium and blacklisted -- you can no longer rejoin.'
-      : 'You have been kicked from this atrium.')
-    onLeaveLobby()
-  }, [onLeaveLobby])
-  // True when this atrium was entered on operator privilege rather than
-  // membership, which is the trigger for entering invisibly. Starts null
-  // (unknown) and only becomes true once the server has confirmed both halves
-  // -- so a slow or failed check leaves presence behaving normally rather than
-  // silently hiding someone who should be visible.
-  const [isGhostEntry, setIsGhostEntry] = useState<boolean | null>(null)
+    setKickedNotice({ blacklisted })
+  }, [])
+  // Drives the "Hidden" HUD line only -- usePresence resolves this
+  // independently for its own purposes (both share one cached round-trip).
+  //
+  // Starts false, and the updater returns the previous value unchanged when
+  // nothing differs, so an ordinary entry performs no state update at all.
+  // Having it start "unknown" meant every entry re-rendered LobbyScene once
+  // the check settled, which showed up as a flicker.
+  const [isGhostEntry, setIsGhostEntry] = useState(false)
 
   useEffect(() => {
-    // Desktop has no Supabase and no other users to hide from, so resolve it
-    // to false immediately -- usePresence waits for a non-null answer before
-    // connecting, and leaving it null here would strand presence forever.
-    if (!supabase || !lobbyId || isDesktop) {
-      setIsGhostEntry(false)
-      return
-    }
-    // Re-resolve from scratch when moving between atriums: privileged entry is
-    // per-atrium, so the previous answer must not carry over.
-    setIsGhostEntry(null)
+    if (!supabase || !lobbyId || isDesktop) return
     let cancelled = false
 
     const resolve = async () => {
       const ghost = await resolveGhostEntry(lobbyId)
-      if (!cancelled) setIsGhostEntry(ghost)
+      if (!cancelled) setIsGhostEntry(prev => (prev === ghost ? prev : ghost))
     }
     resolve()
 
     return () => { cancelled = true }
   }, [lobbyId])
 
-  const { updateCursorPosition, getJoinedAt, kickUser } = usePresence(lobbyId, handleKicked, isGhostEntry)
+  const { updateCursorPosition, getJoinedAt, kickUser } = usePresence(lobbyId, handleKicked)
 
   const executeKick = async (targetUserId: string, blacklist: boolean) => {
     setIsKicking(true)
@@ -4090,6 +4086,59 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         )
       })()}
+
+      {/* You were kicked. Deliberately has no backdrop dismiss and no close
+          "x": the only way out is Leave Atrium, since staying isn't an
+          option -- the panel is telling you what already happened. */}
+      {kickedNotice && (
+        <div className="fixed inset-0 z-[10000200] bg-black/80 flex items-center justify-center pointer-events-auto">
+          <div
+            className={`bg-gray-900 border p-6 relative ${kickedNotice.blacklisted ? 'border-red-600' : 'border-gray-500'}`}
+            style={{ maxWidth: '360px' }}
+          >
+            {(() => {
+              const corner = kickedNotice.blacklisted ? 'border-red-600' : 'border-gray-500'
+              return (
+                <>
+                  <div className={`absolute top-0 left-0 w-4 h-4 border-l border-t ${corner} pointer-events-none`} />
+                  <div className={`absolute top-0 right-0 w-4 h-4 border-r border-t ${corner} pointer-events-none`} />
+                  <div className={`absolute bottom-0 left-0 w-4 h-4 border-l border-b ${corner} pointer-events-none`} />
+                  <div className={`absolute bottom-0 right-0 w-4 h-4 border-r border-b ${corner} pointer-events-none`} />
+                </>
+              )
+            })()}
+
+            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className={`mr-2 ${kickedNotice.blacklisted ? 'text-red-500' : 'text-gray-400'}`}>◇</span>
+              {kickedNotice.blacklisted ? 'Removed & Blacklisted' : 'Removed From Atrium'}
+            </h3>
+
+            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
+              {kickedNotice.blacklisted
+                ? 'An administrator has removed you from this atrium and blocked you from returning.'
+                : 'An administrator has removed you from this atrium.'}
+            </p>
+            {kickedNotice.blacklisted && (
+              <p className="text-red-400/70 text-[10px] font-mono tracking-wider text-center mb-6">
+                You will not be able to rejoin.
+              </p>
+            )}
+            {!kickedNotice.blacklisted && (
+              <p className="text-gray-500 text-[10px] font-mono tracking-wider text-center mb-6">
+                You may rejoin if you're allowed back in.
+              </p>
+            )}
+
+            <button
+              onClick={() => { setKickedNotice(null); onLeaveLobby() }}
+              autoFocus
+              className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+            >
+              Leave Atrium
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Kick User Confirmation */}
       {kickTarget && (

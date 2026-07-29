@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
+import { isGhostEntry } from '../lib/operatorGhost'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
@@ -9,16 +10,15 @@ const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 // have access to. It still subscribes -- it needs to see who is present -- but
 // never announces itself, so it appears in nobody's roster and emits no cursor.
 //
-// Passed in rather than resolved here so the decision is made once, from the
-// server's answer to user_has_member_access, instead of being re-derived by a
-// hook that has no way to know how entry was granted.
+// Resolved in here rather than passed in. It used to arrive as a prop from
+// LobbyScene, which meant the answer had to live in component state -- and
+// since it started as "unknown", every single atrium entry incurred an extra
+// LobbyScene render once it settled, plus a delayed presence connection. That
+// was visible as a flicker on entry.
 //
-// `null` means "not yet known", and the channel deliberately does not connect
-// until it resolves. Defaulting to false instead caused the bug this replaced:
-// the channel subscribed and track()'d immediately on mount while the check
-// was still in flight, so the operator was announced to everyone before ghost
-// ever flipped true -- and nothing untracks after the fact.
-export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void, ghost: boolean | null = false) {
+// Nothing outside this hook needs the value in order to render, so it stays a
+// ref here and the channel connects immediately, exactly as it did before.
+export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void) {
   const { userId, username, position, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGameStore()
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(position)
@@ -34,12 +34,10 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     onKickedRef.current = onKicked
   }, [onKicked])
 
-  // Read inside callbacks that outlive a render, so flipping ghost can't leave
-  // a stale value announcing the user after the fact.
-  const ghostRef = useRef(ghost)
-  useEffect(() => {
-    ghostRef.current = ghost
-  }, [ghost])
+  // null until the check answers. Everything that could publish this user
+  // treats "not yet known" as "don't publish", so the window before it
+  // resolves can't leak an operator into an atrium it entered invisibly.
+  const ghostRef = useRef<boolean | null>(null)
 
   // Keep position ref up to date
   useEffect(() => {
@@ -50,8 +48,13 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
   useEffect(() => {
     playerColorRef.current = playerColor
     
-    // Immediately broadcast color change to other users
-    if (channelRef.current && userId && username && !ghostRef.current) {
+    // Immediately broadcast color change to other users.
+    //
+    // Strict false, not !ghostRef.current: while the check is pending this is
+    // null, and `!null` is true -- which would publish the operator into an
+    // atrium it is entering invisibly, from the one outbound path that fires
+    // early enough for the race to be real.
+    if (channelRef.current && userId && username && ghostRef.current === false) {
       channelRef.current.track({
         username,
         x: positionRef.current.x,
@@ -79,13 +82,17 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
   }, [setPosition])
 
   useEffect(() => {
-    // ghost === null: the privileged-entry check hasn't answered yet. Waiting
-    // costs one RPC round-trip before others see you arrive; not waiting means
-    // announcing yourself in an atrium you're meant to be invisible in, which
-    // can't be taken back.
-    if (!supabase || !userId || !username || !lobbyId || ghost === null) {
+    if (!supabase || !userId || !username || !lobbyId) {
       return
     }
+
+    // Started now, awaited only where it's actually needed (the track() call
+    // below). Subscribing doesn't publish anything, so it doesn't have to
+    // wait -- which is what keeps entry as immediate as it was before ghost
+    // mode existed.
+    ghostRef.current = null
+    const ghostPromise = isGhostEntry(lobbyId)
+    ghostPromise.then(value => { ghostRef.current = value })
 
     // Connecting to lobby presence channel
     joinedAtRef.current = Date.now()
@@ -198,7 +205,10 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
         // is the whole of the invisibility: the channel is still subscribed,
         // so presence and cursors from others arrive normally, but nothing
         // about this user is ever published.
-        if (status === 'SUBSCRIBED' && !ghostRef.current) {
+        //
+        // This is the one place that must wait for the answer -- and the only
+        // one, since it's the only line here that publishes anything.
+        if (status === 'SUBSCRIBED' && !(await ghostPromise)) {
           await channel.track({
             username,
             x: position.x,
@@ -230,7 +240,11 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       // Second outbound path: the cursor broadcast. Suppressed too, or the
       // operator would be invisible in the roster while still painting a
       // moving cursor on everyone's canvas.
-      if (channelRef.current && !ghostRef.current) {
+      //
+      // Strict false: while the check is still pending this is null, which
+      // must not broadcast. In practice it has long since resolved, since the
+      // first broadcast can't happen until 5s in.
+      if (channelRef.current && ghostRef.current === false) {
         const now = Date.now()
         const dx = Math.abs(positionRef.current.x - lastBroadcastX)
         const dy = Math.abs(positionRef.current.y - lastBroadcastY)
@@ -262,11 +276,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       clearInterval(reconcileInterval)
       channel.unsubscribe()
     }
-    // ghost belongs here so the effect re-runs the moment the check resolves --
-    // the early return above means the first pass connected nothing. It only
-    // ever transitions null -> boolean once per atrium, so this doesn't cause
-    // repeated resubscribes.
-  }, [userId, username, lobbyId, ghost])
+  }, [userId, username, lobbyId])
 
   // Fire-and-forget: there's no server-side session control to force-close
   // another client's connection, so "kicking" is a broadcast the target's

@@ -94,7 +94,7 @@ function VideoShowcaseSection() {
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
           <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
-            In Motion
+            This is the Digital Atrium
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>

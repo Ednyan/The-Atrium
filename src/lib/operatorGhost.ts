@@ -14,10 +14,18 @@ import { supabase, isDesktop } from './supabase'
 // Ordering matters for cost: is_platform_admin() is checked first and returns
 // false immediately for everyone else, so ordinary users never pay for the
 // second call.
-export async function isGhostEntry(lobbyId: string): Promise<boolean> {
-  // Desktop has no Supabase, one local user, and nobody to be invisible from.
-  if (!supabase || !lobbyId || isDesktop) return false
 
+// Entering an atrium asks this from two places within a few hundred
+// milliseconds of each other (App's access check, and the presence hook). The
+// cache collapses that burst into one round-trip.
+//
+// Short-lived on purpose: the answer depends on membership, which someone else
+// can change while you're sitting in the atrium. A long-lived cache would keep
+// insisting you're a privileged visitor after you'd been properly whitelisted.
+const CACHE_TTL_MS = 30_000
+const cache = new Map<string, { at: number; value: Promise<boolean> }>()
+
+async function resolve(lobbyId: string): Promise<boolean> {
   try {
     const { data: isAdmin } = await (supabase as any).rpc('is_platform_admin')
     if (!isAdmin) return false
@@ -32,4 +40,16 @@ export async function isGhostEntry(lobbyId: string): Promise<boolean> {
     // Functions not deployed yet, or offline: behave as a normal user.
     return false
   }
+}
+
+export function isGhostEntry(lobbyId: string): Promise<boolean> {
+  // Desktop has no Supabase, one local user, and nobody to be invisible from.
+  if (!supabase || !lobbyId || isDesktop) return Promise.resolve(false)
+
+  const hit = cache.get(lobbyId)
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value
+
+  const value = resolve(lobbyId)
+  cache.set(lobbyId, { at: Date.now(), value })
+  return value
 }

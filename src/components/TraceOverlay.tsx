@@ -378,10 +378,32 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
     transformFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuTransformOpen(false), 200)
   }
+  // "Reorganize Selected" side flyout -- the packing shape used to be a
+  // persisted preference set in the Profile panel, which meant choosing it
+  // was separated from the one action that uses it. It's now picked at the
+  // moment of use, like the other flyouts here.
+  const [contextMenuReorganizeOpen, setContextMenuReorganizeOpen] = useState(false)
+  const [reorganizeFlyoutRect, setReorganizeFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const reorganizeFlyoutCloseTimer = useRef<number | null>(null)
+  const openReorganizeFlyout = (e: React.MouseEvent<HTMLElement>) => {
+    if (reorganizeFlyoutCloseTimer.current) window.clearTimeout(reorganizeFlyoutCloseTimer.current)
+    const rect = e.currentTarget.getBoundingClientRect()
+    setReorganizeFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
+    setContextMenuReorganizeOpen(true)
+  }
+  const keepReorganizeFlyoutOpen = () => {
+    if (reorganizeFlyoutCloseTimer.current) window.clearTimeout(reorganizeFlyoutCloseTimer.current)
+  }
+  const scheduleCloseReorganizeFlyout = () => {
+    if (reorganizeFlyoutCloseTimer.current) window.clearTimeout(reorganizeFlyoutCloseTimer.current)
+    reorganizeFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuReorganizeOpen(false), 200)
+  }
+
   useEffect(() => {
     setContextMenuMoveOpen(false)
     setContextMenuTransformOpen(false)
     setContextMenuGroupOpen(false)
+    setContextMenuReorganizeOpen(false)
   }, [contextMenu?.traceId])
   // "Move to Group" side flyout -- lets the user reassign the selected
   // trace(s) to a layer group (or Ungrouped) straight from the canvas
@@ -1619,7 +1641,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // current center instead of a drop point. Capped at 100 traces since a
   // much larger multi-select is an unusual case not worth the packer's
   // overlap-check (circle mode) or skyline-scan (square mode) overhead.
-  const reorganizeSelectedTraces = async () => {
+  //
+  // The shape is an argument rather than a stored preference: it's chosen in
+  // the submenu at the moment of use, so there's nothing to remember and no
+  // way for the setting to disagree with what the user just clicked.
+  const reorganizeSelectedTraces = async (packingShape: 'square' | 'circle') => {
     const ids = Array.from(multiSelectedIds)
     if (ids.length < 2 || ids.length > MAX_REORGANIZE_TRACES) {
       setContextMenu(null)
@@ -1637,14 +1663,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
     const anchorX = selected.reduce((sum, t) => sum + t.x, 0) / selected.length
     const anchorY = selected.reduce((sum, t) => sum + t.y, 0) / selected.length
-
-    let packingShape: 'square' | 'circle' = 'square'
-    try {
-      const raw = lobbyId ? localStorage.getItem(`lobby_${lobbyId}_packingShape`) : null
-      if (raw === 'circle' || raw === 'square') packingShape = raw
-    } catch {
-      // ignore -- default to 'square'
-    }
 
     // Two things determine a trace's real on-canvas footprint, and both were
     // being missed:
@@ -5076,13 +5094,46 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </button>
             )}
             {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId) && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
-              <button
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-                onClick={reorganizeSelectedTraces}
-                title="Re-pack the selected traces around their current center using the batch placement algorithm"
+              <div
+                className="relative"
+                onMouseEnter={openReorganizeFlyout}
+                onMouseLeave={scheduleCloseReorganizeFlyout}
               >
-                <span className="text-gray-400 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})
-              </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                  title="Re-pack the selected traces around their current center using the batch placement algorithm"
+                >
+                  <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})</span>
+                  <span className="text-gray-500 text-[9px]">▶</span>
+                </button>
+                {contextMenuReorganizeOpen && reorganizeFlyoutRect && (
+                  <div
+                    className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                    style={
+                      contextMenuFlyoutOnLeft
+                        ? { top: reorganizeFlyoutRect.top, right: window.innerWidth - reorganizeFlyoutRect.left + 1 }
+                        : { top: reorganizeFlyoutRect.top, left: reorganizeFlyoutRect.right + 1 }
+                    }
+                    onMouseEnter={keepReorganizeFlyoutOpen}
+                    onMouseLeave={scheduleCloseReorganizeFlyout}
+                  >
+                    <button
+                      className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                      onClick={() => reorganizeSelectedTraces('square')}
+                      title="Pack into a rectangular block"
+                    >
+                      Square
+                    </button>
+                    <button
+                      className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                      onClick={() => reorganizeSelectedTraces('circle')}
+                      title="Pack into a rounded cluster"
+                    >
+                      Circle
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
