@@ -115,10 +115,14 @@ SET search_path = ''
 STABLE
 AS $$
 BEGIN
-  -- Read access only. user_can_edit_lobby is deliberately untouched, so the
-  -- operator can observe a private atrium but not silently alter it -- an
-  -- invisible editor would be considerably harder to reason about than an
-  -- invisible reader.
+  -- Read access only -- but see fix_operator_read_only.sql, because the
+  -- claim that used to be here was wrong.
+  --
+  -- Leaving user_can_edit_lobby untouched did NOT keep the operator
+  -- read-only: that function's first test is user_can_access_lobby, i.e.
+  -- this one, and once past it the default edit_permission_mode of 'all'
+  -- grants write access. Widening this function widened editing with it.
+  -- Not editing a function is not the same as not changing its behaviour.
   RETURN public.user_has_member_access(p_lobby_id) OR public.is_platform_admin();
 END;
 $$;

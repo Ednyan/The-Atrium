@@ -911,49 +911,58 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     return () => cancelAnimationFrame(raf)
   }, [selectedTraceId, traces, expandedGroups])
 
+  // Swaps two layers' z-indexes without ever committing a state where they
+  // share one.
+  //
+  // THIS IS HOW DUPLICATE Z-INDEXES GOT CREATED BY A SINGLE USER. The old
+  // version wrote `a := b.zIndex` and then `b := a.zIndex`. Despite the
+  // variable being called tempZIndex, there was no temporary value -- between
+  // those two writes both rows genuinely held the same number in the
+  // database. Anything that stopped the second write made that permanent: a
+  // failed request (updateLayerZIndex logs and returns on error), closing the
+  // tab, navigating away, going offline.
+  //
+  // And the window was not small. updateLayerZIndex also rewrites the
+  // z-index of every trace in the layer, one request each, sequentially -- so
+  // the gap between the two halves of the swap was as long as it took to
+  // rewrite an entire group's traces. On a slow or flaky connection that is
+  // seconds, with the database sitting in the duplicated state throughout.
+  //
+  // Parking the first layer on an unused index first costs one extra write
+  // and makes every intermediate state collision-free. An interruption now
+  // leaves one layer at the top rather than two layers tied.
+  const swapLayerZIndexes = async (a: Layer, b: Layer) => {
+    const parkingZIndex = Math.max(...layers.map(l => l.zIndex), 0) + 1
+    await updateLayerZIndex(a.id, parkingZIndex)
+    await updateLayerZIndex(b.id, a.zIndex)
+    await updateLayerZIndex(a.id, b.zIndex)
+    await loadLayers()
+  }
+
   const moveLayerUp = async (layer: Layer) => {
-    if (!supabase) return
-    
+    if (!supabase || !canEdit) return
+
     // Find layer above this one
     const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
     if (currentIndex === 0) return // Already at top
 
-    const layerAbove = sortedLayers[currentIndex - 1]
-    const currentLayerTraces = getTracesForLayer(layer.id)
-    const layerAboveTraces = getTracesForLayer(layerAbove.id)
-    
-    // Swap z-indexes of the layers
-    const tempZIndex = layer.zIndex
-    await updateLayerZIndex(layer.id, layerAbove.zIndex)
-    await updateLayerZIndex(layerAbove.id, tempZIndex)
-
-    await persistTraceOrder(layer.id, currentLayerTraces, layerAbove.zIndex)
-    await persistTraceOrder(layerAbove.id, layerAboveTraces, tempZIndex)
-    await loadLayers()
+    // The explicit persistTraceOrder calls that used to follow are gone:
+    // updateLayerZIndex already reorders the layer's traces, so each layer's
+    // traces were being rewritten twice per move.
+    await swapLayerZIndexes(layer, sortedLayers[currentIndex - 1])
   }
 
   const moveLayerDown = async (layer: Layer) => {
-    if (!supabase) return
-    
+    if (!supabase || !canEdit) return
+
     const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
     if (currentIndex === sortedLayers.length - 1) {
       return
     }
 
-    const layerBelow = sortedLayers[currentIndex + 1]
-    const currentLayerTraces = getTracesForLayer(layer.id)
-    const layerBelowTraces = getTracesForLayer(layerBelow.id)
-    
-    // Swap z-indexes of the layers
-    const tempZIndex = layer.zIndex
-    await updateLayerZIndex(layer.id, layerBelow.zIndex)
-    await updateLayerZIndex(layerBelow.id, tempZIndex)
-
-    await persistTraceOrder(layer.id, currentLayerTraces, layerBelow.zIndex)
-    await persistTraceOrder(layerBelow.id, layerBelowTraces, tempZIndex)
-    await loadLayers()
+    await swapLayerZIndexes(layer, sortedLayers[currentIndex + 1])
   }
 
   // Get traces for a specific layer
@@ -1342,19 +1351,44 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             onDrop={(e) => handleDropTargetDrop(e, null)}
             onDragLeave={() => handleDropTargetLeave(UNGROUPED_DROP_TARGET)}
           >
-            <div
-              className="flex items-center gap-2 mb-2 cursor-pointer"
-              title="Click to select all ungrouped traces and set 'Ungrouped' as the target for new traces"
-              onClick={() => {
-                onSelectGroupTraces?.(ungroupedTraces.map(t => t.id))
-                onSetActiveLayer?.(null)
-              }}
-            >
-              <span className="text-gray-400 text-[9px] tracking-[0.15em] uppercase">Ungrouped</span>
-              {!activeLayerId && (
-                <span className="text-amber-400 text-[9px] tracking-wider uppercase">Target</span>
-              )}
-            </div>
+            {/* Same soft/hard split as a group header: clicking the label
+                only targets Ungrouped for new traces, and the diamond is what
+                selects its traces on canvas. This section used to do both at
+                once from a single click, so there was no way to target it
+                without also yanking the current canvas selection away. */}
+            {(() => {
+              const isUngroupedFullySelected = ungroupedTraces.length > 0 &&
+                ungroupedTraces.every(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
+              return (
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className={`text-xs cursor-pointer ${isUngroupedFullySelected ? 'text-amber-400' : 'text-gray-400'} hover:text-amber-300`}
+                    title="Select all ungrouped traces"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (isUngroupedFullySelected) {
+                        onSelectGroupTraces?.([])
+                      } else {
+                        onSelectGroupTraces?.(ungroupedTraces.map(t => t.id))
+                        onSetActiveLayer?.(null)
+                      }
+                    }}
+                  >
+                    {isUngroupedFullySelected ? '◆' : '◇'}
+                  </span>
+                  <span
+                    className="text-gray-400 text-[9px] tracking-[0.15em] uppercase cursor-pointer hover:text-gray-200"
+                    title="Set 'Ungrouped' as the target for new traces"
+                    onClick={() => onSetActiveLayer?.(null)}
+                  >
+                    Ungrouped
+                  </span>
+                  {!activeLayerId && (
+                    <span className={`text-[9px] tracking-wider uppercase ${isUngroupedFullySelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
+                  )}
+                </div>
+              )
+            })()}
             <div className="space-y-1">
               {ungroupedTraces.map((trace) => (
                 <div
