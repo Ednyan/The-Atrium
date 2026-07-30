@@ -1,6 +1,7 @@
 import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace, fetchAllLobbyTraces } from '../hooks/useTraces'
+import { showToast } from './toast'
 
 // Fired on window whenever a saveAllChanges() call completes successfully.
 // Undo/redo history (see TraceOverlay.tsx) listens for this to clear its
@@ -172,9 +173,40 @@ export async function saveAllChanges(): Promise<void> {
         if (trace.pathArrowEnd !== undefined) updateData.path_arrow_end = trace.pathArrowEnd
       }
 
-      await (db.from('traces') as any).update(updateData).eq('id', traceId)
+      // Desktop takes the plain update: localDb's query builder has no
+      // .select() on an update chain, and calling it there throws a
+      // TypeError rather than returning an error -- which would escape the
+      // check below and take the whole save down. Nothing to detect there
+      // anyway: SQLite has no RLS, so a write either applies or throws.
+      if (isDesktop) {
+        await (db.from('traces') as any).update(updateData).eq('id', traceId)
+        return true
+      }
+
+      // .select() so a refused write can't pass for a successful one. RLS
+      // does not raise on a forbidden UPDATE -- the row simply isn't visible
+      // to the statement, so it matches nothing and returns cleanly. Without
+      // this, the save reported success, cleared the queue, and the edits
+      // were gone: the screen kept showing them because local state had
+      // already been updated, so the loss only appeared on the next reload.
+      const { data, error } = await (db.from('traces') as any)
+        .update(updateData)
+        .eq('id', traceId)
+        .select('id')
+
+      if (error) return false
+      return Array.isArray(data) && data.length > 0
     })
-    await Promise.all(updatePromises)
+    const results = await Promise.all(updatePromises)
+    const refused = results.filter(ok => ok === false).length
+
+    if (refused > 0) {
+      // Deliberately does NOT clear pending changes: they were never written,
+      // so discarding them would destroy the user's work to make a failure
+      // look tidy. They stay queued and can be retried or discarded.
+      showToast(`${refused} change${refused === 1 ? '' : 's'} refused -- you may not have edit access here`)
+      return
+    }
 
     // Clear pending changes
     clearPendingChanges()
