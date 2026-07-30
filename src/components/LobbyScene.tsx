@@ -344,8 +344,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   //
   // Size only -- the centre is clickedTracePosition, which the drag also sets,
   // so the existing placement plumbing keeps working unchanged.
-  const [shapeDraftSize, setShapeDraftSize] = useState<{ width: number; height: number } | null>(null)
-  const shapeDraftSizeRef = useRef<{ width: number; height: number } | null>(null)
+  type ShapeDraft = {
+    width: number
+    height: number
+    cornerRadius: number
+    shapeType: 'rectangle' | 'circle' | 'triangle'
+  }
+  const [shapeDraftSize, setShapeDraftSize] = useState<ShapeDraft | null>(null)
+  const shapeDraftSizeRef = useRef<ShapeDraft | null>(null)
   useEffect(() => { shapeDraftSizeRef.current = shapeDraftSize }, [shapeDraftSize])
 
   // The Pixi ticker is registered once, in an effect with no dependencies, so
@@ -357,10 +363,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const clickedTracePositionRef = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => { clickedTracePositionRef.current = clickedTracePosition }, [clickedTracePosition])
 
-  // Typing a size in the panel: adopt it, and make sure there's a placement
-  // position to centre it on, otherwise the preview has nowhere to draw.
-  const handleShapeSizeChange = useCallback((width: number, height: number) => {
-    setShapeDraftSize({ width, height })
+  // The panel publishing its current shape settings. Adopt them, and make sure
+  // there's a placement position to centre the preview on.
+  //
+  // Returns the previous object unchanged when nothing actually differs. The
+  // panel republishes on every change, including ones that originated from a
+  // canvas drag, so without this the two would keep handing the same values
+  // back and forth and never settle.
+  const handleShapeDraftChange = useCallback((draft: ShapeDraft) => {
+    setShapeDraftSize(prev => (
+      prev &&
+      prev.width === draft.width &&
+      prev.height === draft.height &&
+      prev.cornerRadius === draft.cornerRadius &&
+      prev.shapeType === draft.shapeType
+        ? prev
+        : draft
+    ))
     setClickedTracePosition(prev => prev ?? { x: positionRef.current.x, y: positionRef.current.y })
   }, [])
 
@@ -1776,7 +1795,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const width = Math.abs(currentX - start.x)
           const height = Math.abs(currentY - start.y)
 
-          setShapeDraftSize({ width, height })
+          // Merged, not replaced: the drag only decides the size. The shape
+          // and corner radius belong to the panel and must survive it.
+          setShapeDraftSize(prev => ({
+            shapeType: prev?.shapeType ?? 'rectangle',
+            cornerRadius: prev?.cornerRadius ?? 0,
+            width,
+            height,
+          }))
           setClickedTracePosition({
             x: (start.x + currentX) / 2,
             y: (start.y + currentY) / 2,
@@ -2128,12 +2154,31 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           g.clear()
           g.lineStyle(2, 0xffd700, 0.5 + pulse * 0.4)
           g.beginFill(0xffd700, 0.08)
-          g.drawRect(
-            placementPos.x - halfW,
-            placementPos.y - halfH,
-            draftSize.width,
-            draftSize.height,
-          )
+
+          const left = placementPos.x - halfW
+          const top = placementPos.y - halfH
+
+          if (draftSize.shapeType === 'circle') {
+            g.drawEllipse(placementPos.x, placementPos.y, halfW, halfH)
+          } else if (draftSize.shapeType === 'triangle') {
+            // Corner radius isn't drawn for a triangle: rounding a polygon's
+            // corners needs arc construction this preview doesn't warrant, and
+            // a rounded rectangle here would misrepresent the shape entirely.
+            g.drawPolygon([
+              placementPos.x, top,
+              placementPos.x + halfW, placementPos.y + halfH,
+              placementPos.x - halfW, placementPos.y + halfH,
+            ])
+          } else if (draftSize.cornerRadius > 0) {
+            // Clamped to half the shorter side: past that Pixi draws nothing
+            // at all, so a large radius on a small shape made the preview
+            // vanish rather than round off.
+            const radius = Math.min(draftSize.cornerRadius, halfW, halfH)
+            g.drawRoundedRect(left, top, draftSize.width, draftSize.height, radius)
+          } else {
+            g.drawRect(left, top, draftSize.width, draftSize.height)
+          }
+
           g.endFill()
           // Centre mark, so a rectangle dragged out very small is still
           // visible as a placement.
@@ -3982,7 +4027,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           initialShapeType={tracePanelInitialShapeType}
           activeLayerId={activeLayerId}
           shapeDraftSize={shapeDraftSize}
-          onShapeSizeChange={handleShapeSizeChange}
+          onShapeDraftChange={handleShapeDraftChange}
           onShapeModeChange={handleShapeModeChange}
         />
       )}

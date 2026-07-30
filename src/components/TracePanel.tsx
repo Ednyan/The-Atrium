@@ -54,7 +54,14 @@ interface TracePanelProps {
   // panel owns neither -- LobbyScene holds the draft rect, since it also owns
   // the camera and the placement position the rect is centred on.
   shapeDraftSize?: { width: number; height: number } | null
-  onShapeSizeChange?: (width: number, height: number) => void
+  // The whole draft, not just its size: the preview draws the actual shape,
+  // so it needs the type and corner radius too.
+  onShapeDraftChange?: (draft: {
+    width: number
+    height: number
+    cornerRadius: number
+    shapeType: 'rectangle' | 'circle' | 'triangle'
+  }) => void
   // Tells LobbyScene when to arm drag-to-size on the canvas. Paths are
   // excluded: they're sized by the points you place, not by a box.
   onShapeModeChange?: (active: boolean) => void
@@ -85,7 +92,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, shapeDraftSize, onShapeSizeChange, onShapeModeChange }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
@@ -116,12 +123,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setShapeHeight(Math.round(shapeDraftSize.height))
   }, [shapeDraftSize])
 
-  // Fields -> canvas. Sent through a helper rather than from the effect above,
-  // which would echo the canvas's own value straight back at it.
   const applyShapeSize = (width: number, height: number) => {
     setShapeWidth(width)
     setShapeHeight(height)
-    onShapeSizeChange?.(width, height)
   }
 
   // Arms (and disarms) drag-to-size on the canvas. Disarmed on unmount too --
@@ -130,15 +134,27 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   const shapeDragArmed = traceType === 'shape' && shapeType !== 'path'
   useEffect(() => {
     onShapeModeChange?.(shapeDragArmed)
-    // Publish the current numbers on arming so the preview is on screen from
-    // the moment Shape is picked, rather than only appearing once something
-    // is dragged. Read without being dependencies on purpose -- the size at
-    // the moment of arming is what's wanted, and including them would make
-    // this effect re-fire on every keystroke in the width field.
-    if (shapeDragArmed) onShapeSizeChange?.(shapeWidth, shapeHeight)
     return () => onShapeModeChange?.(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapeDragArmed, onShapeModeChange, onShapeSizeChange])
+  }, [shapeDragArmed, onShapeModeChange])
+
+  // Fields -> canvas. One effect covering every field the preview draws, so
+  // the size, the shape and the corner radius can't drift apart -- and so the
+  // preview is on screen from the moment Shape is picked rather than only
+  // after something is dragged.
+  //
+  // This does echo values that arrived from the canvas straight back at it.
+  // That terminates because LobbyScene ignores a draft equal to the one it
+  // already holds, keeping the object identity stable so the adopt effect
+  // above doesn't re-fire. Without that guard the two would bounce forever.
+  useEffect(() => {
+    if (!shapeDragArmed) return
+    onShapeDraftChange?.({
+      width: shapeWidth,
+      height: shapeHeight,
+      cornerRadius,
+      shapeType: shapeType as 'rectangle' | 'circle' | 'triangle',
+    })
+  }, [shapeDragArmed, shapeWidth, shapeHeight, cornerRadius, shapeType, onShapeDraftChange])
   
   const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes, traces } = useGameStore()
   const lobbyFull = isLobbyFull()
