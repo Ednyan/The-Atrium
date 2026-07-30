@@ -714,12 +714,46 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     return () => { cancelled = true }
   }, [lobbyId, userId, currentLobby?.editPermissionMode])
 
+  // Whether this atrium was entered on operator privilege rather than
+  // membership. Drives the "Hidden" HUD line, and gates canEdit below --
+  // which is why it's declared up here, above its other uses.
+  //
+  // Starts false, and the updater returns the previous value unchanged when
+  // nothing differs, so an ordinary entry performs no state update at all.
+  // Having it start "unknown" meant every entry re-rendered LobbyScene once
+  // the check settled, which showed up as a flicker on the way in.
+  const [isGhostEntry, setIsGhostEntry] = useState(false)
+
+  useEffect(() => {
+    if (!supabase || !lobbyId || isDesktop) return
+    let cancelled = false
+
+    const resolve = async () => {
+      const ghost = await resolveGhostEntry(lobbyId)
+      if (!cancelled) setIsGhostEntry(prev => (prev === ghost ? prev : ghost))
+    }
+    resolve()
+
+    return () => { cancelled = true }
+  }, [lobbyId])
+
   // Server-side enforcement lives in RLS (user_can_edit_lobby); this mirrors
   // it client-side to gate the UI so a non-editor doesn't see edit controls
   // that would just fail to save.
-  const canEdit = isLobbyOwner || isLobbyAdmin ||
+  //
+  // The ghost clause is not cosmetic. An atrium entered on operator privilege
+  // is read-only server-side (fix_operator_read_only.sql), but this mirror
+  // didn't know that -- and most atriums default to edit_permission_mode
+  // 'all', so it computed canEdit = true for the operator. The UI then offered
+  // every edit control, and RLS dropped the writes silently: an UPDATE that
+  // matches no rows is not an error, it just changes nothing. The panel would
+  // write, reload, and snap back, which looks precisely like "it said it
+  // updated but stayed in the same place".
+  const canEdit = !isGhostEntry && (
+    isLobbyOwner || isLobbyAdmin ||
     (currentLobby?.editPermissionMode ?? 'all') === 'all' ||
     (currentLobby?.editPermissionMode === 'selected' && isSelectedEditor)
+  )
   const canEditRef = useRef(canEdit)
   useEffect(() => { canEditRef.current = canEdit }, [canEdit])
 
@@ -1383,23 +1417,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   //
   // Starts false, and the updater returns the previous value unchanged when
   // nothing differs, so an ordinary entry performs no state update at all.
-  // Having it start "unknown" meant every entry re-rendered LobbyScene once
-  // the check settled, which showed up as a flicker.
-  const [isGhostEntry, setIsGhostEntry] = useState(false)
-
-  useEffect(() => {
-    if (!supabase || !lobbyId || isDesktop) return
-    let cancelled = false
-
-    const resolve = async () => {
-      const ghost = await resolveGhostEntry(lobbyId)
-      if (!cancelled) setIsGhostEntry(prev => (prev === ghost ? prev : ghost))
-    }
-    resolve()
-
-    return () => { cancelled = true }
-  }, [lobbyId])
-
   const { updateCursorPosition, getJoinedAt, kickUser } = usePresence(lobbyId, handleKicked)
 
   const executeKick = async (targetUserId: string, blacklist: boolean) => {

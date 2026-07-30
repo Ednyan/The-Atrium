@@ -854,13 +854,25 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const updateLayerZIndex = async (layerId: string, newZIndex: number) => {
     if (!supabase || !canEdit) return
 
-    // Update the layer
-    const { error: layerError } = await (supabase.from('layers') as any)
+    // .select() so a rejection can't pass for success. RLS doesn't raise on a
+    // forbidden UPDATE -- the row simply isn't visible to the statement, so it
+    // matches nothing and returns no error. Without this, a blocked write and
+    // a successful one are indistinguishable here, and the only symptom is the
+    // panel reloading the unchanged order: "it updated but stayed in place".
+    const { data: updated, error: layerError } = await (supabase.from('layers') as any)
       .update({ z_index: newZIndex })
       .eq('id', layerId)
+      .select('id')
 
     if (layerError) {
       console.error('Error updating layer z-index:', layerError)
+      return
+    }
+
+    if (!updated || updated.length === 0) {
+      console.warn(
+        `Layer ${layerId}: z-index update affected no rows. The row is either gone or write access is denied by RLS (user_can_edit_lobby).`
+      )
       return
     }
 
