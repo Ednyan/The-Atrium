@@ -16,7 +16,14 @@ export const TRACE_DRAG_DATA_KEY = 'application/x-atrium-trace-id'
 // reorder groups) and a trace-row drag (to move a trace into a different
 // group) can share the same drop targets without being confused for each
 // other.
-const LAYER_DRAG_DATA_KEY = 'application/x-atrium-layer-id'
+//
+// Exported for the same reason as TRACE_DRAG_DATA_KEY, and it was missed when
+// that one was added: a group drag bubbled to the canvas, which read it as a
+// file/link drag and showed the "drop to create trace" overlay. Worse, it got
+// stuck there -- the group's own drop handler calls stopPropagation, so the
+// canvas drop handler that clears the overlay never ran, and it stayed until
+// the page was reloaded.
+export const LAYER_DRAG_DATA_KEY = 'application/x-atrium-layer-id'
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
 
 // Module scope on purpose. Defined inside LayerPanel's render body, this would
@@ -167,19 +174,41 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       lobbyId: row.lobby_id,
     }))
 
-    // Self-heal: duplicate z-indexes can only happen from legacy data (this
-    // atrium's layers used to be computed against every atrium's layers
-    // combined, before the cross-atrium leak fix scoped them by lobby_id) --
-    // silently renumber instead of requiring the user to find a manual "Fix"
-    // button.
+    // Self-heal: duplicate z-indexes are not only legacy data. Two people
+    // creating a group at the same moment both compute maxZIndex + 1 from
+    // their own copy of the list and land on the same number -- which is why
+    // this can start happening in a busy atrium on an ordinary day.
+    //
+    // Duplicates break reordering outright: the renumber in reorderLayers
+    // compares each layer's current z_index against its target and skips the
+    // write when they match, so with collisions some layers never move. That
+    // is the "it said it updated but stayed in the same place" report.
     const hasDuplicateZIndex = new Set(mappedLayers.map(l => l.zIndex)).size !== mappedLayers.length
-    if (hasDuplicateZIndex) {
-      await repairDuplicateZIndexes(mappedLayers)
-      return
-    }
 
+    // Always render something. This used to `return` before setLayers when
+    // duplicates were found, so if the repair below couldn't write -- a
+    // viewer without edit rights, or an RLS denial, both of which fail
+    // silently -- the panel kept displaying whatever it had loaded before,
+    // forever. A reorder would write, reload, hit this branch, and leave the
+    // stale list on screen, which looks exactly like "nothing happened".
     setLayers(mappedLayers)
-  }, [lobbyId])
+
+    // Guarded against re-entry: repair calls loadLayers again, and if the
+    // writes didn't take, that finds the same duplicates and repairs again.
+    // Without this flag that recursion never terminates.
+    if (hasDuplicateZIndex && canEdit && !repairInFlightRef.current) {
+      repairInFlightRef.current = true
+      try {
+        await repairDuplicateZIndexes(mappedLayers)
+      } finally {
+        repairInFlightRef.current = false
+      }
+    }
+  }, [lobbyId, canEdit])
+
+  // True while a duplicate-z_index repair is running, so the reload it
+  // triggers can't start another one.
+  const repairInFlightRef = useRef(false)
 
   const repairDuplicateZIndexes = async (layersToFix: Layer[]) => {
     if (!supabase) return
@@ -237,7 +266,24 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const doCreateGroup = async (name: string) => {
     if (!supabase || !name.trim() || !canEdit) return
 
-    const maxZIndex = Math.max(...layers.map(l => l.zIndex), 0)
+    // Read the current top from the database rather than from local state.
+    // Two people creating a group at once both computed maxZIndex + 1 from
+    // their own (equally stale) copy of the list and picked the same number,
+    // which is how an atrium that had been fine for weeks suddenly grew
+    // duplicate z-indexes and stopped reordering. This narrows the window to
+    // the round-trip instead of however long the panel had been open.
+    //
+    // Still not airtight -- two inserts inside that window can collide -- so
+    // the self-heal in loadLayers stays as the backstop.
+    const { data: topLayer } = await (supabase
+      .from('layers') as any)
+      .select('z_index')
+      .eq('lobby_id', lobbyId)
+      .order('z_index', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const maxZIndex = Math.max(topLayer?.z_index ?? 0, ...layers.map(l => l.zIndex), 0)
     const newZIndex = maxZIndex + 1
 
     const { error } = await (supabase.from('layers') as any).insert({
@@ -757,9 +803,23 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const [movedLayer] = reordered.splice(draggedIndex, 1)
     reordered.splice(targetIndex, 0, movedLayer)
 
+    const total = reordered.length
+    const renumbered = reordered.map((layer, i) => ({ ...layer, zIndex: total - i }))
+
+    // Show the new order immediately, before anything is written.
+    //
+    // Persisting a reorder is one request per layer plus one per trace inside
+    // every layer that moved, all sequential -- so on the web the panel used
+    // to sit unchanged for as long as that took, which is why the desktop
+    // (writing to local SQLite) felt instant by comparison. The writes below
+    // are unchanged; only the moment the user sees the result has moved.
+    //
+    // On failure loadLayers() runs regardless and puts back whatever the
+    // database actually holds, so an optimistic view can't persist as a lie.
+    setLayers(renumbered)
+
     setIsReordering(true)
     try {
-      const total = reordered.length
       for (let i = 0; i < total; i++) {
         const newZIndex = total - i
         if (reordered[i].zIndex !== newZIndex) {

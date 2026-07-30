@@ -6,7 +6,7 @@ import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
-import LayerPanel, { TRACE_DRAG_DATA_KEY } from './LayerPanel'
+import LayerPanel, { TRACE_DRAG_DATA_KEY, LAYER_DRAG_DATA_KEY } from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
 import { LobbyManagement } from './LobbyManagement'
@@ -447,6 +447,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [pinterestImportAnchor, setPinterestImportAnchor] = useState<{ x: number; y: number } | null>(null)
   const [showLocalFileBlockedDialog, setShowLocalFileBlockedDialog] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
+
+  // Last-resort clear for the "drop to create trace" overlay.
+  //
+  // The overlay is turned off by this component's own drop handler, which is
+  // fine for a drop onto the canvas -- but a drag that ends inside a panel
+  // (reordering a group, say) is handled there and calls stopPropagation, so
+  // the canvas handler never runs and the overlay stayed on screen until the
+  // page was reloaded. dragend fires on the drag source however the drag
+  // finished, including when it's cancelled with Escape, so it's the one
+  // signal that can't be swallowed on the way up.
+  useEffect(() => {
+    const clear = () => setIsDragOver(false)
+    window.addEventListener('dragend', clear)
+    window.addEventListener('drop', clear)
+    return () => {
+      window.removeEventListener('dragend', clear)
+      window.removeEventListener('drop', clear)
+    }
+  }, [])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const hudRef = useRef<HTMLDivElement>(null)
 
@@ -2563,13 +2582,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }, [])
 
+  // Any in-app drag that isn't a file or a link. Listed in one place because
+  // the three handlers below have to agree exactly: if dragover exempts a
+  // drag but drop doesn't (or vice versa), the overlay either flashes or gets
+  // stuck on with no way to clear it short of a reload.
+  const isInternalDrag = (e: React.DragEvent) =>
+    e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) ||
+    e.dataTransfer.types.includes(LAYER_DRAG_DATA_KEY) ||
+    e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)
+
   // Drag-and-drop trace creation
   const handleDragOver = (e: React.DragEvent) => {
-    // Ignore the Layer panel's internal trace-reorder drag -- its events
-    // bubble here through any gap in the panel without its own drop-target
-    // handler, which used to flash the "drop file to create trace" overlay
-    // while the user was just reordering layers.
-    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) || e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)) return
+    // Ignore the Layer panel's internal trace-reorder and group-reorder
+    // drags -- their events bubble here through any gap in the panel without
+    // its own drop-target handler, which used to flash the "drop file to
+    // create trace" overlay while the user was just reordering.
+    if (isInternalDrag(e)) return
     if (!canEdit) return
     e.preventDefault()
     e.stopPropagation()
@@ -2578,7 +2606,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) || e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)) return
+    if (isInternalDrag(e)) return
     // Only hide overlay when actually leaving the container
     if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsDragOver(false)
@@ -2586,7 +2614,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }
 
   const handleDrop = async (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) || e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)) return
+    if (isInternalDrag(e)) {
+      // Clear it here as well as returning. An internal drop that ends inside
+      // a panel calls stopPropagation, so this handler may never fire at all
+      // -- but when it does, leaving the overlay up is what stranded it.
+      setIsDragOver(false)
+      return
+    }
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
