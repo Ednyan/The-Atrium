@@ -88,22 +88,7 @@ interface LayerPanelProps {
 export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
-  // Working copy -- what the panel renders and what reordering mutates.
   const [layers, setLayers] = useState<Layer[]>([])
-  // Last state read from the database. Reordering is deferred (same
-  // working-copy + dirty-flag shape as traces and locations), so this is what
-  // Discard restores to and what Save diffs against.
-  const [savedLayers, setSavedLayers] = useState<Layer[]>([])
-  const [orderDirty, setOrderDirty] = useState(false)
-  const [isSavingOrder, setIsSavingOrder] = useState(false)
-  // Read inside async work that outlives a render.
-  const workingLayersRef = useRef<Layer[]>([])
-  useEffect(() => { workingLayersRef.current = layers }, [layers])
-  // loadLayers is a useCallback that must not be rebuilt on every dirty
-  // change (its identity drives the realtime subscription effect), so it
-  // reads the flag through a ref rather than closing over the state.
-  const orderDirtyRef = useRef(false)
-  useEffect(() => { orderDirtyRef.current = orderDirty }, [orderDirty])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
@@ -210,34 +195,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     // is the "it said it updated but stayed in the same place" report.
     const hasDuplicateZIndex = new Set(mappedLayers.map(l => l.zIndex)).size !== mappedLayers.length
 
-    setSavedLayers(mappedLayers)
-
     // Always render something. This used to `return` before setLayers when
     // duplicates were found, so if the repair below couldn't write -- a
     // viewer without edit rights, or an RLS denial, both of which fail
     // silently -- the panel kept displaying whatever it had loaded before,
     // forever. A reorder would write, reload, hit this branch, and leave the
     // stale list on screen, which looks exactly like "nothing happened".
-    //
-    // Unsaved reordering is the one thing that does survive a reload: adopting
-    // the database's order mid-edit would throw away work the user hasn't
-    // decided about yet. Same rule the locations panel follows.
-    if (!orderDirtyRef.current) {
-      setLayers(mappedLayers)
-    } else {
-      // Reconcile rather than ignore. Creating or deleting a group still
-      // writes immediately, and those changes arrive through here -- dropping
-      // the reload wholesale would leave a group the user just made invisible
-      // until they saved or discarded an unrelated reorder. So take the
-      // database's set of layers, and keep only the unsaved positions.
-      setLayers(prev => {
-        const workingById = new Map(prev.map(l => [l.id, l]))
-        return mappedLayers.map(row => {
-          const working = workingById.get(row.id)
-          return working ? { ...row, zIndex: working.zIndex } : row
-        })
-      })
-    }
+    setLayers(mappedLayers)
 
     // Guarded against re-entry: repair calls loadLayers again, and if the
     // writes didn't take, that finds the same duplicates and repairs again.
@@ -864,50 +828,29 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const total = reordered.length
     const renumbered = reordered.map((layer, i) => ({ ...layer, zIndex: total - i }))
 
-    // Working copy only -- nothing is written until Save. Reordering used to
-    // persist on every drop, which meant no way to try an arrangement and back
-    // out of it, and every experiment cost a full round of writes (one per
-    // layer plus one per trace in each layer that moved).
-    applyWorkingOrder(renumbered)
-  }
+    // Show the new order immediately, before anything is written.
+    //
+    // Persisting a reorder is one request per layer plus one per trace inside
+    // every layer that moved, all sequential -- so on the web the panel used
+    // to sit unchanged for as long as that took, which is why the desktop
+    // (writing to local SQLite) felt instant by comparison. The writes below
+    // are unchanged; only the moment the user sees the result has moved.
+    //
+    // On failure loadLayers() runs regardless and puts back whatever the
+    // database actually holds, so an optimistic view can't persist as a lie.
+    setLayers(renumbered)
 
-  // Records a new order in the working copy and marks it unsaved. Clears the
-  // flag instead when the result matches what's stored, so dragging something
-  // back where it came from leaves nothing pending.
-  const applyWorkingOrder = (next: Layer[]) => {
-    setLayers(next)
-    const savedById = new Map(savedLayers.map(l => [l.id, l.zIndex]))
-    const changed = next.some(l => savedById.get(l.id) !== l.zIndex) ||
-      next.length !== savedLayers.length
-    setOrderDirty(changed)
-  }
-
-  const discardOrderChanges = () => {
-    setLayers(savedLayers.map(l => ({ ...l })))
-    setOrderDirty(false)
-  }
-
-  // Writes the working order, then reloads so the panel reflects what actually
-  // landed rather than what was requested.
-  const saveOrderChanges = async () => {
-    if (!supabase || !canEdit) return
-
-    const working = [...workingLayersRef.current].sort((a, b) => b.zIndex - a.zIndex)
-    const savedById = new Map(savedLayers.map(l => [l.id, l.zIndex]))
-
-    setIsSavingOrder(true)
     setIsReordering(true)
     try {
-      for (const layer of working) {
-        if (savedById.get(layer.id) !== layer.zIndex) {
-          await updateLayerZIndex(layer.id, layer.zIndex)
+      for (let i = 0; i < total; i++) {
+        const newZIndex = total - i
+        if (reordered[i].zIndex !== newZIndex) {
+          await updateLayerZIndex(reordered[i].id, newZIndex)
         }
       }
-      setOrderDirty(false)
       await loadLayers()
     } finally {
       setIsReordering(false)
-      setIsSavingOrder(false)
     }
   }
 
@@ -1003,38 +946,30 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // Parking the first layer on an unused index first costs one extra write
   // and makes every intermediate state collision-free. An interruption now
   // leaves one layer at the top rather than two layers tied.
-  // Swaps two layers' positions in the working copy.
-  //
-  // The database write this used to do is now deferred to Save, which also
-  // retires a bug worth remembering: it wrote `a := b.zIndex` then
-  // `b := a.zIndex`, so between those two requests both rows genuinely held
-  // the same number. Anything interrupting the second one made that permanent,
-  // and the window was as long as it took to rewrite every trace in the layer.
-  // Save writes each layer its final index once, from an order already settled
-  // on screen, so no intermediate state exists to be interrupted.
-  const swapWorkingLayers = (a: Layer, b: Layer) => {
-    applyWorkingOrder(
-      workingLayersRef.current.map(l => {
-        if (l.id === a.id) return { ...l, zIndex: b.zIndex }
-        if (l.id === b.id) return { ...l, zIndex: a.zIndex }
-        return l
-      })
-    )
+  const swapLayerZIndexes = async (a: Layer, b: Layer) => {
+    const parkingZIndex = Math.max(...layers.map(l => l.zIndex), 0) + 1
+    await updateLayerZIndex(a.id, parkingZIndex)
+    await updateLayerZIndex(b.id, a.zIndex)
+    await updateLayerZIndex(a.id, b.zIndex)
+    await loadLayers()
   }
 
-  const moveLayerUp = (layer: Layer) => {
-    if (!canEdit) return
+  const moveLayerUp = async (layer: Layer) => {
+    if (!supabase || !canEdit) return
 
     // Find layer above this one
     const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
     if (currentIndex === 0) return // Already at top
 
-    swapWorkingLayers(layer, sortedLayers[currentIndex - 1])
+    // The explicit persistTraceOrder calls that used to follow are gone:
+    // updateLayerZIndex already reorders the layer's traces, so each layer's
+    // traces were being rewritten twice per move.
+    await swapLayerZIndexes(layer, sortedLayers[currentIndex - 1])
   }
 
-  const moveLayerDown = (layer: Layer) => {
-    if (!canEdit) return
+  const moveLayerDown = async (layer: Layer) => {
+    if (!supabase || !canEdit) return
 
     const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
@@ -1042,7 +977,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       return
     }
 
-    swapWorkingLayers(layer, sortedLayers[currentIndex + 1])
+    await swapLayerZIndexes(layer, sortedLayers[currentIndex + 1])
   }
 
   // Get traces for a specific layer
@@ -1116,9 +1051,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               className="w-3 h-3 border border-gray-500 border-t-white rounded-full animate-spin"
               title="Updating order…"
             />
-          )}
-          {orderDirty && !isReordering && (
-            <span className="text-amber-400 text-[8px] tracking-wider uppercase" title="Unsaved order">● Unsaved</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -1575,30 +1507,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           </div>
         )}
       </div>
-
-      {/* Save / Discard for reordering -- only while there are unsaved moves.
-          Same footer treatment the locations panel uses, since it's the same
-          deferred working-copy idea. Scoped to ordering: creating, renaming
-          and deleting a group still apply immediately, so this can't be
-          mistaken for a general "nothing is saved yet" state. */}
-      {canEdit && orderDirty && (
-        <div className="bg-black border-t border-gray-600 p-2 flex gap-2">
-          <button
-            onClick={saveOrderChanges}
-            disabled={isSavingOrder}
-            className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-50"
-          >
-            {isSavingOrder ? 'Saving…' : 'Save Order'}
-          </button>
-          <button
-            onClick={discardOrderChanges}
-            disabled={isSavingOrder}
-            className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors disabled:opacity-50"
-          >
-            Discard
-          </button>
-        </div>
-      )}
 
       {/* Row right-click menu. Fixed-positioned against the viewport (the
           panel itself scrolls), flipped back on-screen when opened near an
