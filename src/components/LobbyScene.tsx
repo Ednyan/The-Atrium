@@ -337,6 +337,49 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null })
   const lastTouchDistRef = useRef<number | null>(null)
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
+
+  // The rectangle a shape trace will be created at, in world units. Held here
+  // rather than in TracePanel because it's drawn on the canvas and centred on
+  // the placement position, both of which this component owns.
+  //
+  // Size only -- the centre is clickedTracePosition, which the drag also sets,
+  // so the existing placement plumbing keeps working unchanged.
+  const [shapeDraftSize, setShapeDraftSize] = useState<{ width: number; height: number } | null>(null)
+  const shapeDraftSizeRef = useRef<{ width: number; height: number } | null>(null)
+  useEffect(() => { shapeDraftSizeRef.current = shapeDraftSize }, [shapeDraftSize])
+
+  // The Pixi ticker is registered once, in an effect with no dependencies, so
+  // anything it reads has to come through a ref. clickedTracePosition was
+  // being read as state there, which means it was pinned to its first-render
+  // value of null -- the placement indicator that code draws has never
+  // actually appeared. Mirroring it here fixes that as well as the shape
+  // preview, which would otherwise have inherited the same fault.
+  const clickedTracePositionRef = useRef<{ x: number; y: number } | null>(null)
+  useEffect(() => { clickedTracePositionRef.current = clickedTracePosition }, [clickedTracePosition])
+
+  // Typing a size in the panel: adopt it, and make sure there's a placement
+  // position to centre it on, otherwise the preview has nowhere to draw.
+  const handleShapeSizeChange = useCallback((width: number, height: number) => {
+    setShapeDraftSize({ width, height })
+    setClickedTracePosition(prev => prev ?? { x: positionRef.current.x, y: positionRef.current.y })
+  }, [])
+
+  const handleShapeModeChange = useCallback((active: boolean) => {
+    shapeDragArmedRef.current = active
+    // Leaving shape mode (switching type, or closing the panel) drops the
+    // preview -- it describes a shape that is no longer being created.
+    if (!active) {
+      setShapeDraftSize(null)
+      isShapeDraggingRef.current = false
+      shapeDragStartWorldRef.current = null
+    }
+  }, [])
+
+  // Whether the open panel is on a sizeable shape type, i.e. whether a drag on
+  // empty canvas should draw a shape instead of panning.
+  const shapeDragArmedRef = useRef(false)
+  const isShapeDraggingRef = useRef(false)
+  const shapeDragStartWorldRef = useRef<{ x: number; y: number } | null>(null)
   // One-shot signal telling TraceOverlay "select this brand-new path and
   // start its point-placing mode immediately" -- see handleCreatePath.
   const [newPathTraceId, setNewPathTraceId] = useState<string | null>(null)
@@ -1647,6 +1690,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           if (!isClickingTrace && !isClickingUI) {
             // Don't start panning if in drawing mode
             if (isDrawingModeRef.current) return
+            // Drag out the shape instead of panning, while the Create Trace
+            // panel is open on a sizeable shape type. Same gesture as the
+            // shift+drag area select below, which is where the idea comes
+            // from -- you draw the region you want rather than accepting a
+            // fixed 200x200 box and resizing it afterwards.
+            if (shapeDragArmedRef.current && worldContainerRef.current) {
+              isShapeDraggingRef.current = true
+              cameraFlyToRef.current = null
+              shapeDragStartWorldRef.current = {
+                x: (e.clientX - worldContainerRef.current.x) / zoomRef.current,
+                y: (e.clientY - worldContainerRef.current.y) / zoomRef.current,
+              }
+              return
+            }
             if (e.shiftKey) {
               // Shift+drag on empty canvas draws a selection rectangle instead of panning
               isAreaSelectingRef.current = true
@@ -1706,6 +1763,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
         }
 
+        // Live-size the shape being dragged out. Writes both the size and the
+        // centre, so the panel's dimension fields and the placement position
+        // track the rectangle as it's drawn.
+        if (isShapeDraggingRef.current && shapeDragStartWorldRef.current && worldContainerRef.current) {
+          const start = shapeDragStartWorldRef.current
+          const currentX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
+          const currentY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
+
+          // Dragging in any direction works: the rectangle is between the two
+          // corners, not anchored to a top-left.
+          const width = Math.abs(currentX - start.x)
+          const height = Math.abs(currentY - start.y)
+
+          setShapeDraftSize({ width, height })
+          setClickedTracePosition({
+            x: (start.x + currentX) / 2,
+            y: (start.y + currentY) / 2,
+          })
+          return
+        }
+
         if (isAreaSelectingRef.current && mouseDownScreenPosRef.current && areaSelectRectRef.current) {
           const startX = mouseDownScreenPosRef.current.x
           const startY = mouseDownScreenPosRef.current.y
@@ -1720,6 +1798,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const handleMouseUp = (e: MouseEvent) => {
         if (e.button === 0) {
           isPanningRef.current = false
+
+          if (isShapeDraggingRef.current) {
+            isShapeDraggingRef.current = false
+            shapeDragStartWorldRef.current = null
+            // A click rather than a drag: the user was repositioning the
+            // shape, not resizing it to nothing. Keep whatever size is already
+            // set (the panel's default on the first click) instead of
+            // collapsing it, and let the click-to-place handling stand.
+            const draft = shapeDraftSizeRef.current
+            if (draft && (draft.width < 4 || draft.height < 4)) {
+              setShapeDraftSize(null)
+            }
+            return
+          }
 
           if (isAreaSelectingRef.current) {
             isAreaSelectingRef.current = false
@@ -2018,25 +2110,56 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         // Player avatar and label now rendered in DOM (no need to update Pixi objects)
         // Keeping refs for compatibility but they're invisible
 
-        // Update pulsing indicator for trace placement
-        if (tracePlacementIndicatorRef.current && clickedTracePosition) {
+        // Shape being placed: draw the rectangle it will occupy, so the size
+        // in the panel and the size on the canvas are the same thing seen two
+        // ways. Drawn in the same graphics object as the placement pulse,
+        // which already lives in the world container and so scales and pans
+        // with the camera for free.
+        const placementPos = clickedTracePositionRef.current
+        const draftSize = shapeDraftSizeRef.current
+
+        if (tracePlacementIndicatorRef.current && placementPos && draftSize) {
+          pulseTime += 0.1
+          const pulse = Math.abs(Math.sin(pulseTime))
+          const halfW = draftSize.width / 2
+          const halfH = draftSize.height / 2
+
+          const g = tracePlacementIndicatorRef.current
+          g.clear()
+          g.lineStyle(2, 0xffd700, 0.5 + pulse * 0.4)
+          g.beginFill(0xffd700, 0.08)
+          g.drawRect(
+            placementPos.x - halfW,
+            placementPos.y - halfH,
+            draftSize.width,
+            draftSize.height,
+          )
+          g.endFill()
+          // Centre mark, so a rectangle dragged out very small is still
+          // visible as a placement.
+          g.lineStyle(0)
+          g.beginFill(0xffd700, 0.7)
+          g.drawCircle(placementPos.x, placementPos.y, 3)
+          g.endFill()
+        } else if (tracePlacementIndicatorRef.current && placementPos) {
+          // Update pulsing indicator for trace placement
           pulseTime += 0.1
           const pulse = Math.abs(Math.sin(pulseTime))
           const size = 15 + pulse * 10
-          
+
           tracePlacementIndicatorRef.current.clear()
-          
+
           // Outer glow
           tracePlacementIndicatorRef.current.lineStyle(3, 0xffd700, 0.3 + pulse * 0.5)
-          tracePlacementIndicatorRef.current.drawCircle(clickedTracePosition.x, clickedTracePosition.y, size + 10)
+          tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, size + 10)
           
           // Middle ring
           tracePlacementIndicatorRef.current.lineStyle(2, 0xffd700, 0.5 + pulse * 0.5)
-          tracePlacementIndicatorRef.current.drawCircle(clickedTracePosition.x, clickedTracePosition.y, size)
+          tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, size)
           
           // Inner bright circle
           tracePlacementIndicatorRef.current.beginFill(0xffd700, 0.6 + pulse * 0.4)
-          tracePlacementIndicatorRef.current.drawCircle(clickedTracePosition.x, clickedTracePosition.y, 8)
+          tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, 8)
           tracePlacementIndicatorRef.current.endFill()
         } else if (tracePlacementIndicatorRef.current) {
           // Clear indicator if no trace position
@@ -3849,7 +3972,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
       {/* Trace Panel */}
       {showTracePanel && (
-        <TracePanel onClose={handleCloseTracePanel} onCreatePath={handleCreatePath} onCreateBatchEmbeds={handleCreateBatchEmbeds} tracePosition={clickedTracePosition} lobbyId={lobbyId} initialType={tracePanelInitialType} initialShapeType={tracePanelInitialShapeType} activeLayerId={activeLayerId} />
+        <TracePanel
+          onClose={handleCloseTracePanel}
+          onCreatePath={handleCreatePath}
+          onCreateBatchEmbeds={handleCreateBatchEmbeds}
+          tracePosition={clickedTracePosition}
+          lobbyId={lobbyId}
+          initialType={tracePanelInitialType}
+          initialShapeType={tracePanelInitialShapeType}
+          activeLayerId={activeLayerId}
+          shapeDraftSize={shapeDraftSize}
+          onShapeSizeChange={handleShapeSizeChange}
+          onShapeModeChange={handleShapeModeChange}
+        />
       )}
 
       {/* Pinterest Import Panel */}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace } from '../lib/layerZIndex'
@@ -49,6 +49,15 @@ interface TracePanelProps {
   // own embed trace, bin-packed around the placement point by LobbyScene
   // instead of the normal single insert-and-done flow.
   onCreateBatchEmbeds?: (urls: string[]) => void
+  // Shape placement is two-way with the canvas: dragging out a rectangle
+  // there sets these fields, and typing in them redraws the preview. The
+  // panel owns neither -- LobbyScene holds the draft rect, since it also owns
+  // the camera and the placement position the rect is centred on.
+  shapeDraftSize?: { width: number; height: number } | null
+  onShapeSizeChange?: (width: number, height: number) => void
+  // Tells LobbyScene when to arm drag-to-size on the canvas. Paths are
+  // excluded: they're sized by the points you place, not by a box.
+  onShapeModeChange?: (active: boolean) => void
 }
 
 interface ParsedBatchLink {
@@ -76,7 +85,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, shapeDraftSize, onShapeSizeChange, onShapeModeChange }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
@@ -97,6 +106,39 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   const [cornerRadius, setCornerRadius] = useState(0)
   const [shapeWidth, setShapeWidth] = useState(200)
   const [shapeHeight, setShapeHeight] = useState(200)
+
+  // Canvas -> fields. Adopts whatever was dragged out, so the numbers always
+  // describe the rectangle actually on screen instead of the 200x200 default
+  // they used to be stuck on until edited by hand.
+  useEffect(() => {
+    if (!shapeDraftSize) return
+    setShapeWidth(Math.round(shapeDraftSize.width))
+    setShapeHeight(Math.round(shapeDraftSize.height))
+  }, [shapeDraftSize])
+
+  // Fields -> canvas. Sent through a helper rather than from the effect above,
+  // which would echo the canvas's own value straight back at it.
+  const applyShapeSize = (width: number, height: number) => {
+    setShapeWidth(width)
+    setShapeHeight(height)
+    onShapeSizeChange?.(width, height)
+  }
+
+  // Arms (and disarms) drag-to-size on the canvas. Disarmed on unmount too --
+  // otherwise closing the panel mid-shape would leave the canvas swallowing
+  // drags that should pan the view.
+  const shapeDragArmed = traceType === 'shape' && shapeType !== 'path'
+  useEffect(() => {
+    onShapeModeChange?.(shapeDragArmed)
+    // Publish the current numbers on arming so the preview is on screen from
+    // the moment Shape is picked, rather than only appearing once something
+    // is dragged. Read without being dependencies on purpose -- the size at
+    // the moment of arming is what's wanted, and including them would make
+    // this effect re-fire on every keystroke in the width field.
+    if (shapeDragArmed) onShapeSizeChange?.(shapeWidth, shapeHeight)
+    return () => onShapeModeChange?.(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapeDragArmed, onShapeModeChange, onShapeSizeChange])
   
   const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes, traces } = useGameStore()
   const lobbyFull = isLobbyFull()
@@ -604,7 +646,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     min="20"
                     max="1000"
                     value={shapeWidth}
-                    onChange={(e) => setShapeWidth(parseInt(e.target.value) || 200)}
+                    onChange={(e) => applyShapeSize(parseInt(e.target.value) || 200, shapeHeight)}
                     className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
                   />
                 </div>
@@ -615,7 +657,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     min="20"
                     max="1000"
                     value={shapeHeight}
-                    onChange={(e) => setShapeHeight(parseInt(e.target.value) || 200)}
+                    onChange={(e) => applyShapeSize(shapeWidth, parseInt(e.target.value) || 200)}
                     className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
                   />
                 </div>
