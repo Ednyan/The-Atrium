@@ -71,6 +71,17 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       const { data: lobbyLayers } = await localClient.from('layers').select('*').eq('lobby_id', selectedLobbyId)
       const layers = (lobbyLayers || []).filter((l: any) => layerIds.has(l.id))
 
+      // Saved camera views -- see the note in lib/atriumDownload.ts. Kept in
+      // step with the web export so a file from either side carries the same
+      // things.
+      setProgress('Reading locations...')
+      const { data: locationRows } = await localClient
+        .from('lobby_locations')
+        .select('*')
+        .eq('lobby_id', selectedLobbyId)
+        .order('order_index', { ascending: true })
+      const locations = (locationRows || []) as any[]
+
       // Embed local:// media as base64 data URLs
       setProgress('Embedding media files...')
       let embedded = 0
@@ -97,7 +108,8 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       }
 
       const exportData = {
-        version: 2,
+        // See lib/atriumDownload.ts: 3 means the file carries `locations`.
+        version: 3,
         exportedAt: new Date().toISOString(),
         app: 'Digital Atrium Desktop',
         lobby: {
@@ -117,6 +129,14 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
           is_group: l.is_group,
           parent_id: l.parent_id,
           _local_id: l.id,
+        })),
+        locations: locations.map((l: any) => ({
+          name: l.name,
+          position_x: l.position_x,
+          position_y: l.position_y,
+          zoom: l.zoom,
+          order_index: l.order_index,
+          is_locked: l.is_locked,
         })),
         traces: lobbyTraces.map((t: any) => {
           const { id, created_at, user_id, lobby_id, ...rest } = t
@@ -148,7 +168,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       await writeTextFile(filePath, jsonString)
 
       setStatus('done')
-      setProgress(`Exported "${lobby.name}" — ${lobbyTraces.length} traces, ${layers.length} layers (${sizeMB} MB)`)
+      setProgress(`Exported "${lobby.name}" — ${lobbyTraces.length} traces, ${layers.length} layers, ${locations.length} locations (${sizeMB} MB)`)
     } catch (e: any) {
       setError(e.message || String(e))
       setStatus('error')

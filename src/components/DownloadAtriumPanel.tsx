@@ -50,7 +50,7 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
     setStatus('Preparing...')
     try {
       const result = await downloadAtrium(atrium.id, setStatus)
-      setStatus(`✓ "${atrium.name}" — ${result.traceCount} traces, ${result.layerCount} layers (${result.sizeMB} MB)`)
+      setStatus(`✓ "${atrium.name}" — ${result.traceCount} traces, ${result.layerCount} layers, ${result.locationCount} locations (${result.sizeMB} MB)`)
     } catch (err: any) {
       console.error('Atrium download failed:', err)
       setError(err?.message || 'Download failed')

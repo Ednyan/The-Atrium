@@ -15,6 +15,7 @@ import { fetchAllLobbyTraces } from '../hooks/useTraces'
 export interface AtriumDownloadResult {
   traceCount: number
   layerCount: number
+  locationCount: number
   sizeMB: string
 }
 
@@ -49,8 +50,22 @@ export async function downloadAtrium(
   for (const t of traces) if (t.layer_id) referenced.add(t.layer_id)
   const layers = (layerRows || []).filter((l: any) => referenced.has(l.id))
 
+  // Saved camera views. Part of how an atrium is meant to be read -- a
+  // presentation order, the framing someone composed -- so exporting without
+  // them loses authored work, not just a convenience.
+  onProgress?.('Reading locations...')
+  const { data: locationRows } = await (supabase
+    .from('lobby_locations') as any)
+    .select('*')
+    .eq('lobby_id', lobbyId)
+    .order('order_index', { ascending: true })
+
   const exportData = {
-    version: 2,
+    // Bumped from 2: files written by this version carry `locations`. The
+    // importer accepts 1 and 2 as before and simply finds none, so older
+    // files still import -- only the reverse (a v3 file in an old build) is
+    // rejected, which is the direction that matters.
+    version: 3,
     exportedAt: new Date().toISOString(),
     app: 'Digital Atrium Web',
     lobby: {
@@ -67,6 +82,14 @@ export async function downloadAtrium(
       is_group: l.is_group,
       parent_id: l.parent_id,
       _local_id: l.id,
+    })),
+    locations: (locationRows || []).map((l: any) => ({
+      name: l.name,
+      position_x: l.position_x,
+      position_y: l.position_y,
+      zoom: l.zoom,
+      order_index: l.order_index,
+      is_locked: l.is_locked,
     })),
     traces: traces.map((t: any) => {
       // Strip identity/ownership columns -- the importer reassigns all of
@@ -93,5 +116,10 @@ export async function downloadAtrium(
   // some browsers before it has read the blob.
   setTimeout(() => URL.revokeObjectURL(url), 10000)
 
-  return { traceCount: traces.length, layerCount: layers.length, sizeMB }
+  return {
+    traceCount: traces.length,
+    layerCount: layers.length,
+    locationCount: (locationRows || []).length,
+    sizeMB,
+  }
 }

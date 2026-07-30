@@ -25,6 +25,15 @@ interface AtriumExport {
     parent_id: string | null
     _local_id: string
   }>
+  // Only present from version 3 onward. Older files simply have none.
+  locations?: Array<{
+    name: string
+    position_x: number
+    position_y: number
+    zoom: number
+    order_index: number
+    is_locked?: boolean | number
+  }>
   traces: Array<Record<string, any>>
 }
 
@@ -66,7 +75,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // import logic below already tolerates missing/extra fields via
       // spreads and `||`/`??` fallbacks, so there's no real reason to hard-
       // reject anything except a genuinely unrecognized/future format.
-      if (typeof data.version !== 'number' || data.version < 1 || data.version > 2) {
+      if (typeof data.version !== 'number' || data.version < 1 || data.version > 3) {
         setError('Unsupported export version. Please use a newer desktop app to export.')
         return
       }
@@ -328,10 +337,41 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         }
       }
 
+      // Locations last: they're independent of traces and layers, so a
+      // failure here costs the saved views but not the atrium's contents.
+      let locationsImported = 0
+      if (parsed.locations && parsed.locations.length > 0) {
+        setProgress('Importing locations...')
+        const rows = parsed.locations.map((loc, index) => ({
+          lobby_id: lobbyId,
+          name: loc.name,
+          position_x: loc.position_x,
+          position_y: loc.position_y,
+          zoom: loc.zoom ?? 1,
+          // Renumbered from the array's own order rather than trusting
+          // order_index, which can have gaps or repeats in an older file.
+          order_index: index,
+          user_id: user.id,
+          is_locked: !!loc.is_locked,
+        }))
+
+        const { error: locErr } = await (supabase.from('lobby_locations') as any).insert(rows)
+        if (locErr) {
+          // is_locked only exists once add_location_lock.sql has been applied.
+          // Retry without it rather than losing every location over one column.
+          const { error: retryErr } = await (supabase.from('lobby_locations') as any)
+            .insert(rows.map(({ is_locked: _isLocked, ...rest }) => rest))
+          if (!retryErr) locationsImported = rows.length
+        } else {
+          locationsImported = rows.length
+        }
+      }
+
       setStatus('done')
       const summary = [`${imported} traces`]
       if (skipped > 0) summary.push(`${skipped} skipped (media)`)
       if (failed > 0) summary.push(`${failed} failed`)
+      if (locationsImported > 0) summary.push(`${locationsImported} locations`)
       setProgress(`Imported "${atriumName}" — ${summary.join(', ')}, ${Object.keys(layerIdMap).length} layers`)
 
       // Surfaced, not buried: anything dropped or skipped means data didn't
@@ -405,6 +445,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               <div className="flex gap-4 text-[10px] text-nier-border/50 tracking-wider">
                 <span>{traceCount} traces</span>
                 <span>{layerCount} layers</span>
+                {(parsed.locations?.length ?? 0) > 0 && <span>{parsed.locations!.length} locations</span>}
                 {mediaCount > 0 && <span>{mediaCount} media files</span>}
                 <span>{fileSizeMB} MB</span>
               </div>

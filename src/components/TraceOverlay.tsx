@@ -17,6 +17,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
+import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -143,6 +144,10 @@ interface TraceOverlayProps {
   lobbyHeight: number
   zoom: number
   worldOffset: { x: number; y: number }
+  // Moves the camera by a world-space delta. The camera lives in LobbyScene,
+  // so dragging a trace past the edge of the view has to ask for the scroll
+  // rather than perform it.
+  onEdgePan?: (worldDx: number, worldDy: number) => void
   lobbyId?: string
   selectedTraceId: string | null
   setSelectedTraceId: (id: string | null) => void
@@ -178,6 +183,12 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 // mousemove event rather than latched at drag start, so Shift can be pressed
 // or released mid-rotation and take effect immediately.
 const ROTATION_SNAP_DEGREES = 5
+
+// How close to the viewport edge the cursor has to get before dragging a
+// trace starts scrolling the canvas, and how far it scrolls per frame at the
+// very edge (screen pixels, converted to world units at the current zoom).
+const EDGE_PAN_ZONE_PX = 64
+const EDGE_PAN_MAX_SPEED_PX = 14
 
 // Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
 const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
@@ -287,7 +298,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -335,6 +346,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   }, [modalTrace])
   const [copiedModalText, setCopiedModalText] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
+  // Declared at the top level rather than beside the menu's JSX, which sits
+  // inside an IIFE where a hook can't be called.
+  const lastPointerRef = useRef<{ x: number; y: number; shiftKey: boolean } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  const contextMenuPos = useClampedMenuPosition(contextMenuRef, contextMenu?.x ?? 0, contextMenu?.y ?? 0)
   // Side-flyout submenus inside the trace context menu (Move Layer,
   // Transformations) -- opened/closed on hover rather than click, with a
   // short close delay so moving the mouse diagonally from the trigger row
@@ -2007,6 +2023,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // Use editingTrace if available for the most up-to-date data
     const currentTrace = (currentEditingTrace && currentEditingTrace.id === activeSelectedTraceId) ? currentEditingTrace : trace
 
+    // Remembered so the edge-pan loop can keep applying the drag while the
+    // cursor is held still against the edge and only the camera is moving.
+    lastPointerRef.current = { x: e.clientX, y: e.clientY, shiftKey: !!e.shiftKey }
+
     const deltaX = e.clientX - startPosRef.current.x
     const deltaY = e.clientY - startPosRef.current.y
     
@@ -2615,6 +2635,63 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       window.removeEventListener('mousedown', handleMouseDownCapture, true)
     }
   }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit])
+
+  // Auto-pan while dragging a trace toward the edge of the screen, so a trace
+  // can be moved somewhere that isn't currently in view without dropping it,
+  // panning, and picking it up again.
+  //
+  // Only for the move modes. Scaling or rotating against an edge is a
+  // deliberate gesture at a fixed spot, and panning under it would fight the
+  // user rather than help.
+  useEffect(() => {
+    if (!onEdgePan) return
+    if (transformMode !== 'move' && transformMode !== 'move-path') return
+
+    let raf = 0
+    const step = () => {
+      raf = requestAnimationFrame(step)
+      const pointer = lastPointerRef.current
+      if (!pointer) return
+
+      // Ramps from 0 at the inner boundary of the zone to 1 at the very edge,
+      // so nudging into it drifts and pressing right up to it moves quickly --
+      // a fixed speed either creeps or overshoots.
+      const zone = EDGE_PAN_ZONE_PX
+      let strengthX = 0
+      let strengthY = 0
+      if (pointer.x < zone) strengthX = -(zone - pointer.x) / zone
+      else if (pointer.x > window.innerWidth - zone) strengthX = (pointer.x - (window.innerWidth - zone)) / zone
+      if (pointer.y < zone) strengthY = -(zone - pointer.y) / zone
+      else if (pointer.y > window.innerHeight - zone) strengthY = (pointer.y - (window.innerHeight - zone)) / zone
+
+      if (strengthX === 0 && strengthY === 0) return
+
+      const screenDx = Math.max(-1, Math.min(1, strengthX)) * EDGE_PAN_MAX_SPEED_PX
+      const screenDy = Math.max(-1, Math.min(1, strengthY)) * EDGE_PAN_MAX_SPEED_PX
+      const currentZoom = zoomRef.current || 1
+
+      onEdgePan(screenDx / currentZoom, screenDy / currentZoom)
+
+      // Keeps the trace under the cursor. The move math above is a screen
+      // delta measured from where the drag started, so moving that origin by
+      // the pan is exactly equivalent to the cursor having travelled that far
+      // across the world -- no change to the transform code itself.
+      startPosRef.current.x -= screenDx
+      startPosRef.current.y -= screenDy
+
+      // Re-applies the drag: without this the trace only moves when the mouse
+      // does, so holding still at the edge would pan the camera out from under
+      // a stationary trace.
+      handleMouseMove({
+        clientX: pointer.x,
+        clientY: pointer.y,
+        shiftKey: pointer.shiftKey,
+      } as MouseEvent)
+    }
+
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [transformMode, onEdgePan])
 
   useEffect(() => {
     if (transformMode !== 'none') {
@@ -5056,13 +5133,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // the menu by default; flip to the left if there isn't roughly
         // enough room for one (menu width + flyout width) between the
         // click point and the right edge of the viewport.
-        const contextMenuFlyoutOnLeft = contextMenu.x > window.innerWidth - 400
+        // Uses the clamped x, not the raw click point: near the right edge the
+        // menu itself has been shifted left, so the flyout decision has to be
+        // made against where the menu actually is.
+        const contextMenuFlyoutOnLeft = contextMenuPos.x > window.innerWidth - 400
         return (
         <>
           {/* Menu */}
           <div
+            ref={contextMenuRef}
             className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
-            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            style={{ left: `${contextMenuPos.x}px`, top: `${contextMenuPos.y}px` }}
           >
             {/* Corner brackets */}
             <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-gray-400 pointer-events-none" />

@@ -16,6 +16,7 @@ import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { copyLobbyId } from '../lib/clipboard'
+import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
@@ -353,6 +354,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | undefined>(undefined)
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
+  // Nudges the camera by a world-space delta. Written straight to the ref the
+  // Pixi ticker reads, exactly as the existing drag-to-pan does, so it takes
+  // effect on the next frame without a re-render per step.
+  const panCameraBy = useCallback((worldDx: number, worldDy: number) => {
+    cameraPositionRef.current.x += worldDx
+    cameraPositionRef.current.y += worldDy
+  }, [])
+
+  const mapContextMenuRef = useRef<HTMLDivElement>(null)
+  const mapContextMenuPos = useClampedMenuPosition(mapContextMenuRef, mapContextMenu?.x ?? 0, mapContextMenu?.y ?? 0)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLocationsPanel, setShowLocationsPanel] = useState(false)
   // Saved (persisted) locations from the DB, and the local editable working
@@ -2914,6 +2925,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             lobbyHeight={window.innerHeight}
             zoom={zoom}
             worldOffset={worldOffset}
+            onEdgePan={panCameraBy}
             lobbyId={lobbyId}
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
@@ -3769,11 +3781,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onContextMenu={(e) => { e.preventDefault(); setMapContextMenu(null) }}
         >
           <div
-            className="absolute bg-nier-blackLight border border-nier-border/40 py-1 min-w-[160px]"
-            style={{
-              left: Math.min(mapContextMenu.x, window.innerWidth - 180),
-              top: Math.min(mapContextMenu.y, window.innerHeight - (isDesktop ? 220 : 195)),
-            }}
+            ref={mapContextMenuRef}
+            className="absolute bg-nier-blackLight border border-nier-border/40 py-1 min-w-[160px] max-h-[90vh] overflow-y-auto"
+            // Measured rather than estimated -- the old numbers (180 wide, and
+            // a height of 220 on desktop or 195 on web) were guesses that had
+            // to be kept in step by hand every time an entry was added.
+            style={{ left: mapContextMenuPos.x, top: mapContextMenuPos.y }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}

@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
 import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
+import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
 // Exported so LobbyScene's canvas-wide file/URL drop handlers can recognize
 // (and ignore) this in-app drag, since native drag events bubble through the
@@ -121,6 +122,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const [rowMenu, setRowMenu] = useState<
     { x: number; y: number; kind: 'group' | 'trace'; id: string } | null
   >(null)
+  const rowMenuRef = useRef<HTMLDivElement>(null)
+  const rowMenuPos = useClampedMenuPosition(rowMenuRef, rowMenu?.x ?? 0, rowMenu?.y ?? 0)
   // Whether the Move to Group flyout is open (its own state so the flyout
   // closes when the menu is re-opened elsewhere).
   const [moveToGroupOpen, setMoveToGroupOpen] = useState(false)
@@ -1518,15 +1521,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         const groupTraces = isGroup ? getTracesForLayer(rowMenu.id) : []
         const isExpanded = isGroup ? expandedGroups.has(rowMenu.id) : false
         const MENU_WIDTH = 190
-        const estimatedHeight = isGroup ? 300 : 260
-        const left = Math.min(rowMenu.x, window.innerWidth - MENU_WIDTH - 8)
-        const top = Math.min(rowMenu.y, Math.max(8, window.innerHeight - estimatedHeight))
 
         return (
           <div
+            ref={rowMenuRef}
             data-layer-row-menu
-            className="fixed bg-black border border-gray-500 shadow-xl z-[10000400] py-1"
-            style={{ left, top, width: MENU_WIDTH }}
+            className="fixed bg-black border border-gray-500 shadow-xl z-[10000400] py-1 max-h-[90vh] overflow-y-auto"
+            // Position comes from the measured element (see
+            // useClampedMenuPosition). The estimated heights that used to be
+            // here -- 300 for a group, 260 for a trace -- were guesses, and
+            // the menu's real height varies with which entries apply.
+            style={{ left: rowMenuPos.x, top: rowMenuPos.y, width: MENU_WIDTH }}
             onContextMenu={(e) => e.preventDefault()}
             // Delegated close: an item's own onClick runs first, then bubbles
             // here. Saves threading a close call through every item, and a
