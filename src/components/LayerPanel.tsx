@@ -103,6 +103,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (el) traceRowRefs.current.set(traceId, el)
     else traceRowRefs.current.delete(traceId)
   }
+  // Same idea for group headers, so dragging a group shows the whole header
+  // as the drag image instead of just the grip glyph the drag starts on.
+  const groupHeaderRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const setGroupHeaderRef = (layerId: string) => (el: HTMLDivElement | null) => {
+    if (el) groupHeaderRefs.current.set(layerId, el)
+    else groupHeaderRefs.current.delete(layerId)
+  }
   // Dialog state for create/rename/delete (replaces prompt/confirm which don't work in Tauri)
   const [dialogMode, setDialogMode] = useState<'create' | 'rename' | 'delete' | null>(null)
   const [dialogInput, setDialogInput] = useState('')
@@ -749,6 +756,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     e.stopPropagation()
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData(LAYER_DRAG_DATA_KEY, layerId)
+    // Drag the whole group header as the drag image rather than the grip
+    // glyph the drag happens to start on -- otherwise the only thing that
+    // moves with the cursor is the little dot grid, which doesn't read as
+    // "this group is moving". Same treatment trace rows already got; groups
+    // were simply missed. The grip's rect is the drag origin, so the image is
+    // offset to keep the cursor where it was within the header.
+    const header = groupHeaderRefs.current.get(layerId)
+    if (header) {
+      const gripRect = e.currentTarget.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      e.dataTransfer.setDragImage(header, gripRect.left - headerRect.left + 8, gripRect.top - headerRect.top + 8)
+    }
     setDraggedLayerId(layerId)
   }
 
@@ -1077,6 +1096,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             >
               {/* Group header */}
               <div
+                ref={setGroupHeaderRef(layer.id)}
                 className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer"
                 onContextMenu={(e) => openRowMenu(e, 'group', layer.id)}
               >
