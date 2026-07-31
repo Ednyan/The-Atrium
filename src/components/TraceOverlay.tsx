@@ -182,6 +182,20 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 // Holding Shift while rotating snaps to these increments. Read from the live
 // mousemove event rather than latched at drag start, so Shift can be pressed
 // or released mid-rotation and take effect immediately.
+// Where an image URL should point when loading it directly didn't work.
+//
+// /api/proxy-image is a web-only endpoint. On desktop the same relative path
+// resolves inside the app bundle, where nothing serves it, so falling back to
+// it guaranteed a broken image -- which is why an embed could show fine on the
+// web and blankly fail in the desktop app. Empty string means "use the
+// original URL", so desktop at least gets a real attempt, and a genuine
+// failure surfaces as one instead of hiding behind a dead path.
+//
+// This also fires on the 8s preflight timeout, not just on error, so a slow
+// but perfectly good image was being swapped onto the proxy too.
+const proxyFallbackFor = (url: string) =>
+  isDesktop ? '' : `/api/proxy-image?url=${encodeURIComponent(url)}`
+
 const ROTATION_SNAP_DEGREES = 5
 
 // How close to the viewport edge the cursor has to get before dragging a
@@ -705,10 +719,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         const timeout = setTimeout(() => {
           if (!img.complete) {
             // Timed out — use proxy for this URL
-            const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
             setImageProxySources(prev => ({
               ...prev,
-              [trace.id]: proxyUrl
+              [trace.id]: proxyFallbackFor(url)
             }))
           }
         }, 8000)
@@ -737,10 +750,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           clearTimeout(timeout)
           // Failed to load as image — use proxy
           // The proxy will try to fetch; if it's actually an image, the render <img> onLoad will confirm it
-          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
           setImageProxySources(prev => ({
             ...prev,
-            [trace.id]: proxyUrl
+            [trace.id]: proxyFallbackFor(url)
           }))
         }
         

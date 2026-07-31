@@ -1060,29 +1060,34 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
-                  {isDesktop ? 'Import from Web' : 'Import from Desktop'}
+                  Import &amp; Export
                 </span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
-              <button
-                onClick={() => setShowImport(true)}
-                disabled={!canCreateMore}
-                className="w-full py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                ◇ Import Atrium (.json)
-              </button>
-
-              {/* Paired with Import so both directions of the transfer live
-                  together. Web only -- desktop's equivalent is Export Atrium
-                  on the welcome screen, which writes the same format. */}
-              {!isDesktop && (
+              {/* Side by side: they're the two directions of one operation, and
+                  stacking them read as two unrelated actions. On desktop the
+                  export half lives on the welcome screen instead, so Import
+                  takes the full width there rather than sitting lopsided. */}
+              <div className="flex gap-2">
                 <button
-                  onClick={() => setShowDownload(true)}
-                  className="w-full mt-2 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  onClick={() => setShowImport(true)}
+                  disabled={!canCreateMore}
+                  className="flex-1 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  ◇ Download Atrium (.json)
+                  ◇ Import (.json)
                 </button>
-              )}
+
+                {/* Web only -- desktop's equivalent is Export Atrium on the
+                    welcome screen, which writes the same format. */}
+                {!isDesktop && (
+                  <button
+                    onClick={() => setShowDownload(true)}
+                    className="flex-1 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  >
+                    ◇ Export (.json)
+                  </button>
+                )}
+              </div>
               {!canCreateMore && (
                 <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
               )}

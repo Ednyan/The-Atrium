@@ -363,6 +363,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const clickedTracePositionRef = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => { clickedTracePositionRef.current = clickedTracePosition }, [clickedTracePosition])
 
+  // Placement markers used a fixed gold, which sat somewhere between the
+  // background and the foreground on a dark theme and vanished outright on a
+  // light one. These follow the atrium's own background instead, so the
+  // indicator is always the opposite end of the range from whatever it's
+  // drawn on. A ref because the Pixi ticker reads it.
+  const indicatorColorRef = useRef({ primary: 0xffffff, accent: 0xff6161 })
+
   // The panel publishing its current shape settings. Adopt them, and make sure
   // there's a placement position to centre the preview on.
   //
@@ -428,6 +435,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const mapContextMenuPos = useClampedMenuPosition(mapContextMenuRef, mapContextMenu?.x ?? 0, mapContextMenu?.y ?? 0)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLocationsPanel, setShowLocationsPanel] = useState(false)
+
+  // Both panels are docked over the right-hand side of the canvas, which is
+  // exactly the area you need free while placing a trace or drawing -- they
+  // cover the spot you're aiming at and swallow the clicks meant for it. So
+  // starting either activity closes them.
+  const closeSidePanels = useCallback(() => {
+    setShowLayerPanel(false)
+    setShowLocationsPanel(false)
+  }, [])
   // Saved (persisted) locations from the DB, and the local editable working
   // copy. Edits (add/rename/delete/reorder) only touch the working copy and
   // set locationsDirty; nothing is written -- and so nothing is broadcast
@@ -450,6 +466,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
+
+  // Fills in indicatorColorRef (declared above, since the ticker reads it).
+  // Lives here rather than beside the ref because the dependency array is
+  // evaluated during render, so it can't reference currentLobby any earlier.
+  useEffect(() => {
+    const hex = currentLobby?.themeSettings?.backgroundColor ?? '#0a0a0f'
+    const value = parseInt(hex.replace('#', ''), 16)
+    if (Number.isNaN(value)) return
+    const r = (value >> 16) & 255
+    const g = (value >> 8) & 255
+    const b = value & 255
+    // Rec. 709 relative luminance -- green dominates perceived brightness, so
+    // a plain average would call a saturated green background "dark".
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    indicatorColorRef.current = luminance > 0.5
+      // Near-black rather than pure black, and a deep red accent, so it reads
+      // as drawn rather than as a hole punched in the canvas.
+      ? { primary: 0x1a1a1a, accent: 0x8b0000 }
+      : { primary: 0xffffff, accent: 0xff6161 }
+  }, [currentLobby?.themeSettings?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   // The layer group new traces are created into (null = ungrouped). Set by
@@ -591,6 +627,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
   // Freehand drawing mode
   const [isDrawingMode, setIsDrawingMode] = useState(false)
+
+  // Watches the two activities rather than patching each of the several places
+  // that start them (the HUD buttons, the T key, the canvas context menu), so
+  // a new entry point can't quietly miss this. Fires only on the transition
+  // into an activity, so reopening a panel mid-draw is still allowed -- it's
+  // the user's call at that point.
+  useEffect(() => {
+    if (showTracePanel || isDrawingMode) closeSidePanels()
+  }, [showTracePanel, isDrawingMode, closeSidePanels])
+
   const [isDrawing, setIsDrawing] = useState(false)
   const [isEraserMode, setIsEraserMode] = useState(false)
   const [completedStrokes, setCompletedStrokes] = useState<Array<{ points: Array<{ x: number; y: number }>; color: string; width: number; isEraser: boolean }>>([])
@@ -2143,6 +2189,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         // with the camera for free.
         const placementPos = clickedTracePositionRef.current
         const draftSize = shapeDraftSizeRef.current
+        const indicator = indicatorColorRef.current
 
         if (tracePlacementIndicatorRef.current && placementPos && draftSize) {
           pulseTime += 0.1
@@ -2152,8 +2199,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
           const g = tracePlacementIndicatorRef.current
           g.clear()
-          g.lineStyle(2, 0xffd700, 0.5 + pulse * 0.4)
-          g.beginFill(0xffd700, 0.08)
+          g.lineStyle(2, indicator.primary, 0.55 + pulse * 0.4)
+          g.beginFill(indicator.primary, 0.07)
 
           const left = placementPos.x - halfW
           const top = placementPos.y - halfH
@@ -2183,7 +2230,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           // Centre mark, so a rectangle dragged out very small is still
           // visible as a placement.
           g.lineStyle(0)
-          g.beginFill(0xffd700, 0.7)
+          g.beginFill(indicator.accent, 0.85)
           g.drawCircle(placementPos.x, placementPos.y, 3)
           g.endFill()
         } else if (tracePlacementIndicatorRef.current && placementPos) {
@@ -2195,15 +2242,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           tracePlacementIndicatorRef.current.clear()
 
           // Outer glow
-          tracePlacementIndicatorRef.current.lineStyle(3, 0xffd700, 0.3 + pulse * 0.5)
+          tracePlacementIndicatorRef.current.lineStyle(3, indicator.primary, 0.3 + pulse * 0.5)
           tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, size + 10)
           
           // Middle ring
-          tracePlacementIndicatorRef.current.lineStyle(2, 0xffd700, 0.5 + pulse * 0.5)
+          tracePlacementIndicatorRef.current.lineStyle(2, indicator.primary, 0.5 + pulse * 0.5)
           tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, size)
           
           // Inner bright circle
-          tracePlacementIndicatorRef.current.beginFill(0xffd700, 0.6 + pulse * 0.4)
+          tracePlacementIndicatorRef.current.beginFill(indicator.accent, 0.7 + pulse * 0.3)
           tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, 8)
           tracePlacementIndicatorRef.current.endFill()
         } else if (tracePlacementIndicatorRef.current) {
