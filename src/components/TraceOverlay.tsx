@@ -371,6 +371,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // other catches: justDraggedRef is only set once a move actually happens,
   // while the distance check also covers a drag that moved the pointer without
   // the trace (a locked trace, or a drag that started on a child element).
+  // The clickable trace currently held down. Drives both the press animation
+  // and the handle suppression above.
+  const [pressedClickableId, setPressedClickableId] = useState<string | null>(null)
+  // Mirrored, because handleMouseMove runs from a window listener and reads
+  // this on every frame of a drag -- state there would be a stale closure.
+  const pressedClickableIdRef = useRef<string | null>(null)
+  useEffect(() => { pressedClickableIdRef.current = pressedClickableId }, [pressedClickableId])
+
   const CLICK_DRAG_TOLERANCE_PX = 5
   const isClickThrough = (trace: Trace, e: React.MouseEvent): boolean => {
     if (!trace.isClickable || !trace.linkUrl) return false
@@ -1855,6 +1863,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
       setMultiSelectedIds(new Set())
     }
 
+    // A plain press on a clickable trace: hold back its handles and show the
+    // pressed state until we know whether this is a click or a drag.
+    if (mode === 'move' && trace.isClickable && trace.linkUrl && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Ref set alongside the state: a mousemove can arrive before React has
+      // re-rendered, and it reads the ref.
+      pressedClickableIdRef.current = trace.id
+      setPressedClickableId(trace.id)
+    }
+
     setSelectedTraceId(trace.id)
 
     // Selecting a trace (to view it) is always allowed; only arming an
@@ -2071,6 +2088,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // If mouse has moved more than 3 pixels, consider it a drag
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
       justDraggedRef.current = true
+      // It's a drag, not a click: let the handles through and drop the
+      // pressed styling, so moving a clickable trace looks like moving any
+      // other one.
+      if (pressedClickableIdRef.current) {
+        pressedClickableIdRef.current = null
+        setPressedClickableId(null)
+      }
     }
 
   if (activeTransformMode === 'move') {
@@ -2433,6 +2457,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
     // Remove dragging class from body
     document.body.classList.remove('dragging')
+
+    // Cleared after the click event, not during mouseup.
+    //
+    // click fires after mouseup, and it's the click handler that decides
+    // whether to follow the link and deselect. Clearing here directly would
+    // un-suppress the handles in between, which can paint a frame of the
+    // transform frame before the click removes it again -- exactly the flash
+    // the suppression exists to prevent. A zero-delay timeout lands after the
+    // click, and the guard keeps it from clobbering a newer press.
+    if (pressedClickableIdRef.current) {
+      const releasedId = pressedClickableIdRef.current
+      setTimeout(() => {
+        if (pressedClickableIdRef.current !== releasedId) return
+        pressedClickableIdRef.current = null
+        setPressedClickableId(null)
+      }, 0)
+    }
     
     // If we actually dragged, prevent immediate deselection
     if (justDraggedRef.current) {
@@ -3551,8 +3592,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
         const { width, height } = getTraceSize(trace)
         const borderColor = trace.borderColor || getBorderColor(trace.type)
-        const isSelected = selectedTraceId === trace.id
+        // Handles stay hidden while a clickable trace is being pressed.
+        //
+        // Selection still happens on mousedown -- the move handler reads it to
+        // know what to drag, so it can't be deferred -- but showing the
+        // transform frame for the instant a link-click takes would flash a
+        // selection the user never asked for. If the press turns into a drag
+        // the suppression lifts and the handles appear as usual; if it turns
+        // out to be a click, the link opens and nothing is left selected.
+        const isSelected = selectedTraceId === trace.id && pressedClickableId !== trace.id
         const isMultiSelected = multiSelectedIds.has(trace.id)
+        const isPressed = pressedClickableId === trace.id
 
         // Apply customization defaults
         const showBorder = trace.showBorder ?? true
@@ -3705,9 +3755,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 // set z-index paints above siblings that rely on implicit
                 // DOM-order stacking.
                 zIndex: trace.zIndex ?? 0,
-                transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${trace.flipHorizontal ? -1 : 1}) scaleY(${trace.flipVertical ? -1 : 1})`,
+                // The pressed state adds a slight inset scale on top of the
+                // existing transform, so a clickable trace visibly depresses.
+                // Folded into the same transform string rather than applied to
+                // a wrapper, because a second transformed element would
+                // reintroduce the stacking-context problem the comment above
+                // describes.
+                transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${(trace.flipHorizontal ? -1 : 1) * (isPressed ? 0.97 : 1)}) scaleY(${(trace.flipVertical ? -1 : 1) * (isPressed ? 0.97 : 1)})`,
+                // Only transitioned while pressed. A permanent transition here
+                // would smear every drag frame, since dragging moves this same
+                // element.
+                transition: isPressed ? 'transform 90ms ease-out, filter 90ms ease-out' : undefined,
+                // Brightens the whole trace -- background, text and border at
+                // once -- without needing to know which of the many per-type
+                // renderers below is drawing it.
+                filter: isPressed ? 'brightness(1.35)' : undefined,
                 willChange: 'transform',
                 transformOrigin: 'center center',
+                cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
                 pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
               }}
               onMouseEnter={() => setCursorState('pointer')}
@@ -3721,11 +3786,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   return
                 }
                 e.stopPropagation()
-                setSelectedTraceId(trace.id)
 
                 if (isClickThrough(trace, e)) {
+                  // Deselected rather than selected: following a link is not
+                  // an edit, so leaving the transform frame up afterwards
+                  // would be handles nobody asked for. Shift-click and the
+                  // right-click menu still select it for editing.
+                  setSelectedTraceId(null)
                   openExternalUrl(trace.linkUrl)
+                  return
                 }
+
+                setSelectedTraceId(trace.id)
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation()
