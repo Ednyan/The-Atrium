@@ -654,7 +654,11 @@ export async function initLocalDb(): Promise<void> {
       created_at TEXT DEFAULT (datetime('now')),
       user_id TEXT NOT NULL,
       username TEXT NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('text','image','audio','video','embed','shape')),
+      -- Deliberately unconstrained. A CHECK here has to be rebuilt (copying
+      -- every trace) each time a type is added, and Postgres doesn't enforce
+      -- one either -- so it only ever caused the two platforms to disagree.
+      -- See dropTraceTypeCheckConstraint for existing vaults.
+      type TEXT NOT NULL,
       content TEXT NOT NULL DEFAULT '',
       position_x REAL NOT NULL DEFAULT 0,
       position_y REAL NOT NULL DEFAULT 0,
@@ -875,6 +879,8 @@ export async function initLocalDb(): Promise<void> {
     // Column already exists — ignore
   }
 
+  await dropTraceTypeCheckConstraint(db)
+
   // Ensure local user profile exists
   const profileRows = await db.select<any[]>('SELECT id FROM profiles WHERE id = ?', [LOCAL_USER_ID])
   if (profileRows.length === 0) {
@@ -887,6 +893,65 @@ export async function initLocalDb(): Promise<void> {
   await migrateLegacyLocalMediaToRuntime()
 
   void syncAllLobbiesToVault()
+}
+
+// Removes the CHECK(type IN (...)) constraint from the traces table.
+//
+// SQLite can't alter a CHECK -- it's part of the table definition -- so the
+// only way is to rebuild the table. Postgres has no equivalent constraint (it
+// was dropped there at some point; a 'button' row is accepted today), so
+// desktop was the only side that would reject a new trace type, and every
+// future type would otherwise need another rebuild of a table holding the
+// user's entire atrium.
+//
+// Written to be safe on real vaults:
+//   - Runs only when the constraint is actually present, so it is a one-time
+//     event and a no-op on every launch afterwards.
+//   - Runs AFTER the additive ALTERs above, so every column the new table
+//     names is guaranteed to exist on the old one.
+//   - Names columns explicitly rather than INSERT ... SELECT *, because the
+//     column order of a table built up through ALTERs doesn't match a freshly
+//     created one, and a positional copy would silently shuffle values
+//     between columns.
+//   - Wrapped in a transaction, so an interruption leaves the original table
+//     intact rather than half-copied.
+async function dropTraceTypeCheckConstraint(db: Database): Promise<void> {
+  try {
+    const rows = await db.select<any[]>(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'traces'"
+    )
+    const ddl: string = rows?.[0]?.sql ?? ''
+    if (!/CHECK\s*\(\s*type\s+IN/i.test(ddl)) return
+
+    const columnRows = await db.select<any[]>('PRAGMA table_info(traces)')
+    const columns: string[] = columnRows.map(c => c.name)
+    if (columns.length === 0) return
+    const columnList = columns.join(', ')
+
+    // The new definition, identical to the old one minus the CHECK. Built by
+    // stripping it from the live DDL rather than restating the schema, so this
+    // can't drift from whatever the table actually looks like.
+    const newDdl = ddl.replace(
+      /,?\s*CHECK\s*\(\s*type\s+IN\s*\([^)]*\)\s*\)/i,
+      ''
+    ).replace(/CREATE TABLE\s+"?traces"?/i, 'CREATE TABLE traces_rebuilt')
+
+    await db.execute('BEGIN TRANSACTION')
+    try {
+      await db.execute(newDdl)
+      await db.execute(`INSERT INTO traces_rebuilt (${columnList}) SELECT ${columnList} FROM traces`)
+      await db.execute('DROP TABLE traces')
+      await db.execute('ALTER TABLE traces_rebuilt RENAME TO traces')
+      await db.execute('COMMIT')
+    } catch (e) {
+      await db.execute('ROLLBACK')
+      throw e
+    }
+  } catch (e) {
+    // Non-fatal: the vault still works, new trace types just won't insert.
+    // Better than refusing to start the app over a constraint.
+    console.error('Could not remove the traces type CHECK constraint:', e)
+  }
 }
 
 // ---- Helper: generate UUID ----

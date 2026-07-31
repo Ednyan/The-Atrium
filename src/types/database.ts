@@ -7,7 +7,7 @@ export interface Database {
           created_at: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
           content: string
           position_x: number
           position_y: number
@@ -21,7 +21,7 @@ export interface Database {
           created_at?: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
           content: string
           position_x: number
           position_y: number
@@ -35,7 +35,7 @@ export interface Database {
           created_at?: string
           user_id?: string
           username?: string
-          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
           content?: string
           position_x?: number
           position_y?: number
@@ -66,7 +66,7 @@ export interface Trace {
   id: string
   userId: string
   username: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
   content: string
   x: number
   y: number

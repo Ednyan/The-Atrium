@@ -18,6 +18,7 @@ import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVE
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
+import { openExternalUrl } from '../lib/openExternal'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -4112,6 +4113,50 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       {trace.content}
                     </p>
                   )}
+                </div>
+              )}
+
+              {/* Button Content -- a label that opens a link.
+                  Rendered as a div, not an <a> or <button>: the trace is
+                  still selectable, draggable and resizable like any other, so
+                  the click has to go through the same guards those use. A real
+                  anchor would navigate on the click that ends a drag. */}
+              {trace.type === 'button' && (
+                <div
+                  className="w-full h-full flex items-center justify-center px-4 select-none"
+                  style={{
+                    // Uses the trace's own colours when set, so a button can be
+                    // styled from the Customize panel like everything else.
+                    backgroundColor: trace.fillColor ?? 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${trace.borderColor ?? 'rgba(255,255,255,0.45)'}`,
+                    borderRadius: `${trace.borderRadius ?? 4}px`,
+                    cursor: trace.linkUrl ? 'pointer' : 'default',
+                  }}
+                  onPointerUp={(e) => {
+                    if (!trace.linkUrl) return
+                    // justDraggedRef is set by the shared move handler, so a
+                    // click that merely finished repositioning the button
+                    // doesn't also open its link.
+                    if (justDraggedRef.current) return
+                    e.stopPropagation()
+                    openExternalUrl(trace.linkUrl)
+                  }}
+                  title={trace.linkUrl || undefined}
+                >
+                  <span
+                    className="text-center truncate"
+                    style={{
+                      color: trace.textColor ?? '#ffffff',
+                      fontSize: `${typeof trace.fontSize === 'number' ? trace.fontSize : 14}px`,
+                      fontWeight: trace.textBold ? 700 : 500,
+                      fontStyle: trace.textItalic ? 'italic' : undefined,
+                      textDecoration: trace.textUnderline ? 'underline' : undefined,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {trace.content}
+                  </span>
                 </div>
               )}
 

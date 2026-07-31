@@ -36,7 +36,7 @@ interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
   lobbyId: string
-  initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+  initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
   initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
   activeLayerId?: string | null
   // Submitting a Path skips the normal insert-and-done flow -- instead of a
@@ -95,7 +95,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
 export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
-  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
+  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'>(initialType || 'text')
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -106,6 +106,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   const batchInvalidEntries = batchLinks.filter(l => !l.url)
   const batchOverCap = batchValidUrls.length > MAX_BATCH_EMBED_LINKS
   
+  // Button-specific state. The label reuses `content`, since that's the field
+  // every other type already puts its text in.
+  const [buttonUrl, setButtonUrl] = useState('')
+  const isValidButtonUrl = /^https?:\/\/\S+$/i.test(buttonUrl.trim())
+
   // Shape-specific state
   const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
   const [shapeColor, setShapeColor] = useState(getDefaultShapeColor(initialShapeType || 'rectangle'))
@@ -201,6 +206,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     if (traceType === 'text' && !content.trim()) return
     if ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) return
     if (traceType === 'embed' && !mediaUrl) return
+    // Both halves are required: a button with no label is unreadable, and one
+    // with no destination does nothing when pressed.
+    if (traceType === 'button' && (!content.trim() || !isValidButtonUrl)) return
 
     setIsSubmitting(true)
 
@@ -272,6 +280,16 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         // Auto-fit the box to the content so long text isn't clipped
         // and doesn't require a manual resize right after creating it.
         ...(textSize && { width: textSize.width, height: textSize.height }),
+        // Button properties. Sized to something button-shaped rather than the
+        // square default, and its own frame is drawn by the renderer, so the
+        // generic trace border/background would only double it up.
+        ...(traceType === 'button' && {
+          linkUrl: buttonUrl.trim(),
+          width: 180,
+          height: 48,
+          showBorder: false,
+          showBackground: false,
+        }),
         // Shape properties
         ...(traceType === 'shape' && {
           shapeType,
@@ -320,6 +338,14 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           ...layerFields,
           // Auto-fit the box to the content -- see the comment on newTrace above.
           ...(textSize && { width: textSize.width, height: textSize.height }),
+          // Button properties -- see the comment on newTrace above.
+          ...(traceType === 'button' && {
+            link_url: buttonUrl.trim(),
+            width: 180,
+            height: 48,
+            show_border: false,
+            show_background: false,
+          }),
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
@@ -417,9 +443,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-3">
               Content Type
             </label>
-            <div className={`grid ${isDesktop ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-3'} gap-2`}>
+            <div className={`grid ${isDesktop ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-4'} gap-2`}>
               {([
-                'text', 'embed', 'shape',
+                'text', 'embed', 'shape', 'button',
                 ...(isDesktop ? ['image', 'audio'] as const : []),
               ] as const).map((type) => (
                 <button
@@ -435,6 +461,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   {type === 'text' && '◇ Text'}
                   {type === 'embed' && '◇ Embed'}
                   {type === 'shape' && '◇ Shape'}
+                  {type === 'button' && '◇ Button'}
                   {type === 'image' && '◇ Image'}
                   {type === 'audio' && '◇ Audio'}
                 </button>
@@ -460,6 +487,45 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
                 {content.length}/256 characters
               </p>
+            </div>
+          )}
+
+          {/* Button: a label and where it goes. Deliberately two plain fields
+              rather than reusing the embed URL box -- an embed's URL is the
+              content being shown, a button's is a destination. */}
+          {traceType === 'button' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                  Button label
+                </label>
+                <input
+                  type="text"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Read the brief"
+                  maxLength={60}
+                  className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                  Links to
+                </label>
+                <input
+                  type="url"
+                  value={buttonUrl}
+                  onChange={(e) => setButtonUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                />
+                {buttonUrl.trim() !== '' && !isValidButtonUrl && (
+                  <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>
+                    Needs to be a full http:// or https:// address.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
