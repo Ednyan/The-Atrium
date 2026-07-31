@@ -4018,6 +4018,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               { label: '◇ Embed', type: 'embed' as const, shape: undefined },
               { label: '◇ Shape', type: 'shape' as const, shape: 'rectangle' as const },
               { label: '~ Path', type: 'shape' as const, shape: 'path' as const },
+              { label: '◇ Button', type: 'button' as const, shape: undefined },
               ...(isDesktop ? [
                 { label: '◇ Image', type: 'image' as const, shape: undefined },
                 { label: '◇ Sound', type: 'audio' as const, shape: undefined },
