@@ -30,7 +30,7 @@ export interface PackedOffset {
 
 export type PackShape = 'square' | 'circle'
 
-type TraceKindForSizing = 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | string
+type TraceKindForSizing = 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | string
 
 // Matches getTraceSize's image case: the longest edge is capped at 300
 // world units, scaled down proportionally, once a real image is detected.

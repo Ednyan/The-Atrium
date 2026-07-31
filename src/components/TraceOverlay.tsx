@@ -373,6 +373,55 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // the trace (a locked trace, or a drag that started on a child element).
   // The clickable trace currently held down. Drives both the press animation
   // and the handle suppression above.
+  // Paged PDF traces. Only the page currently being looked at is rasterized,
+  // keyed `traceId:pageNumber` so flipping back to a page you've already seen
+  // is instant and a long document never holds every page in memory at once.
+  const [documentPage, setDocumentPage] = useState<Record<string, number>>({})
+  const [documentPageCount, setDocumentPageCount] = useState<Record<string, number>>({})
+  const [documentPages, setDocumentPages] = useState<Record<string, string>>({})
+  const [documentError, setDocumentError] = useState<Record<string, string>>({})
+  // Which trace+page combinations have already been started, so a re-render
+  // mid-render doesn't kick off the same work again.
+  const documentRenderingRef = useRef<Set<string>>(new Set())
+
+  // The page position is deliberately local and unsaved. In a shared atrium,
+  // persisting it would mean one person paging through moved the document for
+  // everyone else reading it.
+  useEffect(() => {
+    if (!isDesktop) return
+
+    for (const trace of traces) {
+      if (trace.type !== 'document' || !trace.mediaUrl) continue
+      const page = documentPage[trace.id] ?? 1
+      const key = `${trace.id}:${page}`
+      if (documentPages[key] || documentRenderingRef.current.has(key)) continue
+      documentRenderingRef.current.add(key)
+
+      ;(async () => {
+        try {
+          const { resolveLocalUrl } = await import('../lib/localDb')
+          const resolved = await resolveLocalUrl(trace.mediaUrl!)
+          const buffer = await (await fetch(resolved)).arrayBuffer()
+
+          const { renderPdfPage, getPdfPageCount } = await import('../lib/pdf')
+          if (documentPageCount[trace.id] === undefined) {
+            const count = await getPdfPageCount(buffer)
+            setDocumentPageCount(prev => ({ ...prev, [trace.id]: count }))
+          }
+
+          const rendered = await renderPdfPage(buffer, page)
+          if (!rendered) return
+          setDocumentPages(prev => ({ ...prev, [key]: URL.createObjectURL(rendered.blob) }))
+        } catch (err) {
+          console.error('PDF page render failed:', err)
+          setDocumentError(prev => ({ ...prev, [trace.id]: 'Could not read this PDF' }))
+        } finally {
+          documentRenderingRef.current.delete(key)
+        }
+      })()
+    }
+  }, [traces, documentPage, documentPages, documentPageCount])
+
   const [pressedClickableId, setPressedClickableId] = useState<string | null>(null)
 
   // How long the trace stays visibly pressed after the click before the link
@@ -4247,6 +4296,67 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
+
+              {/* Paged PDF. The page image is rendered on demand and cached
+                  per trace+page (see documentPages), so only the page being
+                  looked at is ever rasterized. */}
+              {trace.type === 'document' && (
+                <div className="w-full h-full relative bg-white/95 overflow-hidden">
+                  {documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
+                    <img
+                      src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
+                      alt=""
+                      className="w-full h-full object-contain pointer-events-none select-none"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-black/40 text-[10px] tracking-wider uppercase">
+                        {documentError[trace.id] ?? 'Rendering…'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Page controls. Shown for everyone, not only editors --
+                      turning the page is reading, not editing. stopPropagation
+                      on mousedown so grabbing an arrow doesn't also start
+                      dragging the trace underneath it. */}
+                  {(documentPageCount[trace.id] ?? 0) > 1 && (
+                    <div
+                      className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-2 px-2 py-1 bg-black/70 pointer-events-auto"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="text-white/80 hover:text-white text-[11px] px-1 disabled:text-white/25 disabled:cursor-not-allowed"
+                        disabled={(documentPage[trace.id] ?? 1) <= 1}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDocumentPage(prev => ({ ...prev, [trace.id]: Math.max(1, (prev[trace.id] ?? 1) - 1) }))
+                        }}
+                      >
+                        ◀
+                      </button>
+                      <span className="text-white/70 text-[9px] tracking-wider tabular-nums">
+                        {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-white/80 hover:text-white text-[11px] px-1 disabled:text-white/25 disabled:cursor-not-allowed"
+                        disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDocumentPage(prev => ({
+                            ...prev,
+                            [trace.id]: Math.min(documentPageCount[trace.id] ?? 1, (prev[trace.id] ?? 1) + 1),
+                          }))
+                        }}
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Embed Content */}
               {trace.type === 'embed' && trace.mediaUrl && (() => {

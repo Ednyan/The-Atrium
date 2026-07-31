@@ -36,7 +36,7 @@ interface TracePanelProps {
   onClose: () => void
   tracePosition?: { x: number; y: number } | null
   lobbyId: string
-  initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
+  initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
   initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
   activeLayerId?: string | null
   // Submitting a Path skips the normal insert-and-done flow -- instead of a
@@ -49,6 +49,11 @@ interface TracePanelProps {
   // own embed trace, bin-packed around the placement point by LobbyScene
   // instead of the normal single insert-and-done flow.
   onCreateBatchEmbeds?: (urls: string[]) => void
+  // "Pages as traces": each rendered page becomes its own image trace, laid
+  // out in a grid by LobbyScene. Handed off for the same reason batch embeds
+  // are -- it creates many traces at once, which is placement work this panel
+  // has no business doing.
+  onCreatePdfPages?: (pages: { blob: Blob; width: number; height: number }[], columns: number) => void
   // Shape placement is two-way with the canvas: dragging out a rectangle
   // there sets these fields, and typing in them redraws the preview. The
   // panel owns neither -- LobbyScene holds the draft rect, since it also owns
@@ -92,10 +97,10 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreatePdfPages, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
-  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'>(initialType || 'text')
+  const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'>(initialType || 'text')
   const [mediaUrl, setMediaUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -108,6 +113,40 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   
   // Button-specific state. The label reuses `content`, since that's the field
   // every other type already puts its text in.
+
+  // PDF-specific state. Desktop only -- pages are rasterized into the local
+  // vault, which the web has no equivalent of (and whole PDFs would go
+  // straight into the Storage quota and past the import size ceiling).
+  const [pdfBuffer, setPdfBuffer] = useState<ArrayBuffer | null>(null)
+  const [pdfPageCount, setPdfPageCount] = useState(0)
+  const [pdfMode, setPdfMode] = useState<'pages' | 'single'>('pages')
+  const [pdfColumns, setPdfColumns] = useState(3)
+  const [pdfBusy, setPdfBusy] = useState('')
+
+  const handlePdfSelected = async (selected: File | null) => {
+    setFile(selected)
+    setPdfBuffer(null)
+    setPdfPageCount(0)
+    if (!selected) return
+
+    setPdfBusy('Reading document...')
+    try {
+      const buffer = await selected.arrayBuffer()
+      const { getPdfPageCount } = await import('../lib/pdf')
+      const count = await getPdfPageCount(buffer)
+      setPdfBuffer(buffer)
+      setPdfPageCount(count)
+      // A sensible default arrangement rather than always 3 across: a 4-page
+      // document reads better as 2x2 than 3+1.
+      setPdfColumns(Math.min(count, Math.max(1, Math.round(Math.sqrt(count)))))
+    } catch {
+      setPdfBusy('')
+      alert('That file could not be read as a PDF.')
+      setFile(null)
+      return
+    }
+    setPdfBusy('')
+  }
 
   // Shape-specific state
   const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
@@ -200,6 +239,35 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       return
     }
 
+    // PDF: rendering happens here rather than in the insert below, because
+    // "one trace per page" doesn't produce a trace at all -- it hands a set of
+    // rendered pages to LobbyScene to place as a batch.
+    if (traceType === 'document') {
+      if (!pdfBuffer || !file) return
+
+      if (pdfMode === 'pages') {
+        if (!onCreatePdfPages) return
+        setIsSubmitting(true)
+        try {
+          const { renderPdfPages } = await import('../lib/pdf')
+          const pages = await renderPdfPages(pdfBuffer, (done, total) => {
+            setPdfBusy(`Rendering page ${done} of ${total}...`)
+          })
+          setPdfBusy('')
+          onCreatePdfPages(pages, pdfColumns)
+        } catch (err) {
+          console.error('PDF render failed:', err)
+          setPdfBusy('')
+          alert('Could not render that PDF.')
+        } finally {
+          setIsSubmitting(false)
+        }
+        return
+      }
+      // 'single' falls through: it's an ordinary one-trace insert, with the
+      // PDF itself stored like any other media file.
+    }
+
     // Validate based on trace type
     if (traceType === 'text' && !content.trim()) return
     if ((traceType === 'image' || traceType === 'audio' || traceType === 'video') && !file && !mediaUrl) return
@@ -214,8 +282,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       const initialPathPoints = shapeType === 'path' ? getDefaultPathPoints(finalPosition) : undefined
       const textSize = traceType === 'text' ? computeAutoFitTextSize(content, DEFAULT_TEXT_FONT_SIZE) : null
       
-      // Upload file if provided
-      if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video')) {
+      // Upload file if provided. 'document' rides the same desktop path: the
+      // PDF is written into the vault exactly like any other media file, and
+      // the trace stores its local:// URL.
+      if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video' || traceType === 'document')) {
         if (isDesktop && supabase) {
           // Desktop: create blob URL instantly, write to disk in background
           const fileExt = file.name.split('.').pop()
@@ -277,9 +347,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         // Auto-fit the box to the content so long text isn't clipped
         // and doesn't require a manual resize right after creating it.
         ...(textSize && { width: textSize.width, height: textSize.height }),
-        // Button properties. Sized to something button-shaped rather than the
-        // square default, and its own frame is drawn by the renderer, so the
-        // generic trace border/background would only double it up.
+        // Roughly A4 portrait, at a size that's readable on the canvas without
+        // dominating it.
+        ...(traceType === 'document' && { width: 300, height: 424 }),
         // Shape properties
         ...(traceType === 'shape' && {
           shapeType,
@@ -328,7 +398,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           ...layerFields,
           // Auto-fit the box to the content -- see the comment on newTrace above.
           ...(textSize && { width: textSize.width, height: textSize.height }),
-          // Button properties -- see the comment on newTrace above.
+          // See the comment on newTrace above.
+          ...(traceType === 'document' && { width: 300, height: 424 }),
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
@@ -429,7 +500,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <div className={`grid ${isDesktop ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-3'} gap-2`}>
               {([
                 'text', 'embed', 'shape',
-                ...(isDesktop ? ['image', 'audio'] as const : []),
+                ...(isDesktop ? ['image', 'audio', 'document'] as const : []),
               ] as const).map((type) => (
                 <button
                   key={type}
@@ -446,6 +517,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   {type === 'shape' && '◇ Shape'}
                   {type === 'image' && '◇ Image'}
                   {type === 'audio' && '◇ Audio'}
+                  {type === 'document' && '◇ PDF'}
                 </button>
               ))}
             </div>
@@ -469,6 +541,85 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               <p className="text-nier-border/40 text-[9px] tracking-wider mt-2 uppercase">
                 {content.length}/256 characters
               </p>
+            </div>
+          )}
+
+          {/* PDF */}
+          {traceType === 'document' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                  Choose a PDF
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => handlePdfSelected(e.target.files?.[0] ?? null)}
+                  className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-xs file:mr-3 file:py-1 file:px-3 file:border-0 file:bg-nier-bg file:text-nier-black file:text-[10px] file:tracking-wider file:uppercase"
+                />
+                {pdfBusy && (
+                  <p className="text-nier-border/60 text-[9px] tracking-wider mt-2 uppercase">{pdfBusy}</p>
+                )}
+                {pdfPageCount > 0 && !pdfBusy && (
+                  <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
+                    {pdfPageCount} page{pdfPageCount === 1 ? '' : 's'}
+                  </p>
+                )}
+              </div>
+
+              {pdfPageCount > 0 && (
+                <>
+                  <div>
+                    <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                      Place as
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { value: 'pages' as const, label: 'One trace per page' },
+                        { value: 'single' as const, label: 'Single, with arrows' },
+                      ]).map(option => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setPdfMode(option.value)}
+                          className={`px-3 py-2 text-[10px] tracking-wider uppercase transition-all ${
+                            pdfMode === option.value
+                              ? 'bg-nier-bg text-nier-black'
+                              : 'bg-nier-black border border-nier-border/30 text-nier-border hover:border-nier-border/60 hover:text-nier-bg'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-nier-border/40 text-[9px] tracking-wider mt-2">
+                      {pdfMode === 'pages'
+                        ? 'Every page becomes its own image trace, so pages can be rearranged and annotated separately.'
+                        : 'One trace showing a page at a time, with arrows to move through it.'}
+                    </p>
+                  </div>
+
+                  {pdfMode === 'pages' && (
+                    <div>
+                      <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                        Columns: {pdfColumns} — {pdfColumns} × {Math.ceil(pdfPageCount / pdfColumns)}
+                      </label>
+                      <input
+                        type="range"
+                        min={1}
+                        max={Math.min(pdfPageCount, 10)}
+                        step={1}
+                        value={pdfColumns}
+                        onChange={(e) => setPdfColumns(parseInt(e.target.value) || 1)}
+                        className="w-full accent-nier-bg"
+                      />
+                      <p className="text-nier-border/40 text-[9px] tracking-wider mt-2">
+                        Pages run left to right, in order.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 

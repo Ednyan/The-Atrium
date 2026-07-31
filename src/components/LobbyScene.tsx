@@ -420,7 +420,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const { username, position, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
-  const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | undefined>(undefined)
+  const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   // Nudges the camera by a world-space delta. Written straight to the ref the
@@ -1372,6 +1372,89 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // broadcasts one change event per row regardless of how many rows a single
   // INSERT statement affects, so batching the SQL call doesn't reduce
   // realtime traffic, only the number of requests this client has to make.
+  // "One trace per page": each rendered page is written into the vault and
+  // becomes an image trace, arranged in a reading-order grid.
+  //
+  // Deliberately not run through packBoxesAroundCenter like a batch embed
+  // paste. That packer optimizes for a tight, organic cluster, which is the
+  // right answer for unrelated images and the wrong one for pages: their order
+  // is the information, so they go left-to-right, top-to-bottom, on a uniform
+  // pitch.
+  const handleCreatePdfPages = async (
+    pages: { blob: Blob; width: number; height: number }[],
+    columns: number,
+  ) => {
+    if (pages.length === 0 || !supabase) return
+    if (!ensureLobbyHasSpace()) return
+
+    handleCloseTracePanel()
+
+    const anchor = clickedTracePosition || positionRef.current
+    const cols = Math.max(1, Math.min(columns, pages.length))
+    const rowCount = Math.ceil(pages.length / cols)
+
+    // One pitch for every page, from the widest and tallest, so pages stay in
+    // line even when a document mixes portrait and landscape.
+    const boxes = pages.map(p => scaleToDisplayBox({ width: p.width, height: p.height }))
+    const cellWidth = Math.max(...boxes.map(b => b.width)) + 24
+    const cellHeight = Math.max(...boxes.map(b => b.height)) + 24
+
+    // Centred on the placement point rather than starting there, matching how
+    // every other multi-trace placement behaves.
+    const originX = anchor.x - ((cols - 1) * cellWidth) / 2
+    const originY = anchor.y - ((rowCount - 1) * cellHeight) / 2
+
+    const baseZ = activeLayerId
+      ? 0
+      : computeZIndexForNewUngroupedTrace(traces) - 1
+
+    const { preCacheLocalUrl } = await import('../lib/localDb')
+    const stamp = Date.now()
+    const rows: any[] = []
+
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i]
+      const storagePath = `${lobbyId}/${userId}_${stamp}_p${i + 1}.png`
+      const localUrl = `local://traces/${storagePath}`
+
+      // Cached before the write so the page renders immediately, rather than
+      // waiting on disk -- same trick the single-file upload path uses.
+      preCacheLocalUrl(localUrl, URL.createObjectURL(page.blob))
+      await supabase.storage.from('traces').upload(storagePath, page.blob)
+
+      rows.push({
+        user_id: userId,
+        username,
+        type: 'image',
+        content: `Page ${i + 1}`,
+        position_x: originX + (i % cols) * cellWidth,
+        position_y: originY + Math.floor(i / cols) * cellHeight,
+        media_url: localUrl,
+        scale: 1.0,
+        rotation: 0.0,
+        border_radius: 0,
+        lobby_id: lobbyId,
+        show_description: false,
+        show_filename: false,
+        width: boxes[i].width,
+        height: boxes[i].height,
+        ...(activeLayerId ? { layer_id: activeLayerId } : {}),
+        z_index: baseZ + i + 1,
+      })
+    }
+
+    // One insert for the whole document rather than one per page.
+    const { data, error } = await (supabase.from('traces') as any).insert(rows).select()
+    if (error) {
+      console.error('PDF page insert error:', error)
+      alert('Failed to place the pages: ' + error.message)
+      return
+    }
+    for (const row of data ?? []) {
+      useGameStore.getState().addTrace(mapRowToTrace(row))
+    }
+  }
+
   const handleCreateBatchEmbeds = async (urls: string[]) => {
     if (urls.length === 0) return
     if (!ensureLobbyHasSpace()) return
@@ -4068,6 +4151,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClose={handleCloseTracePanel}
           onCreatePath={handleCreatePath}
           onCreateBatchEmbeds={handleCreateBatchEmbeds}
+          onCreatePdfPages={handleCreatePdfPages}
           tracePosition={clickedTracePosition}
           lobbyId={lobbyId}
           initialType={tracePanelInitialType}
