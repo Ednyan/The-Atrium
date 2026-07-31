@@ -363,6 +363,31 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; traceId: string } | null>(null)
   // Declared at the top level rather than beside the menu's JSX, which sits
   // inside an IIFE where a hook can't be called.
+  // Whether this click should follow the trace's link.
+  //
+  // A press-drag-release fires a click event too, so the drag has to be ruled
+  // out explicitly or repositioning a clickable trace would navigate away the
+  // moment you let go. Two independent guards, because each misses a case the
+  // other catches: justDraggedRef is only set once a move actually happens,
+  // while the distance check also covers a drag that moved the pointer without
+  // the trace (a locked trace, or a drag that started on a child element).
+  const CLICK_DRAG_TOLERANCE_PX = 5
+  const isClickThrough = (trace: Trace, e: React.MouseEvent): boolean => {
+    if (!trace.isClickable || !trace.linkUrl) return false
+    // Modifier clicks mean selection, not navigation.
+    if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return false
+    if (justDraggedRef.current) return false
+    // Never while editing the trace's own text, or mid path-drawing.
+    if (inlineEditingTraceId === trace.id || pathCreationMode) return false
+
+    const downPos = mouseDownScreenPosRef.current
+    if (downPos) {
+      const travelled = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y)
+      if (travelled > CLICK_DRAG_TOLERANCE_PX) return false
+    }
+    return true
+  }
+
   const lastPointerRef = useRef<{ x: number; y: number; shiftKey: boolean } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuPos = useClampedMenuPosition(contextMenuRef, contextMenu?.x ?? 0, contextMenu?.y ?? 0)
@@ -3697,6 +3722,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 }
                 e.stopPropagation()
                 setSelectedTraceId(trace.id)
+
+                if (isClickThrough(trace, e)) {
+                  openExternalUrl(trace.linkUrl)
+                }
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation()
@@ -4116,49 +4145,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
-              {/* Button Content -- a label that opens a link.
-                  Rendered as a div, not an <a> or <button>: the trace is
-                  still selectable, draggable and resizable like any other, so
-                  the click has to go through the same guards those use. A real
-                  anchor would navigate on the click that ends a drag. */}
-              {trace.type === 'button' && (
-                <div
-                  className="w-full h-full flex items-center justify-center px-4 select-none"
-                  style={{
-                    // Uses the trace's own colours when set, so a button can be
-                    // styled from the Customize panel like everything else.
-                    backgroundColor: trace.fillColor ?? 'rgba(255,255,255,0.06)',
-                    border: `1px solid ${trace.borderColor ?? 'rgba(255,255,255,0.45)'}`,
-                    borderRadius: `${trace.borderRadius ?? 4}px`,
-                    cursor: trace.linkUrl ? 'pointer' : 'default',
-                  }}
-                  onPointerUp={(e) => {
-                    if (!trace.linkUrl) return
-                    // justDraggedRef is set by the shared move handler, so a
-                    // click that merely finished repositioning the button
-                    // doesn't also open its link.
-                    if (justDraggedRef.current) return
-                    e.stopPropagation()
-                    openExternalUrl(trace.linkUrl)
-                  }}
-                  title={trace.linkUrl || undefined}
-                >
-                  <span
-                    className="text-center truncate"
-                    style={{
-                      color: trace.textColor ?? '#ffffff',
-                      fontSize: `${typeof trace.fontSize === 'number' ? trace.fontSize : 14}px`,
-                      fontWeight: trace.textBold ? 700 : 500,
-                      fontStyle: trace.textItalic ? 'italic' : undefined,
-                      textDecoration: trace.textUnderline ? 'underline' : undefined,
-                      letterSpacing: '0.08em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {trace.content}
-                  </span>
-                </div>
-              )}
 
               {/* Embed Content */}
               {trace.type === 'embed' && trace.mediaUrl && (() => {
@@ -5612,6 +5598,58 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
             
             <div className="space-y-5">
+              {/* Clickable -- text, embed and shape only. Image, audio and
+                  video already do something of their own on click (open the
+                  viewer, play), and a second competing action there would be
+                  ambiguous.
+
+                  Placed above the toggle group below rather than inside it,
+                  because that group is hidden for shapes -- which are one of
+                  the three types this applies to. */}
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'shape') && (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editingTrace.isClickable ?? false}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, isClickable: e.target.checked }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { isClickable: e.target.checked })
+                      }}
+                      className="hidden"
+                    />
+                    <span className="tracking-wider uppercase text-[10px]" title="Left-clicking this trace opens the link below">Clickable</span>
+                  </label>
+
+                  {/* The destination, shown only once Clickable is on so the
+                      field can't sit there filled in and doing nothing. */}
+                  {editingTrace.isClickable && (
+                    <div>
+                      <input
+                        type="url"
+                        value={editingTrace.linkUrl ?? ''}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, linkUrl: e.target.value }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { linkUrl: e.target.value })
+                        }}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                      />
+                      {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
+                        <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
+                          Needs to be a full http:// or https:// address.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Toggle Options -- shapes have their own dedicated Show
                   Outline/No Fill controls further down (and are created with
                   these generic wrapper toggles off by default), so showing
@@ -5723,6 +5761,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <span className="tracking-wider uppercase text-[10px]">Enable Interaction</span>
                   </label>
                 )}
+
               </div>
               )}
 

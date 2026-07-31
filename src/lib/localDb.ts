@@ -689,6 +689,7 @@ export async function initLocalDb(): Promise<void> {
       text_scale_with_box INTEGER DEFAULT 1,
       show_shadow INTEGER DEFAULT 1,
       is_locked INTEGER DEFAULT 0,
+      is_clickable INTEGER DEFAULT 0,
       border_radius REAL DEFAULT 0,
       crop_x REAL DEFAULT 0,
       crop_y REAL DEFAULT 0,
@@ -858,6 +859,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE lobby_locations ADD COLUMN is_locked INTEGER DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN is_clickable INTEGER DEFAULT 0')
   } catch {
     // Column already exists — ignore
   }
@@ -1250,7 +1256,7 @@ function convertRowFromSql(table: string, row: any): any {
   // Convert SQLite integers to booleans for known boolean columns
   const boolColumns: Record<string, string[]> = {
     traces: ['show_border', 'show_background', 'show_description', 'show_filename',
-      'text_bold', 'text_italic', 'text_underline', 'is_locked', 'illuminate',
+      'text_bold', 'text_italic', 'text_underline', 'is_locked', 'is_clickable', 'illuminate',
       'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
       'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow'],
     lobbies: ['is_public', 'autosave_enabled'],
@@ -1293,7 +1299,7 @@ function convertRowToSql(table: string, row: any): any {
   // Convert booleans to integers
   const boolColumns: Record<string, string[]> = {
     traces: ['show_border', 'show_background', 'show_description', 'show_filename',
-      'text_bold', 'text_italic', 'text_underline', 'is_locked', 'illuminate',
+      'text_bold', 'text_italic', 'text_underline', 'is_locked', 'is_clickable', 'illuminate',
       'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
       'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow'],
     lobbies: ['is_public', 'autosave_enabled'],

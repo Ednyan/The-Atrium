@@ -63,6 +63,7 @@ export function buildTraceInsertRow(
   if (trace.imageUrl) newTrace.image_url = trace.imageUrl
   if (trace.mediaUrl) newTrace.media_url = trace.mediaUrl
   if (trace.linkUrl) newTrace.link_url = trace.linkUrl
+  if (trace.isClickable) newTrace.is_clickable = true
   if (trace.lightPulse !== undefined) newTrace.light_pulse = trace.lightPulse
   if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
   if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction

@@ -420,7 +420,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const { username, position, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGameStore()
   const [showTracePanel, setShowTracePanel] = useState(false)
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
-  const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button' | undefined>(undefined)
+  const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | undefined>(undefined)
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   // Nudges the camera by a world-space delta. Written straight to the ref the
@@ -4018,7 +4018,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               { label: '◇ Embed', type: 'embed' as const, shape: undefined },
               { label: '◇ Shape', type: 'shape' as const, shape: 'rectangle' as const },
               { label: '~ Path', type: 'shape' as const, shape: 'path' as const },
-              { label: '◇ Button', type: 'button' as const, shape: undefined },
               ...(isDesktop ? [
                 { label: '◇ Image', type: 'image' as const, shape: undefined },
                 { label: '◇ Sound', type: 'audio' as const, shape: undefined },

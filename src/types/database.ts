@@ -7,7 +7,7 @@ export interface Database {
           created_at: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
           content: string
           position_x: number
           position_y: number
@@ -21,7 +21,7 @@ export interface Database {
           created_at?: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
           content: string
           position_x: number
           position_y: number
@@ -35,7 +35,7 @@ export interface Database {
           created_at?: string
           user_id?: string
           username?: string
-          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
+          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
           content?: string
           position_x?: number
           position_y?: number
@@ -66,7 +66,7 @@ export interface Trace {
   id: string
   userId: string
   username: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button'
+  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape'
   content: string
   x: number
   y: number
@@ -134,6 +134,9 @@ export interface Trace {
   // off leaves the trace flat against the canvas.
   showShadow?: boolean
   isLocked?: boolean
+  // Left-clicking the trace opens linkUrl. Its own field rather than being
+  // inferred from linkUrl, so switching it off keeps the address.
+  isClickable?: boolean
   borderRadius?: number // Border radius for trace container (0-50px)
   // Image cropping (values between 0 and 1, representing percentage)
   cropX?: number

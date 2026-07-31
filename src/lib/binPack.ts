@@ -30,7 +30,7 @@ export interface PackedOffset {
 
 export type PackShape = 'square' | 'circle'
 
-type TraceKindForSizing = 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'button' | string
+type TraceKindForSizing = 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | string
 
 // Matches getTraceSize's image case: the longest edge is capped at 300
 // world units, scaled down proportionally, once a real image is detected.
@@ -85,10 +85,6 @@ export function getDefaultTraceBoxSize(type: TraceKindForSizing): PackBox {
   switch (type) {
     case 'text':
       return { width: 150, height: 80 }
-    case 'button':
-      // Matches the size TracePanel creates buttons at, so packing reserves
-      // the right footprint instead of the square fallback.
-      return { width: 180, height: 48 }
     case 'image':
       return { width: 200, height: 200 }
     case 'audio':
