@@ -374,6 +374,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // The clickable trace currently held down. Drives both the press animation
   // and the handle suppression above.
   const [pressedClickableId, setPressedClickableId] = useState<string | null>(null)
+
+  // How long the trace stays visibly pressed after the click before the link
+  // actually opens, so the press reads as a press rather than the atrium
+  // seeming to jump straight to a browser.
+  const LINK_OPEN_DELAY_MS = 1000
+  // The trace whose link is about to open. Keeps the pressed styling on (and
+  // the handles off) through the delay, after the button has been released.
+  const [pendingLinkTraceId, setPendingLinkTraceId] = useState<string | null>(null)
+  const pendingLinkTimerRef = useRef<number | null>(null)
+
+  // Cancels a pending open if the overlay goes away first -- switching atriums
+  // mid-delay shouldn't still launch a browser a second later.
+  useEffect(() => () => {
+    if (pendingLinkTimerRef.current) window.clearTimeout(pendingLinkTimerRef.current)
+  }, [])
   // Mirrored, because handleMouseMove runs from a window listener and reads
   // this on every frame of a drag -- state there would be a stale closure.
   const pressedClickableIdRef = useRef<string | null>(null)
@@ -3600,9 +3615,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // selection the user never asked for. If the press turns into a drag
         // the suppression lifts and the handles appear as usual; if it turns
         // out to be a click, the link opens and nothing is left selected.
-        const isSelected = selectedTraceId === trace.id && pressedClickableId !== trace.id
+        // Held down, or released and counting down to the link opening. Both
+        // keep the trace looking pressed and its handles hidden -- the second
+        // is what makes the press visible at all, since the button is already
+        // back up by the time the click resolves.
+        const isPressed = pressedClickableId === trace.id || pendingLinkTraceId === trace.id
+        const isSelected = selectedTraceId === trace.id && !isPressed
         const isMultiSelected = multiSelectedIds.has(trace.id)
-        const isPressed = pressedClickableId === trace.id
 
         // Apply customization defaults
         const showBorder = trace.showBorder ?? true
@@ -3793,7 +3812,18 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   // would be handles nobody asked for. Shift-click and the
                   // right-click menu still select it for editing.
                   setSelectedTraceId(null)
-                  openExternalUrl(trace.linkUrl)
+
+                  // Ignore a second click while one is already counting down,
+                  // rather than queueing another open or restarting the timer.
+                  if (pendingLinkTimerRef.current) return
+
+                  const url = trace.linkUrl
+                  setPendingLinkTraceId(trace.id)
+                  pendingLinkTimerRef.current = window.setTimeout(() => {
+                    pendingLinkTimerRef.current = null
+                    setPendingLinkTraceId(null)
+                    openExternalUrl(url)
+                  }, LINK_OPEN_DELAY_MS)
                   return
                 }
 
