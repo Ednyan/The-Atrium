@@ -404,14 +404,17 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
       ;(async () => {
         try {
-          const { resolveLocalUrl } = await import('../lib/localDb')
-          const resolved = await resolveLocalUrl(trace.mediaUrl!)
+          // Read straight off disk rather than resolving to a blob: URL and
+          // fetching it -- fetching a blob is a connect-src request, which
+          // the desktop CSP doesn't allow blob: for, and it failed with a
+          // bare "Failed to fetch".
+          const { readLocalFileBytes } = await import('../lib/localDb')
+          const bytes = await readLocalFileBytes(trace.mediaUrl!)
 
-          // resolveLocalUrl hands back the local:// URL unchanged when it
-          // can't find the file, which fetch can't follow. Treated as "not
-          // ready yet" rather than a failure: a freshly created trace can
-          // reach here before its file has finished being written.
-          if (resolved.startsWith('local://')) {
+          // null means the file isn't on disk yet. Treated as "not ready"
+          // rather than a failure: a freshly created trace can reach here
+          // before its own file has finished being written.
+          if (!bytes) {
             documentRenderingRef.current.delete(key)
             const attempts = (documentRetryRef.current[key] ?? 0) + 1
             documentRetryRef.current[key] = attempts
@@ -423,7 +426,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             return
           }
 
-          const buffer = await (await fetch(resolved)).arrayBuffer()
+          // Copied into a standalone ArrayBuffer: the bytes may be a view onto
+          // a larger buffer, and pdfjs would otherwise read past the file.
+          const buffer = bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer
 
           const { renderPdfPage, getPdfPageCount } = await import('../lib/pdf')
           if (documentPageCount[trace.id] === undefined) {

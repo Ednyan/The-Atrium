@@ -624,8 +624,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 {pdfBusy && (
                   <p className="text-nier-border/60 text-[9px] tracking-wider mt-2 uppercase">{pdfBusy}</p>
                 )}
+                {/* The file name is shown here rather than left to the input.
+                    A file input's value can't be set programmatically, so a
+                    PDF dropped onto the canvas -- already loaded, page count
+                    read, ready to place -- still displayed "no file selected"
+                    beside it. */}
+                {file && !pdfBusy && (
+                  <p className="text-nier-bg/80 text-[10px] tracking-wide mt-2 truncate" title={file.name}>
+                    ◇ {file.name}
+                  </p>
+                )}
                 {pdfPageCount > 0 && !pdfBusy && (
-                  <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
+                  <p className="text-nier-border/50 text-[9px] tracking-wider mt-1 uppercase">
                     {pdfPageCount} page{pdfPageCount === 1 ? '' : 's'}
                   </p>
                 )}

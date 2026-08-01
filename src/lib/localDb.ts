@@ -1592,6 +1592,29 @@ const resolvedUrlCache = new Map<string, string>()
 // Track in-flight resolutions to avoid duplicate reads for the same URL
 const pendingResolutions = new Map<string, Promise<string>>()
 
+// Raw bytes for a local:// URL, straight from disk.
+//
+// Exists because resolveLocalUrl hands back a blob: URL, and fetching one is
+// a connect-src request -- which the desktop CSP doesn't allow blob: for
+// (img-src and media-src do, which is why images and video were fine). That
+// surfaced as a bare "Failed to fetch" when a PDF trace tried to read its own
+// file. The CSP now permits it, but reading the file directly is better
+// regardless: no blob round-trip, no dependency on a CSP directive for
+// something that is just a local file read.
+//
+// Returns null when the file isn't there, so callers can tell "not written
+// yet" apart from "unreadable" and retry.
+export async function readLocalFileBytes(url: string): Promise<Uint8Array | null> {
+  if (!url.startsWith('local://')) return null
+  try {
+    const filePath = await resolveLocalMediaFilePath(url)
+    if (!filePath || !(await vaultPathExists(filePath))) return null
+    return await readBinaryFile(filePath)
+  } catch {
+    return null
+  }
+}
+
 export async function resolveLocalUrl(url: string): Promise<string> {
   if (!url.startsWith('local://')) return url
 
