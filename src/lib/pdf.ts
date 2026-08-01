@@ -36,7 +36,18 @@ async function renderPageToBlob(page: any, renderWidth: number): Promise<Rendere
 
   await page.render({ canvasContext: context, viewport, canvas }).promise
 
-  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  // WebP, not PNG. PNG is lossless, which for a rasterized page means storing
+  // every antialiasing artefact around every glyph exactly -- a 2200px page
+  // ran to megabytes each, and a long document filled the vault and bogged the
+  // atrium down once all those images were on the canvas at once. WebP at this
+  // quality is visually indistinguishable for text and roughly five to ten
+  // times smaller, so a page is both sharper and lighter than the original
+  // 1400px PNG was.
+  //
+  // Falls back to PNG if the webview can't encode WebP, rather than failing.
+  const blob =
+    (await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', 0.85))) ??
+    (await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png')))
   if (!blob) throw new Error('Could not encode the rendered page')
 
   // Frees the backing store immediately. A long document renders many of

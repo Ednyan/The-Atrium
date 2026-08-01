@@ -378,6 +378,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // is instant and a long document never holds every page in memory at once.
   const [documentPage, setDocumentPage] = useState<Record<string, number>>({})
   const [documentPageCount, setDocumentPageCount] = useState<Record<string, number>>({})
+  // Rendered pages held at once, across every PDF trace in the atrium. Enough
+  // that paging back and forth stays instant, small enough that a long
+  // document can't fill memory with full-resolution bitmaps.
+  const MAX_CACHED_PDF_PAGES = 8
   const [documentPages, setDocumentPages] = useState<Record<string, string>>({})
   const [documentError, setDocumentError] = useState<Record<string, string>>({})
   // Which trace+page combinations have already been started, so a re-render
@@ -441,7 +445,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
           const rendered = await renderPdfPage(buffer, page)
           if (!rendered) return
-          setDocumentPages(prev => ({ ...prev, [key]: URL.createObjectURL(rendered.blob) }))
+          setDocumentPages(prev => {
+            const next = { ...prev, [key]: URL.createObjectURL(rendered.blob) }
+
+            // Bounded, and the evicted URLs are revoked. Every rendered page
+            // was being kept for the life of the session, so paging through a
+            // long document accumulated a full-resolution bitmap per page in
+            // memory -- and a blob URL is never collected while a reference to
+            // it exists, so nothing was reclaiming them.
+            const keys = Object.keys(next)
+            if (keys.length > MAX_CACHED_PDF_PAGES) {
+              for (const stale of keys.slice(0, keys.length - MAX_CACHED_PDF_PAGES)) {
+                // Never drop the page currently on screen, whatever the order
+                // of insertion happens to be.
+                if (stale === key) continue
+                URL.revokeObjectURL(next[stale])
+                delete next[stale]
+              }
+            }
+            return next
+          })
           setDocumentError(prev => {
             if (!prev[trace.id]) return prev
             const next = { ...prev }

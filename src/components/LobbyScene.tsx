@@ -16,6 +16,7 @@ import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { copyLobbyId } from '../lib/clipboard'
+import { showToast } from '../lib/toast'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
@@ -1426,7 +1427,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i]
-      const storagePath = `${lobbyId}/${userId}_${stamp}_p${i + 1}.png`
+      // Extension follows what the encoder actually produced -- it falls back
+      // to PNG where WebP isn't available, and resolveLocalUrl picks the MIME
+      // type off the extension.
+      const ext = page.blob.type === 'image/webp' ? 'webp' : 'png'
+      const storagePath = `${lobbyId}/${userId}_${stamp}_p${i + 1}.${ext}`
       const localUrl = `local://traces/${storagePath}`
 
       // Cached before the write so the page renders immediately, rather than
@@ -1465,6 +1470,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     for (const row of data ?? []) {
       useGameStore.getState().addTrace(mapRowToTrace(row))
     }
+
+    // Reported, because a PDF is by far the heaviest thing that can be put in
+    // an atrium and the cost is otherwise invisible until it starts feeling
+    // slow.
+    const totalMB = pages.reduce((sum, p) => sum + p.blob.size, 0) / (1024 * 1024)
+    showToast(`${pages.length} pages placed — ${totalMB.toFixed(1)} MB`)
   }
 
   const handleCreateBatchEmbeds = async (urls: string[]) => {
