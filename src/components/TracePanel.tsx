@@ -157,24 +157,40 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setPdfBusy('')
   }
 
-  // Enter also applies the trace when focus has left the panel.
+  // Enter and Escape also work when focus has left the panel.
   //
   // The panel's own onKeyDown only fires while something inside it is
   // focused, so clicking the canvas to reposition the placement -- which is a
-  // normal part of using this panel -- silently stopped Enter working and left
-  // the button as the only way to finish. Listening on the window covers that.
+  // normal part of using this panel -- silently stopped both keys working and
+  // left the buttons as the only way to finish or back out. Listening on the
+  // window covers that.
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' || e.shiftKey) return
       // Already handled by the panel's own handler when focus is inside it;
-      // acting again here would submit twice.
+      // acting again here would submit or close twice.
       if (formRef.current?.contains(document.activeElement)) return
-      e.preventDefault()
-      formRef.current?.requestSubmit()
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        // stopPropagation as well as preventDefault: Escape is a busy key on
+        // the canvas (cancelling path drawing, clearing a selection), and
+        // dismissing this panel shouldn't also trigger whatever else is
+        // listening behind it.
+        e.stopPropagation()
+        onClose()
+        return
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        formRef.current?.requestSubmit()
+      }
     }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [])
+    // Capture phase, so the stopPropagation above actually reaches the
+    // canvas's own window-level handlers before they run.
+    window.addEventListener('keydown', handleKey, true)
+    return () => window.removeEventListener('keydown', handleKey, true)
+  }, [onClose])
 
   // Load a dropped PDF exactly as if it had been chosen through the file
   // input, so the page count and both placement modes are available with no
