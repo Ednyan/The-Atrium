@@ -105,6 +105,7 @@ export async function saveAllChanges(): Promise<void> {
         show_border: trace.showBorder,
         show_background: trace.showBackground,
         border_color: trace.borderColor,
+        border_width: trace.borderWidth ?? 2,
         border_opacity: trace.borderOpacity,
         fill_color: trace.fillColor,
         fill_opacity: trace.fillOpacity,

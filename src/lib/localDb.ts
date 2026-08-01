@@ -674,6 +674,7 @@ export async function initLocalDb(): Promise<void> {
       show_border INTEGER DEFAULT 1,
       show_background INTEGER DEFAULT 1,
       border_color TEXT,
+      border_width REAL DEFAULT 2,
       border_opacity REAL,
       fill_color TEXT,
       fill_opacity REAL,
@@ -864,6 +865,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE traces ADD COLUMN is_clickable INTEGER DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN border_width REAL DEFAULT 2')
   } catch {
     // Column already exists — ignore
   }
@@ -1610,6 +1616,7 @@ export async function resolveLocalUrl(url: string): Promise<string> {
         gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
         mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
         mp4: 'video/mp4', webm: 'video/webm',
+        pdf: 'application/pdf',
       }
       const mime = mimeMap[ext] || 'application/octet-stream'
       const blobBytes = new Uint8Array(bytes.byteLength)

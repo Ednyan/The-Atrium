@@ -30,6 +30,7 @@ export function buildTraceInsertRow(
     show_border: trace.showBorder ?? true,
     show_background: trace.showBackground ?? true,
     border_color: trace.borderColor,
+    border_width: trace.borderWidth ?? 2,
     border_opacity: trace.borderOpacity,
     fill_color: trace.fillColor,
     fill_opacity: trace.fillOpacity,

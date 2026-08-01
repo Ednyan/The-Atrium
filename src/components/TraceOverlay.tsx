@@ -383,6 +383,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // Which trace+page combinations have already been started, so a re-render
   // mid-render doesn't kick off the same work again.
   const documentRenderingRef = useRef<Set<string>>(new Set())
+  // Retry bookkeeping for a file that isn't on disk yet. The tick is state
+  // purely to re-run the effect below -- the counts themselves live in a ref
+  // so a retry doesn't cascade renders.
+  const documentRetryRef = useRef<Record<string, number>>({})
+  const [documentRetryTick, setDocumentRetryTick] = useState(0)
 
   // The page position is deliberately local and unsaved. In a shared atrium,
   // persisting it would mean one person paging through moved the document for
@@ -401,6 +406,23 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         try {
           const { resolveLocalUrl } = await import('../lib/localDb')
           const resolved = await resolveLocalUrl(trace.mediaUrl!)
+
+          // resolveLocalUrl hands back the local:// URL unchanged when it
+          // can't find the file, which fetch can't follow. Treated as "not
+          // ready yet" rather than a failure: a freshly created trace can
+          // reach here before its file has finished being written.
+          if (resolved.startsWith('local://')) {
+            documentRenderingRef.current.delete(key)
+            const attempts = (documentRetryRef.current[key] ?? 0) + 1
+            documentRetryRef.current[key] = attempts
+            if (attempts <= 10) {
+              window.setTimeout(() => setDocumentRetryTick(t => t + 1), 400)
+            } else {
+              setDocumentError(prev => ({ ...prev, [trace.id]: 'File not found in the vault' }))
+            }
+            return
+          }
+
           const buffer = await (await fetch(resolved)).arrayBuffer()
 
           const { renderPdfPage, getPdfPageCount } = await import('../lib/pdf')
@@ -412,15 +434,26 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           const rendered = await renderPdfPage(buffer, page)
           if (!rendered) return
           setDocumentPages(prev => ({ ...prev, [key]: URL.createObjectURL(rendered.blob) }))
+          setDocumentError(prev => {
+            if (!prev[trace.id]) return prev
+            const next = { ...prev }
+            delete next[trace.id]
+            return next
+          })
         } catch (err) {
           console.error('PDF page render failed:', err)
-          setDocumentError(prev => ({ ...prev, [trace.id]: 'Could not read this PDF' }))
+          // The real message, not a generic one -- "could not read this PDF"
+          // told nobody anything when this went wrong.
+          setDocumentError(prev => ({
+            ...prev,
+            [trace.id]: err instanceof Error ? err.message : 'Could not read this PDF',
+          }))
         } finally {
           documentRenderingRef.current.delete(key)
         }
       })()
     }
-  }, [traces, documentPage, documentPages, documentPageCount])
+  }, [traces, documentPage, documentPages, documentPageCount, documentRetryTick])
 
   const [pressedClickableId, setPressedClickableId] = useState<string | null>(null)
 
@@ -4050,7 +4083,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     boxSizing: 'content-box',
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `2px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
+                    border: showBorder ? `${displayTrace.borderWidth ?? 2}px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 0}px`,
                     backgroundColor: showBackground ? (() => {
                       const fc = displayTrace.fillColor || '#191919';
@@ -5977,8 +6010,32 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </div>
               )}
 
+              {/* Border thickness. Its own block above the colour controls so
+                  it also reaches PDF traces, where a frame is what separates a
+                  white page from a light background. */}
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (editingTrace.showBorder ?? true) && (
+                <div>
+                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                    Border Thickness: {editingTrace.borderWidth ?? 2}px
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="1"
+                    value={editingTrace.borderWidth ?? 2}
+                    onChange={(e) => {
+                      const borderWidth = parseInt(e.target.value)
+                      setEditingTrace({ ...editingTrace, borderWidth })
+                      updateTraceCustomization(editingTrace.id, { borderWidth })
+                    }}
+                    className="w-full accent-nier-bg"
+                  />
+                </div>
+              )}
+
               {/* Border & Fill Color Controls (for text and embed traces) */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image') && (
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (
                 <>
                   {/* NieR Presets */}
                   <div>

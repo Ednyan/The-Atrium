@@ -61,6 +61,7 @@ export function mapRowToTrace(row: any): Trace {
     mediaUrl: row.media_url || undefined,
     linkUrl: row.link_url || undefined,
     isClickable: !!row.is_clickable,
+    borderWidth: row.border_width ?? 2,
     createdAt: row.created_at,
     scale: row.scale ?? 1.0,
     // scale_x/scale_y are authoritative (support non-uniform stretch);

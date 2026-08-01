@@ -12,16 +12,20 @@ export interface RenderedPage {
   height: number
 }
 
-// Pixel width each page is rasterized at. Chosen rather than rendering at the
-// PDF's native scale: a page is roughly 612pt wide, which rasterizes to a
-// blurry 612px, while going much above this multiplies file size across every
-// page of a long document for detail nobody sees until they zoom right in.
-const RENDER_WIDTH = 1400
+// Pixel width each page is rasterized at, and why there are two.
+//
+// A PDF page is roughly 612pt wide, so rendering at native scale gives a
+// blurry 612px. Rendering higher costs file size and memory, which matters
+// very differently in the two modes: page-per-trace writes every page to the
+// vault at once, while the paged viewer holds one page and is the mode people
+// actually zoom into to read. So the viewer renders sharper.
+const BATCH_RENDER_WIDTH = 2200
+const VIEWER_RENDER_WIDTH = 3000
 
-// Renders one page to a PNG blob at RENDER_WIDTH, preserving aspect ratio.
-async function renderPageToBlob(page: any): Promise<RenderedPage> {
+// Renders one page to a PNG blob at the given width, preserving aspect ratio.
+async function renderPageToBlob(page: any, renderWidth: number): Promise<RenderedPage> {
   const baseViewport = page.getViewport({ scale: 1 })
-  const scale = RENDER_WIDTH / baseViewport.width
+  const scale = renderWidth / baseViewport.width
   const viewport = page.getViewport({ scale })
 
   const canvas = document.createElement('canvas')
@@ -91,7 +95,7 @@ export async function renderPdfPages(
   try {
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i)
-      pages.push(await renderPageToBlob(page))
+      pages.push(await renderPageToBlob(page, BATCH_RENDER_WIDTH))
       // Released as we go rather than at the end, so peak memory tracks one
       // page instead of the whole document.
       page.cleanup()
@@ -111,7 +115,7 @@ export async function renderPdfPage(data: ArrayBuffer, pageNumber: number): Prom
   try {
     if (pageNumber < 1 || pageNumber > doc.numPages) return null
     const page = await doc.getPage(pageNumber)
-    const rendered = await renderPageToBlob(page)
+    const rendered = await renderPageToBlob(page, VIEWER_RENDER_WIDTH)
     page.cleanup()
     return rendered
   } finally {

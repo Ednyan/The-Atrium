@@ -54,6 +54,9 @@ interface TracePanelProps {
   // are -- it creates many traces at once, which is placement work this panel
   // has no business doing.
   onCreatePdfPages?: (pages: { blob: Blob; width: number; height: number }[], columns: number) => void
+  // A PDF dropped onto the canvas, so the panel opens with it already loaded
+  // rather than asking the user to pick the file they just dropped.
+  initialPdfFile?: File | null
   // Shape placement is two-way with the canvas: dragging out a rectangle
   // there sets these fields, and typing in them redraws the preview. The
   // panel owns neither -- LobbyScene holds the draft rect, since it also owns
@@ -97,7 +100,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreatePdfPages, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreatePdfPages, initialPdfFile, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'>(initialType || 'text')
@@ -121,6 +124,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   const [pdfPageCount, setPdfPageCount] = useState(0)
   const [pdfMode, setPdfMode] = useState<'pages' | 'single'>('pages')
   const [pdfColumns, setPdfColumns] = useState(3)
+  // Rows are set independently rather than derived from the column count.
+  // They're only a hint: if columns x rows can't hold every page, the extras
+  // continue past the last row rather than being dropped.
+  const [pdfRows, setPdfRows] = useState(1)
   const [pdfBusy, setPdfBusy] = useState('')
 
   const handlePdfSelected = async (selected: File | null) => {
@@ -138,7 +145,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       setPdfPageCount(count)
       // A sensible default arrangement rather than always 3 across: a 4-page
       // document reads better as 2x2 than 3+1.
-      setPdfColumns(Math.min(count, Math.max(1, Math.round(Math.sqrt(count)))))
+      const columns = Math.min(count, Math.max(1, Math.round(Math.sqrt(count))))
+      setPdfColumns(columns)
+      setPdfRows(Math.ceil(count / columns))
     } catch {
       setPdfBusy('')
       alert('That file could not be read as a PDF.')
@@ -147,6 +156,34 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     }
     setPdfBusy('')
   }
+
+  // Enter also applies the trace when focus has left the panel.
+  //
+  // The panel's own onKeyDown only fires while something inside it is
+  // focused, so clicking the canvas to reposition the placement -- which is a
+  // normal part of using this panel -- silently stopped Enter working and left
+  // the button as the only way to finish. Listening on the window covers that.
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.shiftKey) return
+      // Already handled by the panel's own handler when focus is inside it;
+      // acting again here would submit twice.
+      if (formRef.current?.contains(document.activeElement)) return
+      e.preventDefault()
+      formRef.current?.requestSubmit()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
+
+  // Load a dropped PDF exactly as if it had been chosen through the file
+  // input, so the page count and both placement modes are available with no
+  // second step.
+  useEffect(() => {
+    if (!initialPdfFile) return
+    handlePdfSelected(initialPdfFile)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPdfFile])
 
   // Shape-specific state
   const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
@@ -293,7 +330,15 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           const storagePath = `${lobbyId}/${fileName}`
           const blobUrl = URL.createObjectURL(file)
           const localUrl = `local://traces/${storagePath}`
-          import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
+          // Awaited, not fire-and-forget. The cache entry has to exist before
+          // the trace is inserted: a PDF trace reads its own file straight
+          // back to render a page, and if the cache miss lands before the
+          // (unawaited) disk write finishes, resolveLocalUrl returns the
+          // local:// URL unchanged and the fetch fails -- which is exactly
+          // what made "single with arrows" report an unreadable PDF while
+          // page-per-trace, which never reads back, worked fine.
+          const { preCacheLocalUrl } = await import('../lib/localDb')
+          preCacheLocalUrl(localUrl, blobUrl)
           supabase.storage.from('traces').upload(storagePath, file)
           uploadedUrl = localUrl
         } else if (supabase) {
@@ -497,7 +542,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-3">
               Content Type
             </label>
-            <div className={`grid ${isDesktop ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-3'} gap-2`}>
+            {/* Fixed three across. Desktop has six types, which lands as a
+                tidy 3x2; web has three and fills one row. Letting the column
+                count vary made the buttons resize as types were added. */}
+            <div className="grid grid-cols-3 gap-2">
               {([
                 'text', 'embed', 'shape',
                 ...(isDesktop ? ['image', 'audio', 'document'] as const : []),
@@ -602,19 +650,37 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   {pdfMode === 'pages' && (
                     <div>
                       <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
-                        Columns: {pdfColumns} — {pdfColumns} × {Math.ceil(pdfPageCount / pdfColumns)}
+                        Grid — {pdfColumns} × {pdfRows}
                       </label>
-                      <input
-                        type="range"
-                        min={1}
-                        max={Math.min(pdfPageCount, 10)}
-                        step={1}
-                        value={pdfColumns}
-                        onChange={(e) => setPdfColumns(parseInt(e.target.value) || 1)}
-                        className="w-full accent-nier-bg"
-                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-nier-border/60 text-[9px] tracking-wider uppercase mb-1">Columns</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={pdfPageCount}
+                            value={pdfColumns}
+                            onChange={(e) => setPdfColumns(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-nier-border/60 text-[9px] tracking-wider uppercase mb-1">Rows</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={pdfPageCount}
+                            value={pdfRows}
+                            onChange={(e) => setPdfRows(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
+                          />
+                        </div>
+                      </div>
                       <p className="text-nier-border/40 text-[9px] tracking-wider mt-2">
                         Pages run left to right, in order.
+                        {pdfColumns * pdfRows < pdfPageCount && (
+                          <> That fits {pdfColumns * pdfRows} of {pdfPageCount} — the rest continue in further rows.</>
+                        )}
                       </p>
                     </div>
                   )}

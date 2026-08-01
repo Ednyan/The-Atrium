@@ -114,6 +114,7 @@ export interface Trace {
   showBackground?: boolean
   borderColor?: string // Custom border color
   borderOpacity?: number // Border opacity 0-1
+  borderWidth?: number // Frame thickness in px when showBorder is on
   fillColor?: string // Custom fill/background color
   fillOpacity?: number // Fill/background opacity 0-1
   showDescription?: boolean

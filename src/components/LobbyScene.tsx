@@ -422,6 +422,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
+  // A PDF dropped on the canvas, handed to the panel so it opens with the
+  // file already chosen instead of asking for it again.
+  const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null)
+
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
   // Nudges the camera by a world-space delta. Written straight to the ref the
   // Pixi ticker reads, exactly as the existing drag-to-pan does, so it takes
@@ -1086,6 +1090,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     setClickedTracePosition(null)
     setTracePanelInitialType(undefined)
     setTracePanelInitialShapeType(undefined)
+    // Or the next panel opened would reload the last dropped PDF.
+    setPendingPdfFile(null)
   }
 
   // Creating a path used to insert a static 2-point line and leave the user
@@ -1391,11 +1397,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     const anchor = clickedTracePosition || positionRef.current
     const cols = Math.max(1, Math.min(columns, pages.length))
+    // Derived, not taken from the panel: the requested rows are a hint, and if
+    // columns x rows can't hold the document the remainder has to go
+    // somewhere rather than be dropped.
     const rowCount = Math.ceil(pages.length / cols)
 
     // One pitch for every page, from the widest and tallest, so pages stay in
     // line even when a document mixes portrait and landscape.
-    const boxes = pages.map(p => scaleToDisplayBox({ width: p.width, height: p.height }))
+    // Twice the usual image cap. A page is meant to be read, and at the
+    // standard 300-unit cap the text was too small to make out without
+    // zooming in on every single one.
+    const boxes = pages.map(p => scaleToDisplayBox({ width: p.width, height: p.height }, 600))
     const cellWidth = Math.max(...boxes.map(b => b.width)) + 24
     const cellHeight = Math.max(...boxes.map(b => b.height)) + 24
 
@@ -2959,6 +2971,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const { x: worldX, y: worldY } = getWorldPositionFromScreen(e.clientX, e.clientY)
 
     const droppedFiles = Array.from(e.dataTransfer.files)
+
+    // A dropped PDF opens the Create Trace panel on the PDF type with the
+    // file already loaded, rather than being uploaded as an opaque
+    // attachment. The whole point of the type is choosing how to place it --
+    // as pages or as a paged viewer -- and that decision can't be made for
+    // the user. Desktop only, matching where the type exists at all.
+    const droppedPdf = isDesktop
+      ? droppedFiles.find(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+      : undefined
+    if (droppedPdf) {
+      setClickedTracePosition({ x: worldX, y: worldY })
+      setTracePanelInitialType('document')
+      setTracePanelInitialShapeType(undefined)
+      setPendingPdfFile(droppedPdf)
+      setShowTracePanel(true)
+      return
+    }
+
     const processDroppedFiles = async () => {
       // Phase 1: classify every dropped file and estimate its box size
       // without uploading or inserting anything yet, so the whole batch can
@@ -4104,6 +4134,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               ...(isDesktop ? [
                 { label: '◇ Image', type: 'image' as const, shape: undefined },
                 { label: '◇ Sound', type: 'audio' as const, shape: undefined },
+                { label: '◇ PDF', type: 'document' as const, shape: undefined },
               ] : []),
             ]).map((item) => (
               <button
@@ -4152,6 +4183,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onCreatePath={handleCreatePath}
           onCreateBatchEmbeds={handleCreateBatchEmbeds}
           onCreatePdfPages={handleCreatePdfPages}
+          initialPdfFile={pendingPdfFile}
           tracePosition={clickedTracePosition}
           lobbyId={lobbyId}
           initialType={tracePanelInitialType}
