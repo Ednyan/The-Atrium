@@ -437,10 +437,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             bytes.byteOffset + bytes.byteLength,
           ) as ArrayBuffer
 
-          const { renderPdfPage, getPdfPageCount } = await import('../lib/pdf')
+          const { renderPdfPage, getPdfInfo } = await import('../lib/pdf')
           if (documentPageCount[trace.id] === undefined) {
-            const count = await getPdfPageCount(buffer)
-            setDocumentPageCount(prev => ({ ...prev, [trace.id]: count }))
+            const info = await getPdfInfo(buffer)
+            setDocumentPageCount(prev => ({ ...prev, [trace.id]: info.pageCount }))
           }
 
           const rendered = await renderPdfPage(buffer, page)
@@ -4365,7 +4365,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   per trace+page (see documentPages), so only the page being
                   looked at is ever rasterized. */}
               {trace.type === 'document' && (
-                <div className="w-full h-full relative bg-white/95 overflow-hidden">
+                <div
+                  className="w-full h-full relative bg-white/95 overflow-hidden"
+                  // container-type lets the page controls below size
+                  // themselves in cqh (percentages of this box's height)
+                  // rather than fixed pixels, so the bar stays a constant
+                  // fraction of the page however large the trace is drawn.
+                  style={{ containerType: 'size' }}
+                >
                   {documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
                     <img
                       src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
@@ -4384,14 +4391,27 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       turning the page is reading, not editing. stopPropagation
                       on mousedown so grabbing an arrow doesn't also start
                       dragging the trace underneath it. */}
+                  {/* Sized in cqh -- percentages of the page's own height --
+                      so the bar is always about a twentieth of the page rather
+                      than a fixed pixel size that swamped the trace at normal
+                      zoom. */}
                   {(documentPageCount[trace.id] ?? 0) > 1 && (
                     <div
-                      className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-2 px-2 py-1 bg-black/70 pointer-events-auto"
+                      className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto"
+                      style={{
+                        bottom: '1.5cqh',
+                        height: '5cqh',
+                        gap: '2cqh',
+                        paddingInline: '2cqh',
+                        background: 'rgba(0,0,0,0.7)',
+                        borderRadius: '1cqh',
+                      }}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
                       <button
                         type="button"
-                        className="text-white/80 hover:text-white text-[11px] px-1 disabled:text-white/25 disabled:cursor-not-allowed"
+                        className="text-white/80 hover:text-white disabled:text-white/25 disabled:cursor-not-allowed leading-none"
+                        style={{ fontSize: '3cqh' }}
                         disabled={(documentPage[trace.id] ?? 1) <= 1}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -4400,12 +4420,16 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       >
                         ◀
                       </button>
-                      <span className="text-white/70 text-[9px] tracking-wider tabular-nums">
+                      <span
+                        className="text-white/70 tracking-wider tabular-nums leading-none whitespace-nowrap"
+                        style={{ fontSize: '2.6cqh' }}
+                      >
                         {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
                       </span>
                       <button
                         type="button"
-                        className="text-white/80 hover:text-white text-[11px] px-1 disabled:text-white/25 disabled:cursor-not-allowed"
+                        className="text-white/80 hover:text-white disabled:text-white/25 disabled:cursor-not-allowed leading-none"
+                        style={{ fontSize: '3cqh' }}
                         disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -7571,6 +7595,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {modalTrace.type === 'audio' && 'Audio Trace'}
                   {modalTrace.type === 'video' && 'Video Trace'}
                   {modalTrace.type === 'embed' && 'Embedded Content'}
+                  {modalTrace.type === 'document' && 'Document'}
                 </h2>
               </div>
               <button
@@ -7583,6 +7608,56 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
             {/* Full content */}
             <div className="mb-4">
+              {/* Paged document. Reuses the same per-trace page state as the
+                  canvas, so the modal opens on whatever page was being read
+                  and paging in either place keeps them in step -- there's one
+                  document, not two independent views of it. */}
+              {modalTrace.type === 'document' && (() => {
+                const page = documentPage[modalTrace.id] ?? 1
+                const total = documentPageCount[modalTrace.id] ?? 1
+                const src = documentPages[`${modalTrace.id}:${page}`]
+                const maxHeight = Math.max(240, modalViewportSize.height * 0.95 - 200)
+
+                return (
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      className="bg-white/95 flex items-center justify-center"
+                      style={{ maxHeight, minHeight: 240, minWidth: 240 }}
+                    >
+                      {src ? (
+                        <img src={src} alt="" style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9 }} />
+                      ) : (
+                        <span className="text-black/40 text-xs tracking-wider uppercase px-12 py-24">
+                          {documentError[modalTrace.id] ?? 'Rendering…'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        className="text-gray-300 hover:text-white text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
+                        disabled={page <= 1}
+                        onClick={() => setDocumentPage(prev => ({ ...prev, [modalTrace.id]: Math.max(1, (prev[modalTrace.id] ?? 1) - 1) }))}
+                      >
+                        ◀
+                      </button>
+                      <span className="text-gray-300 text-xs tracking-[0.15em] uppercase tabular-nums">
+                        Page {page} / {total}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-gray-300 hover:text-white text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
+                        disabled={page >= total}
+                        onClick={() => setDocumentPage(prev => ({ ...prev, [modalTrace.id]: Math.min(total, (prev[modalTrace.id] ?? 1) + 1) }))}
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {modalTrace.type === 'image' && modalTrace.mediaUrl && (() => {
                 // Size the image itself to the largest it can be within the
                 // viewport (minus room for this modal's own header/padding/

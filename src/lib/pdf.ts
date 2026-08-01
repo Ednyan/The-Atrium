@@ -87,11 +87,29 @@ async function openDocument(data: ArrayBuffer) {
   return { task, doc }
 }
 
-export async function getPdfPageCount(data: ArrayBuffer): Promise<number> {
+export interface PdfInfo {
+  pageCount: number
+  // First page's dimensions in PDF points, so a trace can be created at the
+  // document's real proportions instead of a guessed box.
+  width: number
+  height: number
+}
+
+export async function getPdfInfo(data: ArrayBuffer): Promise<PdfInfo> {
   const { task, doc } = await openDocument(data)
-  const count = doc.numPages
-  await task.destroy()
-  return count
+  try {
+    const page = await doc.getPage(1)
+    const viewport = page.getViewport({ scale: 1 })
+    const info = {
+      pageCount: doc.numPages,
+      width: viewport.width,
+      height: viewport.height,
+    }
+    page.cleanup()
+    return info
+  } finally {
+    await task.destroy()
+  }
 }
 
 // Renders every page, reporting progress -- a long document takes a while and

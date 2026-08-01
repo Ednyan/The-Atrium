@@ -4,6 +4,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace } from '../lib/layerZIndex'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
+import { scaleToDisplayBox } from '../lib/binPack'
 import type { Trace } from '../types/database'
 
 // Matches mapRowToTrace's `row.font_size ?? 16` fallback -- a freshly
@@ -129,6 +130,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   // continue past the last row rather than being dropped.
   const [pdfRows, setPdfRows] = useState(1)
   const [pdfBusy, setPdfBusy] = useState('')
+  // Display box for a paged document trace, at the PDF's own aspect ratio.
+  const [pdfPageSize, setPdfPageSize] = useState<{ width: number; height: number } | null>(null)
 
   const handlePdfSelected = async (selected: File | null) => {
     setFile(selected)
@@ -139,10 +142,15 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setPdfBusy('Reading document...')
     try {
       const buffer = await selected.arrayBuffer()
-      const { getPdfPageCount } = await import('../lib/pdf')
-      const count = await getPdfPageCount(buffer)
+      const { getPdfInfo } = await import('../lib/pdf')
+      const info = await getPdfInfo(buffer)
+      const count = info.pageCount
       setPdfBuffer(buffer)
       setPdfPageCount(count)
+      // The document's real proportions, so an A4 trace is A4-shaped. Sized
+      // through the same 600-unit cap page-per-trace uses, since a paged
+      // document at the old 300x424 was far too small to read.
+      setPdfPageSize(scaleToDisplayBox({ width: info.width, height: info.height }, 600))
       // A sensible default arrangement rather than always 3 across: a 4-page
       // document reads better as 2x2 than 3+1.
       const columns = Math.min(count, Math.max(1, Math.round(Math.sqrt(count))))
@@ -410,7 +418,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         ...(textSize && { width: textSize.width, height: textSize.height }),
         // Roughly A4 portrait, at a size that's readable on the canvas without
         // dominating it.
-        ...(traceType === 'document' && { width: 300, height: 424 }),
+        ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
         // Shape properties
         ...(traceType === 'shape' && {
           shapeType,
@@ -460,7 +468,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           // Auto-fit the box to the content -- see the comment on newTrace above.
           ...(textSize && { width: textSize.width, height: textSize.height }),
           // See the comment on newTrace above.
-          ...(traceType === 'document' && { width: 300, height: 424 }),
+          ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
