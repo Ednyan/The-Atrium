@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
+import VaultRecoveryPanel from './VaultRecoveryPanel'
 import { useGameStore } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
@@ -51,6 +52,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [isOperator, setIsOperator] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
+  const [showVaultRecovery, setShowVaultRecovery] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vaultPath, setVaultPath] = useState<string | null>(null)
@@ -1087,6 +1089,19 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     ◇ Export (.json)
                   </button>
                 )}
+
+                {/* Desktop only: rebuilds an atrium from the copy kept in the
+                    vault. Sits with import/export because it's the same idea --
+                    getting an atrium back in -- and because that's where
+                    someone goes looking when one has gone missing. */}
+                {isDesktop && (
+                  <button
+                    onClick={() => setShowVaultRecovery(true)}
+                    className="flex-1 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  >
+                    ◇ Restore From Vault
+                  </button>
+                )}
               </div>
               {!canCreateMore && (
                 <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
@@ -1320,6 +1335,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         <ImportAtrium
           onClose={() => setShowImport(false)}
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
+        />
+      )}
+
+      {showVaultRecovery && (
+        <VaultRecoveryPanel
+          onClose={() => setShowVaultRecovery(false)}
+          onRestored={() => { loadLobbies(); checkCanCreateLobby(); }}
         />
       )}
 

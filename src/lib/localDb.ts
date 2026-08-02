@@ -611,9 +611,33 @@ async function handleVaultSyncAfterMutation(opts: QueryOptions, previousRows: an
 
 // ---- Initialization ----
 
+// Set when the database opens but fails PRAGMA integrity_check.
+//
+// Corruption previously surfaced one query at a time, as "database disk image
+// is malformed" attached to whatever the user happened to be doing -- an
+// import, entering an atrium -- which reads as that action failing rather than
+// as the database being damaged. Checked once at startup instead, so the app
+// can say what's actually wrong and offer to rebuild from the vault mirrors.
+let databaseIntegrityError: string | null = null
+export function getDatabaseIntegrityError(): string | null {
+  return databaseIntegrityError
+}
+
 export async function initLocalDb(): Promise<void> {
   const liveDatabasePath = await invoke<string>('prepare_live_database')
   db = await Database.load(`sqlite:${liveDatabasePath}`)
+
+  try {
+    const rows = await db.select<any[]>('PRAGMA integrity_check')
+    const result = rows?.[0] ? String(Object.values(rows[0])[0]) : 'ok'
+    databaseIntegrityError = result === 'ok' ? null : result
+  } catch (e: any) {
+    // The check itself throwing is the strongest signal there is.
+    databaseIntegrityError = e?.message || String(e)
+  }
+  if (databaseIntegrityError) {
+    console.error('Local database failed its integrity check:', databaseIntegrityError)
+  }
 
   // Get app data directory for media files
   const appData = await appDataDir()
@@ -1658,6 +1682,177 @@ async function removeOrphanedTraceMedia(deletedRows: any[]): Promise<void> {
       }
     }
   }
+}
+
+export interface VaultMirror {
+  snapshotPath: string
+  lobbyId: string
+  lobbyName: string
+  traceCount: number
+  layerCount: number
+  syncedAt: string | null
+  // True when no atrium with this id is in the database -- i.e. this mirror is
+  // of something that has been lost, which is the case restoring exists for.
+  missingFromDatabase: boolean
+}
+
+// Every atrium mirror in the vault, with whether the database still has it.
+export async function listVaultMirrors(): Promise<VaultMirror[]> {
+  if (!db) return []
+
+  const paths = await invoke<string[]>('list_vault_atrium_mirrors')
+  const mirrors: VaultMirror[] = []
+
+  for (const snapshotPath of paths) {
+    try {
+      const bytes = await readBinaryFile(snapshotPath)
+      const snapshot = JSON.parse(new TextDecoder().decode(bytes))
+      const lobby = snapshot?.lobby
+      if (!lobby?.id) continue
+
+      const existing = await db.select<any[]>('SELECT id FROM lobbies WHERE id = ? LIMIT 1', [lobby.id])
+      mirrors.push({
+        snapshotPath,
+        lobbyId: lobby.id,
+        lobbyName: lobby.name ?? 'Atrium',
+        traceCount: snapshot?.traces?.length ?? 0,
+        layerCount: snapshot?.layers?.length ?? 0,
+        syncedAt: snapshot?.syncedAt ?? null,
+        missingFromDatabase: existing.length === 0,
+      })
+    } catch {
+      // A mirror that can't be parsed is skipped rather than failing the list;
+      // the others are still restorable.
+    }
+  }
+
+  return mirrors.sort((a, b) => a.lobbyName.localeCompare(b.lobbyName))
+}
+
+export interface RestoreResult {
+  lobbyName: string
+  traces: number
+  layers: number
+  mediaFiles: number
+  mediaMissing: number
+}
+
+// Rebuilds an atrium from its vault mirror.
+//
+// The mirror was previously a copy nothing could read back: the Import Atrium
+// flow skips local:// media outright, and the mirror's layers carry raw ids
+// rather than the _local_id fields the importer maps through -- so importing
+// one gave you ungrouped text traces and no images. It looked like a backup
+// without being one, which is the worst kind.
+//
+// Restoring keeps the original ids when the atrium is genuinely gone, so
+// layer_id references and media paths line up exactly as they did. When the
+// atrium still exists it restores as a copy with fresh ids instead, rather
+// than overwriting something the user still has.
+export async function restoreAtriumFromMirror(snapshotPath: string): Promise<RestoreResult> {
+  if (!db) throw new Error('Local database not ready')
+
+  const bytes = await readBinaryFile(snapshotPath)
+  const snapshot = JSON.parse(new TextDecoder().decode(bytes))
+  const lobby = snapshot?.lobby
+  if (!lobby?.id) throw new Error('This mirror has no atrium in it')
+
+  const existing = await db.select<any[]>('SELECT id FROM lobbies WHERE id = ? LIMIT 1', [lobby.id])
+  const asCopy = existing.length > 0
+
+  const lobbyId = asCopy ? uuid() : lobby.id
+  const lobbyName = asCopy ? `${lobby.name ?? 'Atrium'} (restored)` : (lobby.name ?? 'Atrium')
+
+  const lobbyRow = convertRowToSql('lobbies', {
+    ...lobby,
+    id: lobbyId,
+    name: lobbyName,
+    owner_user_id: LOCAL_USER_ID,
+  })
+  const lobbyColumns = Object.keys(lobbyRow)
+  await db.execute(
+    `INSERT OR REPLACE INTO lobbies (${lobbyColumns.join(', ')}) VALUES (${lobbyColumns.map(() => '?').join(', ')})`,
+    lobbyColumns.map(c => lobbyRow[c]),
+  )
+
+  // Old layer id -> new, so traces can be repointed when restoring as a copy.
+  const layerIdMap = new Map<string, string>()
+  for (const layer of snapshot.layers ?? []) {
+    const newId = asCopy ? uuid() : layer.id
+    layerIdMap.set(layer.id, newId)
+    const row = convertRowToSql('layers', { ...layer, id: newId, lobby_id: lobbyId, user_id: LOCAL_USER_ID })
+    const columns = Object.keys(row)
+    await db.execute(
+      `INSERT OR REPLACE INTO layers (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      columns.map(c => row[c]),
+    )
+  }
+
+  let mediaFiles = 0
+  let mediaMissing = 0
+
+  // Copies a mirrored file back into the live media store and returns the
+  // local:// URL pointing at it.
+  const restoreAsset = async (localUrl: unknown, mirrorPath: unknown): Promise<string | null> => {
+    if (typeof localUrl !== 'string' || !localUrl.startsWith('local://')) {
+      return typeof localUrl === 'string' ? localUrl : null
+    }
+    const parsed = parseLocalUrl(localUrl)
+    const fileName = parsed?.pathSegments[parsed.pathSegments.length - 1]
+    if (!parsed || !fileName) return localUrl
+
+    const restoredUrl = buildLobbyScopedLocalUrl(parsed.bucket, lobbyId, fileName)
+    const destination = await getResolvedRuntimeMediaFilePath(parsed.bucket, [lobbyId, fileName])
+    if (!destination) return restoredUrl
+
+    try {
+      if (await vaultPathExists(destination)) {
+        mediaFiles++
+        return restoredUrl
+      }
+      if (typeof mirrorPath === 'string' && await vaultPathExists(mirrorPath)) {
+        await copyFileToPath(mirrorPath, destination)
+        mediaFiles++
+      } else {
+        // The row is kept regardless: a trace with a missing file still holds
+        // its position, size and grouping, and is far more useful than a gap.
+        mediaMissing++
+      }
+    } catch {
+      mediaMissing++
+    }
+    return restoredUrl
+  }
+
+  let traces = 0
+  for (const trace of snapshot.traces ?? []) {
+    // Mirror-only bookkeeping, not columns on the table.
+    const { vault_media_path, vault_image_path, ...rest } = trace
+
+    const mediaUrl = await restoreAsset(rest.media_url, vault_media_path)
+    const imageUrl = await restoreAsset(rest.image_url, vault_image_path)
+
+    const row = convertRowToSql('traces', {
+      ...rest,
+      id: asCopy ? uuid() : rest.id,
+      lobby_id: lobbyId,
+      user_id: LOCAL_USER_ID,
+      media_url: mediaUrl,
+      image_url: imageUrl,
+      layer_id: rest.layer_id ? layerIdMap.get(rest.layer_id) ?? null : null,
+    })
+    const columns = Object.keys(row)
+    await db.execute(
+      `INSERT OR REPLACE INTO traces (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      columns.map(c => row[c]),
+    )
+    traces++
+  }
+
+  lobbyNameCache.set(lobbyId, lobbyName)
+  resolvedUrlCache.clear()
+
+  return { lobbyName, traces, layers: layerIdMap.size, mediaFiles, mediaMissing }
 }
 
 // Raw bytes for a local:// URL, straight from disk.

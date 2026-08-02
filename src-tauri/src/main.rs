@@ -154,6 +154,41 @@ fn set_vault_base_path(app: tauri::AppHandle, path: String) -> Result<String, St
     Ok(base_path.to_string_lossy().to_string())
 }
 
+// Explains what _runtime is, in the folder itself.
+//
+// The live database lives in there, inside the folder users are told is
+// theirs -- so ordinary housekeeping (tidying atrium folders, deleting one
+// that's finished) can sit a few centimetres from the file the whole app
+// depends on. Deleting or editing it while the app is running corrupts it,
+// which has already cost real work once. A note in the folder is the cheapest
+// thing that addresses the actual trigger.
+//
+// Rewritten on every launch rather than written once, so the text can't go
+// stale against what the folder actually contains.
+fn write_runtime_readme(base_path: &std::path::Path) -> Result<(), String> {
+    let contents = "\
+THIS FOLDER IS THE APP'S WORKING DATA -- PLEASE DON'T EDIT OR DELETE IT
+=======================================================================
+
+  atrium.db   Your atriums, traces, layers and saved locations.
+  media/      The image, audio, video and PDF files those traces use.
+
+Everything you see in The Digital Atrium is in here. Deleting this folder, or
+changing anything inside it while the app is running, will damage the database
+and can lose work.
+
+Your atriums are also mirrored, one folder per atrium, next to this one -- each
+with an atrium.json and a copy of its media. Those are browsable and safe to
+copy elsewhere. If this folder is ever lost, the app can rebuild from them.
+
+To move everything somewhere else, use the app's vault folder setting rather
+than moving files by hand -- it moves this folder with the rest.
+";
+
+    fs::write(live_runtime_dir(base_path).join("READ ME.txt"), contents)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn prepare_live_database(app: tauri::AppHandle) -> Result<String, String> {
     let base_path = current_vault_base_path(&app)?;
@@ -162,6 +197,8 @@ fn prepare_live_database(app: tauri::AppHandle) -> Result<String, String> {
     let target_database = live_database_path(&base_path);
     fs::create_dir_all(live_runtime_dir(&base_path)).map_err(|e| e.to_string())?;
     fs::create_dir_all(live_media_dir(&base_path)).map_err(|e| e.to_string())?;
+    // Best effort: a missing note is not a reason to refuse to start.
+    let _ = write_runtime_readme(&base_path);
 
     let legacy_database = legacy_database_path(&app)?;
     seed_database_if_needed(&legacy_database, &target_database)?;
@@ -172,6 +209,39 @@ fn prepare_live_database(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn vault_path_exists(path: String) -> Result<bool, String> {
     Ok(PathBuf::from(path).exists())
+}
+
+// Every atrium mirror in the vault: one folder per atrium, each holding an
+// atrium.json and a copy of its media.
+//
+// Returns paths only, leaving the parsing to the caller that already knows the
+// snapshot format. Needed because the front end had no way to enumerate a
+// directory at all -- which is also why deleted PDF page caches couldn't be
+// found and cleaned up before they were moved into a per-trace folder.
+#[tauri::command]
+fn list_vault_atrium_mirrors(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let base_path = current_vault_base_path(&app)?;
+    if !base_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut mirrors = Vec::new();
+    for entry in fs::read_dir(&base_path).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+        // The app's own working folder is not an atrium.
+        if entry.file_name() == LIVE_RUNTIME_DIR_NAME {
+            continue;
+        }
+        let snapshot = entry.path().join("atrium.json");
+        if snapshot.is_file() {
+            mirrors.push(snapshot.to_string_lossy().to_string());
+        }
+    }
+
+    Ok(mirrors)
 }
 
 // Used to fold real local media file sizes into the atrium storage-usage
@@ -309,6 +379,7 @@ fn main() {
             set_vault_base_path,
             prepare_live_database,
             vault_path_exists,
+            list_vault_atrium_mirrors,
             get_file_size,
             write_vault_text_file,
             write_binary_file,
