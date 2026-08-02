@@ -32,7 +32,7 @@ const AVATAR_SIZE = 20
 const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
-const MAX_ZOOM = 1.15
+const MAX_ZOOM = 1.40
 const DEFAULT_ZOOM_SENSITIVITY = 0.16
 
 // Dark halo for HUD text that floats directly over the canvas. The atrium's
