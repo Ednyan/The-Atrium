@@ -381,7 +381,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // Rendered pages held at once, across every PDF trace in the atrium. Enough
   // that paging back and forth stays instant, small enough that a long
   // document can't fill memory with full-resolution bitmaps.
-  const MAX_CACHED_PDF_PAGES = 8
+  // Kept small: a rendered page is held as a decoded bitmap, which is far
+  // larger than the compressed file it came from, so this is the setting that
+  // decides how heavy a paged document feels. Enough to step back and forth
+  // without re-rendering.
+  const MAX_CACHED_PDF_PAGES = 4
   const [documentPages, setDocumentPages] = useState<Record<string, string>>({})
   const [documentError, setDocumentError] = useState<Record<string, string>>({})
   // Which trace+page combinations have already been started, so a re-render
@@ -392,6 +396,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // so a retry doesn't cascade renders.
   const documentRetryRef = useRef<Record<string, number>>({})
   const [documentRetryTick, setDocumentRetryTick] = useState(0)
+
+  // Leaving the atrium closes any open PDF, which otherwise keeps its worker
+  // and parsed structure alive for a document nobody is looking at.
+  useEffect(() => () => {
+    import('../lib/pdf').then(m => m.releaseAllPdfDocuments()).catch(() => {})
+  }, [])
 
   // The page position is deliberately local and unsaved. In a shared atrium,
   // persisting it would mean one person paging through moved the document for
@@ -412,13 +422,42 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           // fetching it -- fetching a blob is a connect-src request, which
           // the desktop CSP doesn't allow blob: for, and it failed with a
           // bare "Failed to fetch".
+          //
+          // Only ever called on the first page of a document: the loader is
+          // handed to the pdf module, which keeps the parsed document open, so
+          // later pages neither re-read the file nor re-parse it.
           const { readLocalFileBytes } = await import('../lib/localDb')
-          const bytes = await readLocalFileBytes(trace.mediaUrl!)
+          let missing = false
+          const loadBytes = async () => {
+            const bytes = await readLocalFileBytes(trace.mediaUrl!)
+            if (!bytes) {
+              missing = true
+              throw new Error('not-on-disk')
+            }
+            // Copied into a standalone ArrayBuffer: the bytes may be a view
+            // onto a larger buffer, and pdfjs would otherwise read past the
+            // end of the file.
+            return bytes.buffer.slice(
+              bytes.byteOffset,
+              bytes.byteOffset + bytes.byteLength,
+            ) as ArrayBuffer
+          }
 
-          // null means the file isn't on disk yet. Treated as "not ready"
-          // rather than a failure: a freshly created trace can reach here
-          // before its own file has finished being written.
-          if (!bytes) {
+          const { renderPdfPage, getOpenPdfPageCount } = await import('../lib/pdf')
+
+          if (documentPageCount[trace.id] === undefined) {
+            try {
+              const count = await getOpenPdfPageCount(trace.id, loadBytes)
+              setDocumentPageCount(prev => ({ ...prev, [trace.id]: count }))
+            } catch (e) {
+              if (!missing) throw e
+            }
+          }
+
+          // The file isn't on disk yet. Treated as "not ready" rather than a
+          // failure: a freshly created trace can reach here before its own
+          // file has finished being written.
+          if (missing) {
             documentRenderingRef.current.delete(key)
             const attempts = (documentRetryRef.current[key] ?? 0) + 1
             documentRetryRef.current[key] = attempts
@@ -430,20 +469,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             return
           }
 
-          // Copied into a standalone ArrayBuffer: the bytes may be a view onto
-          // a larger buffer, and pdfjs would otherwise read past the file.
-          const buffer = bytes.buffer.slice(
-            bytes.byteOffset,
-            bytes.byteOffset + bytes.byteLength,
-          ) as ArrayBuffer
-
-          const { renderPdfPage, getPdfInfo } = await import('../lib/pdf')
-          if (documentPageCount[trace.id] === undefined) {
-            const info = await getPdfInfo(buffer)
-            setDocumentPageCount(prev => ({ ...prev, [trace.id]: info.pageCount }))
-          }
-
-          const rendered = await renderPdfPage(buffer, page)
+          const rendered = await renderPdfPage(trace.id, loadBytes, page)
           if (!rendered) return
           setDocumentPages(prev => {
             const next = { ...prev, [key]: URL.createObjectURL(rendered.blob) }
@@ -4405,19 +4431,25 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <div
                       className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto"
                       style={{
-                        bottom: '1.5cqh',
-                        height: '5cqh',
-                        gap: '2cqh',
-                        paddingInline: '2cqh',
-                        background: 'rgba(0,0,0,0.7)',
-                        borderRadius: '1cqh',
+                        bottom: '2cqh',
+                        gap: '1.5cqh',
+                        // Squared off and outlined rather than a rounded dark
+                        // pill, matching the atrium's own chrome and the
+                        // modal's page controls.
+                        padding: '1cqh 1.5cqh',
+                        background: 'rgba(10,10,10,0.85)',
+                        border: '0.2cqh solid rgba(203,203,203,0.35)',
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
                       <button
                         type="button"
-                        className="text-white/80 hover:text-white disabled:text-white/25 disabled:cursor-not-allowed leading-none"
-                        style={{ fontSize: '3cqh' }}
+                        className="text-nier-border hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                        style={{
+                          fontSize: '2.6cqh',
+                          padding: '0.4cqh 1.2cqh',
+                          border: '0.2cqh solid rgba(203,203,203,0.3)',
+                        }}
                         disabled={(documentPage[trace.id] ?? 1) <= 1}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -4427,15 +4459,19 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ◀
                       </button>
                       <span
-                        className="text-white/70 tracking-wider tabular-nums leading-none whitespace-nowrap"
-                        style={{ fontSize: '2.6cqh' }}
+                        className="text-nier-border/80 uppercase tabular-nums leading-none whitespace-nowrap"
+                        style={{ fontSize: '2.2cqh', letterSpacing: '0.15em' }}
                       >
                         {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
                       </span>
                       <button
                         type="button"
-                        className="text-white/80 hover:text-white disabled:text-white/25 disabled:cursor-not-allowed leading-none"
-                        style={{ fontSize: '3cqh' }}
+                        className="text-nier-border hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                        style={{
+                          fontSize: '2.6cqh',
+                          padding: '0.4cqh 1.2cqh',
+                          border: '0.2cqh solid rgba(203,203,203,0.3)',
+                        }}
                         disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
                         onClick={(e) => {
                           e.stopPropagation()

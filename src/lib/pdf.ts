@@ -20,7 +20,13 @@ export interface RenderedPage {
 // vault at once, while the paged viewer holds one page and is the mode people
 // actually zoom into to read. So the viewer renders sharper.
 const BATCH_RENDER_WIDTH = 2200
-const VIEWER_RENDER_WIDTH = 3000
+// Lower than the batch width, despite the viewer being the mode people zoom
+// into. The cost that matters here isn't file size but the decoded bitmap: a
+// 3000px page is around 12 megapixels, which the browser holds as roughly
+// 47MB of raw pixels for as long as the image is on screen, and several of
+// those at once is what made this mode feel heavy. 1800 still comfortably
+// exceeds the ~800px the page is drawn at in the modal.
+const VIEWER_RENDER_WIDTH = 1800
 
 // Renders one page to a PNG blob at the given width, preserving aspect ratio.
 async function renderPageToBlob(page: any, renderWidth: number): Promise<RenderedPage> {
@@ -137,17 +143,72 @@ export async function renderPdfPages(
   return pages
 }
 
-// Renders a single page. Used by the paged document trace, which only ever
-// needs the page currently being looked at.
-export async function renderPdfPage(data: ArrayBuffer, pageNumber: number): Promise<RenderedPage | null> {
-  const { task, doc } = await openDocument(data)
-  try {
-    if (pageNumber < 1 || pageNumber > doc.numPages) return null
-    const page = await doc.getPage(pageNumber)
-    const rendered = await renderPageToBlob(page, VIEWER_RENDER_WIDTH)
-    page.cleanup()
-    return rendered
-  } finally {
-    await task.destroy()
+// Open documents, keyed by trace id.
+//
+// Turning a page used to re-read the whole file from disk, spin up a fresh
+// pdfjs worker, render, and tear it all down again -- which is why every page
+// change flashed "Rendering". Keeping the document open makes a page turn just
+// a render.
+//
+// Bounded, because an open document holds its worker and parsed structure.
+// Two is enough for the realistic case of reading one document while another
+// sits on the canvas.
+const MAX_OPEN_DOCUMENTS = 2
+const openDocuments = new Map<string, { task: any; doc: any }>()
+
+async function acquireDocument(id: string, load: () => Promise<ArrayBuffer>) {
+  const existing = openDocuments.get(id)
+  if (existing) {
+    // Re-inserted so the map's insertion order doubles as least-recently-used.
+    openDocuments.delete(id)
+    openDocuments.set(id, existing)
+    return existing.doc
   }
+
+  const entry = await openDocument(await load())
+  openDocuments.set(id, entry)
+
+  while (openDocuments.size > MAX_OPEN_DOCUMENTS) {
+    const oldest = openDocuments.keys().next().value as string | undefined
+    if (oldest === undefined) break
+    const evicted = openDocuments.get(oldest)
+    openDocuments.delete(oldest)
+    void evicted?.task.destroy()
+  }
+
+  return entry.doc
+}
+
+export function releasePdfDocument(id: string) {
+  const entry = openDocuments.get(id)
+  if (!entry) return
+  openDocuments.delete(id)
+  void entry.task.destroy()
+}
+
+export function releaseAllPdfDocuments() {
+  for (const [, entry] of openDocuments) void entry.task.destroy()
+  openDocuments.clear()
+}
+
+// Page count for an already-open (or newly opened) document, without the
+// separate open getPdfInfo would do.
+export async function getOpenPdfPageCount(id: string, load: () => Promise<ArrayBuffer>): Promise<number> {
+  const doc = await acquireDocument(id, load)
+  return doc.numPages
+}
+
+// Renders a single page from a document kept open across calls. Used by the
+// paged document trace, which only ever needs the page being looked at.
+export async function renderPdfPage(
+  id: string,
+  load: () => Promise<ArrayBuffer>,
+  pageNumber: number,
+): Promise<RenderedPage | null> {
+  const doc = await acquireDocument(id, load)
+  if (pageNumber < 1 || pageNumber > doc.numPages) return null
+  const page = await doc.getPage(pageNumber)
+  const rendered = await renderPageToBlob(page, VIEWER_RENDER_WIDTH)
+  page.cleanup()
+  return rendered
 }
