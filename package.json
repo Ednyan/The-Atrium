@@ -7,8 +7,8 @@
   "author": "The Lobby Contributors",
   "license": "MIT",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node scripts/copy-pdfjs-assets.mjs && vite",
+    "build": "node scripts/copy-pdfjs-assets.mjs && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

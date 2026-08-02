@@ -83,12 +83,29 @@ async function loadPdfjs() {
 // Returns the loading task alongside the document: destroy() lives on the
 // task, not on the document proxy, and it's what actually shuts the worker
 // down. Releasing only the document would leave a worker per PDF opened.
+// Runtime assets pdfjs fetches on demand rather than bundling. Copied into
+// public/pdfjs at build time (scripts/copy-pdfjs-assets.mjs).
+//
+// Without these it degrades silently rather than erroring, which is what made
+// "some images don't load" so opaque: a page renders fine, but any image
+// inside it encoded as JPEG 2000 or JBIG2 comes out blank, because the wasm
+// decoder for that format was never fetched. Scanned documents and anything
+// exported from Acrobat use those formats routinely.
+const PDF_ASSET_BASE = '/pdfjs'
+
 async function openDocument(data: ArrayBuffer) {
   const pdfjs = await loadPdfjs()
   // A copy, because pdfjs transfers the buffer to its worker and detaches it.
   // Callers reuse the same ArrayBuffer to also save the original file, and a
   // detached buffer would silently write zero bytes.
-  const task = pdfjs.getDocument({ data: data.slice(0) })
+  const task = pdfjs.getDocument({
+    data: data.slice(0),
+    wasmUrl: `${PDF_ASSET_BASE}/wasm/`,
+    cMapUrl: `${PDF_ASSET_BASE}/cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${PDF_ASSET_BASE}/standard_fonts/`,
+    iccUrl: `${PDF_ASSET_BASE}/iccs/`,
+  })
   const doc = await task.promise
   return { task, doc }
 }

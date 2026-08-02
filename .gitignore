@@ -48,3 +48,6 @@ src/assets/fonts/**/static/
 # Generated per-release by scripts/make-release-manifest.mjs; uploaded to the
 # GitHub release rather than committed.
 latest.json
+
+# pdfjs runtime assets, copied from node_modules at build time
+public/pdfjs/
