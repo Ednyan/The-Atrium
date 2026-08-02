@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "node ../scripts/copy-pdfjs-assets.mjs && npx vite --port 1420 --strictPort",
-    "beforeBuildCommand": "node ../scripts/copy-pdfjs-assets.mjs && npx vite build"
+    "beforeDevCommand": "npm run dev:tauri",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [

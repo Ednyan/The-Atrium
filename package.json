@@ -8,6 +8,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "node scripts/copy-pdfjs-assets.mjs && vite",
+    "dev:tauri": "node scripts/copy-pdfjs-assets.mjs && vite --port 1420 --strictPort",
     "build": "node scripts/copy-pdfjs-assets.mjs && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
