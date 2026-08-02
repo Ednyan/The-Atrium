@@ -132,6 +132,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   const [pdfBusy, setPdfBusy] = useState('')
   // Display box for a paged document trace, at the PDF's own aspect ratio.
   const [pdfPageSize, setPdfPageSize] = useState<{ width: number; height: number } | null>(null)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
 
   const handlePdfSelected = async (selected: File | null) => {
     setFile(selected)
@@ -623,12 +624,26 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
                   Choose a PDF
                 </label>
+                {/* The native input is hidden and driven by the button below.
+                    Its own "No file chosen" label is written by the browser
+                    and can't be changed, and a file input's value can't be set
+                    programmatically -- so a PDF dropped onto the canvas was
+                    loaded, counted and ready to place while the control beside
+                    it still insisted nothing had been selected. */}
                 <input
+                  ref={pdfInputRef}
                   type="file"
                   accept="application/pdf,.pdf"
                   onChange={(e) => handlePdfSelected(e.target.files?.[0] ?? null)}
-                  className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-xs file:mr-3 file:py-1 file:px-3 file:border-0 file:bg-nier-bg file:text-nier-black file:text-[10px] file:tracking-wider file:uppercase"
+                  className="hidden"
                 />
+                <button
+                  type="button"
+                  onClick={() => pdfInputRef.current?.click()}
+                  className="w-full py-3 border border-dashed border-nier-border/40 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                >
+                  ◇ {file ? 'Choose a different PDF' : 'Choose a PDF'}
+                </button>
                 {pdfBusy && (
                   <p className="text-nier-border/60 text-[9px] tracking-wider mt-2 uppercase">{pdfBusy}</p>
                 )}
