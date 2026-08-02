@@ -107,8 +107,19 @@ async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
 }
 
 async function readBinaryFile(path: string): Promise<Uint8Array> {
-  const bytes = await invoke<number[]>('read_binary_file', { path })
-  return Uint8Array.from(bytes)
+  // The Rust side now answers with raw bytes over Tauri's binary channel
+  // (see read_binary_file), which arrive as an ArrayBuffer. It used to return
+  // a Vec<u8>, which Tauri serialises as a JSON array with one number per
+  // byte -- tens of megabytes of text for a 10MB file, built, transferred,
+  // parsed and then walked element by element into a Uint8Array.
+  //
+  // The array branch is kept because this file is also loaded by a running
+  // app during an update, where the front end can briefly be newer than the
+  // binary it's talking to.
+  const result = await invoke<ArrayBuffer | number[]>('read_binary_file', { path })
+  if (result instanceof ArrayBuffer) return new Uint8Array(result)
+  if (ArrayBuffer.isView(result)) return new Uint8Array((result as ArrayBufferView).buffer)
+  return Uint8Array.from(result as number[])
 }
 
 async function getLiveRuntimeDirectory(): Promise<string> {

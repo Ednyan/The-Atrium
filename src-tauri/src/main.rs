@@ -208,9 +208,23 @@ fn write_binary_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
     fs::write(file_path, bytes).map_err(|e| e.to_string())
 }
 
+// Returns an ipc::Response rather than a Vec<u8>.
+//
+// Tauri serialises a Vec<u8> return value as a JSON array of numbers -- one
+// decimal number and a comma per byte. A 10MB file becomes tens of megabytes
+// of JSON text to build here, ship across the IPC boundary, parse in the
+// webview, and then walk element by element into a Uint8Array. That is the
+// real cost behind paged PDFs feeling slow next to page-per-trace: opening one
+// reads the whole document back through this path, while page-per-trace
+// renders from a buffer already in memory and never reads it back at all.
+//
+// ipc::Response sends the bytes over Tauri's binary channel with no
+// serialisation. Every local image, audio and video file goes through here
+// too, so this isn't only about PDFs.
 #[tauri::command]
-fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
-    fs::read(PathBuf::from(path)).map_err(|e| e.to_string())
+fn read_binary_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = fs::read(PathBuf::from(path)).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[tauri::command]
