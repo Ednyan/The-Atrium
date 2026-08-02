@@ -356,6 +356,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => {
     if (!modalTrace) return
     const handleResize = () => setModalViewportSize({ width: window.innerWidth, height: window.innerHeight })
+    // Measured when the modal opens, not only on subsequent resizes. The
+    // initial value is captured once when this component mounts and the
+    // listener below only runs while a modal is open, so every resize that
+    // happened in between was missed -- and the modal then sized itself to a
+    // window that no longer existed. Rare on the web, routine on desktop,
+    // where the window is maximised, resized and toggled to fullscreen, which
+    // is why the desktop modal came out smaller than the web one.
+    handleResize()
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [modalTrace])

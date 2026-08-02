@@ -40,6 +40,17 @@ async function renderPageToBlob(page: any, renderWidth: number): Promise<Rendere
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Could not get a 2D context to render the PDF')
 
+  // Paint the page white first.
+  //
+  // pdfjs draws onto a transparent canvas and does not paint a page
+  // background -- a PDF viewer supplies that itself. Most pages fill their own
+  // background so it goes unnoticed, but a page that doesn't (a cover, or
+  // anything relying on the viewer's white backdrop) came out with transparent
+  // areas, which then showed the atrium's dark canvas through it. That is also
+  // why it affected one page of a document and not the rest.
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+
   await page.render({ canvasContext: context, viewport, canvas }).promise
 
   // WebP, not PNG. PNG is lossless, which for a rasterized page means storing
