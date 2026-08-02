@@ -3009,6 +3009,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         }
         // Default 16:9 aspect ratio
         return { width: 300, height: 169 }
+      case 'document':
+        // Without this a PDF fell through to the 120x80 default below, which
+        // ignored the width/height stored at creation -- so it rendered small
+        // and in the wrong shape no matter what the document's real
+        // proportions were. The fallback is A4 portrait.
+        return { width: trace.width || 424, height: trace.height || 600 }
       default:
         return { width: 120, height: 80 }
     }
@@ -7563,7 +7569,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         >
           <div
             className={
-              (modalTrace.type === 'embed' || modalTrace.type === 'image')
+              (modalTrace.type === 'embed' || modalTrace.type === 'image' || modalTrace.type === 'document')
                 // Both have a real aspect ratio to respect -- an embed's is
                 // whatever box the user resized it to on canvas (or its
                 // detected/default ratio), an image's is its natural pixel
@@ -7616,7 +7622,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 const page = documentPage[modalTrace.id] ?? 1
                 const total = documentPageCount[modalTrace.id] ?? 1
                 const src = documentPages[`${modalTrace.id}:${page}`]
-                const maxHeight = Math.max(240, modalViewportSize.height * 0.95 - 200)
+                // Everything above and below the page: the modal's header,
+                // its padding, the page controls, and the metadata line the
+                // modal appends. Budgeted generously -- undercounting is what
+                // pushed the arrows below the fold and forced a scroll to
+                // reach them, which for the one control the modal exists to
+                // offer is the worst thing it could do.
+                const MODAL_CHROME_HEIGHT = 260
+                const maxHeight = Math.max(240, modalViewportSize.height * 0.95 - MODAL_CHROME_HEIGHT)
 
                 return (
                   <div className="flex flex-col items-center gap-3">
