@@ -446,7 +446,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     const next = currentPage + 1
     if (!total || next > total) return
 
-    const cachePath = `${lobbyId}/${trace.id}_p${next}.webp`
+    const cachePath = `${lobbyId}/${trace.id}_pages/${next}.webp`
     try {
       const { readLocalFileBytes } = await import('../lib/localDb')
       if (await readLocalFileBytes(`local://traces/${cachePath}`)) return
@@ -539,7 +539,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           // removed the parsing cost but not the rendering, which for a
           // complex page is most of it. Caching to disk means a page is
           // rendered once ever, and returning to it is just an image load.
-          const cacheUrl = `local://traces/${lobbyId}/${trace.id}_p${page}.webp`
+          const cacheUrl = `local://traces/${lobbyId}/${trace.id}_pages/${page}.webp`
 
           const cachedBytes = await readLocalFileBytes(cacheUrl)
           if (cachedBytes) {
@@ -558,7 +558,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
           if (supabase && lobbyId) {
             void supabase.storage
               .from('traces')
-              .upload(`${lobbyId}/${trace.id}_p${page}.webp`, rendered.blob)
+              .upload(`${lobbyId}/${trace.id}_pages/${page}.webp`, rendered.blob)
           }
           rememberPage(key, URL.createObjectURL(rendered.blob))
           void prefetchNextPage(trace, page)

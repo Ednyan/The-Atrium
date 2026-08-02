@@ -1223,6 +1223,12 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
         await db!.execute(sql, params)
         void handleVaultSyncAfterMutation(opts, previousRows)
 
+        // Deleting a trace row left its file behind in the vault, so removing
+        // traces freed nothing on disk and the folder grew with every deleted
+        // image. Runs after the DELETE so the "is anything else still using
+        // this?" check inside sees the rows that remain.
+        if (opts.table === 'traces') void removeOrphanedTraceMedia(previousRows)
+
         if (opts.selectColumns) {
           // Rows can't be re-queried post-delete (they're gone); the rows
           // fetched above (before deleting, for the vault-sync diff) are
@@ -1602,6 +1608,57 @@ export const localClient = {
 const resolvedUrlCache = new Map<string, string>()
 // Track in-flight resolutions to avoid duplicate reads for the same URL
 const pendingResolutions = new Map<string, Promise<string>>()
+
+// Deletes the vault files belonging to traces that have just been removed.
+//
+// Deliberately checks whether anything else still points at each file before
+// unlinking it: duplicating a trace copies its media_url, so two traces can
+// share one file, and deleting either would otherwise break the other. The
+// check runs against the table after the DELETE, so it sees exactly what
+// survives.
+//
+// Never throws into the caller. A file that can't be removed is wasted disk,
+// which is a far better outcome than a delete that appears to fail.
+async function removeOrphanedTraceMedia(deletedRows: any[]): Promise<void> {
+  if (!db || deletedRows.length === 0) return
+
+  for (const row of deletedRows) {
+    for (const url of [row?.media_url, row?.image_url]) {
+      if (typeof url !== 'string' || !url.startsWith('local://')) continue
+      try {
+        const stillUsed = await db.select<any[]>(
+          'SELECT 1 FROM traces WHERE media_url = ? OR image_url = ? LIMIT 1',
+          [url, url],
+        )
+        if (stillUsed.length > 0) continue
+
+        const filePath = await resolveLocalMediaFilePath(url)
+        if (filePath) await removePath(filePath)
+
+        // Drop the cached blob URL too, or the bytes stay in memory for a
+        // file that no longer exists.
+        const cachedUrl = resolvedUrlCache.get(url)
+        if (cachedUrl) {
+          URL.revokeObjectURL(cachedUrl)
+          resolvedUrlCache.delete(url)
+        }
+      } catch {
+        // Ignored on purpose -- see above.
+      }
+    }
+
+    // Rendered PDF pages live in a folder named after the trace, so the whole
+    // cache goes with the trace rather than being left behind page by page.
+    if (row?.type === 'document' && row?.lobby_id && row?.id) {
+      try {
+        const pagesDir = await resolveLocalMediaFilePath(`local://traces/${row.lobby_id}/${row.id}_pages`)
+        if (pagesDir) await removePath(pagesDir)
+      } catch {
+        // Ignored on purpose.
+      }
+    }
+  }
+}
 
 // Raw bytes for a local:// URL, straight from disk.
 //
