@@ -386,6 +386,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // is instant and a long document never holds every page in memory at once.
   const [documentPage, setDocumentPage] = useState<Record<string, number>>({})
   const [documentPageCount, setDocumentPageCount] = useState<Record<string, number>>({})
+  // Mirrored for the prefetch, which runs outside render and would otherwise
+  // close over a stale count.
+  const documentPageCountRef = useRef<Record<string, number>>({})
+  useEffect(() => { documentPageCountRef.current = documentPageCount }, [documentPageCount])
   // Rendered pages held at once, across every PDF trace in the atrium. Enough
   // that paging back and forth stays instant, small enough that a long
   // document can't fill memory with full-resolution bitmaps.
@@ -410,6 +414,55 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   useEffect(() => () => {
     import('../lib/pdf').then(m => m.releaseAllPdfDocuments()).catch(() => {})
   }, [])
+
+  // Stores a rendered page and evicts the oldest beyond the cap, revoking the
+  // URLs it drops -- a blob URL is never reclaimed while a reference exists.
+  const rememberPage = useCallback((key: string, url: string) => {
+    setDocumentPages(prev => {
+      const next = { ...prev, [key]: url }
+      const keys = Object.keys(next)
+      if (keys.length > MAX_CACHED_PDF_PAGES) {
+        for (const stale of keys.slice(0, keys.length - MAX_CACHED_PDF_PAGES)) {
+          // Never drop the page currently on screen, whatever the insertion
+          // order happens to be.
+          if (stale === key) continue
+          URL.revokeObjectURL(next[stale])
+          delete next[stale]
+        }
+      }
+      return next
+    })
+  }, [])
+
+  // Renders the following page in the background and writes it to the vault.
+  //
+  // Reading is overwhelmingly forwards, so by the time the next page is asked
+  // for it's usually already on disk. Deliberately fire-and-forget and only
+  // one page ahead: this is a nicety, and racing further ahead would compete
+  // with the page the user is actually looking at.
+  const prefetchNextPage = useCallback(async (trace: Trace, currentPage: number) => {
+    if (!isDesktop || !supabase || !lobbyId || !trace.mediaUrl) return
+    const total = documentPageCountRef.current[trace.id]
+    const next = currentPage + 1
+    if (!total || next > total) return
+
+    const cachePath = `${lobbyId}/${trace.id}_p${next}.webp`
+    try {
+      const { readLocalFileBytes } = await import('../lib/localDb')
+      if (await readLocalFileBytes(`local://traces/${cachePath}`)) return
+
+      const { renderPdfPage } = await import('../lib/pdf')
+      const rendered = await renderPdfPage(trace.id, async () => {
+        const bytes = await readLocalFileBytes(trace.mediaUrl!)
+        if (!bytes) throw new Error('not-on-disk')
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+      }, next)
+      if (!rendered) return
+      await supabase.storage.from('traces').upload(cachePath, rendered.blob)
+    } catch {
+      // A prefetch that fails costs nothing -- the page renders on demand.
+    }
+  }, [lobbyId])
 
   // The page position is deliberately local and unsaved. In a shared atrium,
   // persisting it would mean one person paging through moved the document for
@@ -477,28 +530,38 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             return
           }
 
+          // Rendered pages are cached in the vault, keyed by trace and page.
+          //
+          // This is the whole difference in feel between the two modes.
+          // Page-per-trace rasterizes once at import and then displays plain
+          // images, so pdfjs is never involved again. The paged viewer was
+          // re-rasterizing on every single view -- keeping the document open
+          // removed the parsing cost but not the rendering, which for a
+          // complex page is most of it. Caching to disk means a page is
+          // rendered once ever, and returning to it is just an image load.
+          const cacheUrl = `local://traces/${lobbyId}/${trace.id}_p${page}.webp`
+
+          const cachedBytes = await readLocalFileBytes(cacheUrl)
+          if (cachedBytes) {
+            const cachedBlob = new Blob([cachedBytes as unknown as BlobPart], { type: 'image/webp' })
+            rememberPage(key, URL.createObjectURL(cachedBlob))
+            void prefetchNextPage(trace, page)
+            return
+          }
+
           const rendered = await renderPdfPage(trace.id, loadBytes, page)
           if (!rendered) return
-          setDocumentPages(prev => {
-            const next = { ...prev, [key]: URL.createObjectURL(rendered.blob) }
 
-            // Bounded, and the evicted URLs are revoked. Every rendered page
-            // was being kept for the life of the session, so paging through a
-            // long document accumulated a full-resolution bitmap per page in
-            // memory -- and a blob URL is never collected while a reference to
-            // it exists, so nothing was reclaiming them.
-            const keys = Object.keys(next)
-            if (keys.length > MAX_CACHED_PDF_PAGES) {
-              for (const stale of keys.slice(0, keys.length - MAX_CACHED_PDF_PAGES)) {
-                // Never drop the page currently on screen, whatever the order
-                // of insertion happens to be.
-                if (stale === key) continue
-                URL.revokeObjectURL(next[stale])
-                delete next[stale]
-              }
-            }
-            return next
-          })
+          // Written for next time. Not awaited -- the page is already on
+          // screen by then, and a failed write costs a re-render later rather
+          // than anything the user sees now.
+          if (supabase && lobbyId) {
+            void supabase.storage
+              .from('traces')
+              .upload(`${lobbyId}/${trace.id}_p${page}.webp`, rendered.blob)
+          }
+          rememberPage(key, URL.createObjectURL(rendered.blob))
+          void prefetchNextPage(trace, page)
           setDocumentError(prev => {
             if (!prev[trace.id]) return prev
             const next = { ...prev }
