@@ -1714,13 +1714,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       height: viewportHeight,
       backgroundColor: bgColor,
       antialias: true,
-      // Without these the canvas renders one buffer pixel per CSS pixel and
-      // the browser upscales it, which is what made curves -- the placement
-      // rings especially -- look pixelated on a high-DPI screen. autoDensity
-      // keeps the CSS size unchanged, so stage coordinates stay in CSS pixels
-      // and none of the screen/world maths is affected.
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
+      // Deliberately left at the default resolution of 1.
+      //
+      // Rendering at devicePixelRatio was tried, to stop curves looking
+      // pixelated on a high-DPI screen, and reverted: on a 2x display it means
+      // four times the pixels every frame for the grid, particles, ground
+      // elements and indicators, which cost more than the sharpness was worth.
+      // Traces are DOM elements and were never affected either way.
       resizeTo: window,
     })
     
