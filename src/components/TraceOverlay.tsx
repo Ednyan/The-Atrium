@@ -4469,7 +4469,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   looked at is ever rasterized. */}
               {trace.type === 'document' && (
                 <div
-                  className="w-full h-full relative bg-white/95 overflow-hidden"
+                  className="w-full h-full relative bg-white overflow-hidden"
                   // container-type lets the page controls below size
                   // themselves in cqh (percentages of this box's height)
                   // rather than fixed pixels, so the bar stays a constant
@@ -7741,7 +7741,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <div className="flex flex-col items-center gap-3">
                     <div
-                      className="bg-white/95 flex items-center justify-center"
+                      className="bg-white flex items-center justify-center"
                       style={{ maxHeight, minHeight: 240, minWidth: 240 }}
                     >
                       {src ? (
