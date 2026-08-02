@@ -369,7 +369,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // light one. These follow the atrium's own background instead, so the
   // indicator is always the opposite end of the range from whatever it's
   // drawn on. A ref because the Pixi ticker reads it.
-  const indicatorColorRef = useRef({ primary: 0xffffff, accent: 0xff6161 })
+  const indicatorColorRef = useRef({ primary: 0xffffff })
 
   // The panel publishing its current shape settings. Adopt them, and make sure
   // there's a placement position to centre the preview on.
@@ -485,11 +485,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // Rec. 709 relative luminance -- green dominates perceived brightness, so
     // a plain average would call a saturated green background "dark".
     const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    // One colour, not two. A second, brighter accent in the middle is what
+    // made the marker read as an alert rather than a hint. Near-black rather
+    // than pure black on a light background, so it reads as drawn on the
+    // canvas rather than as a hole punched in it.
     indicatorColorRef.current = luminance > 0.5
-      // Near-black rather than pure black, and a deep red accent, so it reads
-      // as drawn rather than as a hole punched in the canvas.
-      ? { primary: 0x1a1a1a, accent: 0x8b0000 }
-      : { primary: 0xffffff, accent: 0xff6161 }
+      ? { primary: 0x1a1a1a }
+      : { primary: 0xffffff }
   }, [currentLobby?.themeSettings?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
@@ -1712,6 +1714,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       height: viewportHeight,
       backgroundColor: bgColor,
       antialias: true,
+      // Without these the canvas renders one buffer pixel per CSS pixel and
+      // the browser upscales it, which is what made curves -- the placement
+      // rings especially -- look pixelated on a high-DPI screen. autoDensity
+      // keeps the CSS size unchanged, so stage coordinates stay in CSS pixels
+      // and none of the screen/world maths is affected.
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
       resizeTo: window,
     })
     
@@ -2298,15 +2307,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const indicator = indicatorColorRef.current
 
         if (tracePlacementIndicatorRef.current && placementPos && draftSize) {
-          pulseTime += 0.1
-          const pulse = Math.abs(Math.sin(pulseTime))
+          // Same slow breath as the placement marker, so the two don't feel
+          // like different pieces of UI.
+          pulseTime += 0.02
+          const breath = (Math.sin(pulseTime) + 1) / 2
           const halfW = draftSize.width / 2
           const halfH = draftSize.height / 2
 
           const g = tracePlacementIndicatorRef.current
           g.clear()
-          g.lineStyle(2, indicator.primary, 0.55 + pulse * 0.4)
-          g.beginFill(indicator.primary, 0.07)
+          g.lineStyle(1.5, indicator.primary, 0.35 + breath * 0.2)
+          g.beginFill(indicator.primary, 0.05)
 
           const left = placementPos.x - halfW
           const top = placementPos.y - halfH
@@ -2336,29 +2347,39 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           // Centre mark, so a rectangle dragged out very small is still
           // visible as a placement.
           g.lineStyle(0)
-          g.beginFill(indicator.accent, 0.85)
+          g.beginFill(indicator.primary, 0.55)
           g.drawCircle(placementPos.x, placementPos.y, 3)
           g.endFill()
         } else if (tracePlacementIndicatorRef.current && placementPos) {
-          // Update pulsing indicator for trace placement
-          pulseTime += 0.1
-          const pulse = Math.abs(Math.sin(pulseTime))
-          const size = 15 + pulse * 10
+          // Placement marker: one colour, thin lines, and a slow breath.
+          //
+          // Three things made the old one harsh. It advanced 0.1 radians a
+          // frame, a full cycle in about a second; it used abs(sin), which
+          // has a cusp at zero and so snapped rather than eased; and its
+          // centre was a second, brighter colour. This is a fifth of the
+          // speed, on a smooth 0..1 curve, in a single colour that already
+          // follows the atrium's background.
+          pulseTime += 0.02
+          const breath = (Math.sin(pulseTime) + 1) / 2
+          const radius = 20 + breath * 6
 
-          tracePlacementIndicatorRef.current.clear()
+          const g = tracePlacementIndicatorRef.current
+          g.clear()
 
-          // Outer glow
-          tracePlacementIndicatorRef.current.lineStyle(3, indicator.primary, 0.3 + pulse * 0.5)
-          tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, size + 10)
-          
-          // Middle ring
-          tracePlacementIndicatorRef.current.lineStyle(2, indicator.primary, 0.5 + pulse * 0.5)
-          tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, size)
-          
-          // Inner bright circle
-          tracePlacementIndicatorRef.current.beginFill(indicator.accent, 0.7 + pulse * 0.3)
-          tracePlacementIndicatorRef.current.drawCircle(placementPos.x, placementPos.y, 8)
-          tracePlacementIndicatorRef.current.endFill()
+          // Faint outer halo -- gives the marker presence without a hard edge.
+          g.lineStyle(1.5, indicator.primary, 0.08 + breath * 0.08)
+          g.drawCircle(placementPos.x, placementPos.y, radius + 12)
+
+          // The ring itself, thin enough to read as drawn on the canvas
+          // rather than sitting on top of it.
+          g.lineStyle(1.5, indicator.primary, 0.30 + breath * 0.18)
+          g.drawCircle(placementPos.x, placementPos.y, radius)
+
+          // A small steady centre, same colour, no pulse -- it marks the exact
+          // point, so moving or flashing it would work against that.
+          g.beginFill(indicator.primary, 0.45)
+          g.drawCircle(placementPos.x, placementPos.y, 2.5)
+          g.endFill()
         } else if (tracePlacementIndicatorRef.current) {
           // Clear indicator if no trace position
           tracePlacementIndicatorRef.current.clear()
