@@ -19,6 +19,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
+import { toEmbedUrl } from '../lib/embedUrl'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -3194,28 +3195,24 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     }
   }, [])
 
-  const convertYouTubeUrl = useCallback((url: string) => {
-    const youtubeRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/
-    const match = url.match(youtubeRegex)
-    if (match) {
-      return `https://www.youtube.com/embed/${match[1]}`
-    }
-    return url
-  }, [])
-
   // Extract iframe src from HTML embed code or return URL as-is
   const extractEmbedUrl = useCallback((content: string): string | null => {
     // Check if it's HTML embed code (contains <iframe)
     if (content.includes('<iframe')) {
       const srcMatch = content.match(/src=["']([^"']+)["']/)
       if (srcMatch) {
-        return srcMatch[1]
-          }
+        // Run through the converter too: pasting embed code with a share URL
+        // inside it is a common enough mistake to be worth handling.
+        return toEmbedUrl(srcMatch[1])
+      }
       return null
     }
-    // It's a regular URL
-    return convertYouTubeUrl(content)
-  }, [convertYouTubeUrl])
+    // A plain URL -- YouTube, Google Drive, Docs and the rest are converted to
+    // their embeddable form here (see lib/embedUrl). Done at render rather
+    // than on save, so the trace keeps the link the user actually pasted and
+    // embeds created before this start working without migrating anything.
+    return toEmbedUrl(content)
+  }, [])
 
   // Memoize visible traces to avoid recalculating on every render
   // Only show traces that are within the viewport (with some margin)

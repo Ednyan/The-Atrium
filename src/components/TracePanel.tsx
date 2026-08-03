@@ -5,6 +5,7 @@ import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace } fr
 import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { scaleToDisplayBox } from '../lib/binPack'
+import { defaultEmbedBox } from '../lib/embedUrl'
 import type { Trace } from '../types/database'
 
 // Matches mapRowToTrace's `row.font_size ?? 16` fallback -- a freshly
@@ -420,6 +421,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         // Roughly A4 portrait, at a size that's readable on the canvas without
         // dominating it.
         ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
+        // Starting box suited to what's embedded -- a Drive PDF or Doc in the
+        // 16:9 embed default is a page letterboxed into a strip.
+        ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),
         // Shape properties
         ...(traceType === 'shape' && {
           shapeType,
@@ -470,6 +474,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           ...(textSize && { width: textSize.width, height: textSize.height }),
           // See the comment on newTrace above.
           ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
+          // See the comment on newTrace above.
+          ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),
           // Shape properties
           ...(traceType === 'shape' && {
             shape_type: shapeType,
