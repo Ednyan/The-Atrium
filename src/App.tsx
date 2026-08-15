@@ -769,6 +769,11 @@ function AppInner() {
   // post-login redirect must only run on a genuine transition.
   const wasSignedInRef = useRef(false)
 
+  // Desktop launches straight to the welcome screen, but only once -- so the
+  // About link can still reach the landing page afterwards without being
+  // bounced back.
+  const hasSeenDesktopLandingRef = useRef(false)
+
   // Check if user is already logged in
   useEffect(() => {
     if (!supabase) {
@@ -1185,6 +1190,18 @@ function AppInner() {
   // Authenticated user routing
   // In desktop mode, skip login page — go straight to welcome/browse
   if (isDesktop && currentPage === 'login') {
+    setTimeout(() => navigate('/welcome'), 0)
+  }
+
+  // On desktop the landing page is a marketing page for a product the user has
+  // already installed, so launching into it means a wasted click every time.
+  // The welcome screen is the app's actual title screen.
+  //
+  // Only redirects the initial landing route, not the section links -- the
+  // desktop app still shows the page if it's navigated to deliberately (the
+  // About entry, which is also how you get back out of an atrium).
+  if (currentPage === 'landing' && isDesktop && !hasSeenDesktopLandingRef.current) {
+    hasSeenDesktopLandingRef.current = true
     setTimeout(() => navigate('/welcome'), 0)
   }
 

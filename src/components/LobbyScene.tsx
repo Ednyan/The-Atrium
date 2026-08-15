@@ -34,6 +34,9 @@ const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.40
 const DEFAULT_ZOOM_SENSITIVITY = 0.16
+// One keypress of zoom. Sized so a held key travels the range in a couple of
+// seconds rather than either crawling or jumping.
+const KEYBOARD_ZOOM_STEP = 0.6
 
 // Dark halo for HUD text that floats directly over the canvas. The atrium's
 // background is user-themeable, so these labels can end up on any colour --
@@ -428,6 +431,42 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null)
 
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
+  // How much zoom one wheel event is worth.
+  //
+  // The old scaling assumed mouse-wheel deltas, which are around 100 per
+  // notch. A trackpad's two-finger scroll reports 3 to 10, so the same formula
+  // gave roughly a twenty-fifth of the zoom per event -- technically working,
+  // in practice indistinguishable from nothing, which is why zoom looked
+  // unavailable without a wheel.
+  //
+  // deltaMode is normalised first (some browsers report lines or pages rather
+  // than pixels), then small deltas are treated as a fine-grained device and
+  // scaled up. Trackpads fire many events per second where a wheel fires a
+  // few, so the per-event step has to be much smaller than a notch while still
+  // adding up to a comparable rate.
+  const wheelZoomDelta = (e: WheelEvent): number => {
+    let raw = e.deltaY
+    if (e.deltaMode === 1) raw *= 16       // lines -> approximate pixels
+    else if (e.deltaMode === 2) raw *= 100 // pages -> approximate pixels
+
+    // A pinch gesture arrives as ctrl+wheel. It's a deliberate zoom, so it
+    // gets the fine-grained treatment regardless of how large the delta is.
+    const fineGrained = e.ctrlKey || Math.abs(raw) < 50
+    const perEvent = fineGrained ? 0.01 : 0.001
+
+    // Clamped so one enormous event (some mice, some drivers) can't jump the
+    // whole zoom range at once.
+    return Math.max(-1, Math.min(1, -raw * perEvent))
+  }
+
+  const applyZoomDelta = (delta: number) => {
+    cameraFlyToRef.current = null
+    targetZoomRef.current = Math.max(
+      MIN_ZOOM,
+      Math.min(MAX_ZOOM, targetZoomRef.current + delta * zoomSensitivityRef.current),
+    )
+  }
+
   // Nudges the camera by a world-space delta. Written straight to the ref the
   // Pixi ticker reads, exactly as the existing drag-to-pan does, so it takes
   // effect on the next frame without a re-render per step.
@@ -1020,6 +1059,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // Don't trigger if user is typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       
+      // Keyboard zoom, for anyone without a wheel and as a precise alternative
+      // to one. Deliberately +/-/0 rather than the arrow keys: left and right
+      // already step through saved locations in presentation mode, and
+      // splitting one key group across two unrelated jobs reads as a mistake.
+      // These are also what browsers, maps and design tools use.
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault()
+        applyZoomDelta(KEYBOARD_ZOOM_STEP)
+        return
+      }
+      if (e.key === '-' || e.key === '_') {
+        e.preventDefault()
+        applyZoomDelta(-KEYBOARD_ZOOM_STEP)
+        return
+      }
+      if (e.key === '0') {
+        e.preventDefault()
+        cameraFlyToRef.current = null
+        targetZoomRef.current = 1
+        return
+      }
+
       if (e.key === 't' || e.key === 'T') {
         if (!canEditRef.current) return
         e.preventDefault()
@@ -1791,10 +1852,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         
         e.preventDefault()
         cameraFlyToRef.current = null // manual zoom cancels any camera fly-to
-        const delta = -e.deltaY * 0.001
-        const zoomSensitivity = zoomSensitivityRef.current
-        const newTargetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current + delta * zoomSensitivity))
-        targetZoomRef.current = newTargetZoom
+        applyZoomDelta(wheelZoomDelta(e))
       }
       
       eventHandlersRef.current.wheel = handleWheel
