@@ -3163,7 +3163,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
 
     const urlPayload = getDroppedUrlPayload(
-      e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || ''
+      e.dataTransfer.getData('text/uri-list')
+      || e.dataTransfer.getData('text/plain')
+      // Firefox's own flavour, and some Chromium forks offer it too. Cheap to
+      // read, and it carries a clean URL when the standard types are absent.
+      || e.dataTransfer.getData('text/x-moz-url')
+      || ''
     )
     if (urlPayload) {
       await insertDroppedTrace('embed', urlPayload.url, urlPayload.url, worldX, worldY)
@@ -3178,7 +3183,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         return
       }
       await processDroppedFiles()
+      return
     }
+
+    // Nothing usable arrived. Reaching here means the drop registered but
+    // carried no URL, no HTML and no file -- which is what a drag out of some
+    // browsers looks like, since what a browser offers to another application
+    // is entirely up to it and varies by browser and by page.
+    //
+    // Reported rather than ignored: silently doing nothing is
+    // indistinguishable from the app being broken, and naming the formats that
+    // did arrive turns "it doesn't work in this browser" into something
+    // diagnosable without a debugger on the affected machine.
+    const offered = Array.from(e.dataTransfer.types || [])
+    showToast(
+      offered.length > 0
+        ? `Nothing droppable in that (${offered.join(', ')})`
+        : 'That drag carried no data — try dragging the image from its own page, or paste the link instead',
+    )
   }
 
   useEffect(() => {
