@@ -365,3 +365,55 @@ body.dragging * {
   border-color: rgba(203, 203, 203, 0.95) !important;
   background: rgba(181, 181, 181, 0.35) !important;
 }
+
+/* Title-screen menu rows on the welcome screen.
+   Replaces a stack of full-width bordered buttons: six of those plus the
+   title, portal and hints needed more height than a laptop screen has, which
+   is what cropped the title. A row is roughly half the height of the box it
+   replaces, and reads as a game menu rather than a form. */
+.menu-row {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.75rem 0.45rem 1.5rem;
+  text-align: left;
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(203, 203, 203, 0.75);
+  border-left: 1px solid rgba(203, 203, 203, 0.15);
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+/* The pointer marker sits in the padding rather than shifting the label, so
+   hovering doesn't nudge the text sideways. */
+.menu-row::before {
+  content: '\203A';
+  position: absolute;
+  left: 0.6rem;
+  opacity: 0;
+  transform: translateX(-0.25rem);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.menu-row:hover {
+  color: #cbcbcb;
+  border-left-color: #cbcbcb;
+  background: rgba(203, 203, 203, 0.05);
+}
+
+.menu-row:hover::before {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.menu-row-danger {
+  color: rgba(255, 97, 97, 0.75);
+  border-left-color: rgba(255, 97, 97, 0.25);
+}
+
+.menu-row-danger:hover {
+  color: #ff6161;
+  border-left-color: #ff6161;
+  background: rgba(255, 97, 97, 0.08);
+}

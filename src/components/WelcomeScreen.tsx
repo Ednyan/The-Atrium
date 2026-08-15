@@ -17,7 +17,31 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   const [showExport, setShowExport] = useState(false)
   const [isHovered, setIsHovered] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const { username } = useGameStore()
+  const { username, setUsername } = useGameStore()
+
+  // Renaming in place, desktop only -- see the field itself for why the web
+  // keeps sending people to Profile Settings.
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+
+  const commitName = async () => {
+    const next = nameDraft.trim()
+    setEditingName(false)
+    // An empty box means "changed my mind", not "call me nothing".
+    if (!next || next === username) return
+
+    setUsername(next)
+    try {
+      // The local profile row is what the atrium reads for presence and for
+      // the name shown on traces, so it has to move with the store.
+      await (supabase?.from('profiles') as any)
+        ?.update({ username: next, display_name: next })
+        .eq('id', 'local-user')
+    } catch {
+      // The name is already applied locally; a failed write here means it
+      // reverts on next launch rather than anything breaking now.
+    }
+  }
 
   const handleLogout = async () => {
     if (!supabase) return
@@ -210,36 +234,88 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           </button>
         )}
 
-        <div className="text-center space-y-12 p-8 max-w-lg relative z-10">
+        {/* Sized against the viewport rather than in fixed steps.
+            Six stacked full-width buttons under a title, a portal loop and a
+            hint list needed more height than a laptop screen has, so the title
+            was being cut off. Everything here now scales with available height
+            (clamp against vh), the whole column scrolls rather than clipping if
+            it still doesn't fit, and the actions read as a title-screen menu
+            instead of a stack of boxes -- which is most of the height saved. */}
+        <div className="text-center px-8 py-6 max-w-lg w-full relative z-10 max-h-full overflow-y-auto">
           {/* Title */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-center gap-4 mb-2">
+          <div className="space-y-[clamp(0.5rem,1.5vh,1rem)]">
+            <div className="flex items-center justify-center gap-4">
               <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
               <span className="text-nier-border/60 text-[10px] tracking-[0.3em] uppercase">Welcome to the</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
-            <h1 className="text-4xl md:text-5xl text-white tracking-[0.3em] uppercase font-light">
+            <h1
+              className="text-white tracking-[0.3em] uppercase font-light leading-tight"
+              style={{ fontSize: 'clamp(1.6rem, 5vh, 3rem)' }}
+            >
               DIGITAL ATRIUM
             </h1>
-            <PortalLoop className="h-32 md:h-40" />
-            <p className="text-nier-border text-xs tracking-[0.2em] uppercase">
+            {/* Shrinks first when the window is short -- it's the most
+                decorative element here and the least missed. */}
+            {/* Height in vh rather than fixed steps, so this shrinks first on
+                a short window -- it's the most decorative element here and the
+                least missed. PortalLoop takes className only, so the sizing
+                goes through an arbitrary-value class. */}
+            <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" />
+            <p className="text-nier-border text-[11px] tracking-[0.2em] uppercase">
               A quiet space for creative presence
             </p>
           </div>
 
           {/* Diamond separator */}
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 my-[clamp(0.75rem,2.5vh,1.75rem)]">
             <div className="w-20 h-[1px] bg-gradient-to-r from-transparent to-nier-border/40" />
             <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
             <div className="w-20 h-[1px] bg-gradient-to-l from-transparent to-nier-border/40" />
           </div>
 
           {/* Welcome message */}
-          <div className="space-y-6">
-            <p className="text-nier-bg/80 text-sm tracking-wide">
-              User: <span className="text-nier-bg border-b border-nier-border/40 pb-0.5">{username}</span>
-            </p>
-            
+          <div className="space-y-[clamp(0.4rem,1.2vh,0.6rem)]">
+            {/* Editable in place on desktop. The name is the one thing here
+                someone actually wants to change, and sending them into Profile
+                Settings for a single field was the long way round. Web keeps
+                the read-only line: a display name there is tied to an account
+                and has its own rules (cooldown, validation) that belong with
+                the rest of the account settings. */}
+            {isDesktop ? (
+              <div className="flex items-center justify-center gap-2 text-sm tracking-wide">
+                <span className="text-nier-bg/60">User:</span>
+                {editingName ? (
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={commitName}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitName() }
+                      if (e.key === 'Escape') { e.preventDefault(); setEditingName(false) }
+                    }}
+                    maxLength={32}
+                    className="bg-transparent border-b border-nier-border/60 text-nier-bg text-sm tracking-wide text-center focus:outline-none focus:border-nier-bg w-40"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setNameDraft(username); setEditingName(true) }}
+                    className="group text-nier-bg border-b border-nier-border/40 hover:border-nier-bg transition-colors"
+                    title="Click to rename"
+                  >
+                    {username}
+                    <span className="text-nier-border/50 group-hover:text-nier-bg text-[10px] ml-2 transition-colors">✎</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-nier-bg/80 text-sm tracking-wide">
+                User: <span className="text-nier-bg border-b border-nier-border/40 pb-0.5">{username}</span>
+              </p>
+            )}
+
             {/* Enter Button */}
             <button
               onClick={onEnter}
@@ -258,7 +334,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onClick={() => setShowSettings(true)}
               onMouseEnter={() => setIsHovered('settings')}
               onMouseLeave={() => setIsHovered(null)}
-              className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+              className="menu-row"
             >
               <span className="relative z-10">◇ Profile Settings</span>
             </button>
@@ -269,7 +345,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 onClick={onBackToLanding}
                 onMouseEnter={() => setIsHovered('about')}
                 onMouseLeave={() => setIsHovered(null)}
-                className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+                className="menu-row"
               >
                 <span className="relative z-10">◇ About</span>
               </button>
@@ -281,7 +357,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 onClick={() => setShowExport(true)}
                 onMouseEnter={() => setIsHovered('export')}
                 onMouseLeave={() => setIsHovered(null)}
-                className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+                className="menu-row"
               >
                 <span className="relative z-10">◇ Export Atrium</span>
               </button>
@@ -292,7 +368,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onClick={toggleFullscreen}
               onMouseEnter={() => setIsHovered('fullscreen')}
               onMouseLeave={() => setIsHovered(null)}
-              className="relative w-full py-3 border border-nier-border/30 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-border/60 hover:text-nier-bg"
+              className="menu-row"
             >
               <span className="relative z-10">◇ {isFullscreen ? 'Windowed' : 'Fullscreen'}</span>
             </button>
@@ -306,7 +382,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 onClick={handleLogout}
                 onMouseEnter={() => setIsHovered('logout')}
                 onMouseLeave={() => setIsHovered(null)}
-                className="relative w-full py-3 border border-nier-red/40 text-nier-border text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-red/80 hover:bg-nier-red/20 hover:text-nier-bg"
+                className="menu-row menu-row-danger"
               >
                 <span className="relative z-10">◇ Log Out</span>
               </button>
@@ -321,7 +397,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 }}
                 onMouseEnter={() => setIsHovered('exit')}
                 onMouseLeave={() => setIsHovered(null)}
-                className="relative w-full py-3 border border-nier-red/40 text-nier-red text-xs tracking-[0.15em] uppercase transition-all duration-300 hover:border-nier-red/80 hover:text-nier-bg hover:bg-nier-red/20"
+                className="menu-row menu-row-danger"
               >
                 <span className="relative z-10">◇ Exit Application</span>
               </button>

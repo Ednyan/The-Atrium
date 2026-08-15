@@ -5,6 +5,7 @@ import AuthScreen from './components/AuthScreen'
 import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
+import DesktopIntro from './components/DesktopIntro'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -774,6 +775,7 @@ function AppInner() {
   // bounced back.
   const hasSeenDesktopLandingRef = useRef(false)
 
+
   // Check if user is already logged in
   useEffect(() => {
     if (!supabase) {
@@ -1496,6 +1498,12 @@ function CloseSaveDialog() {
 }
 
 function App() {
+  // The launch intro lives out here rather than in AppInner: it belongs to the
+  // application starting, not to any screen, and this is the component that
+  // survives every route change. Initialised from isDesktop so the web never
+  // mounts it -- a "launch" isn't a thing that happens in a browser tab.
+  const [showDesktopIntro, setShowDesktopIntro] = useState(isDesktop)
+
   return (
     <>
       <AppInner />
@@ -1505,6 +1513,9 @@ function App() {
       <UpdateChecker />
       {/* Same reasoning: one mount, visible on every desktop screen. */}
       <AppVersionBadge />
+      {/* Last child so it paints over everything, including the loading
+          splash -- the intro is what the app opens with. */}
+      {showDesktopIntro && <DesktopIntro onDone={() => setShowDesktopIntro(false)} />}
     </>
   )
 }
