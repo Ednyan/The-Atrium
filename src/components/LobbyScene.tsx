@@ -444,15 +444,56 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // scaled up. Trackpads fire many events per second where a wheel fires a
   // few, so the per-event step has to be much smaller than a notch while still
   // adding up to a comparable rate.
+  // What a wheel event is asking for.
+  //
+  // A trackpad and a mouse wheel arrive through the same event, so this has to
+  // be inferred. The signals, in order of reliability:
+  //
+  //   ctrlKey        A pinch. The OS reports pinch-to-zoom as ctrl+wheel, on
+  //                  every platform. Unambiguous.
+  //   deltaX         Two-finger scrolling moves in both axes; a wheel has no
+  //                  horizontal axis to report.
+  //   fractional Y   Trackpads report continuous, often fractional deltas.
+  //                  Wheel notches are whole numbers.
+  //   small Y        A wheel notch is ~100 (or 120, or 53 depending on the
+  //                  driver); trackpad deltas are single digits.
+  //
+  // Anything else is treated as a wheel, so the mouse keeps zooming as it
+  // always has -- that's the case where being wrong is most annoying.
+  // When a scroll was last recognised as a trackpad one. A two-finger scroll
+  // fires a dense stream of events, so the middle of a fast flick -- large,
+  // whole-numbered, purely vertical -- looks exactly like a wheel notch on its
+  // own. Recognising the gesture from its opening events and holding that
+  // reading for as long as events keep arriving avoids a flick that starts by
+  // panning and finishes by zooming.
+  const lastPanScrollAtRef = useRef(0)
+  const PAN_GESTURE_GAP_MS = 250
+
+  const classifyWheel = (e: WheelEvent): 'zoom' | 'pan' => {
+    if (e.ctrlKey) return 'zoom'
+    if (e.deltaMode !== 0) return 'zoom'
+
+    const trackpadish =
+      e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 40
+    const continuing = e.timeStamp - lastPanScrollAtRef.current < PAN_GESTURE_GAP_MS
+
+    if (trackpadish || continuing) {
+      lastPanScrollAtRef.current = e.timeStamp
+      return 'pan'
+    }
+    return 'zoom'
+  }
+
   const wheelZoomDelta = (e: WheelEvent): number => {
     let raw = e.deltaY
     if (e.deltaMode === 1) raw *= 16       // lines -> approximate pixels
     else if (e.deltaMode === 2) raw *= 100 // pages -> approximate pixels
 
-    // A pinch gesture arrives as ctrl+wheel. It's a deliberate zoom, so it
-    // gets the fine-grained treatment regardless of how large the delta is.
-    const fineGrained = e.ctrlKey || Math.abs(raw) < 50
-    const perEvent = fineGrained ? 0.01 : 0.001
+    // A pinch reports small deltas, so it still needs amplifying relative to a
+    // wheel notch -- but only a little. A pinch fires a continuous stream of
+    // events for as long as the fingers move, so a per-event step sized like a
+    // wheel click compounds into an unusable lurch.
+    const perEvent = e.ctrlKey ? 0.003 : 0.001
 
     // Clamped so one enormous event (some mice, some drivers) can't jump the
     // whole zoom range at once.
@@ -1835,7 +1876,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
       updateGridRef.current = updateGrid
 
-      // Mouse wheel zoom handler
+      // Mouse wheel / trackpad handler: zooms or pans depending on the gesture.
       const handleWheel = (e: WheelEvent) => {
         // Check if mouse is over any UI elements (menus, panels, etc.).
         // [data-ui-element] is the general marker used by full-screen modals
@@ -1851,7 +1892,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         }
         
         e.preventDefault()
-        cameraFlyToRef.current = null // manual zoom cancels any camera fly-to
+        cameraFlyToRef.current = null // a manual gesture cancels any camera fly-to
+
+        if (classifyWheel(e) === 'pan') {
+          // Divided by the zoom so the canvas tracks the fingers: two fingers
+          // moving an inch should move the view an inch of screen, whatever
+          // the zoom level, rather than an inch of world.
+          const scale = zoomRef.current || 1
+          panCameraBy(e.deltaX / scale, e.deltaY / scale)
+          return
+        }
+
         applyZoomDelta(wheelZoomDelta(e))
       }
       
