@@ -33,13 +33,24 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "publisher": "Digital Atrium",
+    "copyright": "Digital Atrium",
+    "shortDescription": "A collaborative infinite canvas",
+    "longDescription": "The Digital Atrium is a collaborative infinite canvas for collecting, arranging and sharing whatever you're thinking about -- images, text, embeds and documents, laid out in space rather than in a list.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/installer-header.bmp",
+        "sidebarImage": "installer/installer-sidebar.bmp"
+      }
+    }
   },
   "plugins": {
     "sql": {
