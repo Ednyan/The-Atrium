@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
+import {
+  DEFAULT_ZOOM_SENSITIVITY,
+  MIN_ZOOM_SENSITIVITY,
+  MAX_ZOOM_SENSITIVITY,
+  ZOOM_SENSITIVITY_STORAGE_KEY,
+  clampZoomSensitivity,
+} from '../lib/zoomSensitivity'
 
 interface ProfileCustomizationProps {
   onClose: () => void
@@ -9,7 +16,6 @@ interface ProfileCustomizationProps {
 
 const DEFAULT_UNDO_DEPTH = 25
 const MAX_UNDO_DEPTH = 100
-const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
 const PRESET_COLORS = [
   '#ffffff', // White
@@ -34,13 +40,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [undoDepth, setUndoDepth] = useState(DEFAULT_UNDO_DEPTH)
-  const [zoomSensitivity, setZoomSensitivity] = useState(0.16)
+  const [zoomSensitivity, setZoomSensitivity] = useState(DEFAULT_ZOOM_SENSITIVITY)
   const [packingShape, setPackingShapeState] = useState<'square' | 'circle'>('square')
 
   useEffect(() => {
     loadProfile()
     try {
-      const stored = localStorage.getItem('lobby_zoomSensitivity')
+      const stored = localStorage.getItem(ZOOM_SENSITIVITY_STORAGE_KEY)
       if (stored) {
         const parsed = parseFloat(stored)
         if (Number.isFinite(parsed)) {
@@ -72,7 +78,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     const clamped = clampZoomSensitivity(value)
     setZoomSensitivity(clamped)
     try {
-      localStorage.setItem('lobby_zoomSensitivity', clamped.toString())
+      localStorage.setItem(ZOOM_SENSITIVITY_STORAGE_KEY, clamped.toString())
     } catch {
       // Ignore localStorage access failures
     }
@@ -288,8 +294,8 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             </label>
             <input
               type="range"
-              min="0.04"
-              max="0.6"
+              min={MIN_ZOOM_SENSITIVITY}
+              max={MAX_ZOOM_SENSITIVITY}
               step="0.01"
               value={zoomSensitivity}
               onChange={(e) => handleZoomSensitivityChange(parseFloat(e.target.value))}

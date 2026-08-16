@@ -4285,7 +4285,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   const isLocal = rawUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
                   // For local:// URLs, wait for resolved blob URL before rendering
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/30 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
                   return (
                 <img
                   src={resolvedSrc || rawUrl}
@@ -4566,7 +4566,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 if (isDirectImage && !failedImages.has(trace.id)) {
                   const isLocal = trace.mediaUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/30 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
                   // Render as image, not iframe
                   return (
                     <img
@@ -4647,7 +4647,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         {trace.content || 'View source'}
                       </p>
                       {hostname && (
-                        <p className="text-white/40 text-[9px] tracking-wider uppercase">{hostname}</p>
+                        <p className="text-white/70 text-[9px] tracking-wider uppercase">{hostname}</p>
                       )}
                     </a>
                   )
@@ -5638,7 +5638,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   title="Re-pack the selected traces around their current center using the batch placement algorithm"
                 >
                   <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})</span>
-                  <span className="text-gray-500 text-[9px]">▶</span>
+                  <span className="text-gray-300 text-[9px]">▶</span>
                 </button>
                 {contextMenuReorganizeOpen && reorganizeFlyoutRect && (
                   <div
@@ -5725,7 +5725,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
               >
                 <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Transformations</span>
-                <span className="text-gray-500 text-[9px]">▶</span>
+                <span className="text-gray-300 text-[9px]">▶</span>
               </button>
               {contextMenuTransformOpen && transformFlyoutRect && (
                 <div
@@ -5850,7 +5850,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   >
                     <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move Layer</span>
-                    <span className="text-gray-500 text-[9px]">▶</span>
+                    <span className="text-gray-300 text-[9px]">▶</span>
                   </button>
                   {contextMenuMoveOpen && moveFlyoutRect && (
                     <div
@@ -5910,7 +5910,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   >
                     <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move to Group</span>
-                    <span className="text-gray-500 text-[9px]">▶</span>
+                    <span className="text-gray-300 text-[9px]">▶</span>
                   </button>
                   {contextMenuGroupOpen && groupFlyoutRect && (
                     <div
@@ -5932,7 +5932,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         Ungrouped
                       </button>
                       {groupLayers.length === 0 && (
-                        <span className="px-4 py-2 text-gray-500 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
+                        <span className="px-4 py-2 text-gray-300 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
                       )}
                       {groupLayers.map(layer => (
                         <button

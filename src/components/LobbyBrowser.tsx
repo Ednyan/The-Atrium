@@ -692,7 +692,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
             <div className="h-full bg-white/80 animate-nier-slide" />
           </div>
-          <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+          <p className="text-gray-300 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
         </div>
       </div>
     )
@@ -1377,7 +1377,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       {/* Report a problem / suggest a feature */}
       <button
         onClick={() => setShowReportForm(true)}
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-gray-500 hover:text-gray-300 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-gray-300 hover:text-gray-300 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
       >
         Report a problem or suggest a feature
       </button>

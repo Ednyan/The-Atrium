@@ -116,7 +116,7 @@ export default function LocationsPanel({
       <div className="bg-black/60 border-b border-gray-700 px-3 py-2 flex items-center justify-between">
         <div className="flex flex-col">
           <span className="text-gray-300 text-[10px] tracking-wider uppercase">Presentation Mode</span>
-          <span className="text-gray-500 text-[8px] tracking-wide">← / → keys to move between locations</span>
+          <span className="text-gray-300 text-[8px] tracking-wide">← / → keys to move between locations</span>
         </div>
         <button
           onClick={onTogglePresentation}
@@ -134,7 +134,7 @@ export default function LocationsPanel({
       {/* Location list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {locations.length === 0 && (
-          <p className="text-gray-600 text-[10px] tracking-wide text-center px-4 py-6">
+          <p className="text-gray-400 text-[10px] tracking-wide text-center px-4 py-6">
             {canEdit ? 'No locations yet. Frame a view and press "Save View".' : 'No locations saved.'}
           </p>
         )}
@@ -171,10 +171,10 @@ export default function LocationsPanel({
                     ))}
                   </span>
                 )}
-                <span className="text-gray-500 text-[9px] font-mono w-5 shrink-0 text-right">{index + 1}</span>
+                <span className="text-gray-300 text-[9px] font-mono w-5 shrink-0 text-right">{index + 1}</span>
                 <div className="flex flex-col min-w-0">
                   <span className="text-white/90 text-xs tracking-wide truncate">{loc.name}</span>
-                  <span className="text-gray-500 text-[8px] font-mono tracking-wide">
+                  <span className="text-gray-300 text-[8px] font-mono tracking-wide">
                     {Math.round(loc.positionX)}, {Math.round(loc.positionY)} · {loc.zoom.toFixed(2)}x
                   </span>
                 </div>

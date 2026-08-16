@@ -120,7 +120,7 @@ export default function UpdateChecker() {
         </p>
 
         {pending.notes && phase === 'available' && (
-          <p className="text-gray-500 text-[9px] tracking-wide mb-3 max-h-16 overflow-y-auto whitespace-pre-line">
+          <p className="text-gray-300 text-[9px] tracking-wide mb-3 max-h-16 overflow-y-auto whitespace-pre-line">
             {pending.notes}
           </p>
         )}
@@ -130,7 +130,7 @@ export default function UpdateChecker() {
             <div className="h-1 bg-gray-800 border border-gray-700 overflow-hidden">
               <div className="h-full bg-white/80 transition-all duration-200" style={{ width: `${progress}%` }} />
             </div>
-            <p className="text-gray-500 text-[9px] tracking-wider mt-1">
+            <p className="text-gray-300 text-[9px] tracking-wider mt-1">
               {progress > 0 ? `Downloading ${progress}%` : 'Starting download...'}
             </p>
           </div>

@@ -1193,7 +1193,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       {isHardSelected ? '◆' : '◇'}
                     </span>
                     <span className="text-white text-xs tracking-wide">{layer.name}</span>
-                    <span className="text-gray-500 text-[10px]">({layerTraces.length})</span>
+                    <span className="text-gray-300 text-[10px]">({layerTraces.length})</span>
                     {isActiveLayer && (
                       <span className={`text-[9px] tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
                     )}
@@ -1330,7 +1330,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                               moveTraceToLayer(trace.id, null)
                             }
                           }}
-                          className="text-gray-500 hover:text-gray-300 text-[10px] px-1.5 py-0.5"
+                          className="text-gray-300 hover:text-gray-300 text-[10px] px-1.5 py-0.5"
                           title="Remove from group"
                         >
                           ↗
@@ -1540,7 +1540,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             // since it expands in place rather than completing an action.
             onClick={closeRowMenu}
           >
-            <div className="px-3 py-1 text-[9px] tracking-[0.15em] uppercase text-gray-500 truncate border-b border-gray-700 mb-1">
+            <div className="px-3 py-1 text-[9px] tracking-[0.15em] uppercase text-gray-300 truncate border-b border-gray-700 mb-1">
               {isGroup ? layer!.name : (trace!.content.substring(0, 18) || 'Untitled')}
             </div>
 
@@ -1615,12 +1615,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={(e) => { e.stopPropagation(); setMoveToGroupOpen(o => !o) }}
                   className="w-full text-left px-3 py-1.5 text-[11px] tracking-wider text-white hover:bg-gray-700 flex items-center justify-between"
                 >
-                  Move to Group <span className="text-gray-500">{moveToGroupOpen ? '▾' : '▸'}</span>
+                  Move to Group <span className="text-gray-300">{moveToGroupOpen ? '▾' : '▸'}</span>
                 </button>
                 {moveToGroupOpen && (
                   <div className="max-h-40 overflow-y-auto border-y border-gray-700 my-1 bg-gray-900/60">
                     {layers.length === 0 && (
-                      <div className="px-4 py-1.5 text-[10px] text-gray-500 italic">No groups yet</div>
+                      <div className="px-4 py-1.5 text-[10px] text-gray-300 italic">No groups yet</div>
                     )}
                     {layers.map(l => (
                       <button

@@ -23,6 +23,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
+import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
@@ -33,10 +34,13 @@ const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.40
-const DEFAULT_ZOOM_SENSITIVITY = 0.16
 // One keypress of zoom. Sized so a held key travels the range in a couple of
 // seconds rather than either crawling or jumping.
 const KEYBOARD_ZOOM_STEP = 0.6
+// How long the canvas menu will wait for the clipboard before opening without
+// its Paste Image entry. Long enough for a local read, short enough that a
+// blocked one doesn't hold the menu shut.
+const CLIPBOARD_PROBE_CAP_MS = 150
 
 // Dark halo for HUD text that floats directly over the canvas. The atrium's
 // background is user-themeable, so these labels can end up on any colour --
@@ -45,8 +49,6 @@ const KEYBOARD_ZOOM_STEP = 0.6
 // without looking heavy against a dark one.
 const HUD_TEXT_OUTLINE =
   '0 0 4px rgba(0,0,0,0.95), 1px 0 2px rgba(0,0,0,0.9), -1px 0 2px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9), 0 -1px 2px rgba(0,0,0,0.9)'
-
-const clampZoomSensitivity = (value: number) => Math.max(0.04, Math.min(0.6, value))
 
 function mapLocationRow(row: any): LobbyLocation {
   return {
@@ -72,18 +74,6 @@ const formatTimeInAtrium = (joinedAt: number | undefined) => {
   if (hours > 0) return `${hours}h ${minutes}m`
   if (minutes > 0) return `${minutes}m`
   return '<1m'
-}
-
-const getStoredZoomSensitivity = () => {
-  try {
-    const raw = localStorage.getItem('lobby_zoomSensitivity')
-    if (!raw) return DEFAULT_ZOOM_SENSITIVITY
-    const parsed = parseFloat(raw)
-    if (!Number.isFinite(parsed)) return DEFAULT_ZOOM_SENSITIVITY
-    return clampZoomSensitivity(parsed)
-  } catch {
-    return DEFAULT_ZOOM_SENSITIVITY
-  }
 }
 
 const clampAutosaveInterval = (value: number) => Math.max(10, Math.min(600, value))
@@ -2292,7 +2282,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
       
       // Prevent context menu on right click - show custom map context menu instead
-      const handleContextMenu = (e: MouseEvent) => {
+      const handleContextMenu = async (e: MouseEvent) => {
         // Allow native browser context menu inside selectable text areas (modal preview)
         const target = e.target as HTMLElement
         if (target.closest('.selectable-text')) return
@@ -2307,16 +2297,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         if (worldContainerRef.current) {
           const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
           const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
-          setMapContextMenu({ x: e.clientX, y: e.clientY, worldX, worldY })
 
-          // Probed asynchronously so the menu opens instantly, and starting
-          // from "no" so the Paste Image entry appears a moment later rather
-          // than appearing immediately and vanishing under the cursor when the
-          // clipboard turns out to be empty.
-          setClipboardHasImage(false)
-          void readClipboardImageFiles().then(files => {
-            setClipboardHasImage(files === null ? null : files.length > 0)
-          })
+          // Resolved before the menu opens, not after. Paste Image sits at the
+          // top, so an entry arriving late would push every other item down
+          // under a cursor already on its way to one of them.
+          //
+          // Capped, because a clipboard read can in principle block on a
+          // permission prompt, and a right-click menu that doesn't appear is a
+          // far worse failure than one missing an entry. If the read is still
+          // outstanding when the cap expires the menu opens without it and
+          // takes the answer whenever it arrives.
+          const probe = readClipboardImageFiles()
+            .then(files => (files === null ? null : files.length > 0))
+          const capped = await Promise.race([
+            probe,
+            new Promise<'timeout'>(resolve => window.setTimeout(() => resolve('timeout'), CLIPBOARD_PROBE_CAP_MS)),
+          ])
+
+          setClipboardHasImage(capped === 'timeout' ? false : capped)
+          setMapContextMenu({ x: e.clientX, y: e.clientY, worldX, worldY })
+          if (capped === 'timeout') void probe.then(setClipboardHasImage)
         }
       }
 
@@ -3670,7 +3670,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             </button>
             <button
               onClick={() => setHudMinimized(!hudMinimized)}
-              className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+              className="text-gray-300 hover:text-white text-[14px] transition-colors leading-none px-0.5"
               title={hudMinimized ? 'Expand' : 'Minimize'}
             >
               {hudMinimized ? '▸' : '▾'}
@@ -3688,12 +3688,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-white text-[10px] tracking-wide truncate">{username} (you)</span>
-                <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
+                <span className="text-gray-300 text-[9px] flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
               </div>
               {Object.values(otherUsers).map(user => (
                 <div key={user.userId} className="flex items-center justify-between gap-2">
                   <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
-                  <span className="text-gray-500 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
+                  <span className="text-gray-300 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
                   {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
                     <button
                       onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
@@ -3705,7 +3705,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 </div>
               ))}
               {Object.keys(otherUsers).length === 0 && (
-                <p className="text-gray-600 text-[9px] tracking-wide">No one else is here</p>
+                <p className="text-gray-400 text-[9px] tracking-wide">No one else is here</p>
               )}
             </div>
           </div>
@@ -3717,7 +3717,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             {currentLobby.name} {isLobbyOwner && '(Owner)'}{!isLobbyOwner && isLobbyAdmin && '(Admin)'}
           </p>
         )}
-        <p className="text-gray-500 text-[8px] tracking-wider">
+        <p className="text-gray-300 text-[8px] tracking-wider">
           ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
         </p>
         {hasPendingChanges() && (
@@ -3928,7 +3928,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 />
               </div>
               )}
-              <span className={`text-[9px] font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-gray-500'}`}>
+              <span className={`text-[9px] font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-gray-300'}`}>
                 {sizeMB.toFixed(1)}{isDesktop ? 'MB' : `/${limitMB}MB`}
               </span>
             </div>
@@ -4023,7 +4023,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   <p className="text-white text-[10px] tracking-[0.15em] uppercase">Freehand Draw</p>
                   <button
                     onClick={() => setDrawControlsMinimized(!drawControlsMinimized)}
-                    className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+                    className="text-gray-300 hover:text-white text-[14px] transition-colors leading-none px-0.5"
                     title={drawControlsMinimized ? 'Expand controls' : 'Minimize controls'}
                   >
                     {drawControlsMinimized ? '▸' : '▾'}
@@ -4297,7 +4297,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 )}
               </div>
               {!drawControlsMinimized && (
-                <p className="text-gray-500 text-[8px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
+                <p className="text-gray-300 text-[8px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
               )}
             </div>
           </div>
@@ -4463,6 +4463,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-border/60" />
             
+            {/* Above "Place Trace", because it acts on something the user is
+                already holding rather than starting a new thing -- and because
+                it's the entry they came to the menu for when they came here
+                with an image copied.
+
+                Desktop only, matching Ctrl+V: turning a clipboard image into a
+                trace means writing the file into the vault, which the web app
+                can't do. */}
+            {isDesktop && clipboardHasImage !== false && (
+              <div className="border-b border-nier-border/20 mb-1 pb-1">
+                <button
+                  className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                    setMapContextMenu(null)
+                    void handlePasteImageAt(anchor.x, anchor.y)
+                  }}
+                >
+                  ◇ Paste Image
+                </button>
+              </div>
+            )}
+
             <div className="px-3 py-1.5 text-nier-bg/70 text-[8px] tracking-[0.2em] uppercase select-none">
               Place Trace
             </div>
@@ -4491,24 +4514,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {item.label}
               </button>
             ))}
-
-            {/* Desktop only, matching Ctrl+V: turning a clipboard image into a
-                trace means writing the file into the vault, which the web app
-                can't do. */}
-            {isDesktop && clipboardHasImage !== false && (
-              <div className="border-t border-nier-border/20 mt-1 pt-1">
-                <button
-                  className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
-                  onClick={() => {
-                    const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
-                    setMapContextMenu(null)
-                    void handlePasteImageAt(anchor.x, anchor.y)
-                  }}
-                >
-                  ◇ Paste Image
-                </button>
-              </div>
-            )}
 
             {!isDesktop && (
               <>
@@ -4666,7 +4671,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <p className="text-white text-[10px] tracking-[0.15em] uppercase">Controls</p>
           <button
             onClick={() => setControlsMinimized(!controlsMinimized)}
-            className="text-gray-500 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+            className="text-gray-300 hover:text-white text-[14px] transition-colors leading-none px-0.5"
             title={controlsMinimized ? 'Expand' : 'Minimize'}
           >
             {controlsMinimized ? '▸' : '▾'}
@@ -4675,28 +4680,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {!controlsMinimized && (
           <div className="space-y-1 mt-2">
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Leave Trace : "T"
+              <span className="text-gray-300">◇</span> Leave Trace : "T"
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Freehand Draw : "D"
+              <span className="text-gray-300">◇</span> Freehand Draw : "D"
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Edit Trace : Right Click It
+              <span className="text-gray-300">◇</span> Edit Trace : Right Click It
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Multi-select : Shift + Click Traces
+              <span className="text-gray-300">◇</span> Multi-select : Shift + Click Traces
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Undo / Redo : Ctrl+Z / Ctrl+Shift+Z
+              <span className="text-gray-300">◇</span> Undo / Redo : Ctrl+Z / Ctrl+Shift+Z
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Copy / Paste : Ctrl+C / Ctrl+V
+              <span className="text-gray-300">◇</span> Copy / Paste : Ctrl+C / Ctrl+V
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Delete Selected : Delete Key
+              <span className="text-gray-300">◇</span> Delete Selected : Delete Key
             </p>
             <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-500">◇</span> Save Changes : Ctrl+S
+              <span className="text-gray-300">◇</span> Save Changes : Ctrl+S
             </p>
           </div>
         )}
@@ -4891,7 +4896,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               </p>
             )}
             {!kickedNotice.blacklisted && (
-              <p className="text-gray-500 text-[10px] font-mono tracking-wider text-center mb-6">
+              <p className="text-gray-300 text-[10px] font-mono tracking-wider text-center mb-6">
                 You may rejoin if you're allowed back in.
               </p>
             )}
