@@ -22,6 +22,7 @@ import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
+import { defaultEmbedBox } from '../lib/embedUrl'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -46,10 +47,6 @@ const MAX_ZOOM = 1.40
 // amounts.
 const KEYBOARD_ZOOM_STEP = 0.35
 const KEYBOARD_ZOOM_STEP_FINE = 0.12
-// How long the canvas menu will wait for the clipboard before opening without
-// its Paste Image entry. Long enough for a local read, short enough that a
-// blocked one doesn't hold the menu shut.
-const CLIPBOARD_PROBE_CAP_MS = 150
 
 // Dark halo for HUD text that floats directly over the canvas. The atrium's
 // background is user-themeable, so these labels can end up on any colour --
@@ -523,13 +520,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   //
   // Ctrl+V has always pasted images onto the canvas, but plenty of people
   // don't reach for it -- they copy an image, right-click where they want it,
-  // and look for "Paste Image". So the menu offers it, and reads the clipboard
-  // when it opens to decide whether to.
+  // and look for "Paste Image". So the menu offers it, and the one for links
+  // beside it.
   //
-  // null means the clipboard couldn't be read at all, which is different from
-  // reading it and finding nothing: the entries are still offered, and say what
-  // happened when used.
-  const [clipboardOffer, setClipboardOffer] = useState<ClipboardOffer | null>(null)
+  // Both are always shown rather than only when the clipboard has something to
+  // give. Deciding required reading the clipboard as the menu opened, and
+  // reading the clipboard is what makes the browser put its own "Paste" button
+  // on screen -- so every right-click on empty canvas raised a native prompt
+  // next to the menu, for a question the user hadn't asked yet. Now the read
+  // happens when the entry is clicked, which is the moment that prompt is
+  // supposed to appear and the moment it makes sense. An entry that turns out
+  // to have nothing to paste says so.
   // Which scrolling device is in use, as far as we can tell. Starts at 'wheel'
   // and only moves off it on positive evidence, because being wrong about a
   // mouse costs the app its primary zoom control.
@@ -2356,7 +2357,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       }
       
       // Prevent context menu on right click - show custom map context menu instead
-      const handleContextMenu = async (e: MouseEvent) => {
+      const handleContextMenu = (e: MouseEvent) => {
         // Allow native browser context menu inside selectable text areas (modal preview)
         const target = e.target as HTMLElement
         if (target.closest('.selectable-text')) return
@@ -2372,24 +2373,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
           const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
 
-          // Resolved before the menu opens, not after. The paste entries sit at
-          // the top, so one arriving late would push every other item down
-          // under a cursor already on its way to one of them.
-          //
-          // Capped, because a clipboard read can in principle block on a
-          // permission prompt, and a right-click menu that doesn't appear is a
-          // far worse failure than one missing an entry. If the read is still
-          // outstanding when the cap expires the menu opens without them and
-          // takes the answer whenever it arrives.
-          const probe = readClipboardContents()
-          const capped = await Promise.race([
-            probe,
-            new Promise<'timeout'>(resolve => window.setTimeout(() => resolve('timeout'), CLIPBOARD_PROBE_CAP_MS)),
-          ])
-
-          setClipboardOffer(capped === 'timeout' ? { images: [], url: null } : capped)
           setMapContextMenu({ x: e.clientX, y: e.clientY, worldX, worldY })
-          if (capped === 'timeout') void probe.then(setClipboardOffer)
         }
       }
 
@@ -3614,6 +3598,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           }
         : { z_index: computeZIndexForNewUngroupedTrace(liveTraces) }
 
+      // An embed's proportions have to be decided from its link, because they
+      // can't be measured: a cross-origin frame cannot report the size of what
+      // it's showing, and no amount of asking will get a Google Doc's height
+      // out of it. So a document-shaped link gets a document-shaped box and a
+      // folder listing gets a wide one, rather than everything arriving as the
+      // same default rectangle and needing to be resized by hand.
+      //
+      // Applied here rather than at each call site so every route in -- a
+      // dropped link, Paste as Embed, a scavenged URL -- lands the same way.
+      const embedBox = traceType === 'embed'
+        ? defaultEmbedBox(mediaUrl || content)
+        : null
+
       const { data, error } = await supabase.from('traces').insert({
         user_id: userId,
         username,
@@ -3627,6 +3624,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         lobby_id: lobbyId,
         show_description: false,
         show_filename: false,
+        ...(embedBox ?? {}),
         ...layerFields,
       } as any).select()
 
@@ -4561,14 +4559,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 which the web app has no equivalent of. Paste as Embed only
                 stores a URL, so it works everywhere.
 
-                Both are shown when the clipboard couldn't be read at all
-                (clipboardOffer null) rather than hidden -- a feature that
-                silently doesn't exist on one machine is worse than one that
-                explains itself when used. */}
+                Neither is hidden when the clipboard is empty: finding that
+                out costs a clipboard read, and a clipboard read is what summons
+                the browser's own paste prompt. Better an entry that reports it
+                had nothing to paste than a native prompt on every right-click.
+                */}
             {(() => {
-              const canPasteImage = isDesktop && (clipboardOffer === null || clipboardOffer.images.length > 0)
-              const canPasteEmbed = clipboardOffer === null || clipboardOffer.url !== null
-              if (!canPasteImage && !canPasteEmbed) return null
+              const canPasteImage = isDesktop
+              const canPasteEmbed = true
 
               const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
               const entryClass = 'w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2'

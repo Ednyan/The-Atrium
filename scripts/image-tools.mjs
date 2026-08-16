@@ -198,6 +198,44 @@ export function lumaToAlpha(img) {
   return { width: img.width, height: img.height, rgba }
 }
 
+// --- ICNS ------------------------------------------------------------------
+// macOS icon container: a header, then typed entries back to back. Each entry
+// is a four-character type, its total length including the 8-byte header, and
+// the payload.
+//
+// The types are the sizes. Modern macOS reads PNG payloads directly, which is
+// what the icon this replaces used for everything except two legacy 16/32px
+// raw formats -- those are pre-10.7 and safe to leave out.
+//
+// Written from Windows, where the result can't be opened to check, so
+// make-app-icons parses its own output back before it's kept.
+export const ICNS_TYPES = [
+  ['ic11', 32],
+  ['ic12', 64],
+  ['ic07', 128],
+  ['ic08', 256],
+  ['ic13', 256], // 128@2x -- same pixels, different slot
+]
+
+export function encodeIcns(pngBySize) {
+  const entries = []
+
+  for (const [type, size] of ICNS_TYPES) {
+    const png = pngBySize.get(size)
+    if (!png) continue
+    const header = Buffer.alloc(8)
+    header.write(type, 0, 'ascii')
+    header.writeUInt32BE(png.length + 8, 4)
+    entries.push(Buffer.concat([header, png]))
+  }
+
+  const body = Buffer.concat(entries)
+  const header = Buffer.alloc(8)
+  header.write('icns', 0, 'ascii')
+  header.writeUInt32BE(body.length + 8, 4)
+  return Buffer.concat([header, body])
+}
+
 // --- ICO -------------------------------------------------------------------
 // Every entry is written as a 32-bit BGRA DIB rather than an embedded PNG.
 // PNG-in-ICO is legal from Vista onward, but the toolchain that stamps this
