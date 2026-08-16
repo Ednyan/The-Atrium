@@ -3407,10 +3407,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // did arrive turns "it doesn't work in this browser" into something
     // diagnosable without a debugger on the affected machine.
     const offered = Array.from(e.dataTransfer.types || [])
+    if (offered.length > 0) {
+      showToast(`Nothing droppable in that (${offered.join(', ')})`)
+      return
+    }
+
+    // An empty type list is a different failure from an unrecognised one, and
+    // it isn't ours. The browser handed this application a drag with no
+    // formats attached at all -- not even text/plain -- so there is nothing
+    // here to misread. It happens when a browser describes an image only in
+    // its own private clipboard formats, which Windows passes between
+    // processes but the webview never maps into a drop event.
+    //
+    // `items` is reported alongside, because the two disagreeing would mean
+    // something quite different: data present but unreadable, rather than
+    // absent. Worth knowing before anyone tries to fix the wrong thing.
+    const itemCount = e.dataTransfer.items?.length ?? 0
+    const detail = itemCount > 0 ? ` (0 formats, ${itemCount} items)` : ''
     showToast(
-      offered.length > 0
-        ? `Nothing droppable in that (${offered.join(', ')})`
-        : 'That drag carried no data — try dragging the image from its own page, or paste the link instead',
+      isDesktop
+        ? `That drag carried no data${detail} — copy the image instead, then right-click here and Paste Image`
+        : `That drag carried no data${detail} — try dragging it from its own page, or paste the link instead`,
     )
   }
 
