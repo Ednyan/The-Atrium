@@ -180,6 +180,35 @@ const classifyRemoteTraceType = (url: string): 'image' | 'video' | 'audio' | 'em
   return 'embed'
 }
 
+// What the clipboard is holding that this canvas can place.
+interface ClipboardOffer {
+  images: File[]
+  url: string | null
+}
+
+// A clipboard string that's worth offering to embed.
+//
+// Deliberately any http(s) link, not only ones that look like image files. An
+// embed trace is already how a YouTube video, a Google Doc or a Drive file gets
+// onto the canvas -- the overlay runs the URL through toEmbedUrl when it
+// renders -- so restricting this to .jpg and .png would refuse exactly the
+// links embeds are best at.
+//
+// Whitespace disqualifies it: a URL sitting inside a sentence is copied prose,
+// not a link the user means to place.
+const asPasteableUrl = (value: string): string | null => {
+  const trimmed = value.trim()
+  if (!trimmed || /\s/.test(trimmed)) return null
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    return trimmed
+  } catch {
+    return null
+  }
+}
+
 const getDroppedUrlPayload = (value: string): DroppedUrlPayload | null => {
   const lines = value
     .split(/\r?\n/)
@@ -496,7 +525,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // don't reach for it -- they copy an image, right-click where they want it,
   // and look for "Paste Image". So the menu offers it, and reads the clipboard
   // when it opens to decide whether to.
-  const [clipboardHasImage, setClipboardHasImage] = useState<boolean | null>(null)
+  //
+  // null means the clipboard couldn't be read at all, which is different from
+  // reading it and finding nothing: the entries are still offered, and say what
+  // happened when used.
+  const [clipboardOffer, setClipboardOffer] = useState<ClipboardOffer | null>(null)
   // Which scrolling device is in use, as far as we can tell. Starts at 'wheel'
   // and only moves off it on positive evidence, because being wrong about a
   // mouse costs the app its primary zoom control.
@@ -1684,17 +1717,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // was right-clicked, which is the whole advantage over Ctrl+V -- the user
   // has already said where they want it.
   const handlePasteImageAt = async (worldX: number, worldY: number) => {
-    const files = await readClipboardImageFiles()
-    if (files === null) {
+    const offer = await readClipboardContents()
+    if (offer === null) {
       showToast("Couldn't read the clipboard — try Ctrl+V instead")
       return
     }
-    if (files.length === 0) {
+    if (offer.images.length === 0) {
       showToast('No image in the clipboard')
       return
     }
     if (!ensureLobbyHasSpace()) return
-    await placeFilesAsTraces(files, worldX, worldY)
+    await placeFilesAsTraces(offer.images, worldX, worldY)
+  }
+
+  // "Paste as Embed": a copied link becomes an embed trace where the user
+  // right-clicked. On both platforms, unlike Paste Image -- an embed stores a
+  // URL and writes no file, so there's nothing here the web can't do.
+  const handlePasteEmbedAt = async (worldX: number, worldY: number) => {
+    const offer = await readClipboardContents()
+    if (offer === null) {
+      showToast("Couldn't read the clipboard — try Ctrl+V instead")
+      return
+    }
+    if (!offer.url) {
+      showToast('No link in the clipboard')
+      return
+    }
+    if (!ensureLobbyHasSpace()) return
+    // Stored as copied. The overlay runs embed content through toEmbedUrl when
+    // it renders, so a Drive or YouTube link becomes embeddable there rather
+    // than being rewritten on the way in -- same as a link dropped on the
+    // canvas.
+    await insertDroppedTrace('embed', offer.url, offer.url, worldX, worldY)
   }
 
   const handleCreateBatchEmbeds = async (urls: string[]) => {
@@ -2318,25 +2372,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
           const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
 
-          // Resolved before the menu opens, not after. Paste Image sits at the
-          // top, so an entry arriving late would push every other item down
+          // Resolved before the menu opens, not after. The paste entries sit at
+          // the top, so one arriving late would push every other item down
           // under a cursor already on its way to one of them.
           //
           // Capped, because a clipboard read can in principle block on a
           // permission prompt, and a right-click menu that doesn't appear is a
           // far worse failure than one missing an entry. If the read is still
-          // outstanding when the cap expires the menu opens without it and
+          // outstanding when the cap expires the menu opens without them and
           // takes the answer whenever it arrives.
-          const probe = readClipboardImageFiles()
-            .then(files => (files === null ? null : files.length > 0))
+          const probe = readClipboardContents()
           const capped = await Promise.race([
             probe,
             new Promise<'timeout'>(resolve => window.setTimeout(() => resolve('timeout'), CLIPBOARD_PROBE_CAP_MS)),
           ])
 
-          setClipboardHasImage(capped === 'timeout' ? false : capped)
+          setClipboardOffer(capped === 'timeout' ? { images: [], url: null } : capped)
           setMapContextMenu({ x: e.clientX, y: e.clientY, worldX, worldY })
-          if (capped === 'timeout') void probe.then(setClipboardHasImage)
+          if (capped === 'timeout') void probe.then(setClipboardOffer)
         }
       }
 
@@ -3204,25 +3257,40 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     e.dataTransfer.types.includes(LAYER_DRAG_DATA_KEY) ||
     e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)
 
-  // Reads any images sitting on the clipboard, as real files ready to upload.
+  // Everything on the clipboard this canvas can do something with: image files
+  // to place, and a link to embed.
+  //
+  // One read for both, rather than a call per menu entry -- the clipboard is
+  // permission-gated and potentially slow, and asking twice for the same
+  // contents would double both costs.
   //
   // This is the async Clipboard API rather than a paste event, because there's
-  // no paste event to read here -- the user chose a menu item. It can be
-  // refused (no permission, no support), which is why the caller distinguishes
-  // "no image" from "couldn't look".
-  const readClipboardImageFiles = async (): Promise<File[] | null> => {
+  // no paste event to read here: the user chose a menu item. It can be refused
+  // outright (no permission, no support), which is why null means "couldn't
+  // look" and an empty result means "looked, found nothing" -- the callers
+  // treat those differently.
+  const readClipboardContents = async (): Promise<ClipboardOffer | null> => {
     if (!navigator.clipboard?.read) return null
     try {
       const items = await navigator.clipboard.read()
-      const files: File[] = []
+      const images: File[] = []
+      let url: string | null = null
+
       for (const item of items) {
         const imageType = item.types.find(type => type.startsWith('image/'))
-        if (!imageType) continue
-        const blob = await item.getType(imageType)
-        const extension = imageType.split('/')[1] || 'png'
-        files.push(new File([blob], `pasted-image.${extension}`, { type: imageType }))
+        if (imageType) {
+          const blob = await item.getType(imageType)
+          const extension = imageType.split('/')[1] || 'png'
+          images.push(new File([blob], `pasted-image.${extension}`, { type: imageType }))
+          continue
+        }
+
+        if (!url && item.types.includes('text/plain')) {
+          url = asPasteableUrl(await (await item.getType('text/plain')).text())
+        }
       }
-      return files
+
+      return { images, url }
     } catch {
       return null
     }
@@ -4483,28 +4551,55 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-border/60" />
             
-            {/* Above "Place Trace", because it acts on something the user is
+            {/* Above "Place Trace", because these act on something the user is
                 already holding rather than starting a new thing -- and because
-                it's the entry they came to the menu for when they came here
-                with an image copied.
+                they're what someone came to the menu for when they came with
+                something copied.
 
-                Desktop only, matching Ctrl+V: turning a clipboard image into a
-                trace means writing the file into the vault, which the web app
-                can't do. */}
-            {isDesktop && clipboardHasImage !== false && (
-              <div className="border-b border-nier-border/20 mb-1 pb-1">
-                <button
-                  className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
-                  onClick={() => {
-                    const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
-                    setMapContextMenu(null)
-                    void handlePasteImageAt(anchor.x, anchor.y)
-                  }}
-                >
-                  ◇ Paste Image
-                </button>
-              </div>
-            )}
+                Paste Image is desktop only, matching Ctrl+V: turning a
+                clipboard image into a trace writes the file into the vault,
+                which the web app has no equivalent of. Paste as Embed only
+                stores a URL, so it works everywhere.
+
+                Both are shown when the clipboard couldn't be read at all
+                (clipboardOffer null) rather than hidden -- a feature that
+                silently doesn't exist on one machine is worse than one that
+                explains itself when used. */}
+            {(() => {
+              const canPasteImage = isDesktop && (clipboardOffer === null || clipboardOffer.images.length > 0)
+              const canPasteEmbed = clipboardOffer === null || clipboardOffer.url !== null
+              if (!canPasteImage && !canPasteEmbed) return null
+
+              const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+              const entryClass = 'w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2'
+
+              return (
+                <div className="border-b border-nier-border/20 mb-1 pb-1">
+                  {canPasteImage && (
+                    <button
+                      className={entryClass}
+                      onClick={() => {
+                        setMapContextMenu(null)
+                        void handlePasteImageAt(anchor.x, anchor.y)
+                      }}
+                    >
+                      ◇ Paste Image
+                    </button>
+                  )}
+                  {canPasteEmbed && (
+                    <button
+                      className={entryClass}
+                      onClick={() => {
+                        setMapContextMenu(null)
+                        void handlePasteEmbedAt(anchor.x, anchor.y)
+                      }}
+                    >
+                      ◇ Paste as Embed
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
 
             <div className="px-3 py-1.5 text-nier-bg/70 text-[8px] tracking-[0.2em] uppercase select-none">
               Place Trace
