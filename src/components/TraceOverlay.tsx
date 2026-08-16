@@ -3206,13 +3206,36 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
   // Extract iframe src from HTML embed code or return URL as-is
   const extractEmbedUrl = useCallback((content: string): string | null => {
+    // Only ever http(s) reaches an iframe's src.
+    //
+    // This is the last gate before user-supplied text becomes a live frame, and
+    // it's deliberately here rather than at the point of creation: an embed's
+    // content is written by anyone who can edit the atrium and read by everyone
+    // who opens it, and traces already in the database have to pass through
+    // this too. Validating on the way in would leave those unchecked.
+    //
+    // javascript: is the one that matters. A javascript: URL in an iframe src
+    // runs in the embedder's origin, which here means access to the session in
+    // local storage -- so a single embed trace in a shared atrium would be
+    // account takeover for every viewer. data: is refused for the same reason
+    // (browsers now block it in frames, but that shouldn't be what saves us),
+    // and everything else exotic simply has no business being framed.
+    const httpOnly = (candidate: string): string | null => {
+      try {
+        const parsed = new URL(candidate.trim(), window.location.href)
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? candidate : null
+      } catch {
+        return null
+      }
+    }
+
     // Check if it's HTML embed code (contains <iframe)
     if (content.includes('<iframe')) {
       const srcMatch = content.match(/src=["']([^"']+)["']/)
       if (srcMatch) {
         // Run through the converter too: pasting embed code with a share URL
         // inside it is a common enough mistake to be worth handling.
-        return toEmbedUrl(srcMatch[1])
+        return httpOnly(toEmbedUrl(srcMatch[1]))
       }
       return null
     }
@@ -3220,7 +3243,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
     // their embeddable form here (see lib/embedUrl). Done at render rather
     // than on save, so the trace keeps the link the user actually pasted and
     // embeds created before this start working without migrating anything.
-    return toEmbedUrl(content)
+    return httpOnly(toEmbedUrl(content))
   }, [])
 
   // Memoize visible traces to avoid recalculating on every render
@@ -4684,6 +4707,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <iframe
                     src={embedUrl}
+                    // Sandboxed. Without this an embedded page can navigate the
+                    // top-level window, so one bad embed in a shared atrium
+                    // could send everyone who opens it somewhere else -- a
+                    // convincing place to ask for a password. Scripts,
+                    // same-origin, popups, forms and presentation are kept
+                    // because YouTube, Drive and Docs need them; top navigation
+                    // is exactly what is being withheld.
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
                     className="w-full h-full select-none"
                     scrolling="no"
                     style={{ 
@@ -4694,7 +4725,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
                         : undefined,
                     }}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                     onClick={(e) => {
                       if (trace.enableInteraction) {
@@ -7922,6 +7953,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 return (
                   <iframe
                     src={embedUrl}
+                    // Same sandbox as the canvas embed above, for the same
+                    // reason -- opening one full-screen shouldn't grant it more
+                    // than it had.
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
                     // Chrome/Edge still render a default sunken ~2px iframe
                     // border unless explicitly overridden (Firefox doesn't),
                     // which was pushing the iframe's rendered box just past
@@ -7931,7 +7966,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     // the browsers that add that border.
                     frameBorder={0}
                     style={{ width: displayWidth, height: displayHeight, border: 'none', display: 'block' }}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
                 )
