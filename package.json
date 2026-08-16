@@ -49,6 +49,7 @@
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.2.2",
-    "vite": "^8.1.4"
+    "vite": "^8.1.4",
+    "wawoff2": "^2.0.1"
   }
 }
