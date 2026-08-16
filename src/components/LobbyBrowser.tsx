@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
@@ -7,6 +7,8 @@ import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
+
+const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
 
 interface LobbyWithOwner extends Lobby {
@@ -52,6 +54,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [isOperator, setIsOperator] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
+  // Desktop's export. Same .atrium.json the web's download produces, written
+  // through a folder picker rather than the browser's download machinery.
+  const [showExport, setShowExport] = useState(false)
   const [showVaultRecovery, setShowVaultRecovery] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1058,23 +1063,23 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </section>
           )}
 
-          {/* Import Atrium -- now on both platforms. It used to be web-only,
-              which left desktop with an Export but no way back in; the web
-              side can now download the same .atrium.json (see
-              lib/atriumDownload), so the transfer works in both directions.
-              The heading names the source rather than the destination. */}
+          {/* Everything that moves an atrium in or out of this installation,
+              in one place. Export used to be desktop's odd one out, reachable
+              only from the welcome screen -- so getting an atrium out meant
+              leaving the browser, while getting one in happened here. They're
+              the same job seen from two directions, and this is where someone
+              is already standing when they think of either. */}
           {(
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">
-                  Import &amp; Export
+                  {isDesktop ? 'Import, Export & Restore' : 'Import & Export'}
                 </span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
-              {/* Side by side: they're the two directions of one operation, and
-                  stacking them read as two unrelated actions. On desktop the
-                  export half lives on the welcome screen instead, so Import
-                  takes the full width there rather than sitting lopsided. */}
+              {/* Side by side: they're directions of one operation, and stacking
+                  them read as unrelated actions. Three across on desktop is
+                  still comfortable at this panel width. */}
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowImport(true)}
@@ -1084,16 +1089,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   ◇ Import (.json)
                 </button>
 
-                {/* Web only -- desktop's equivalent is Export Atrium on the
-                    welcome screen, which writes the same format. */}
-                {!isDesktop && (
-                  <button
-                    onClick={() => setShowDownload(true)}
-                    className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                  >
-                    ◇ Export (.json)
-                  </button>
-                )}
+                {/* Same format on both platforms, different machinery: the web
+                    downloads a file, desktop writes one to a chosen folder. */}
+                <button
+                  onClick={() => (isDesktop ? setShowExport(true) : setShowDownload(true))}
+                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                >
+                  ◇ Export (.json)
+                </button>
 
                 {/* Desktop only: rebuilds an atrium from the copy kept in the
                     vault. Sits with import/export because it's the same idea --
@@ -1348,6 +1351,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           onClose={() => setShowVaultRecovery(false)}
           onRestored={() => { loadLobbies(); checkCanCreateLobby(); }}
         />
+      )}
+
+      {/* Lazily loaded, as it is on the welcome screen: it pulls in the whole
+          local database layer, which most visits to this browser never need. */}
+      {showExport && (
+        <Suspense fallback={null}>
+          <ExportDatabase onClose={() => setShowExport(false)} />
+        </Suspense>
       )}
 
       {/* Download picker. Owned and administered atriums first (the ones the

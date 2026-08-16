@@ -550,15 +550,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     if (e.deltaMode === 1) raw *= 16       // lines -> approximate pixels
     else if (e.deltaMode === 2) raw *= 100 // pages -> approximate pixels
 
-    // Two tiers, because notch size varies wildly by driver and by the system's
-    // lines-per-notch setting: ~100 is typical, but 33.33 and 53 are common and
-    // a high-resolution wheel is smaller still. Scaling a small notch by the
-    // large-notch factor is what made the wheel feel dead.
+    // Two tiers on each path, because the magnitude a device reports says
+    // nothing about how much movement it represents. A wheel notch is ~100 on
+    // most systems, 33.33 when set to scroll one line, and smaller still on a
+    // high-resolution wheel. A pinch is the same story: some drivers report a
+    // few units per event, others report notch-sized numbers for the same
+    // finger movement. Scaling a small reading by the large-reading factor is
+    // what makes a device feel dead.
     //
-    // A pinch is its own case. It fires a continuous stream for as long as the
-    // fingers move, so its per-event step has to be far below a notch's or it
-    // compounds across the whole zoom range in one gesture.
-    const perEvent = e.ctrlKey ? 0.003 : (Math.abs(raw) < 50 ? 0.01 : 0.001)
+    // The pinch factors are both well under the wheel's, because a pinch fires
+    // continuously for as long as the fingers move where a wheel fires once per
+    // notch -- the per-event step has to be smaller to add up to the same rate.
+    const perEvent = e.ctrlKey
+      ? (Math.abs(raw) < 20 ? 0.02 : 0.002)
+      : (Math.abs(raw) < 50 ? 0.01 : 0.001)
 
     // Clamped so one enormous event (some mice, some drivers) can't jump the
     // whole zoom range at once.

@@ -1253,6 +1253,10 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
         // this?" check inside sees the rows that remain.
         if (opts.table === 'traces') void removeOrphanedTraceMedia(previousRows)
 
+        // Deleting an atrium left its rows, its media and its vault mirror
+        // behind -- see removeDeletedLobbyData.
+        if (opts.table === 'lobbies') void removeDeletedLobbyData(previousRows)
+
         if (opts.selectColumns) {
           // Rows can't be re-queried post-delete (they're gone); the rows
           // fetched above (before deleting, for the vault-sync diff) are
@@ -1680,6 +1684,101 @@ async function removeOrphanedTraceMedia(deletedRows: any[]): Promise<void> {
       } catch {
         // Ignored on purpose.
       }
+    }
+  }
+}
+
+// Everything a deleted atrium leaves behind.
+//
+// Deleting the lobbies row used to be the entire operation. Its traces, layers,
+// locations and access lists stayed in the database; its media stayed in
+// _runtime; and its vault mirror stayed on disk, offering to restore an atrium
+// the user had deliberately thrown away. Nothing else was ever going to collect
+// them -- the local schema declares no foreign keys, so SQLite has no cascade
+// to run, and the media cleanup that follows a trace delete never fires because
+// the trace rows are never deleted.
+//
+// Deliberately destructive, and the one place in the vault that is. Removing
+// the mirror means a deleted atrium is genuinely gone rather than recoverable
+// from Restore From Vault -- which is the point: a backup that survives the
+// thing being deleted on purpose isn't a backup, it's a copy the user can't get
+// rid of.
+async function removeDeletedLobbyData(deletedRows: any[]): Promise<void> {
+  if (!db || deletedRows.length === 0) return
+
+  for (const row of deletedRows) {
+    const lobbyId = typeof row?.id === 'string' ? row.id : null
+    if (!lobbyId) continue
+
+    // A mirror write already queued for this atrium would recreate the
+    // directory removed below, moments after it goes.
+    const pendingSync = pendingVaultSyncs.get(lobbyId)
+    if (pendingSync !== undefined) {
+      clearTimeout(pendingSync)
+      pendingVaultSyncs.delete(lobbyId)
+    }
+
+    // The name is read from the deleted row rather than looked up: the lookup
+    // reads the lobbies table, and by now the row is gone.
+    const lobbyName = typeof row?.name === 'string' ? row.name : null
+
+    for (const table of ['traces', 'layers', 'lobby_locations', 'lobby_access_lists']) {
+      try {
+        await db.execute(`DELETE FROM ${table} WHERE lobby_id = ?`, [lobbyId])
+      } catch {
+        // Best-effort, like the rest of this: the atrium is already gone from
+        // the user's point of view, and throwing here would surface as the
+        // delete itself having failed when it didn't.
+      }
+    }
+
+    try {
+      const mediaDir = await getRuntimeLobbyMediaDirectory('traces', lobbyId, lobbyName ?? undefined)
+      if (await vaultPathExists(mediaDir)) await removePath(mediaDir)
+    } catch {
+      // Ignored on purpose -- see above.
+    }
+
+    if (lobbyName) {
+      try {
+        const mirrorDir = await getVaultLobbyDirectory(lobbyId, lobbyName)
+        if (await vaultPathExists(mirrorDir)) await removePath(mirrorDir)
+      } catch {
+        // Ignored on purpose -- see above.
+      }
+    }
+
+    // A rename that didn't reach the vault would leave the mirror under the old
+    // folder name, which the path above would miss. The snapshots carry the
+    // atrium id, so this catches those regardless of what the folder is called.
+    try {
+      const snapshotPaths = await invoke<string[]>('list_vault_atrium_mirrors')
+      for (const snapshotPath of snapshotPaths) {
+        try {
+          const snapshot = JSON.parse(new TextDecoder().decode(await readBinaryFile(snapshotPath)))
+          if (snapshot?.lobby?.id !== lobbyId) continue
+          // list_vault_atrium_mirrors only ever returns <vault>/<dir>/atrium.json,
+          // so the mirror directory is the path minus its last segment.
+          const strayDir = snapshotPath.replace(/[\\/][^\\/]*$/, '')
+          if (strayDir && strayDir !== snapshotPath && await vaultPathExists(strayDir)) {
+            await removePath(strayDir)
+          }
+        } catch {
+          // One unreadable mirror shouldn't stop the others being checked.
+        }
+      }
+    } catch {
+      // Ignored on purpose -- see above.
+    }
+
+    lobbyNameCache.delete(lobbyId)
+
+    // Blob URLs for files that no longer exist would otherwise hold their bytes
+    // in memory for the rest of the session.
+    for (const [localUrl, objectUrl] of Array.from(resolvedUrlCache.entries())) {
+      if (!localUrl.startsWith(`local://traces/${lobbyId}/`)) continue
+      URL.revokeObjectURL(objectUrl)
+      resolvedUrlCache.delete(localUrl)
     }
   }
 }
