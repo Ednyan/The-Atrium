@@ -1,0 +1,45 @@
+# Response headers for Cloudflare Pages.
+#
+# Files in public/ are copied to the build output as-is, so this ships with the
+# site. Cloudflare reads it at deploy; there is nothing to configure in the
+# dashboard.
+#
+# The desktop app does not use this. It has its own policy, in
+# src-tauri/tauri.conf.json, and the two have to be kept roughly in step.
+
+/*
+  # Unambiguously safe, so enforced from the start.
+  X-Content-Type-Options: nosniff
+  # The app is never legitimately framed, and saying so is the cheapest
+  # defence there is against a clickjacked copy of it.
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  # Nothing here asks for any of these, and an embedded page shouldn't be able
+  # to either.
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=()
+
+  # Report-Only on purpose. This policy is derived from reading what the app
+  # loads, not from watching it run, and a wrong CSP is a blank page for every
+  # visitor. In this mode the browser reports violations to the console and
+  # blocks nothing, so it can be checked against the real site before it bites.
+  #
+  # To enforce: rename the header to Content-Security-Policy. Do that once the
+  # console is clean on a full pass -- sign in, open an atrium, place each trace
+  # type, play a YouTube and a Drive embed, import and export.
+  #
+  # This is defence in depth, not the fix. The holes it would have covered --
+  # javascript: URLs reaching an iframe, embeds navigating the top-level window
+  # -- are closed in the code itself and don't depend on it.
+  #
+  #   script-src 'self'         no inline scripts, and no 'unsafe-eval': the
+  #                             @pixi/unsafe-eval shim exists so Pixi doesn't
+  #                             need it. blob: is for the pdf.js worker.
+  #   style-src 'unsafe-inline' React writes inline style attributes on nearly
+  #                             every trace; there is no way around this short
+  #                             of rewriting the rendering layer.
+  #   img/media https:          traces hotlink images and video from anywhere
+  #                             the user pastes, which is the point of them.
+  #   frame-src https:          same, for embeds. Can't be a list of hosts.
+  #   connect-src data:         ImportAtrium fetches its own data: URLs to turn
+  #                             embedded files back into blobs.
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https://rmowxvqkyxypgcbqcspy.supabase.co wss://rmowxvqkyxypgcbqcspy.supabase.co https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
