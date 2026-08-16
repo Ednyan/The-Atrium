@@ -18,14 +18,13 @@
   # to either.
   Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=()
 
-  # Report-Only on purpose. This policy is derived from reading what the app
-  # loads, not from watching it run, and a wrong CSP is a blank page for every
-  # visitor. In this mode the browser reports violations to the console and
-  # blocks nothing, so it can be checked against the real site before it bites.
+  # Enforced. It shipped as Content-Security-Policy-Report-Only first, so that
+  # violations showed up in the console without anything being blocked, and was
+  # switched over once the real site came back clean.
   #
-  # To enforce: rename the header to Content-Security-Policy. Do that once the
-  # console is clean on a full pass -- sign in, open an atrium, place each trace
-  # type, play a YouTube and a Drive embed, import and export.
+  # If something here ever needs loosening, put the -Report-Only suffix back
+  # before changing the policy rather than after: a wrong CSP is a blank page
+  # for every visitor, and this file is served the moment it's pushed.
   #
   # This is defence in depth, not the fix. The holes it would have covered --
   # javascript: URLs reaching an iframe, embeds navigating the top-level window
@@ -42,4 +41,4 @@
   #   frame-src https:          same, for embeds. Can't be a list of hosts.
   #   connect-src data:         ImportAtrium fetches its own data: URLs to turn
   #                             embedded files back into blobs.
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https://rmowxvqkyxypgcbqcspy.supabase.co wss://rmowxvqkyxypgcbqcspy.supabase.co https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https://rmowxvqkyxypgcbqcspy.supabase.co wss://rmowxvqkyxypgcbqcspy.supabase.co https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
