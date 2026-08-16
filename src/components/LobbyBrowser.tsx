@@ -845,6 +845,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
                   <input
                     type="text"
+                    // The form only exists while showCreateLobby is on, so this
+                    // mounts fresh each time and focuses on opening. Naming the
+                    // atrium is the one thing everyone does here, and it was a
+                    // click away for no reason.
+                    autoFocus
                     value={newLobbyName}
                     onChange={(e) => setNewLobbyName(e.target.value)}
                     placeholder="Enter name..."
