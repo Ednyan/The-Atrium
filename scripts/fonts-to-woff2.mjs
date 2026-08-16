@@ -13,10 +13,10 @@
 // woff2 alongside ttf and otf, and picks a family's file by filename, which
 // conversion preserves. Nothing anywhere references a .ttf path directly.
 //
-// Only the two depths that registry actually bundles are converted: bare files
-// in fonts/, and files at the root of a family folder. A Google Fonts download
-// nests every individual weight under static/, which is deliberately not
-// globbed -- converting those would spend time on files that never ship.
+// Only the two depths the registry looks at: bare files in fonts/, and files at
+// the root of a family folder. A Google Fonts download nests every individual
+// weight under static/, which is deliberately not globbed -- converting those
+// would spend time on files that never ship.
 
 import { readdirSync, readFileSync, writeFileSync, statSync, unlinkSync } from 'node:fs'
 import { dirname, join, extname, basename } from 'node:path'
@@ -29,10 +29,12 @@ const replaceOriginals = process.argv.includes('--replace')
 
 const CONVERTIBLE = new Set(['.ttf', '.otf'])
 
-// Mirrors the registry's exclusion: italics are never surfaced, so converting
-// them would be work for files that aren't bundled.
-const isItalic = (name) => /italic/i.test(name)
-
+// Italics are converted too, even though the registry excludes them from the
+// bundle and always has -- one roman entry per family, with slant synthesized
+// by the browser. They cost nothing to download and everything to store: 14
+// files, 6.9MB, sitting in the repository for a use they don't currently have.
+// Converting keeps them, at a fifth of the weight, in the format they'd need to
+// be in the day italic support becomes real.
 function candidatesIn(dir, depth) {
   const out = []
   for (const entry of readdirSync(dir)) {
@@ -42,7 +44,6 @@ function candidatesIn(dir, depth) {
       continue
     }
     if (!CONVERTIBLE.has(extname(entry).toLowerCase())) continue
-    if (isItalic(entry)) continue
     out.push(path)
   }
   return out
