@@ -1894,6 +1894,10 @@ export interface RestoreResult {
   layers: number
   mediaFiles: number
   mediaMissing: number
+  // The files that weren't there, by name. A count alone tells you something is
+  // wrong without telling you what, which on a large atrium is the difference
+  // between "go and find it" and "go and find it among four hundred traces".
+  missingNames: string[]
 }
 
 // Rebuilds an atrium from its vault mirror.
@@ -1949,6 +1953,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
 
   let mediaFiles = 0
   let mediaMissing = 0
+  const missingNames: string[] = []
 
   // Copies a mirrored file back into the live media store and returns the
   // local:// URL pointing at it.
@@ -1980,9 +1985,11 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
         // The row is kept regardless: a trace with a missing file still holds
         // its position, size and grouping, and is far more useful than a gap.
         mediaMissing++
+        missingNames.push(fileName)
       }
     } catch {
       mediaMissing++
+      missingNames.push(fileName)
     }
     return restoredUrl
   }
@@ -2015,7 +2022,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
   lobbyNameCache.set(lobbyId, lobbyName)
   resolvedUrlCache.clear()
 
-  return { lobbyName, traces, layers: layerIdMap.size, mediaFiles, mediaMissing }
+  return { lobbyName, traces, layers: layerIdMap.size, mediaFiles, mediaMissing, missingNames }
 }
 
 // Raw bytes for a local:// URL, straight from disk.

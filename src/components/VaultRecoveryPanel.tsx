@@ -11,16 +11,27 @@ interface VaultRecoveryPanelProps {
   onRestored: () => void
 }
 
+// Enough names to go and look for them, not so many that the result turns into
+// a wall. Four is roughly what fits on one line at this panel's width.
+const MISSING_NAMES_SHOWN = 4
+
+function formatMissingList(names: string[]): string {
+  if (names.length === 0) return ''
+  const shown = names.slice(0, MISSING_NAMES_SHOWN)
+  const rest = names.length - shown.length
+  return `Not found: ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. Those traces kept their place and are empty.`
+}
+
 // Rebuilds atriums from the per-atrium mirrors in the vault.
 //
 // Exists because the mirrors were a copy nothing could read back -- so a
 // damaged database meant losing traces that were, in fact, sitting on disk the
-// whole time. It's the reason the duplicated media in the vault is worth its
-// space.
+// whole time.
 export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecoveryPanelProps) {
   const [mirrors, setMirrors] = useState<VaultMirror[] | null>(null)
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
+  const [missing, setMissing] = useState<string>('')
   const [error, setError] = useState<string>('')
 
   const integrityError = getDatabaseIntegrityError()
@@ -36,12 +47,17 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
     setBusyPath(mirror.snapshotPath)
     setError('')
     setResult('')
+    setMissing('')
     try {
       const r = await restoreAtriumFromMirror(mirror.snapshotPath)
       setResult(
         `Restored "${r.lobbyName}" — ${r.traces} traces, ${r.layers} layers, ${r.mediaFiles} files` +
         (r.mediaMissing > 0 ? `, ${r.mediaMissing} files missing` : ''),
       )
+      // Named, not just counted, and capped so one bad folder doesn't push the
+      // rest of the result off the panel. Those traces are still there, holding
+      // their positions -- they just have nothing to show.
+      setMissing(formatMissingList(r.missingNames))
       load()
       onRestored()
     } catch (e: any) {
@@ -120,6 +136,9 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
         {result && (
           <div className="bg-nier-black border border-nier-border/20 p-3 mt-4">
             <p className="text-green-400 text-[10px] tracking-wider">{result}</p>
+            {missing && (
+              <p className="text-nier-bg/80 text-[9px] tracking-wider mt-2 leading-relaxed break-words">{missing}</p>
+            )}
           </div>
         )}
         {error && (

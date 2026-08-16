@@ -8,6 +8,26 @@ interface ImportAtriumProps {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
+// Enough names to go looking with, not so many that the notice becomes a wall.
+const MISSING_NAMES_SHOWN = 4
+
+// Something the user can actually find on the canvas. The file's own name is
+// the most recognisable thing available -- it's what they'd see in the folder
+// the file was supposed to be in -- then the caption, then the bare type.
+function describeTrace(trace: Record<string, any>): string {
+  for (const url of [trace.media_url, trace.image_url]) {
+    if (typeof url === 'string' && url.startsWith('local://')) {
+      const name = url.split('/').filter(Boolean).pop()
+      if (name) return name
+    }
+  }
+
+  const caption = typeof trace.content === 'string' ? trace.content.trim() : ''
+  if (caption) return caption.length > 40 ? `${caption.slice(0, 40)}…` : caption
+
+  return `${trace.type ?? 'trace'} trace`
+}
+
 interface AtriumExport {
   version: number
   exportedAt: string
@@ -161,10 +181,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // Import traces
       setProgress('Importing traces...')
       let imported = 0
-      let skipped = 0
+      // Imported, but without their file. Counted apart from `imported` so an
+      // import that lost media can't report itself as having gone fine.
+      let mediaMissing = 0
       let failed = 0
       let firstFailure = ''
-      let firstSkipReason = ''
+      let firstMissingReason = ''
+      const missingNames: string[] = []
       const total = parsed.traces.length
 
       // Columns this database doesn't have, learned as we go (see insertTrace).
@@ -236,11 +259,17 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           typeof url === 'string' && url.startsWith('local://')
 
         if (needsLocalStorage(trace.media_url) || needsLocalStorage(trace.image_url)) {
-          skipped++
-          if (!firstSkipReason) {
-            firstSkipReason = 'media still pointed at the source machine’s vault, so the file was never embedded in the export'
+          // Kept, not dropped. Restoring from the vault has always placed a
+          // trace whose file is missing -- it still holds its position, size and
+          // grouping, and reads as "Missing file" on the canvas. Importing threw
+          // the same trace away, so which door you came through decided whether
+          // your layout survived. A trace you can see and re-point is easier to
+          // fix than one that silently never arrived.
+          mediaMissing++
+          missingNames.push(describeTrace(trace))
+          if (!firstMissingReason) {
+            firstMissingReason = 'their media still pointed at the source machine’s vault, so the files were never embedded in the export'
           }
-          continue
         }
 
         // Uploads a base64 data URL to Storage and returns its public URL.
@@ -286,21 +315,22 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           else { imageUrl = null; if (!mediaError) mediaError = result.error }
         }
 
-        // A trace whose whole point is its media must not be created without
-        // it. Previously an upload failure left media_url null and the trace
-        // was inserted anyway, producing an image frame with nothing in it and
-        // counted as a success -- which read as "imported fine" while being
-        // the opposite. Media-bearing types now only import if their file
-        // actually made it across.
+        // A media trace whose file didn't make it is imported anyway, and said
+        // out loud. The original problem here was never that the trace existed
+        // -- it was that an empty frame was counted as a success, so the import
+        // read as "went fine" while having quietly lost things. Counting it
+        // separately and naming it fixes that without throwing away the
+        // trace's position, size and grouping, which is the part that's
+        // laborious to rebuild by hand.
         const MEDIA_TYPES = ['image', 'audio', 'video']
         if (MEDIA_TYPES.includes(trace.type) && !mediaUrl && !imageUrl) {
-          skipped++
-          if (!firstSkipReason) {
-            firstSkipReason = mediaError
-              ? `${trace.type} media could not be uploaded (${mediaError})`
-              : `${trace.type} traces carried no embedded file`
+          mediaMissing++
+          missingNames.push(describeTrace(trace))
+          if (!firstMissingReason) {
+            firstMissingReason = mediaError
+              ? `their media could not be uploaded (${mediaError})`
+              : 'they carried no embedded file'
           }
-          continue
         }
 
         // Strip local-only fields and remap IDs. `vault_media_path` /
@@ -332,8 +362,8 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         } else {
           imported++
         }
-        if ((imported + failed + skipped) % 10 === 0 || imported + failed + skipped === total) {
-          setProgress(`Importing traces... ${imported + failed + skipped}/${total}`)
+        if ((imported + failed) % 10 === 0 || imported + failed === total) {
+          setProgress(`Importing traces... ${imported + failed}/${total}`)
         }
       }
 
@@ -369,7 +399,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
       setStatus('done')
       const summary = [`${imported} traces`]
-      if (skipped > 0) summary.push(`${skipped} skipped (media)`)
+      if (mediaMissing > 0) summary.push(`${mediaMissing} without their files`)
       if (failed > 0) summary.push(`${failed} failed`)
       if (locationsImported > 0) summary.push(`${locationsImported} locations`)
       setProgress(`Imported "${atriumName}" — ${summary.join(', ')}, ${Object.keys(layerIdMap).length} layers`)
@@ -380,8 +410,14 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       if (failed > 0 && firstFailure) {
         notices.push(`${failed} trace${failed === 1 ? '' : 's'} could not be imported: ${firstFailure}`)
       }
-      if (skipped > 0 && firstSkipReason) {
-        notices.push(`${skipped} skipped — ${firstSkipReason}.`)
+      if (mediaMissing > 0) {
+        const shown = missingNames.slice(0, MISSING_NAMES_SHOWN)
+        const rest = missingNames.length - shown.length
+        notices.push(
+          `${mediaMissing} trace${mediaMissing === 1 ? '' : 's'} came in without ${mediaMissing === 1 ? 'its file' : 'their files'}` +
+          (firstMissingReason ? ` — ${firstMissingReason}` : '') +
+          `. ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. They kept their place on the canvas and show as "Missing file".`,
+        )
       }
       if (droppedColumns.size > 0) {
         notices.push(`This database has no ${[...droppedColumns].join(', ')} column, so those values were dropped.`)
@@ -454,7 +490,8 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               </div>
               {localOnlyCount > 0 && (
                 <div className="text-[9px] text-nier-red/70 tracking-wider">
-                  {localOnlyCount} trace{localOnlyCount === 1 ? '' : 's'} reference local files on the source machine and will be skipped.
+                  {localOnlyCount} trace{localOnlyCount === 1 ? '' : 's'} reference local files on the source machine.
+                  They&apos;ll come in without those files, keeping their place on the canvas.
                 </div>
               )}
             </div>

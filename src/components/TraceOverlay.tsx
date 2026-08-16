@@ -969,6 +969,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               setImageProxySources(prev => ({ ...prev, [trace.id]: resolvedUrl }))
             }
             img.src = resolvedUrl
+          }).catch(() => {
+            // Resolving can reject outright -- the vault module won't load at
+            // all on the web, which a local:// trace can now reach, since an
+            // import brings those in rather than dropping them. Settling on the
+            // raw local:// URL is what marks it missing to the render above;
+            // leaving the promise unsettled would leave "Loading..." forever.
+            setImageProxySources(prev => ({ ...prev, [trace.id]: url }))
           })
           return
         }
@@ -1030,6 +1037,8 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         if (localMediaUrls[trace.id]) return
         resolveLocalUrl(trace.mediaUrl).then(resolved => {
           setLocalMediaUrls(prev => ({ ...prev, [trace.id]: resolved }))
+        }).catch(() => {
+          setLocalMediaUrls(prev => ({ ...prev, [trace.id]: trace.mediaUrl! }))
         })
       }
     })
@@ -4286,6 +4295,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   const resolvedSrc = imageProxySources[trace.id]
                   // For local:// URLs, wait for resolved blob URL before rendering
                   if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  // A successful resolve always hands back a blob: URL, so one
+                  // that is still local:// means the file couldn't be read --
+                  // deleted from the vault by hand, or restored from a folder
+                  // it never travelled with. Said plainly rather than left as a
+                  // broken image, since the trace keeps its place and the user
+                  // needs to know why it's empty.
+                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
                   return (
                 <img
                   src={resolvedSrc || rawUrl}
@@ -4567,6 +4583,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   const isLocal = trace.mediaUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
                   if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  // Still local:// after resolving means the file is gone --
+                  // see the image branch above.
+                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
                   // Render as image, not iframe
                   return (
                     <img
