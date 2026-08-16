@@ -171,18 +171,21 @@ THIS FOLDER IS THE APP'S WORKING DATA -- PLEASE DON'T EDIT OR DELETE IT
 =======================================================================
 
   atrium.db   Your atriums, traces, layers and saved locations.
-  media/      The image, audio, video and PDF files those traces use.
 
-Everything you see in The Digital Atrium is in here. Deleting this folder, or
-changing anything inside it while the app is running, will damage the database
-and can lose work.
+This is the database itself. Deleting it, or changing it while the app is
+running, will lose work. It lives in here, apart from everything else, so that
+it can't be moved or opened by accident.
 
-Your atriums are also mirrored, one folder per atrium, next to this one -- each
-with an atrium.json and a copy of its media. Those are browsable and safe to
-copy elsewhere. If this folder is ever lost, the app can rebuild from them.
+Your files are not in here. Each atrium has its own folder next to this one,
+holding an atrium.json describing it and the images, audio, video and PDFs its
+traces use. Those folders are yours to browse and copy elsewhere -- but they are
+the only copy, so anything deleted there is gone from the atrium too.
+
+If this folder is ever lost, the app can rebuild your atriums from those
+folders: Atrium Browser -> Restore From Vault.
 
 To move everything somewhere else, use the app's vault folder setting rather
-than moving files by hand -- it moves this folder with the rest.
+than moving files by hand.
 ";
 
     fs::write(live_runtime_dir(base_path).join("READ ME.txt"), contents)
@@ -363,6 +366,113 @@ fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
     fs::rename(old, new).map_err(|e| e.to_string())
 }
 
+// Moves media out of _runtime and into each atrium's own folder, then takes the
+// now-empty _runtime/media away.
+//
+// Media used to be written into _runtime and then copied into the atrium's
+// folder as a mirror, so every file existed twice -- 55MB of images became
+// 110MB on disk. The mirror copy is the one the user can see, browse and copy
+// elsewhere, so that's the one that stays; _runtime is left holding only
+// atrium.db, which is the thing it was actually created to protect.
+//
+// Done in Rust, and without touching the database, because everything needed is
+// already in the folder names: _runtime/media/traces/<Name__id>/<file> belongs
+// at <vault>/<Name__id>/media/traces/<id>/<file>. The id is whatever follows
+// the last "__".
+//
+// Conservative by construction. A file already at its destination has its
+// source deleted rather than overwriting anything, directories are only removed
+// when empty (so nothing this didn't understand is taken with them), and a
+// folder whose name doesn't carry an id is left exactly where it is.
+#[tauri::command]
+fn consolidate_runtime_media(app: tauri::AppHandle) -> Result<String, String> {
+    let base_path = current_vault_base_path(&app)?;
+    let traces_dir = live_media_dir(&base_path).join("traces");
+    if !traces_dir.is_dir() {
+        return Ok("nothing to migrate".to_string());
+    }
+
+    let mut moved = 0u32;
+    let mut already_present = 0u32;
+    let mut left_alone = 0u32;
+
+    for entry in fs::read_dir(&traces_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let source_dir = entry.path();
+        if !source_dir.is_dir() {
+            continue;
+        }
+
+        let folder_name = entry.file_name().to_string_lossy().to_string();
+        let lobby_id = match folder_name.rfind("__") {
+            Some(at) => folder_name[at + 2..].to_string(),
+            None => {
+                left_alone += 1;
+                continue;
+            }
+        };
+
+        let destination_dir = base_path
+            .join(&folder_name)
+            .join("media")
+            .join("traces")
+            .join(&lobby_id);
+
+        move_tree_into(&source_dir, &destination_dir, &mut moved, &mut already_present)?;
+
+        // Only if everything inside was accounted for.
+        let _ = fs::remove_dir(&source_dir);
+    }
+
+    // Both non-recursive: they succeed only once empty, so anything skipped
+    // above survives and can be looked at rather than silently disappearing.
+    let _ = fs::remove_dir(&traces_dir);
+    let _ = fs::remove_dir(live_media_dir(&base_path));
+
+    Ok(format!(
+        "moved {moved}, already in place {already_present}, left alone {left_alone}"
+    ))
+}
+
+fn move_tree_into(
+    source_dir: &std::path::Path,
+    destination_dir: &std::path::Path,
+    moved: &mut u32,
+    already_present: &mut u32,
+) -> Result<(), String> {
+    for entry in fs::read_dir(source_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let source = entry.path();
+        let destination = destination_dir.join(entry.file_name());
+
+        if source.is_dir() {
+            // Rendered PDF pages live in a folder per trace, so this recurses.
+            move_tree_into(&source, &destination, moved, already_present)?;
+            let _ = fs::remove_dir(&source);
+            continue;
+        }
+
+        if destination.exists() {
+            // The mirror copy is already there and is the one being kept.
+            fs::remove_file(&source).map_err(|e| e.to_string())?;
+            *already_present += 1;
+            continue;
+        }
+
+        fs::create_dir_all(destination_dir).map_err(|e| e.to_string())?;
+        // A rename is instant within a volume, which this always is -- both
+        // paths are inside the vault. Copy-then-delete covers the case where
+        // it isn't, rather than failing the whole migration.
+        if fs::rename(&source, &destination).is_err() {
+            fs::copy(&source, &destination).map_err(|e| e.to_string())?;
+            fs::remove_file(&source).map_err(|e| e.to_string())?;
+        }
+        *moved += 1;
+    }
+
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
@@ -387,7 +497,8 @@ fn main() {
             copy_file_to_path,
             move_path,
             remove_path,
-            rename_path
+            rename_path,
+            consolidate_runtime_media
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

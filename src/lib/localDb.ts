@@ -199,10 +199,39 @@ async function getResolvedRuntimeMediaFilePath(bucket: string, pathSegments: str
   return joinPathSegments(await getRuntimeMediaBucketDirectory(bucket), pathSegments)
 }
 
+// Where a media file lives: inside its own atrium's folder, the one the user
+// can see and copy elsewhere.
+//
+// This used to be two places. Files were written into _runtime and then copied
+// into the atrium's folder as a mirror, so every byte was on disk twice. The
+// visible copy is the useful one -- it's browsable, it travels with the atrium,
+// and it's what a restore reads -- so it became the only one, leaving _runtime
+// holding just atrium.db, which is what it was created to protect.
+//
+// Returns null when the atrium isn't known (an unknown lobby id, or a bucket
+// that isn't lobby-scoped), and callers fall back to the runtime layout.
+async function getAtriumMediaFilePath(bucket: string, pathSegments: string[], lobbyName?: string): Promise<string | null> {
+  if (bucket !== 'traces' || pathSegments.length < 2) return null
+
+  const lobbyId = pathSegments[0]
+  const resolvedLobbyName = lobbyName ?? await getLobbyNameById(lobbyId)
+  if (!resolvedLobbyName) return null
+
+  const lobbyDir = await getVaultLobbyDirectory(lobbyId, resolvedLobbyName)
+  return joinPathSegments(lobbyDir, ['media', bucket, ...pathSegments])
+}
+
 async function resolveLocalMediaFilePath(url: string): Promise<string | null> {
   const parsed = parseLocalUrl(url)
   if (!parsed) return null
 
+  const atriumPath = await getAtriumMediaFilePath(parsed.bucket, parsed.pathSegments)
+  if (atriumPath && await vaultPathExists(atriumPath)) {
+    return atriumPath
+  }
+
+  // Installs from before media was consolidated, and anything the migration
+  // couldn't place. Still read from, never written to.
   const runtimePath = await getResolvedRuntimeMediaFilePath(parsed.bucket, parsed.pathSegments)
   if (runtimePath && await vaultPathExists(runtimePath)) {
     return runtimePath
@@ -215,7 +244,9 @@ async function resolveLocalMediaFilePath(url: string): Promise<string | null> {
     }
   }
 
-  return runtimePath
+  // Nothing exists yet: hand back where it should go, so callers writing a new
+  // file put it in the right place.
+  return atriumPath ?? runtimePath
 }
 
 function buildLobbyScopedLocalUrl(bucket: string, lobbyId: string, fileName: string): string {
@@ -359,8 +390,12 @@ async function copyLocalAssetToVault(localUrl: string, lobbyId: string, lobbyNam
     ? await joinPathSegments(bucketDir, subDirSegments)
     : bucketDir
 
+  // Now that media is written straight into the atrium's folder, source and
+  // destination are usually the same path and this copies nothing -- it still
+  // earns its place for an install whose media hasn't been consolidated yet,
+  // where the file is in _runtime and needs bringing across.
   const destinationFilePath = await join(destinationDir, pathSegments[pathSegments.length - 1])
-  if (!(await vaultPathExists(destinationFilePath))) {
+  if (sourceFilePath !== destinationFilePath && !(await vaultPathExists(destinationFilePath))) {
     await copyFileToPath(sourceFilePath, destinationFilePath)
   }
 
@@ -649,6 +684,26 @@ export async function initLocalDb(): Promise<void> {
   }
 
   await initializeVaultBasePath()
+
+  // Media used to be written into _runtime and then copied into each atrium's
+  // folder, so every file was on disk twice. The visible copy is the one that
+  // stays; this moves anything still in _runtime across and takes the empty
+  // folder away, leaving _runtime holding only atrium.db.
+  //
+  // Runs on every start and costs one directory check once there's nothing
+  // left to move, which is what makes it safe to leave in rather than needing
+  // to be remembered as a one-off.
+  try {
+    const result = await invoke<string>('consolidate_runtime_media')
+    if (result !== 'nothing to migrate') {
+      console.log('Vault media consolidated:', result)
+    }
+  } catch (error) {
+    // Not fatal: media still resolves from _runtime, which is exactly what the
+    // fallback in resolveLocalMediaFilePath is for. Better a vault that's still
+    // duplicated than an app that won't open.
+    console.error('Could not consolidate vault media:', error)
+  }
 
   // Create tables
   await db.execute(`
@@ -1390,7 +1445,12 @@ class LocalStorage {
         try {
           let filePath: string
           if (bucket === 'traces') {
-            filePath = await getResolvedRuntimeMediaFilePath(bucket, path.split('/').filter(Boolean)) ?? await joinPathSegments(mediaBasePath, [bucket, path])
+            const segments = path.split('/').filter(Boolean)
+            // Straight into the atrium's own folder -- there is no longer a
+            // separate runtime copy to write first and mirror afterwards.
+            filePath = await getAtriumMediaFilePath(bucket, segments)
+              ?? await getResolvedRuntimeMediaFilePath(bucket, segments)
+              ?? await joinPathSegments(mediaBasePath, [bucket, path])
           } else {
             filePath = await joinPathSegments(mediaBasePath, [bucket, ...path.split('/').filter(Boolean)])
           }
@@ -1901,7 +1961,11 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
     if (!parsed || !fileName) return localUrl
 
     const restoredUrl = buildLobbyScopedLocalUrl(parsed.bucket, lobbyId, fileName)
-    const destination = await getResolvedRuntimeMediaFilePath(parsed.bucket, [lobbyId, fileName])
+    // The atrium's own folder is where media lives now, which is also where a
+    // mirror's files already sit -- so for a restore in place, source and
+    // destination are the same path and there is nothing to copy.
+    const destination = await getAtriumMediaFilePath(parsed.bucket, [lobbyId, fileName], lobbyName)
+      ?? await getResolvedRuntimeMediaFilePath(parsed.bucket, [lobbyId, fileName])
     if (!destination) return restoredUrl
 
     try {
@@ -1909,7 +1973,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
         mediaFiles++
         return restoredUrl
       }
-      if (typeof mirrorPath === 'string' && await vaultPathExists(mirrorPath)) {
+      if (typeof mirrorPath === 'string' && mirrorPath !== destination && await vaultPathExists(mirrorPath)) {
         await copyFileToPath(mirrorPath, destination)
         mediaFiles++
       } else {
