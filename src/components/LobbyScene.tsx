@@ -489,6 +489,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null)
 
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
+
+  // Whether the clipboard currently holds an image, as far as we can tell:
+  // true/false when the clipboard could be inspected, null when it couldn't.
+  //
+  // Ctrl+V has always pasted images onto the canvas, but plenty of people
+  // don't reach for it -- they copy an image, right-click where they want it,
+  // and look for "Paste Image". So the menu offers it, and reads the clipboard
+  // when it opens to decide whether to.
+  const [clipboardHasImage, setClipboardHasImage] = useState<boolean | null>(null)
   // How much zoom one wheel event is worth.
   //
   // The old scaling assumed mouse-wheel deltas, which are around 100 per
@@ -1640,6 +1649,36 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     showToast(`${pages.length} pages placed — ${totalMB.toFixed(1)} MB`)
   }
 
+  // Several files chosen at once in the Create Trace panel's picker. Routed
+  // through the same placement path a multi-file drop uses, so shift-selecting
+  // a folder of images in the picker and dragging those same images in produce
+  // an identical arrangement.
+  const handleCreateFileBatch = async (files: File[]) => {
+    if (files.length === 0) return
+    if (!ensureLobbyHasSpace()) return
+
+    const anchor = clickedTracePosition || positionRef.current
+    handleCloseTracePanel()
+    await placeFilesAsTraces(files, anchor.x, anchor.y)
+  }
+
+  // "Paste Image" from the canvas right-click menu. Places at the point that
+  // was right-clicked, which is the whole advantage over Ctrl+V -- the user
+  // has already said where they want it.
+  const handlePasteImageAt = async (worldX: number, worldY: number) => {
+    const files = await readClipboardImageFiles()
+    if (files === null) {
+      showToast("Couldn't read the clipboard — try Ctrl+V instead")
+      return
+    }
+    if (files.length === 0) {
+      showToast('No image in the clipboard')
+      return
+    }
+    if (!ensureLobbyHasSpace()) return
+    await placeFilesAsTraces(files, worldX, worldY)
+  }
+
   const handleCreateBatchEmbeds = async (urls: string[]) => {
     if (urls.length === 0) return
     if (!ensureLobbyHasSpace()) return
@@ -2261,6 +2300,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
           const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
           setMapContextMenu({ x: e.clientX, y: e.clientY, worldX, worldY })
+
+          // Probed asynchronously so the menu opens instantly, and starting
+          // from "no" so the Paste Image entry appears a moment later rather
+          // than appearing immediately and vanishing under the cursor when the
+          // clipboard turns out to be empty.
+          setClipboardHasImage(false)
+          void readClipboardImageFiles().then(files => {
+            setClipboardHasImage(files === null ? null : files.length > 0)
+          })
         }
       }
 
@@ -3128,6 +3176,101 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     e.dataTransfer.types.includes(LAYER_DRAG_DATA_KEY) ||
     e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)
 
+  // Reads any images sitting on the clipboard, as real files ready to upload.
+  //
+  // This is the async Clipboard API rather than a paste event, because there's
+  // no paste event to read here -- the user chose a menu item. It can be
+  // refused (no permission, no support), which is why the caller distinguishes
+  // "no image" from "couldn't look".
+  const readClipboardImageFiles = async (): Promise<File[] | null> => {
+    if (!navigator.clipboard?.read) return null
+    try {
+      const items = await navigator.clipboard.read()
+      const files: File[] = []
+      for (const item of items) {
+        const imageType = item.types.find(type => type.startsWith('image/'))
+        if (!imageType) continue
+        const blob = await item.getType(imageType)
+        const extension = imageType.split('/')[1] || 'png'
+        files.push(new File([blob], `pasted-image.${extension}`, { type: imageType }))
+      }
+      return files
+    } catch {
+      return null
+    }
+  }
+
+  // Turns a set of local files into traces, laid out as one arrangement around
+  // a point. Shared by the drop handler and the Create Trace panel's file
+  // picker, so selecting six images in the picker lands them exactly as
+  // dragging the same six in would.
+  const placeFilesAsTraces = async (files: File[], worldX: number, worldY: number) => {
+    // Phase 1: classify every file and estimate its box size without uploading
+    // or inserting anything yet, so the whole batch can be bin-packed into one
+    // layout instead of just cascading diagonally from the drop point. Real
+    // dimensions are probed for actual image files (fast, local); everything
+    // else uses a type-based default.
+    type PendingDrop = {
+      traceType: string
+      content: string
+      mediaUrl?: string
+      file?: File
+      size: { width: number; height: number }
+    }
+    const pending: PendingDrop[] = []
+
+    for (const file of files) {
+      const traceType = classifyDroppedFile(file)
+
+      if (traceType === 'text') {
+        const text = await file.text()
+        const extension = inferFileExtension(file)
+
+        // A URL found inside a dropped text/html file is still just a
+        // remote reference, not real local file content -- always an
+        // embed, same as any other web-sourced URL drop (see handleDrop).
+        if (file.type === 'text/html' || extension === 'html' || extension === 'htm') {
+          const htmlImagePayload = extractImageUrlFromHtml(text)
+          if (htmlImagePayload) {
+            pending.push({ traceType: 'embed', content: htmlImagePayload.url, mediaUrl: htmlImagePayload.url, size: getDefaultTraceBoxSize('embed') })
+            continue
+          }
+        }
+
+        const urlPayload = getDroppedUrlPayload(text)
+        if (urlPayload) {
+          pending.push({ traceType: 'embed', content: urlPayload.url, mediaUrl: urlPayload.url, size: getDefaultTraceBoxSize('embed') })
+          continue
+        }
+
+        pending.push({ traceType: 'text', content: text.slice(0, 5000), size: getDefaultTraceBoxSize('text') })
+        continue
+      }
+
+      const probed = traceType === 'image' ? await probeImageFileDimensions(file) : null
+      const size = probed ? scaleToDisplayBox(probed) : getDefaultTraceBoxSize(traceType)
+      pending.push({ traceType, content: `${traceType} drop`, file, size })
+    }
+
+    // Phase 2: pack the batch around the drop point, then upload/insert.
+    const offsets = packBoxesAroundCenter(pending.map(p => p.size), 24, packingShapeRef.current)
+
+    for (let i = 0; i < pending.length; i++) {
+      const item = pending[i]
+      const dropX = worldX + offsets[i].x
+      const dropY = worldY + offsets[i].y
+
+      if (item.file) {
+        const uploadedUrl = await uploadFile(item.file)
+        if (uploadedUrl) {
+          await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY)
+        }
+      } else {
+        await insertDroppedTrace(item.traceType, item.content, item.mediaUrl, dropX, dropY)
+      }
+    }
+  }
+
   // Drag-and-drop trace creation
   const handleDragOver = (e: React.DragEvent) => {
     // Ignore the Layer panel's internal trace-reorder and group-reorder
@@ -3176,84 +3319,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // attachment. The whole point of the type is choosing how to place it --
     // as pages or as a paged viewer -- and that decision can't be made for
     // the user. Desktop only, matching where the type exists at all.
-    const droppedPdf = isDesktop
-      ? droppedFiles.find(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
-      : undefined
-    if (droppedPdf) {
+    const droppedPdfs = isDesktop
+      ? droppedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+      : []
+    if (droppedPdfs.length > 0) {
       setClickedTracePosition({ x: worldX, y: worldY })
       setTracePanelInitialType('document')
       setTracePanelInitialShapeType(undefined)
-      setPendingPdfFile(droppedPdf)
+      setPendingPdfFile(droppedPdfs[0])
       setShowTracePanel(true)
+      // Only the first is opened. Every PDF needs its own answer to "as pages
+      // or as a viewer, and in what grid", and there's no sensible way to ask
+      // that once for a batch -- but silently dropping the rest looked like
+      // they'd failed to register.
+      if (droppedPdfs.length > 1) {
+        showToast(`Opening ${droppedPdfs[0].name} — PDFs are placed one at a time`)
+      }
       return
     }
 
-    const processDroppedFiles = async () => {
-      // Phase 1: classify every dropped file and estimate its box size
-      // without uploading or inserting anything yet, so the whole batch can
-      // be bin-packed into one layout instead of just cascading diagonally
-      // from the drop point. Real dimensions are probed for actual image
-      // files (fast, local); everything else uses a type-based default.
-      type PendingDrop = {
-        traceType: string
-        content: string
-        mediaUrl?: string
-        file?: File
-        size: { width: number; height: number }
-      }
-      const pending: PendingDrop[] = []
-
-      for (const file of droppedFiles) {
-        const traceType = classifyDroppedFile(file)
-
-        if (traceType === 'text') {
-          const text = await file.text()
-          const extension = inferFileExtension(file)
-
-          // A URL found inside a dropped text/html file is still just a
-          // remote reference, not real local file content -- always an
-          // embed, same as any other web-sourced URL drop (see handleDrop).
-          if (file.type === 'text/html' || extension === 'html' || extension === 'htm') {
-            const htmlImagePayload = extractImageUrlFromHtml(text)
-            if (htmlImagePayload) {
-              pending.push({ traceType: 'embed', content: htmlImagePayload.url, mediaUrl: htmlImagePayload.url, size: getDefaultTraceBoxSize('embed') })
-              continue
-            }
-          }
-
-          const urlPayload = getDroppedUrlPayload(text)
-          if (urlPayload) {
-            pending.push({ traceType: 'embed', content: urlPayload.url, mediaUrl: urlPayload.url, size: getDefaultTraceBoxSize('embed') })
-            continue
-          }
-
-          pending.push({ traceType: 'text', content: text.slice(0, 5000), size: getDefaultTraceBoxSize('text') })
-          continue
-        }
-
-        const probed = traceType === 'image' ? await probeImageFileDimensions(file) : null
-        const size = probed ? scaleToDisplayBox(probed) : getDefaultTraceBoxSize(traceType)
-        pending.push({ traceType, content: `${traceType} drop`, file, size })
-      }
-
-      // Phase 2: pack the batch around the drop point, then upload/insert.
-      const offsets = packBoxesAroundCenter(pending.map(p => p.size), 24, packingShapeRef.current)
-
-      for (let i = 0; i < pending.length; i++) {
-        const item = pending[i]
-        const dropX = worldX + offsets[i].x
-        const dropY = worldY + offsets[i].y
-
-        if (item.file) {
-          const uploadedUrl = await uploadFile(item.file)
-          if (uploadedUrl) {
-            await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY)
-          }
-        } else {
-          await insertDroppedTrace(item.traceType, item.content, item.mediaUrl, dropX, dropY)
-        }
-      }
-    }
+    const processDroppedFiles = () => placeFilesAsTraces(droppedFiles, worldX, worldY)
 
     // Anything dragged straight off a webpage (an <img>, a link, a URL) is a
     // reference to content we don't own -- it always becomes an embed, never
@@ -4353,7 +4438,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-border/60" />
             
-            <div className="px-3 py-1.5 text-nier-border/50 text-[8px] tracking-[0.2em] uppercase select-none">
+            <div className="px-3 py-1.5 text-nier-bg/70 text-[8px] tracking-[0.2em] uppercase select-none">
               Place Trace
             </div>
             {([
@@ -4381,6 +4466,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {item.label}
               </button>
             ))}
+
+            {/* Desktop only, matching Ctrl+V: turning a clipboard image into a
+                trace means writing the file into the vault, which the web app
+                can't do. */}
+            {isDesktop && clipboardHasImage !== false && (
+              <div className="border-t border-nier-border/20 mt-1 pt-1">
+                <button
+                  className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                    setMapContextMenu(null)
+                    void handlePasteImageAt(anchor.x, anchor.y)
+                  }}
+                >
+                  ◇ Paste Image
+                </button>
+              </div>
+            )}
+
             {!isDesktop && (
               <>
                 <div className="border-t border-nier-border/20 mt-1 pt-1">
@@ -4412,6 +4516,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClose={handleCloseTracePanel}
           onCreatePath={handleCreatePath}
           onCreateBatchEmbeds={handleCreateBatchEmbeds}
+          onCreateFileBatch={handleCreateFileBatch}
           onCreatePdfPages={handleCreatePdfPages}
           initialPdfFile={pendingPdfFile}
           tracePosition={clickedTracePosition}
