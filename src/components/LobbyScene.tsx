@@ -218,6 +218,64 @@ const getDroppedUrlPayload = (value: string): DroppedUrlPayload | null => {
   return null
 }
 
+// Last resort: read every format the drag offered, standard or not, and look
+// for an image URL inside it.
+//
+// Sites attach their own drag payloads under private MIME types, and some
+// browsers hand over *only* those. Dragging a Pinterest image out of Brave
+// offers `application/x-pinterest-closeup-image` and `chromium/x-drag-id` and
+// nothing else -- no text/html, no text/uri-list, no DownloadURL -- where the
+// same drag out of Chrome offers the standard set. There is no registry of
+// these private types to implement against, but they are near-universally JSON
+// or text with the URL sitting in them somewhere, so scanning for one works
+// without knowing any particular site's schema.
+//
+// Deliberately the final fallback, after every real extractor: this is pattern
+// matching on someone else's opaque payload, and it should never get a chance
+// to pick a tracking pixel over a URL a proper extractor understood.
+const SCAVENGE_SKIP_TYPES = new Set([
+  'Files',
+  'text/html',
+  'text/plain',
+  'text/uri-list',
+  'text/x-moz-url',
+  'DownloadURL',
+])
+
+const scavengeUrlFromDataTransfer = (dataTransfer: DataTransfer): DroppedUrlPayload | null => {
+  let best: { url: string; score: number } | null = null
+
+  for (const type of Array.from(dataTransfer.types || [])) {
+    if (SCAVENGE_SKIP_TYPES.has(type)) continue
+
+    let raw = ''
+    try {
+      raw = dataTransfer.getData(type) || ''
+    } catch {
+      continue // some types refuse to be read as text
+    }
+    if (!raw) continue
+
+    // JSON escapes its slashes and unicode; unescaping first means the regex
+    // below sees a real URL rather than `https:\/\/i.pinimg.com\/...`.
+    const text = raw.replace(/\\\//g, '/').replace(/\\u002[fF]/g, '/')
+
+    for (const match of text.matchAll(/https?:\/\/[^\s"'<>\\)\]},]+/gi)) {
+      const url = match[0]
+      // Weighted rather than first-wins: these payloads carry thumbnails,
+      // avatars and analytics endpoints alongside the image being dragged.
+      let score = 0
+      if (classifyRemoteTraceType(url) === 'image') score += 2
+      if (/\/originals?\//i.test(url)) score += 1 // full-size, not a thumbnail
+      if (score === 0) continue // an arbitrary link is too likely to be junk
+
+      if (!best || score > best.score) best = { url, score }
+    }
+  }
+
+  return best ? { url: best.url, forceImage: true } : null
+}
+
 const extractImageUrlFromHtml = (html: string): DroppedUrlPayload | null => {
   if (!html.trim()) return null
 
@@ -3234,6 +3292,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         return
       }
       await processDroppedFiles()
+      return
+    }
+
+    // Nothing standard arrived, so dig through whatever private formats the
+    // page attached to the drag. See scavengeUrlFromDataTransfer -- this is how
+    // a Pinterest image dragged out of Brave gets in.
+    const scavenged = scavengeUrlFromDataTransfer(e.dataTransfer)
+    if (scavenged) {
+      await insertDroppedTrace('embed', scavenged.url, scavenged.url, worldX, worldY)
       return
     }
 
