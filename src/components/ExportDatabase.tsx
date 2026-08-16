@@ -199,12 +199,12 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
 
         {status === 'select' && (
           <>
-            <p className="text-nier-border/70 text-xs tracking-wide mb-4 leading-relaxed">
+            <p className="text-nier-bg/80 text-xs tracking-wide mb-4 leading-relaxed">
               Choose an atrium to export. The file can be imported on the web version.
             </p>
 
             {lobbies.length === 0 ? (
-              <p className="text-nier-border/40 text-xs tracking-wide mb-6">No atriums found.</p>
+              <p className="text-nier-bg/70 text-xs tracking-wide mb-6">No atriums found.</p>
             ) : (
               <div className="space-y-2 mb-6 max-h-48 overflow-y-auto">
                 {lobbies.map(lobby => (
@@ -214,11 +214,11 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
                     className={`w-full text-left px-4 py-3 border transition-all ${
                       selectedLobbyId === lobby.id
                         ? 'border-nier-bg/60 bg-nier-bg/10 text-nier-bg'
-                        : 'border-nier-border/20 text-nier-border/70 hover:border-nier-border/40'
+                        : 'border-nier-border/20 text-nier-bg/80 hover:border-nier-border/40'
                     }`}
                   >
                     <div className="text-xs tracking-wide">{lobby.name}</div>
-                    <div className="text-[9px] tracking-wider text-nier-border/40 mt-1">
+                    <div className="text-[9px] tracking-wider text-nier-bg/70 mt-1">
                       Created {new Date(lobby.created_at).toLocaleDateString()}
                     </div>
                   </button>
@@ -236,7 +236,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
 
         {progress && (
           <div className="bg-nier-black border border-nier-border/20 p-3 mb-4">
-            <p className="text-nier-border text-[10px] tracking-wider uppercase">{progress}</p>
+            <p className="text-nier-bg/80 text-[10px] tracking-wider uppercase">{progress}</p>
           </div>
         )}
 
@@ -244,7 +244,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-3 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+            className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
           >
             {status === 'done' ? 'Close' : 'Cancel'}
           </button>

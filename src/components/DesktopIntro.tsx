@@ -152,7 +152,7 @@ export default function DesktopIntro({ onDone }: DesktopIntroProps) {
       {/* Held back until the sequence is established -- offering the exit
           before the thing has appeared undercuts it. */}
       <span
-        className="absolute bottom-10 text-nier-border/30 text-[9px] tracking-[0.25em] uppercase"
+        className="absolute bottom-10 text-nier-bg/50 text-[9px] tracking-[0.25em] uppercase"
         style={{
           opacity: titleUp ? 1 : 0,
           transition: 'opacity 700ms ease-out',

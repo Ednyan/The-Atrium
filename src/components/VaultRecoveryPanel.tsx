@@ -73,17 +73,17 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
           </div>
         )}
 
-        <p className="text-nier-border/70 text-xs tracking-wide mb-4 leading-relaxed">
+        <p className="text-nier-bg/80 text-xs tracking-wide mb-4 leading-relaxed">
           Every atrium is mirrored in your vault as a folder with its own files. Anything
           missing from the app can be rebuilt from here.
         </p>
 
         {mirrors === null && (
-          <p className="text-nier-border/50 text-[10px] tracking-wider uppercase">Reading vault…</p>
+          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">Reading vault…</p>
         )}
 
         {mirrors?.length === 0 && (
-          <p className="text-nier-border/50 text-[10px] tracking-wider uppercase">No atrium copies found.</p>
+          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">No atrium copies found.</p>
         )}
 
         <div className="space-y-2">
@@ -94,14 +94,14 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
             >
               <div className="min-w-0">
                 <div className="text-nier-bg text-sm tracking-wide truncate">{mirror.lobbyName}</div>
-                <div className="flex gap-3 mt-1 text-[9px] text-nier-border/50 tracking-wider uppercase">
+                <div className="flex gap-3 mt-1 text-[9px] text-nier-bg/70 tracking-wider uppercase">
                   <span>{mirror.traceCount} traces</span>
                   <span>{mirror.layerCount} layers</span>
                   {mirror.syncedAt && <span>{new Date(mirror.syncedAt).toLocaleDateString()}</span>}
                 </div>
                 {/* The distinction that matters: one of these is a recovery,
                     the other would be a duplicate. */}
-                <div className={`text-[9px] tracking-wider uppercase mt-1 ${mirror.missingFromDatabase ? 'text-amber-400' : 'text-nier-border/40'}`}>
+                <div className={`text-[9px] tracking-wider uppercase mt-1 ${mirror.missingFromDatabase ? 'text-amber-400' : 'text-nier-bg/70'}`}>
                   {mirror.missingFromDatabase ? 'Missing from the app' : 'Already in the app — restores as a copy'}
                 </div>
               </div>
@@ -131,7 +131,7 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
         <button
           type="button"
           onClick={onClose}
-          className="w-full mt-5 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+          className="w-full mt-5 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
           Close
         </button>

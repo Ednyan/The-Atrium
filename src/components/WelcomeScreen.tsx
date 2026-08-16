@@ -227,8 +227,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
               
               <div className="flex items-center gap-3">
-                <span className="text-nier-border/60 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
-                <span className="text-[10px] tracking-[0.2em] uppercase text-nier-border/60 group-hover:text-nier-bg transition-colors">Back</span>
+                <span className="text-nier-bg/75 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
+                <span className="text-[10px] tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">Back</span>
               </div>
             </div>
           </button>
@@ -246,7 +246,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           <div className="space-y-[clamp(0.5rem,1.5vh,1rem)]">
             <div className="flex items-center justify-center gap-4">
               <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
-              <span className="text-nier-border/60 text-[10px] tracking-[0.3em] uppercase">Welcome to the</span>
+              <span className="text-nier-bg/75 text-[10px] tracking-[0.3em] uppercase">Welcome to the</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
             <h1
@@ -262,7 +262,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 least missed. PortalLoop takes className only, so the sizing
                 goes through an arbitrary-value class. */}
             <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" />
-            <p className="text-nier-border text-[11px] tracking-[0.2em] uppercase">
+            <p className="text-nier-bg/80 text-[11px] tracking-[0.2em] uppercase">
               A quiet space for creative presence
             </p>
           </div>
@@ -306,7 +306,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                     title="Click to rename"
                   >
                     {username}
-                    <span className="text-nier-border/50 group-hover:text-nier-bg text-[10px] ml-2 transition-colors">✎</span>
+                    <span className="text-nier-bg/70 group-hover:text-nier-bg text-[10px] ml-2 transition-colors">✎</span>
                   </button>
                 )}
               </div>
@@ -325,8 +325,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             >
               <span className="relative z-10">Enter the Atrium</span>
               {/* Animated brackets on hover */}
-              <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-nier-border transition-all duration-300 ${isHovered === 'enter' ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>[</span>
-              <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-nier-border transition-all duration-300 ${isHovered === 'enter' ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>]</span>
+              <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-nier-bg/80 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>[</span>
+              <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-nier-bg/80 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>]</span>
             </button>
 
             {/* Settings Button */}
@@ -405,7 +405,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           </div>
 
           {/* Info */}
-          <div className="text-[10px] text-nier-border/50 space-y-2 tracking-wider uppercase">
+          <div className="text-[10px] text-nier-bg/70 space-y-2 tracking-wider uppercase">
             <p>◦ Drag to navigate the space</p>
             <p>◦ Click to leave traces</p>
             <p>◦ Share presence with others</p>

@@ -242,7 +242,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
           >
             ×
           </button>
@@ -252,7 +252,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Color Picker */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">Cursor Color</span>
+              <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">Cursor Color</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             <div className="grid grid-cols-5 gap-2 mb-2">
@@ -283,7 +283,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
 
           {/* Zoom Sensitivity */}
           <div>
-            <label className="block text-nier-border text-[10px] tracking-[0.1em] uppercase mb-2">
+            <label className="block text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase mb-2">
               Zoom Sensitivity: {zoomSensitivity.toFixed(2)}
             </label>
             <input
@@ -295,14 +295,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               onChange={(e) => handleZoomSensitivityChange(parseFloat(e.target.value))}
               className="w-full accent-nier-bg"
             />
-            <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+            <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
               Higher values zoom faster for mouse wheel and trackpad.
             </p>
           </div>
 
           {/* Trace Distance Indicators Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+            <label className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase">
               Distance Indicators
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -319,13 +319,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
             </label>
           </div>
-          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+          <p className="text-nier-bg/70 text-[10px] tracking-wider -mt-3">
             Show off-screen trace direction &amp; distance
           </p>
 
           {/* Trace Type Labels Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+            <label className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase">
               Trace Type Labels
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -342,13 +342,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
             </label>
           </div>
-          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+          <p className="text-nier-bg/70 text-[10px] tracking-wider -mt-3">
             Always show each trace's type without needing to select it
           </p>
 
           {/* Hide Own Name Tag Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+            <label className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase">
               Hide My Name Tag
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -365,13 +365,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
             </label>
           </div>
-          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+          <p className="text-nier-bg/70 text-[10px] tracking-wider -mt-3">
             Hide your own username label above your cursor
           </p>
 
           {/* Hide Other Users' Name Tags Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+            <label className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase">
               Hide Others' Name Tags
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -388,13 +388,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
             </label>
           </div>
-          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+          <p className="text-nier-bg/70 text-[10px] tracking-wider -mt-3">
             Hide username labels above other users' cursors
           </p>
 
           {/* Hide Other Users' Cursors Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+            <label className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase">
               Hide Others' Cursors
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -411,13 +411,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
             </label>
           </div>
-          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+          <p className="text-nier-bg/70 text-[10px] tracking-wider -mt-3">
             Completely hide other users' cursor indicators
           </p>
 
           {/* Trace Edge Fade Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-nier-border text-[10px] tracking-[0.1em] uppercase">
+            <label className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase">
               Trace Edge Fade
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -434,14 +434,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               />
             </label>
           </div>
-          <p className="text-nier-border/40 text-[10px] tracking-wider -mt-3">
+          <p className="text-nier-bg/70 text-[10px] tracking-wider -mt-3">
             Softly fade traces out as they leave the edge of your view
           </p>
 
           {/* Undo History Depth (per-atrium) */}
           {lobbyId && (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.1em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase mb-2">
                 Undo History Depth: {undoDepth}
               </label>
               <input
@@ -453,7 +453,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                 onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
                 className="w-full accent-nier-bg"
               />
-              <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+              <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
                 How many Ctrl+Z steps to remember in this atrium. Kept only in this browser/session — never saved online.
               </p>
             </div>
@@ -462,7 +462,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Batch Placement Shape (per-atrium) */}
           {lobbyId && (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.1em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase mb-2">
                 Batch Placement
               </label>
               <div className="flex gap-2">
@@ -474,14 +474,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                     className={`flex-1 py-2 border text-[10px] tracking-[0.15em] uppercase transition-colors ${
                       packingShape === shape
                         ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
-                        : 'border-nier-border/40 text-nier-border hover:border-nier-border/60'
+                        : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
                     }`}
                   >
                     {shape}
                   </button>
                 ))}
               </div>
-              <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+              <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
                 How dropping or pasting multiple files at once gets arranged in this atrium.
                 Reorganize Selected asks for a shape each time and ignores this.
               </p>
@@ -491,7 +491,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Display Name */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-border text-[10px] tracking-[0.15em] uppercase">
+              <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">
                 {isDesktop ? 'Username' : 'Display Name'}
               </span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
@@ -500,14 +500,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
               placeholder={isDesktop ? 'Your username' : 'Your display name'}
               maxLength={30}
               disabled={!isDesktop && !canChangeName}
             />
             
             {!isDesktop && !canChangeName && (
-              <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
+              <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
                 ◇ Can change in {daysUntilChange} days
               </p>
             )}

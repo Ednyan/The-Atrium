@@ -80,12 +80,12 @@ export default function DesktopAppSection() {
         <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
       </div>
 
-      <p className="text-nier-border text-sm md:text-base leading-relaxed mb-3">
+      <p className="text-nier-bg/80 text-sm md:text-base leading-relaxed mb-3">
         The same atrium, running on your own machine. Your references live in a
         folder you control, images come straight off your drive instead of
         needing somewhere to host them, and nothing is capped.
       </p>
-      <p className="text-nier-border/60 text-sm leading-relaxed mb-8">
+      <p className="text-nier-bg/75 text-sm leading-relaxed mb-8">
         It's the better fit for a big personal reference library. The web version
         is the better fit for anything you want other people in.
       </p>
@@ -112,7 +112,7 @@ export default function DesktopAppSection() {
               <div className="text-nier-bg text-sm tracking-[0.1em] uppercase mb-1">
                 {available ? '↓ ' : ''}{build.os}
               </div>
-              <div className="text-nier-border/50 text-[10px] tracking-wider">
+              <div className="text-nier-bg/70 text-[10px] tracking-wider">
                 {available ? build.note : 'Not available yet'}
               </div>
             </a>
@@ -126,7 +126,7 @@ export default function DesktopAppSection() {
           dead end into a known extra click. */}
       {assets['macOS'] && (
         <div className="border border-nier-border/25 bg-nier-black/40 p-3 mb-4">
-          <p className="text-nier-border/70 text-[10px] tracking-wider leading-relaxed">
+          <p className="text-nier-bg/80 text-[10px] tracking-wider leading-relaxed">
             <span className="text-nier-bg">On macOS,</span> the first launch will say the app
             "cannot be opened because the developer cannot be verified". That's because the
             build isn't signed with an Apple Developer certificate, not because anything is
@@ -136,13 +136,13 @@ export default function DesktopAppSection() {
         </div>
       )}
 
-      <p className="text-nier-border/40 text-[10px] tracking-wider mb-10">
+      <p className="text-nier-bg/70 text-[10px] tracking-wider mb-10">
         {version ? `Latest release ${version} · ` : ''}
         <a
           href={RELEASES_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-nier-border/70 transition-colors underline decoration-nier-border/20"
+          className="hover:text-nier-bg/80 transition-colors underline decoration-nier-border/20"
         >
           All releases
         </a>
@@ -152,7 +152,7 @@ export default function DesktopAppSection() {
       {/* Comparison */}
       <div className="border border-nier-border/25">
         <div className="grid grid-cols-3 border-b border-nier-border/25 bg-nier-black/40">
-          <div className="p-3 text-nier-border/50 text-[9px] tracking-[0.15em] uppercase" />
+          <div className="p-3 text-nier-bg/70 text-[9px] tracking-[0.15em] uppercase" />
           <div className="p-3 text-[9px] tracking-[0.15em] uppercase text-center" style={{ color: `${ACCENT.sky}CC` }}>Web</div>
           <div className="p-3 text-[9px] tracking-[0.15em] uppercase text-center" style={{ color: `${ACCENT.emerald}CC` }}>Desktop</div>
         </div>
@@ -161,18 +161,18 @@ export default function DesktopAppSection() {
             key={row.feature}
             className={`grid grid-cols-3 text-xs ${i % 2 === 0 ? 'bg-nier-black/20' : ''}`}
           >
-            <div className="p-3 text-nier-border/70">{row.feature}</div>
-            <div className={`p-3 text-center ${row.favours === 'web' ? 'text-nier-bg' : 'text-nier-border/50'}`}>
+            <div className="p-3 text-nier-bg/80">{row.feature}</div>
+            <div className={`p-3 text-center ${row.favours === 'web' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
               {row.web}
             </div>
-            <div className={`p-3 text-center ${row.favours === 'desktop' ? 'text-nier-bg' : 'text-nier-border/50'}`}>
+            <div className={`p-3 text-center ${row.favours === 'desktop' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
               {row.desktop}
             </div>
           </div>
         ))}
       </div>
 
-      <p className="text-nier-border/50 text-xs leading-relaxed mt-6">
+      <p className="text-nier-bg/70 text-xs leading-relaxed mt-6">
         You can move between them: download an atrium from the web and import it
         into the desktop app, or upload a local one when you want to share it.
       </p>

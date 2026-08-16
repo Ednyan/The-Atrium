@@ -25,7 +25,7 @@ export default function AppVersionBadge() {
 
   return (
     <div className="fixed top-3 right-4 z-[10000600] pointer-events-none select-none">
-      <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-nier-border/40">
+      <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-nier-bg/70">
         v{version}
       </span>
     </div>

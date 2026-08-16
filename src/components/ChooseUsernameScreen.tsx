@@ -96,11 +96,11 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
           <h2 className="text-nier-bg tracking-[0.15em] uppercase text-sm">Choose a Username</h2>
         </div>
-        <p className="text-nier-border/60 text-[10px] tracking-[0.1em] uppercase ml-5 mb-6">
+        <p className="text-nier-bg/75 text-[10px] tracking-[0.1em] uppercase ml-5 mb-6">
           One last step
         </p>
 
-        <p className="text-nier-border/70 text-[11px] tracking-wide mb-3">
+        <p className="text-nier-bg/80 text-[11px] tracking-wide mb-3">
           Signed in as <span className="text-nier-bg break-all">{email}</span>. Pick the name
           others will see on your traces.
         </p>
@@ -122,9 +122,9 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
             autoFocus
             maxLength={20}
             placeholder="username"
-            className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 focus:outline-none transition-colors"
+            className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
           />
-          <p className="text-nier-border/40 text-[9px] tracking-wider uppercase">
+          <p className="text-nier-bg/70 text-[9px] tracking-wider uppercase">
             3-20 characters, letters/numbers/underscores
           </p>
 

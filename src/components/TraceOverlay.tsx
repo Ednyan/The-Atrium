@@ -4512,7 +4512,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     >
                       <button
                         type="button"
-                        className="text-nier-border hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                        className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
                         style={{
                           fontSize: '2.6cqh',
                           padding: '0.4cqh 1.2cqh',
@@ -4527,14 +4527,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ◀
                       </button>
                       <span
-                        className="text-nier-border/80 uppercase tabular-nums leading-none whitespace-nowrap"
+                        className="text-nier-bg/80 uppercase tabular-nums leading-none whitespace-nowrap"
                         style={{ fontSize: '2.2cqh', letterSpacing: '0.15em' }}
                       >
                         {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
                       </span>
                       <button
                         type="button"
-                        className="text-nier-border hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                        className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
                         style={{
                           fontSize: '2.6cqh',
                           padding: '0.4cqh 1.2cqh',
@@ -6018,7 +6018,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   the three types this applies to. */}
               {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'shape') && (
                 <div className="space-y-3">
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -6048,7 +6048,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           updateTraceCustomization(editingTrace.id, { linkUrl: e.target.value })
                         }}
                         placeholder="https://..."
-                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                       />
                       {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
                         <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
@@ -6066,7 +6066,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   both here read as duplicated "no fill" controls */}
               {editingTrace.type !== 'shape' && (
               <div className="space-y-3">
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
@@ -6083,7 +6083,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Border</span>
                 </label>
 
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
@@ -6100,7 +6100,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                 </label>
 
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
@@ -6117,7 +6117,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Username</span>
                 </label>
 
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
@@ -6134,7 +6134,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   <span className="tracking-wider uppercase text-[10px]">Show Description</span>
                 </label>
 
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
@@ -6154,7 +6154,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {/* Embed-only, but grouped with the other toggles rather than
                     left further down in the embed section. */}
                 {editingTrace.type === 'embed' && (
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -6180,7 +6180,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   white page from a light background. */}
               {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (editingTrace.showBorder ?? true) && (
                 <div>
-                  <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
                     Border Thickness: {editingTrace.borderWidth ?? 2}px
                   </label>
                   <input
@@ -6205,7 +6205,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* NieR Presets */}
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-nier-border/60 text-[9px] tracking-[0.15em] uppercase">Quick Presets</span>
+                      <span className="text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase">Quick Presets</span>
                       <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
@@ -6222,7 +6222,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true })
                           }}
-                          className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-border text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
                         >
                           {preset.label}
@@ -6233,7 +6233,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Border Color & Opacity */}
                   {(editingTrace.showBorder ?? true) && (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
@@ -6270,7 +6270,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           ↺
                         </button>
                       </div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
                         Border Opacity: {Math.round((editingTrace.borderOpacity ?? 1) * 100)}%
                       </label>
                       <input
@@ -6293,7 +6293,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Fill Color & Opacity */}
                   {(editingTrace.showBackground ?? true) && (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
@@ -6330,7 +6330,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           ↺
                         </button>
                       </div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
                         Fill Opacity: {Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}%
                       </label>
                       <input
@@ -6357,7 +6357,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'text' && (
                 <>
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Content</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Content</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -6381,7 +6381,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
 
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Font Size (px)</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Font Size (px)</label>
                     <input
                       type="number"
                       min={8}
@@ -6407,7 +6407,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
 
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Font Family</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Font Family</label>
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
@@ -6430,7 +6430,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Text Formatting */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Style</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Style</label>
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
@@ -6481,7 +6481,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       scale, or stays fixed and lets the box only control
                       how much room the text has to reflow in. */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
                     <div className="flex gap-2">
                       {([
                         { value: true, label: 'Scales With Box' },
@@ -6504,14 +6504,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         </button>
                       ))}
                     </div>
-                    <p className="text-[10px] text-nier-border/40 tracking-wider mt-1">
+                    <p className="text-[10px] text-nier-bg/70 tracking-wider mt-1">
                       Fixed keeps the font size when you resize the trace — the text just reflows.
                     </p>
                   </div>
 
                   {/* Text Alignment */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Alignment</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Alignment</label>
                     <div className="flex gap-2">
                       {(['left', 'center', 'right', 'justify'] as const).map((align) => (
                         <button
@@ -6538,7 +6538,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Text Color */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Color</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Color</label>
                     <div className="flex gap-2 items-center">
                       <input
                         type="color"
@@ -6582,7 +6582,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Border Radius Customization (for non-shape traces) */}
               {editingTrace.type !== 'shape' && (
                 <div>
-                  <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                  <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                     Border Radius: {editingTrace.borderRadius ?? 0}px
                   </label>
                   <input
@@ -6599,7 +6599,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     }}
                     className="w-full accent-nier-bg"
                   />
-                  <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                  <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                     Adjust the roundness of trace borders (0 = sharp corners)
                   </p>
                 </div>
@@ -6608,7 +6608,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {/* Description/Caption for Media Traces */}
               {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
                 <div>
-                  <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Description / Caption</label>
+                  <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Description / Caption</label>
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
@@ -6630,7 +6630,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {editingTrace.type === 'embed' && (
                 <>
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Embed URL or HTML</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Embed URL or HTML</label>
                     <textarea
                       value={editingTrace.mediaUrl ?? ''}
                       onChange={(e) => {
@@ -6644,13 +6644,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       placeholder="URL or <iframe src='...'></iframe>"
                       rows={4}
                     />
-                    <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                    <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                       Direct URL or full embed code
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Description / Title</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Description / Title</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -6675,7 +6675,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <div className="space-y-4">
                   {/* Shape Type */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                         <button
@@ -6689,7 +6689,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.shapeType || 'rectangle') === type
                               ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'rectangle' && '⬛ '}
@@ -6704,7 +6704,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Color Picker */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
                     
                     {/* Color preset palette */}
                     <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -6777,7 +6777,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
                         }}
                         placeholder="#3b82f6"
-                        className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-border/40 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
+                        className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                       />
                     </div>
                   </div>
@@ -6785,7 +6785,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Fill Opacity Slider -- outline has its own opacity, see
                       the Outline Opacity slider further down */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                       Fill Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
                     </label>
                     <input
@@ -6809,7 +6809,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       width (a "Show Outline" toggle used to be duplicated
                       here too, bound to the same shapeOutlineOnly state) */}
                   <div className="space-y-2">
-                    <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                       <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeNoFill ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                         {(editingTrace.shapeNoFill ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                       </div>
@@ -6830,7 +6830,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Outline Color (only show if outline is enabled) */}
                   {editingTrace.shapeOutlineOnly && (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Outline Color</label>
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Outline Color</label>
                       
                       {/* Color preset palette */}
                       <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -6903,7 +6903,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
                           }}
                           placeholder="#3b82f6"
-                          className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-border/40 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
+                          className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                         />
                       </div>
                     </div>
@@ -6912,7 +6912,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Corner Radius (Rectangle and Triangle only -- circles have no corners, paths use point editing) */}
                   {((editingTrace.shapeType || 'rectangle') === 'rectangle' || editingTrace.shapeType === 'triangle') && (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                         Corner Radius: {editingTrace.cornerRadius || 0}px
                       </label>
                       <input
@@ -6929,7 +6929,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className="w-full accent-nier-bg"
                       />
-                      <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                      <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                         Rounds the corners of the shape
                       </p>
                     </div>
@@ -6938,7 +6938,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Outline Mode (hidden for path as it's always outline) */}
                   {editingTrace.shapeType !== 'path' && (
                   <div>
-                    <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-2 group">
+                    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-2 group">
                       <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                         {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                       </div>
@@ -6957,7 +6957,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     
                     {editingTrace.shapeOutlineOnly && (
                       <div className="ml-6">
-                        <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                        <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                           Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
                         </label>
                         <input
@@ -6974,11 +6974,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className="w-full"
                         />
-                        <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                        <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                           Adjust the thickness of the outline
                         </p>
 
-                        <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
+                        <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
                           Outline Opacity: {((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0)}%
                         </label>
                         <input
@@ -7003,7 +7003,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Path Thickness Control */}
                   {editingTrace.shapeType === 'path' && (
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                       Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
                     </label>
                     <input
@@ -7020,7 +7020,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                    <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                       Adjust the thickness of the path
                     </p>
                   </div>
@@ -7030,7 +7030,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {editingTrace.shapeType === 'path' && (
                   <>
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Path Style</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Path Style</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['straight', 'bezier'] as const).map((type) => (
                         <button
@@ -7044,7 +7044,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathCurveType || 'straight') === type
                               ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'straight' && '━ Straight'}
@@ -7056,7 +7056,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Arrow Start */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Arrow Start</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Arrow Start</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['none', 'triangle', 'diamond'] as const).map((type) => (
                         <button
@@ -7070,7 +7070,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathArrowStart || 'none') === type
                               ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'none' && '— None'}
@@ -7083,7 +7083,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Arrow End */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Arrow End</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Arrow End</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['none', 'triangle', 'diamond'] as const).map((type) => (
                         <button
@@ -7097,7 +7097,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
                             (editingTrace.pathArrowEnd || 'none') === type
                               ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-border border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
                           }`}
                         >
                           {type === 'none' && '— None'}
@@ -7109,7 +7109,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   </div>
                   
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                       Path Points ({(editingTrace.shapePoints || []).length})
                     </label>
                     <div className="flex gap-2">
@@ -7142,7 +7142,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         Remove
                       </button>
                     </div>
-                    <p className="text-nier-border/60 text-[9px] mt-2 tracking-wider">
+                    <p className="text-nier-bg/75 text-[9px] mt-2 tracking-wider">
                       {pathCreationMode 
                         ? 'Click anywhere on the canvas to add points to your path' 
                         : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
@@ -7153,7 +7153,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Shape Label */}
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
                     <input
                       type="text"
                       value={editingTrace.content || ''}
@@ -7166,7 +7166,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       placeholder="Shape label..."
                       maxLength={50}
-                      className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-border/40 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
+                      className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                     />
                   </div>
                 </div>
@@ -7184,10 +7184,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               <div className="border-t border-nier-border/20 pt-4 mt-4">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                  <h3 className="text-nier-border text-[10px] tracking-[0.15em] uppercase">{isPathTrace ? 'Glow' : 'Lighting'}</h3>
+                  <h3 className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">{isPathTrace ? 'Glow' : 'Lighting'}</h3>
                 </div>
 
-                <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-3 group">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-3 group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.illuminate ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.illuminate ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                   </div>
@@ -7207,7 +7207,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">{isPathTrace ? 'Glow Color' : 'Light Color'}</label>
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">{isPathTrace ? 'Glow Color' : 'Light Color'}</label>
                       <div className="flex gap-2 items-center">
                         <input
                           type="color"
@@ -7236,7 +7236,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
 
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                         Intensity: {(editingTrace.lightIntensity ?? 1.0).toFixed(1)}x
                       </label>
                       <input
@@ -7257,7 +7257,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                     {!isPathTrace && (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                         Radius: {editingTrace.lightRadius ?? 200}px
                       </label>
                       <input
@@ -7279,10 +7279,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                     {!isPathTrace && (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
+                          <label className="block text-nier-bg/75 text-[9px] tracking-wider mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -7299,7 +7299,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           />
                         </div>
                         <div>
-                          <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
+                          <label className="block text-nier-bg/75 text-[9px] tracking-wider mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -7316,7 +7316,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           />
                         </div>
                       </div>
-                      <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                      <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                         Adjust light source position relative to trace center
                       </p>
                     </div>
@@ -7324,7 +7324,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                     {!isPathTrace && (
                     <div>
-                      <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer mb-2 group">
+                      <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-2 group">
                         <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.lightPulse ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                           {(editingTrace.lightPulse ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                         </div>
@@ -7343,7 +7343,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                       {editingTrace.lightPulse && (
                         <div className="ml-6">
-                          <label className="block text-nier-border/60 text-[9px] tracking-wider mb-1">
+                          <label className="block text-nier-bg/75 text-[9px] tracking-wider mb-1">
                             Pulse Speed: {editingTrace.lightPulseSpeed ?? 2.0}s per cycle
                           </label>
                           <input
@@ -7360,7 +7360,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             }}
                             className="w-full accent-nier-bg"
                           />
-                          <p className="text-nier-border/60 text-[9px] mt-1 tracking-wider">
+                          <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
                             Lower = faster pulse, Higher = slower pulse
                           </p>
                         </div>
@@ -7434,7 +7434,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               <div className="space-y-5">
                 {/* Toggle Options */}
                 <div className="space-y-3">
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(seedTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -7447,7 +7447,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <span className="tracking-wider uppercase text-[10px]">Show Border</span>
                   </label>
 
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(seedTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -7460,7 +7460,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <span className="tracking-wider uppercase text-[10px]">Show Background</span>
                   </label>
 
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(seedTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -7473,7 +7473,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <span className="tracking-wider uppercase text-[10px]">Show Username</span>
                   </label>
 
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(seedTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -7486,7 +7486,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     <span className="tracking-wider uppercase text-[10px]">Show Description</span>
                   </label>
 
-                  <label className="flex items-center gap-3 text-nier-border text-xs cursor-pointer group">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                       {(seedTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
                     </div>
@@ -7509,7 +7509,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   if (!textSeed) return null
                   return (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
                       <div className="flex gap-2">
                         {([
                           { value: true, label: 'Scales With Box' },
@@ -7535,7 +7535,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {/* Border Color & Opacity */}
                 {(seedTrace.showBorder ?? true) && (
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
                     <div className="flex gap-2 items-center mb-2">
                       <input
                         type="color"
@@ -7558,7 +7558,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ↺
                       </button>
                     </div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
                       Border Opacity: {Math.round((seedTrace.borderOpacity ?? 1) * 100)}%
                     </label>
                     <input
@@ -7576,7 +7576,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {/* Fill Color & Opacity */}
                 {(seedTrace.showBackground ?? true) && (
                   <div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
                     <div className="flex gap-2 items-center mb-2">
                       <input
                         type="color"
@@ -7599,7 +7599,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ↺
                       </button>
                     </div>
-                    <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-1">
+                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
                       Fill Opacity: {Math.round((seedTrace.fillOpacity ?? 0.95) * 100)}%
                     </label>
                     <input
@@ -7627,7 +7627,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   if (!nonShapeSeed) return null
                   return (
                     <div>
-                      <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                         Border Radius: {nonShapeSeed.borderRadius ?? 0}px
                       </label>
                       <input

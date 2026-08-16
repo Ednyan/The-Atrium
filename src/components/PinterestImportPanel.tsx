@@ -158,7 +158,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
           {step !== 'importing' && (
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+              className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
             >
               ×
             </button>
@@ -169,9 +169,9 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
           {step === 'boards' && (
             <>
               {boardsLoading ? (
-                <p className="text-nier-border/60 text-xs tracking-wider text-center py-8">Loading your boards...</p>
+                <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">Loading your boards...</p>
               ) : boards.length === 0 ? (
-                <p className="text-nier-border/60 text-xs tracking-wider text-center py-8">No boards found on this Pinterest account.</p>
+                <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">No boards found on this Pinterest account.</p>
               ) : (
                 <div className="grid grid-cols-3 gap-3">
                   {boards.map(board => (
@@ -184,12 +184,12 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
                         {board.thumbnailUrl ? (
                           <img src={board.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-nier-border/30 text-2xl">◇</span>
+                          <span className="text-nier-bg/50 text-2xl">◇</span>
                         )}
                       </div>
                       <div className="p-2">
                         <p className="text-nier-bg text-[11px] tracking-wide truncate">{board.name}</p>
-                        <p className="text-nier-border/50 text-[9px] tracking-wider">{board.pinCount} pins</p>
+                        <p className="text-nier-bg/70 text-[9px] tracking-wider">{board.pinCount} pins</p>
                       </div>
                     </button>
                   ))}
@@ -201,7 +201,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
           {step === 'pins-loading' && (
             <div className="py-12 text-center">
               <p className="text-nier-bg text-sm tracking-wider mb-2">Fetching pins from "{selectedBoard?.name}"...</p>
-              <p className="text-nier-border/50 text-xs tracking-wider">{pinsFetched} pins found so far</p>
+              <p className="text-nier-bg/70 text-xs tracking-wider">{pinsFetched} pins found so far</p>
             </div>
           )}
 
@@ -210,7 +210,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
               <p className="text-nier-bg text-sm tracking-wider">
                 Import {pins.length} pin{pins.length === 1 ? '' : 's'} from "{selectedBoard.name}"?
               </p>
-              <p className="text-nier-border/50 text-xs tracking-wider">
+              <p className="text-nier-bg/70 text-xs tracking-wider">
                 Each pin becomes an embed trace, laid out around your current view. Pins whose image fails to hotlink show as a link card back to the original pin instead.
               </p>
               <div className="flex gap-2 justify-center pt-2">
@@ -222,7 +222,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
                 </button>
                 <button
                   onClick={() => { setStep('boards'); setSelectedBoard(null); setPins([]) }}
-                  className="px-6 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  className="px-6 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
                   Back
                 </button>
@@ -233,7 +233,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
           {step === 'importing' && (
             <div className="py-12 text-center">
               <p className="text-nier-bg text-sm tracking-wider mb-3">Importing pins...</p>
-              <p className="text-nier-border/50 text-xs tracking-wider mb-3">{importDone} / {pins.length}</p>
+              <p className="text-nier-bg/70 text-xs tracking-wider mb-3">{importDone} / {pins.length}</p>
               <div className="w-64 h-[3px] bg-nier-border/10 overflow-hidden mx-auto">
                 <div
                   className="h-full bg-nier-bg transition-all"
@@ -260,7 +260,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
               <p className="text-nier-red text-sm tracking-wider">{errorMessage}</p>
               <button
                 onClick={onClose}
-                className="px-6 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                className="px-6 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
                 Close
               </button>

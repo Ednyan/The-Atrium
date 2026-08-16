@@ -129,8 +129,8 @@ function VideoShowcaseSection() {
                 }}
               >
                 <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 12px ${ACCENT.silver}55` }} />
-                <p className="font-mono text-[11px] tracking-[0.3em] uppercase text-nier-border/70">Transmission incoming</p>
-                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-border/40">A tour of the atrium is being recorded</p>
+                <p className="font-mono text-[11px] tracking-[0.3em] uppercase text-nier-bg/80">Transmission incoming</p>
+                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-bg/70">A tour of the atrium is being recorded</p>
               </div>
             )}
           </div>
@@ -379,7 +379,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 className={`text-[10px] tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline ${
                   isActive 
                     ? 'text-nier-bg opacity-100' 
-                    : 'text-nier-border/60 opacity-0 group-hover:opacity-100'
+                    : 'text-nier-bg/75 opacity-0 group-hover:opacity-100'
                 }`}
               >
                 {section.title}
@@ -430,7 +430,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               style={{ height: `${scrollProgress * 100}%` }}
             />
           </div>
-          <span className="text-[8px] text-nier-border/50 tracking-widest -mr-2">
+          <span className="text-[8px] text-nier-bg/70 tracking-widest -mr-2">
             {Math.round(scrollProgress * 100)}%
           </span>
         </div>
@@ -511,7 +511,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 do the work now; the wide tracking stays on the small labels,
                 which is where that NieR texture actually belongs. */}
             <h1 className="font-light leading-[0.86] tracking-[-0.02em] mb-7">
-              <span className="block text-nier-border/50 text-[clamp(2rem,5vw,3.5rem)] tracking-[0.12em] font-extralight mb-2">
+              <span className="block text-nier-bg/70 text-[clamp(2rem,5vw,3.5rem)] tracking-[0.12em] font-extralight mb-2">
                 THE
               </span>
               <span
@@ -534,9 +534,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               </span>
             </h1>
 
-            <p className="text-nier-border text-base md:text-lg font-light leading-relaxed max-w-md mb-9">
+            <p className="text-nier-bg/80 text-base md:text-lg font-light leading-relaxed max-w-md mb-9">
               A museum of references created by you.
-              <span className="block text-nier-border/50 text-sm mt-2">
+              <span className="block text-nier-bg/70 text-sm mt-2">
                 Create your atrium. Discover others. Leave traces.
               </span>
             </p>
@@ -574,7 +574,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   desktop build it would scroll to a section that isn't there. */}
               {!isDesktop && (
                 <>
-                  <span className="text-nier-border/30 text-[11px] tracking-[0.2em] uppercase">or</span>
+                  <span className="text-nier-bg/50 text-[11px] tracking-[0.2em] uppercase">or</span>
                   <button
                     onClick={() => scrollToSection(3)}
                     className="group px-6 py-3.5 border text-sm tracking-[0.18em] uppercase transition-all duration-300"
@@ -598,14 +598,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 two actions inline, a third inline item made the row read as
                 three peers. */}
             {!isAuthenticated && (
-              <p className="text-nier-border/40 text-[11px] tracking-wider mb-10 -mt-6">
+              <p className="text-nier-bg/70 text-[11px] tracking-wider mb-10 -mt-6">
                 Free to use • No credit card
               </p>
             )}
 
             {/* Three pillars as a rule-separated row rather than floating chips,
                 so they read as one grounded line under the actions. */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-[10px] tracking-[0.16em] uppercase text-nier-border/70">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-[10px] tracking-[0.16em] uppercase text-nier-bg/80">
               {([
                 { label: 'Infinite Canvas', color: ACCENT.silver },
                 { label: 'Private Atriums', color: ACCENT.emerald },
@@ -630,7 +630,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
         {/* Scroll hint, pinned low but out of the content's way */}
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-pulse pointer-events-none">
-          <span className="text-[10px] text-nier-border/40 tracking-[0.2em] uppercase">Scroll</span>
+          <span className="text-[10px] text-nier-bg/70 tracking-[0.2em] uppercase">Scroll</span>
           <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
         </div>
       </section>
@@ -655,14 +655,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-4">
-              <p className="text-nier-border text-sm md:text-base leading-relaxed">
+              <p className="text-nier-bg/80 text-sm md:text-base leading-relaxed">
                 <span className="text-nier-bg">The Digital Atrium</span> is a collaborative infinite canvas 
                 where people gather to share, explore, and build together.
               </p>
-              <p className="text-nier-border/70 text-sm leading-relaxed">
+              <p className="text-nier-bg/80 text-sm leading-relaxed">
                 Like a grand entrance hall in a museum, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
               </p>
-              <p className="text-nier-border/70 text-sm leading-relaxed">
+              <p className="text-nier-bg/80 text-sm leading-relaxed">
                Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium walls.
                It's a living document of collective expression for sharing and brainstorming. Have you heard of mind maps?
               </p>
@@ -671,7 +671,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   the bracket viewport is you -- the concept the paragraphs
                   describe, drawn instead of described. */}
               <AtriumMapDiagram />
-              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-border/40 -mt-2">
+              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-bg/70 -mt-2">
                 an atrium, from above
               </p>
             </div>
@@ -682,7 +682,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.silver, boxShadow: `0 0 8px ${ACCENT.silver}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Traces</span>
                 </div>
-                <p className="text-nier-border/60 text-sm leading-relaxed">
+                <p className="text-nier-bg/75 text-sm leading-relaxed">
                   Leave text, embeds, or shapes anywhere on the infinite canvas. Each trace persists for you to see or others to find.
                 </p>
               </div>
@@ -692,7 +692,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.emerald, boxShadow: `0 0 8px ${ACCENT.emerald}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Atriums</span>
                 </div>
-                <p className="text-nier-border/60 text-sm leading-relaxed">
+                <p className="text-nier-bg/75 text-sm leading-relaxed">
                   Private or public spaces with their own infinite canvas. Invite friends or open 
                   to the world.
                 </p>
@@ -703,7 +703,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.sky, boxShadow: `0 0 8px ${ACCENT.sky}88` }} />
                   <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Presence</span>
                 </div>
-                <p className="text-nier-border/60 text-sm leading-relaxed">
+                <p className="text-nier-bg/75 text-sm leading-relaxed">
                   See others exploring the same space in real-time. A shared experience, even when apart.
                 </p>
               </div>
@@ -731,7 +731,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             {/* Controls */}
             <div>
               <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
-                <span className="text-nier-border/40">01</span>
+                <span className="text-nier-bg/70">01</span>
                 Navigation
               </h3>
               {/* The two gestures, performed: the cursor drags and the world
@@ -745,7 +745,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 ].map((control, i) => (
                   <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
                     <div className="text-white text-sm font-mono mb-2">{control.key}</div>
-                    <div className="text-nier-border/60 text-xs">{control.desc}</div>
+                    <div className="text-nier-bg/75 text-xs">{control.desc}</div>
                   </div>
                 ))}
               </div>
@@ -754,26 +754,26 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             {/* Creating traces */}
             <div>
               <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
-                <span className="text-nier-border/40">02</span>
+                <span className="text-nier-bg/70">02</span>
                 Leaving Traces
               </h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30 sm:flex sm:items-center sm:gap-6">
                 <div className="flex-1">
-                <p className="text-nier-border/70 text-sm leading-relaxed mb-3">
+                <p className="text-nier-bg/80 text-sm leading-relaxed mb-3">
                   Click the Leave trace button (or T key shortcut) to leave a trace. Choose between:
                 </p>
                 <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-border"><span className="text-nier-bg">Text</span> — Notes, thoughts, poetry</span>
+                    <span className="text-nier-bg/80"><span className="text-nier-bg">Text</span> — Notes, thoughts, poetry</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-border"><span className="text-nier-bg">Embed</span> — Links, videos, content</span>
+                    <span className="text-nier-bg/80"><span className="text-nier-bg">Embed</span> — Links, videos, content</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-border"><span className="text-nier-bg">Shape</span> — Visual elements</span>
+                    <span className="text-nier-bg/80"><span className="text-nier-bg">Shape</span> — Visual elements</span>
                   </div>
                 </div>
                 </div>
@@ -787,11 +787,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             {/* Storage recommendation */}
             <div>
               <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
-                <span className="text-nier-border/40">03</span>
+                <span className="text-nier-bg/70">03</span>
                 Adding Your Content
               </h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
-                <p className="text-nier-border/70 text-sm leading-relaxed mb-3">
+                <p className="text-nier-bg/80 text-sm leading-relaxed mb-3">
                   The atrium connects to your content through embedded links. We recommend using free 
                   third-party platforms for hosting your media:
                 </p>
@@ -805,11 +805,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   ].map((platform, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                      <span className="text-nier-border"><span className="text-white">{platform.name}</span> — {platform.desc}</span>
+                      <span className="text-nier-bg/80"><span className="text-white">{platform.name}</span> — {platform.desc}</span>
                     </div>
                   ))}
                 </div>
-                <p className="text-nier-border/50 text-xs mt-4 italic">
+                <p className="text-nier-bg/70 text-xs mt-4 italic">
                   Simply copy the embed link or image URL from these platforms and paste it into your trace.
                 </p>
               </div>
@@ -818,7 +818,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             {/* The ecosystem */}
             <div>
               <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
-                <span className="text-nier-border/40">04</span>
+                <span className="text-nier-bg/70">04</span>
                 The Ecosystem
               </h3>
               <div className="grid md:grid-cols-3 gap-4">
@@ -827,7 +827,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     <span className="text-nier-bg -rotate-45 text-lg">1</span>
                   </div>
                   <h4 className="text-nier-bg text-sm tracking-wider uppercase mb-2">Create</h4>
-                  <p className="text-nier-border/60 text-xs leading-relaxed">
+                  <p className="text-nier-bg/75 text-xs leading-relaxed">
                     Set up your atrium. Define its purpose and who can access it.
                   </p>
                   <CreateTraceDemo />
@@ -837,7 +837,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     <span className="text-nier-bg -rotate-45 text-lg">2</span>
                   </div>
                   <h4 className="text-nier-bg text-sm tracking-wider uppercase mb-2">Populate</h4>
-                  <p className="text-nier-border/60 text-xs leading-relaxed">
+                  <p className="text-nier-bg/75 text-xs leading-relaxed">
                     Invite others or leave traces yourself. Build a collection of ideas.
                   </p>
                   <PopulateDemo />
@@ -847,7 +847,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     <span className="text-nier-bg -rotate-45 text-lg">3</span>
                   </div>
                   <h4 className="text-nier-bg text-sm tracking-wider uppercase mb-2">Explore</h4>
-                  <p className="text-nier-border/60 text-xs leading-relaxed">
+                  <p className="text-nier-bg/75 text-xs leading-relaxed">
                     Navigate the infinite canvas. Discover traces left by others.
                   </p>
                   <ExploreDemo />
@@ -887,18 +887,18 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
           </div>
 
-          <p className="text-nier-border text-base md:text-lg font-light tracking-wide mb-8 italic">
+          <p className="text-nier-bg/80 text-base md:text-lg font-light tracking-wide mb-8 italic">
             "How is this even possible while being free?"
           </p>
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
-            <p className="text-nier-border/80 text-sm leading-relaxed mb-6">
+            <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
               The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-white">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
-            <p className="text-nier-border/80 text-sm leading-relaxed mb-6">
+            <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
               The entire platform runs on free-tier services, which means there are a couple of limits for now:
             </p>
 
@@ -910,7 +910,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   </div>
                   <span className="text-white text-sm tracking-wider uppercase">Atriums per user</span>
                 </div>
-                <p className="text-nier-border/50 text-xs leading-relaxed">
+                <p className="text-nier-bg/70 text-xs leading-relaxed">
                   Each account can create up to three atriums — more than enough to get started.
                 </p>
               </div>
@@ -922,13 +922,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   </div>
                   <span className="text-white text-sm tracking-wider uppercase">Per atrium</span>
                 </div>
-                <p className="text-nier-border/50 text-xs leading-relaxed">
+                <p className="text-nier-bg/70 text-xs leading-relaxed">
                   Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
                 </p>
               </div>
             </div>
 
-            <p className="text-nier-border/60 text-sm leading-relaxed text-center italic">
+            <p className="text-nier-bg/75 text-sm leading-relaxed text-center italic">
               As you'll soon realize, it's plenty.
             </p>
           </div>
@@ -954,14 +954,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           {/* Placeholder for personal content */}
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
-            <p className="text-nier-border/60 text-sm leading-relaxed mb-6 italic">
+            <p className="text-nier-bg/75 text-sm leading-relaxed mb-6 italic">
               My name is Eduardo Paranhos (aka Mindeformer or Red Puer).
               I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
-            <p className="text-nier-border/60 text-sm leading-relaxed italic">
+            <p className="text-nier-bg/75 text-sm leading-relaxed italic">
               I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
               What came out feels like a mix of Pinterest, PureRef, Canva and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
             </p>
@@ -969,7 +969,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           {/* Social links placeholder */}
           <div className="flex items-center justify-center gap-6">
-            <span className="text-nier-border/40 text-xs tracking-[0.1em] uppercase">Connect with me:</span>
+            <span className="text-nier-bg/70 text-xs tracking-[0.1em] uppercase">Connect with me:</span>
             {[
               { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
               { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
@@ -985,7 +985,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   e.preventDefault()
                   import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
                 } : undefined}
-                className="text-nier-border/60 hover:text-nier-bg text-xs tracking-wider uppercase transition-colors cursor-pointer"
+                className="text-nier-bg/75 hover:text-nier-bg text-xs tracking-wider uppercase transition-colors cursor-pointer"
               >
                 ◇ {social.name}
               </a>
@@ -998,16 +998,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 href="/privacy.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-border/40 hover:text-nier-border/70 text-[10px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-[10px] tracking-wider uppercase transition-colors"
               >
                 Privacy Policy
               </a>
-              <span className="text-nier-border/20 text-[10px]">◇</span>
+              <span className="text-nier-bg/50 text-[10px]">◇</span>
               <a
                 href="/terms.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-border/40 hover:text-nier-border/70 text-[10px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-[10px] tracking-wider uppercase transition-colors"
               >
                 Terms of Service
               </a>
@@ -1017,7 +1017,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Shown on desktop too -- the copyright applies to the app itself,
               not just the website. */}
           <div className="flex items-center justify-center mt-3">
-            <span className="text-nier-border/30 text-[10px] tracking-wider">
+            <span className="text-nier-bg/50 text-[10px] tracking-wider">
               © 2026 Eduardo Paranhos. All rights reserved.
             </span>
           </div>
@@ -1039,7 +1039,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
               
-              <span className="text-sm tracking-[0.2em] uppercase text-nier-border group-hover:text-nier-bg transition-colors">
+              <span className="text-sm tracking-[0.2em] uppercase text-nier-bg/80 group-hover:text-nier-bg transition-colors">
                 {isAuthenticated ? '◇ Continue to Atrium' : '◇ Begin Your Journey'}
               </span>
             </button>
@@ -1050,10 +1050,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* Footer */}
       <footer className="py-8 border-t border-nier-border/20">
         <div className="max-w-4xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="text-nier-border/40 text-xs tracking-wider">
+          <div className="text-nier-bg/70 text-xs tracking-wider">
             The Digital Atrium • {new Date().getFullYear()}
           </div>
-          <div className="flex items-center gap-6 text-nier-border/40 text-xs tracking-wider">
+          <div className="flex items-center gap-6 text-nier-bg/70 text-xs tracking-wider">
             <span>Free to use</span>
             <span>•</span>
             <span>Open source</span>

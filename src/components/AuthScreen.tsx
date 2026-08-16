@@ -335,7 +335,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
           
           <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">Check Your Email</h2>
-          <p className="text-nier-border text-sm leading-relaxed mb-6">
+          <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
             We've sent you an email with a link to reset your password. Please check your inbox and follow the instructions.
           </p>
           <button
@@ -373,7 +373,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
           
           <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">Check Your Email</h2>
-          <p className="text-nier-border text-sm leading-relaxed mb-6">
+          <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
             We've sent you an email with a confirmation link. Please check your inbox and click the link to verify your account.
           </p>
           <button
@@ -421,8 +421,8 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
             
             <div className="flex items-center gap-3">
-              <span className="text-nier-border/60 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
-              <span className="text-[10px] tracking-[0.2em] uppercase text-nier-border/60 group-hover:text-nier-bg transition-colors">Back</span>
+              <span className="text-nier-bg/75 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
+              <span className="text-[10px] tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">Back</span>
             </div>
           </div>
         </button>
@@ -450,21 +450,21 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
         <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword} className="space-y-5">
           {mode === 'signup' && (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                 Username
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 placeholder="Choose a unique username"
                 required
                 minLength={3}
                 maxLength={20}
                 pattern="[a-zA-Z0-9_]+"
               />
-              <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
+              <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
                 3-20 characters, letters, numbers, underscores
               </p>
             </div>
@@ -472,33 +472,33 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
 
           {mode === 'login' ? (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                 Email or Username
               </label>
               <input
                 type="text"
                 value={emailOrUsername}
                 onChange={(e) => setEmailOrUsername(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 placeholder="your@email.com or username"
                 required
               />
             </div>
           ) : (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                 Email
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 placeholder="your@email.com"
                 required
               />
               {mode === 'forgot' && (
-                <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
+                <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
                   Enter the email associated with your account
                 </p>
               )}
@@ -507,20 +507,20 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
 
           {mode !== 'forgot' && (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                 Password
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 placeholder="••••••••"
                 required
                 minLength={6}
               />
               {mode === 'signup' && (
-                <p className="text-nier-border/50 text-[9px] tracking-wider mt-2 uppercase">
+                <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
                   Minimum 6 characters
                 </p>
               )}
@@ -529,14 +529,14 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
 
           {mode === 'signup' && (
             <div>
-              <label className="block text-nier-border text-[10px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
                 Confirm Password
               </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 placeholder="••••••••"
                 required
                 minLength={6}
@@ -576,7 +576,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             <>
               <div className="flex items-center gap-3 pt-1">
                 <div className="flex-1 h-[1px] bg-nier-border/20" />
-                <span className="text-nier-border/40 text-[9px] tracking-[0.2em] uppercase">or</span>
+                <span className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase">or</span>
                 <div className="flex-1 h-[1px] bg-nier-border/20" />
               </div>
               <button
@@ -604,7 +604,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
                 setMode('forgot')
                 setError('')
               }}
-              className="text-nier-border/60 text-[10px] tracking-wider hover:text-nier-bg transition-colors block w-full"
+              className="text-nier-bg/75 text-[10px] tracking-wider hover:text-nier-bg transition-colors block w-full"
             >
               ◇ Forgot your password?
             </button>
@@ -619,7 +619,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               setError('')
               setConfirmPassword('')
             }}
-            className="text-nier-border text-[11px] tracking-wider hover:text-nier-bg transition-colors"
+            className="text-nier-bg/80 text-[11px] tracking-wider hover:text-nier-bg transition-colors"
           >
             {mode === 'login' ? "◇ Don't have an account? Sign up" : mode === 'signup' ? '◇ Already have an account? Log in' : '◇ Back to Login'}
           </button>
@@ -628,16 +628,16 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               href="/privacy.html"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+              className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
             >
               Privacy Policy
             </a>
-            <span className="text-nier-border/20 text-[9px]">◇</span>
+            <span className="text-nier-bg/50 text-[9px]">◇</span>
             <a
               href="/terms.html"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+              className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
             >
               Terms of Service
             </a>

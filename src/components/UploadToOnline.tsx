@@ -233,7 +233,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
         {status === 'done' ? (
           <div className="text-center">
             <p className="text-green-400 text-xs tracking-wider mb-4">{progress}</p>
-            <p className="text-nier-border/60 text-[10px] tracking-wider mb-6">
+            <p className="text-nier-bg/75 text-[10px] tracking-wider mb-6">
               Note: Local files (images/audio stored on this PC) were not uploaded. Their frames appear as empty placeholders online.
             </p>
             <button onClick={onClose} className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-bgDark transition-colors">
@@ -244,7 +244,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
           <>
             <div className="space-y-3 mb-6">
               <div>
-                <label className="text-nier-border/60 text-[9px] tracking-wider uppercase block mb-1">Supabase URL</label>
+                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">Supabase URL</label>
                 <input
                   type="url"
                   value={supabaseUrl}
@@ -255,7 +255,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
                 />
               </div>
               <div>
-                <label className="text-nier-border/60 text-[9px] tracking-wider uppercase block mb-1">Anon Key</label>
+                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">Anon Key</label>
                 <input
                   type="password"
                   value={supabaseKey}
@@ -266,7 +266,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
                 />
               </div>
               <div className="border-t border-nier-border/20 pt-3">
-                <label className="text-nier-border/60 text-[9px] tracking-wider uppercase block mb-1">Email</label>
+                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">Email</label>
                 <input
                   type="email"
                   value={email}
@@ -276,7 +276,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
                 />
               </div>
               <div>
-                <label className="text-nier-border/60 text-[9px] tracking-wider uppercase block mb-1">Password</label>
+                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">Password</label>
                 <input
                   type="password"
                   value={password}
@@ -292,13 +292,13 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             )}
 
             {progress && status !== 'credentials' && (
-              <p className="text-nier-border/60 text-[10px] tracking-wider mb-4">{progress}</p>
+              <p className="text-nier-bg/75 text-[10px] tracking-wider mb-4">{progress}</p>
             )}
 
             <div className="flex gap-3">
               <button
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-nier-border/30 text-nier-border/60 text-[10px] tracking-wider uppercase hover:bg-nier-border/10 transition-colors"
+                className="flex-1 px-4 py-2 border border-nier-border/30 text-nier-bg/75 text-[10px] tracking-wider uppercase hover:bg-nier-border/10 transition-colors"
                 disabled={status === 'uploading' || status === 'auth'}
               >
                 Cancel
@@ -312,7 +312,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
               </button>
             </div>
 
-            <p className="text-nier-border/40 text-[8px] tracking-wider mt-4 text-center">
+            <p className="text-nier-bg/70 text-[8px] tracking-wider mt-4 text-center">
               Local files (images/audio on this PC) will appear as empty placeholders online.
             </p>
           </>

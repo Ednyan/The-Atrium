@@ -418,7 +418,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         {status === 'select' && (
           <>
-            <p className="text-nier-border/70 text-xs tracking-wide mb-4 leading-relaxed">
+            <p className="text-nier-bg/80 text-xs tracking-wide mb-4 leading-relaxed">
               Import an atrium exported from the desktop app. Max file size: 10 MB.
             </p>
             <input
@@ -430,7 +430,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             />
             <button
               onClick={() => fileRef.current?.click()}
-              className="w-full py-3 border border-dashed border-nier-border/40 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors mb-4"
+              className="w-full py-3 border border-dashed border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors mb-4"
             >
               ◇ Choose .json File
             </button>
@@ -440,16 +440,16 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         {status === 'preview' && parsed && (
           <>
             <div className="bg-nier-black border border-nier-border/20 p-4 mb-4 space-y-2">
-              <div className="text-[10px] text-nier-border/60 tracking-wider uppercase">Preview</div>
+              <div className="text-[10px] text-nier-bg/75 tracking-wider uppercase">Preview</div>
               <div className="text-nier-bg text-sm tracking-wide">{parsed.lobby.name}</div>
-              <div className="flex gap-4 text-[10px] text-nier-border/50 tracking-wider">
+              <div className="flex gap-4 text-[10px] text-nier-bg/70 tracking-wider">
                 <span>{traceCount} traces</span>
                 <span>{layerCount} layers</span>
                 {(parsed.locations?.length ?? 0) > 0 && <span>{parsed.locations!.length} locations</span>}
                 {mediaCount > 0 && <span>{mediaCount} media files</span>}
                 <span>{fileSizeMB} MB</span>
               </div>
-              <div className="text-[9px] text-nier-border/40 tracking-wider">
+              <div className="text-[9px] text-nier-bg/70 tracking-wider">
                 Exported {new Date(parsed.exportedAt).toLocaleDateString()}
               </div>
               {localOnlyCount > 0 && (
@@ -460,13 +460,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             </div>
 
             <div className="mb-4">
-              <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+              <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
               <input
                 type="text"
                 value={atriumName}
                 onChange={(e) => setAtriumName(e.target.value)}
                 placeholder="Name for the imported atrium"
-                className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 maxLength={50}
               />
             </div>
@@ -481,7 +481,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
                 {notice}
               </p>
             )}
-            <p className="text-nier-border/50 text-[10px] tracking-wider">
+            <p className="text-nier-bg/70 text-[10px] tracking-wider">
               You can now enter the atrium from the browser.
             </p>
           </div>
@@ -495,7 +495,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         {progress && status === 'importing' && (
           <div className="bg-nier-black border border-nier-border/20 p-3 mb-4">
-            <p className="text-nier-border text-[10px] tracking-wider uppercase">{progress}</p>
+            <p className="text-nier-bg/80 text-[10px] tracking-wider uppercase">{progress}</p>
           </div>
         )}
 
@@ -509,7 +509,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
                 onClose()
               }
             }}
-            className="flex-1 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+            className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
             disabled={status === 'importing'}
           >
             {status === 'done' ? 'Close' : 'Cancel'}

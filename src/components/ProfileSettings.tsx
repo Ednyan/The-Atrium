@@ -239,7 +239,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-border hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
           >
             ×
           </button>
@@ -249,29 +249,29 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           {/* Username (permanent) - only show on web */}
           {!isDesktop && (
             <div>
-              <label className="block text-nier-border/50 text-[9px] tracking-[0.15em] uppercase mb-2">Username (permanent)</label>
-              <div className="bg-nier-black border border-nier-border/20 px-3 py-2 text-nier-border/60 text-sm tracking-wide">
+              <label className="block text-nier-bg/70 text-[9px] tracking-[0.15em] uppercase mb-2">Username (permanent)</label>
+              <div className="bg-nier-black border border-nier-border/20 px-3 py-2 text-nier-bg/75 text-sm tracking-wide">
                 {actualUsername}
               </div>
             </div>
           )}
 
           <form onSubmit={handleUpdateDisplayName}>
-            <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+            <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
               {isDesktop ? 'Username' : 'Display Name'}
             </label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
               placeholder={isDesktop ? 'Your username' : 'Your display name'}
               maxLength={30}
               disabled={!isDesktop && !canChange}
             />
             
             {!isDesktop && !canChange && (
-              <p className="text-nier-border/50 text-[10px] tracking-wider mt-2">
+              <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
                 ◇ You can change your display name in {daysUntilChange} days
               </p>
             )}
@@ -311,21 +311,21 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               <div>
                 <button
                   onClick={() => setShowPasswordChange(!showPasswordChange)}
-                  className="w-full text-left text-nier-border text-[10px] tracking-[0.15em] uppercase flex items-center justify-between hover:text-nier-bg transition-colors"
+                  className="w-full text-left text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase flex items-center justify-between hover:text-nier-bg transition-colors"
                 >
                   <span>Change Password</span>
-                  <span className="text-nier-border/40">{showPasswordChange ? '▼' : '▶'}</span>
+                  <span className="text-nier-bg/70">{showPasswordChange ? '▼' : '▶'}</span>
                 </button>
                 
                 {showPasswordChange && (
                   <form onSubmit={handlePasswordChange} className="space-y-3 mt-3">
                     <div>
-                      <label className="block text-nier-border/60 text-[9px] tracking-[0.15em] uppercase mb-1">New Password</label>
+                      <label className="block text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase mb-1">New Password</label>
                       <input
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                         placeholder="••••••••"
                         minLength={6}
                         required
@@ -333,12 +333,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </div>
                     
                     <div>
-                      <label className="block text-nier-border/60 text-[9px] tracking-[0.15em] uppercase mb-1">Confirm New Password</label>
+                      <label className="block text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase mb-1">Confirm New Password</label>
                       <input
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-border/60 transition-colors"
+                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                         placeholder="••••••••"
                         minLength={6}
                         required
@@ -377,11 +377,11 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           {!isDesktop && (
             <>
               <div>
-                <label className="block text-nier-border text-[9px] tracking-[0.15em] uppercase mb-2">
+                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
                   Pinterest
                 </label>
                 {pinterestStatusLoading ? (
-                  <p className="text-nier-border/40 text-[10px] tracking-wider">Checking connection...</p>
+                  <p className="text-nier-bg/70 text-[10px] tracking-wider">Checking connection...</p>
                 ) : pinterestConnected ? (
                   <div className="space-y-2">
                     <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
@@ -390,7 +390,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <button
                       onClick={handleDisconnectPinterest}
                       disabled={pinterestDisconnecting}
-                      className="w-full py-2 border border-nier-red/40 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="w-full py-2 border border-nier-red/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {pinterestDisconnecting ? 'Disconnecting...' : 'Disconnect Pinterest'}
                     </button>
@@ -405,13 +405,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       Connect Pinterest
                     </button>
                     {!isPinterestConfigured() && (
-                      <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                      <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
                         Pinterest integration isn't configured yet.
                       </p>
                     )}
                   </>
                 )}
-                <p className="text-nier-border/40 text-[10px] tracking-wider mt-2">
+                <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
                   Lets you import a board's pins as traces from inside an atrium.
                 </p>
               </div>
@@ -426,16 +426,16 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 href="/privacy.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
               >
                 Privacy Policy
               </a>
-              <span className="text-nier-border/20 text-[9px]">◇</span>
+              <span className="text-nier-bg/50 text-[9px]">◇</span>
               <a
                 href="/terms.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-border/40 hover:text-nier-border/70 text-[9px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
               >
                 Terms of Service
               </a>
@@ -459,14 +459,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   <p className="text-nier-bg text-[10px] tracking-wider">
                     This permanently deletes your account, profile, and every atrium you own. Content you placed in atriums owned by other people stays, but is anonymized to "Deleted User" instead of your name. This cannot be undone.
                   </p>
-                  <p className="text-nier-border/60 text-[9px] tracking-[0.15em] uppercase">
+                  <p className="text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase">
                     Type <span className="text-nier-bg normal-case">{actualUsername}</span> to confirm
                   </p>
                   <input
                     type="text"
                     value={deleteConfirmText}
                     onChange={(e) => setDeleteConfirmText(e.target.value)}
-                    className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-border/40 focus:border-nier-red/60 transition-colors"
+                    className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-red/60 transition-colors"
                     placeholder={actualUsername}
                     autoComplete="off"
                   />
@@ -488,7 +488,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <button
                       onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteError('') }}
                       disabled={deleteLoading}
-                      className="flex-1 py-2 border border-nier-border/30 text-nier-border text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
+                      className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
                     >
                       Cancel
                     </button>

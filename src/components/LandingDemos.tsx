@@ -317,7 +317,7 @@ export function PanZoomDemo() {
         className="absolute w-4 h-4 rounded-full border"
         style={{ borderColor: `${C.silver}66`, opacity: 0, animation: 'ldPanPress 12s linear infinite' }}
       />
-      <span className="absolute bottom-1.5 right-2 font-mono text-[8px] tracking-[0.18em] uppercase text-nier-border/40">
+      <span className="absolute bottom-1.5 right-2 font-mono text-[8px] tracking-[0.18em] uppercase text-nier-bg/70">
         drag to pan · scroll to zoom
       </span>
 
@@ -379,7 +379,7 @@ export function TraceCycleDemo() {
           <div className="w-8 h-8 rotate-45 border-2" style={{ borderColor: C.sky }} />
         </div>
       </div>
-      <span className="absolute -bottom-5 inset-x-0 text-center font-mono text-[8px] tracking-[0.18em] uppercase text-nier-border/40">
+      <span className="absolute -bottom-5 inset-x-0 text-center font-mono text-[8px] tracking-[0.18em] uppercase text-nier-bg/70">
         one trace, any form
       </span>
 
