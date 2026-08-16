@@ -22,6 +22,8 @@
     "core:app:allow-version",
     "updater:default",
     "process:allow-restart",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-read-image",
     "core:window:allow-set-fullscreen",
     "core:window:allow-is-fullscreen",
     "core:window:allow-close",

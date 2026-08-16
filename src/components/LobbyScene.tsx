@@ -183,6 +183,27 @@ interface ClipboardOffer {
   url: string | null
 }
 
+// Raw pixels into a PNG file, via a canvas.
+//
+// The native clipboard hands back an image as raw RGBA and its dimensions, not
+// as an encoded file -- but everything downstream (uploading, probing the
+// dimensions, writing it into the vault) expects a File. The canvas is already
+// in the page and does the encoding, so this needs no library.
+const rgbaToPngFile = async (rgba: Uint8Array, width: number, height: number): Promise<File | null> => {
+  if (!width || !height) return null
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) return null
+
+  context.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
+
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  return blob ? new File([blob], 'pasted-image.png', { type: 'image/png' }) : null
+}
+
 // A clipboard string that's worth offering to embed.
 //
 // Deliberately any http(s) link, not only ones that look like image files. An
@@ -3253,7 +3274,44 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // outright (no permission, no support), which is why null means "couldn't
   // look" and an empty result means "looked, found nothing" -- the callers
   // treat those differently.
+  // Desktop reads the clipboard through the OS rather than the webview.
+  //
+  // navigator.clipboard.read() is permission-gated, and the webview answers a
+  // read by putting its own "Paste" button on screen and waiting for it to be
+  // clicked. That's correct for a web page asking for something the user hasn't
+  // offered -- but here the user has already clicked "Paste as Embed", so the
+  // prompt is asking them to confirm the thing they just asked for. Reading
+  // natively skips the webview's permission model entirely, and the entry does
+  // what it says on the first click.
+  const readClipboardNatively = async (): Promise<ClipboardOffer | null> => {
+    try {
+      const { readText, readImage } = await import('@tauri-apps/plugin-clipboard-manager')
+
+      const images: File[] = []
+      try {
+        const image = await readImage()
+        const [rgba, size] = await Promise.all([image.rgba(), image.size()])
+        const file = await rgbaToPngFile(rgba, size.width, size.height)
+        if (file) images.push(file)
+      } catch {
+        // No image on the clipboard. Text may still be there.
+      }
+
+      let url: string | null = null
+      try {
+        url = asPasteableUrl(await readText())
+      } catch {
+        // No text either.
+      }
+
+      return { images, url }
+    } catch {
+      return null
+    }
+  }
+
   const readClipboardContents = async (): Promise<ClipboardOffer | null> => {
+    if (isDesktop) return readClipboardNatively()
     if (!navigator.clipboard?.read) return null
     try {
       const items = await navigator.clipboard.read()

@@ -477,6 +477,9 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
+        // Reads the clipboard natively, which is the only way to do it without
+        // the webview putting its own confirmation prompt on screen first.
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         // Self-update. `process` supplies the relaunch that has to follow an
