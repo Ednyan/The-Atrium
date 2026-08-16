@@ -498,57 +498,61 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // and look for "Paste Image". So the menu offers it, and reads the clipboard
   // when it opens to decide whether to.
   const [clipboardHasImage, setClipboardHasImage] = useState<boolean | null>(null)
-  // How much zoom one wheel event is worth.
+  // Which scrolling device is in use, as far as we can tell. Starts at 'wheel'
+  // and only moves off it on positive evidence, because being wrong about a
+  // mouse costs the app its primary zoom control.
   //
-  // The old scaling assumed mouse-wheel deltas, which are around 100 per
-  // notch. A trackpad's two-finger scroll reports 3 to 10, so the same formula
-  // gave roughly a twenty-fifth of the zoom per event -- technically working,
-  // in practice indistinguishable from nothing, which is why zoom looked
-  // unavailable without a wheel.
+  // A trackpad and a mouse wheel arrive through the very same event, so this
+  // has to be inferred, and the only signal that reliably belongs to one and
+  // not the other is horizontal movement: two fingers move in both axes, and a
+  // wheel has no horizontal axis to report.
   //
-  // deltaMode is normalised first (some browsers report lines or pages rather
-  // than pixels), then small deltas are treated as a fine-grained device and
-  // scaled up. Trackpads fire many events per second where a wheel fires a
-  // few, so the per-event step has to be much smaller than a notch while still
-  // adding up to a comparable rate.
-  // What a wheel event is asking for.
+  // The tempting signals are traps. Fractional deltas look like a trackpad, but
+  // Windows reports 33.33 per notch when the system is set to scroll one line
+  // at a time, and high-resolution wheels report small fractions by design.
+  // Small deltas look like a trackpad for the same reason. Judging on those two
+  // is exactly how the mouse got broken -- an entirely ordinary wheel was read
+  // as a trackpad, and every notch panned the canvas instead of zooming it.
   //
-  // A trackpad and a mouse wheel arrive through the same event, so this has to
-  // be inferred. The signals, in order of reliability:
-  //
-  //   ctrlKey        A pinch. The OS reports pinch-to-zoom as ctrl+wheel, on
-  //                  every platform. Unambiguous.
-  //   deltaX         Two-finger scrolling moves in both axes; a wheel has no
-  //                  horizontal axis to report.
-  //   fractional Y   Trackpads report continuous, often fractional deltas.
-  //                  Wheel notches are whole numbers.
-  //   small Y        A wheel notch is ~100 (or 120, or 53 depending on the
-  //                  driver); trackpad deltas are single digits.
-  //
-  // Anything else is treated as a wheel, so the mouse keeps zooming as it
-  // always has -- that's the case where being wrong is most annoying.
-  // When a scroll was last recognised as a trackpad one. A two-finger scroll
-  // fires a dense stream of events, so the middle of a fast flick -- large,
-  // whole-numbered, purely vertical -- looks exactly like a wheel notch on its
-  // own. Recognising the gesture from its opening events and holding that
-  // reading for as long as events keep arriving avoids a flick that starts by
-  // panning and finishes by zooming.
-  const lastPanScrollAtRef = useRef(0)
-  const PAN_GESTURE_GAP_MS = 250
+  // Latched rather than judged per-event, so once a trackpad has identified
+  // itself a slow, perfectly vertical two-finger scroll still pans. A run of
+  // identical notches switches back, so a laptop with a mouse plugged in works
+  // both ways without a setting.
+  const scrollDeviceRef = useRef<'wheel' | 'trackpad'>('wheel')
+  const recentScrollMagnitudesRef = useRef<{ at: number; magnitude: number }[]>([])
+  const WHEEL_SIGNATURE_WINDOW_MS = 500
+  const WHEEL_SIGNATURE_EVENTS = 4
 
   const classifyWheel = (e: WheelEvent): 'zoom' | 'pan' => {
-    if (e.ctrlKey) return 'zoom'
-    if (e.deltaMode !== 0) return 'zoom'
+    if (e.ctrlKey) return 'zoom' // a pinch, reported as ctrl+wheel everywhere
 
-    const trackpadish =
-      e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 40
-    const continuing = e.timeStamp - lastPanScrollAtRef.current < PAN_GESTURE_GAP_MS
-
-    if (trackpadish || continuing) {
-      lastPanScrollAtRef.current = e.timeStamp
-      return 'pan'
+    if (e.deltaMode !== 0) {
+      // Lines or pages: only a wheel is ever reported this way.
+      scrollDeviceRef.current = 'wheel'
+      return 'zoom'
     }
-    return 'zoom'
+
+    if (e.deltaX !== 0) {
+      scrollDeviceRef.current = 'trackpad'
+    } else {
+      // A wheel at a steady speed emits the same magnitude every time, whatever
+      // that magnitude happens to be. A trackpad's varies continuously as the
+      // fingers accelerate and slow, so several identical readings in a row
+      // means a wheel -- without having to assume anything about notch size.
+      const history = recentScrollMagnitudesRef.current
+      history.push({ at: e.timeStamp, magnitude: Math.abs(e.deltaY) })
+      while (history.length > 0 && e.timeStamp - history[0].at > WHEEL_SIGNATURE_WINDOW_MS) {
+        history.shift()
+      }
+      if (history.length > WHEEL_SIGNATURE_EVENTS * 2) history.shift()
+
+      const uniform =
+        history.length >= WHEEL_SIGNATURE_EVENTS &&
+        history.every(entry => Math.abs(entry.magnitude - history[0].magnitude) < 0.5)
+      if (uniform) scrollDeviceRef.current = 'wheel'
+    }
+
+    return scrollDeviceRef.current === 'trackpad' ? 'pan' : 'zoom'
   }
 
   const wheelZoomDelta = (e: WheelEvent): number => {
@@ -556,11 +560,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     if (e.deltaMode === 1) raw *= 16       // lines -> approximate pixels
     else if (e.deltaMode === 2) raw *= 100 // pages -> approximate pixels
 
-    // A pinch reports small deltas, so it still needs amplifying relative to a
-    // wheel notch -- but only a little. A pinch fires a continuous stream of
-    // events for as long as the fingers move, so a per-event step sized like a
-    // wheel click compounds into an unusable lurch.
-    const perEvent = e.ctrlKey ? 0.003 : 0.001
+    // Two tiers, because notch size varies wildly by driver and by the system's
+    // lines-per-notch setting: ~100 is typical, but 33.33 and 53 are common and
+    // a high-resolution wheel is smaller still. Scaling a small notch by the
+    // large-notch factor is what made the wheel feel dead.
+    //
+    // A pinch is its own case. It fires a continuous stream for as long as the
+    // fingers move, so its per-event step has to be far below a notch's or it
+    // compounds across the whole zoom range in one gesture.
+    const perEvent = e.ctrlKey ? 0.003 : (Math.abs(raw) < 50 ? 0.01 : 0.001)
 
     // Clamped so one enormous event (some mice, some drivers) can't jump the
     // whole zoom range at once.
