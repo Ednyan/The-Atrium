@@ -34,9 +34,18 @@ const TRACE_RENDER_DISTANCE = 2000
 const TRACE_FADE_DISTANCE = 1500
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.40
-// One keypress of zoom. Sized so a held key travels the range in a couple of
-// seconds rather than either crawling or jumping.
-const KEYBOARD_ZOOM_STEP = 0.6
+// One keypress of zoom, and the same with Ctrl held.
+//
+// The coarse step was 0.6, which a repeating key turned into a lurch -- sized
+// back when it was the only step there was and had to cover the whole range on
+// its own. The fine step is roughly a third of it, for arriving at a particular
+// zoom rather than getting near one.
+//
+// Both are multiplied by the user's zoom sensitivity before they reach the
+// camera, so these are proportions of that setting rather than absolute
+// amounts.
+const KEYBOARD_ZOOM_STEP = 0.35
+const KEYBOARD_ZOOM_STEP_FINE = 0.12
 // How long the canvas menu will wait for the clipboard before opening without
 // its Paste Image entry. Long enough for a local read, short enough that a
 // blocked one doesn't hold the menu shut.
@@ -1175,14 +1184,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // already step through saved locations in presentation mode, and
       // splitting one key group across two unrelated jobs reads as a mistake.
       // These are also what browsers, maps and design tools use.
+      //
+      // Holding Ctrl makes the step a fine one. A key that repeats while held
+      // covers ground fast, so the coarse step is really a "get there" control
+      // and there was nothing for arriving precisely -- which is the job the
+      // keyboard is better at than any pointing device.
+      const zoomStep = e.ctrlKey ? KEYBOARD_ZOOM_STEP_FINE : KEYBOARD_ZOOM_STEP
       if (e.key === '+' || e.key === '=') {
         e.preventDefault()
-        applyZoomDelta(KEYBOARD_ZOOM_STEP)
+        applyZoomDelta(zoomStep)
         return
       }
       if (e.key === '-' || e.key === '_') {
         e.preventDefault()
-        applyZoomDelta(-KEYBOARD_ZOOM_STEP)
+        applyZoomDelta(-zoomStep)
         return
       }
       if (e.key === '0') {
