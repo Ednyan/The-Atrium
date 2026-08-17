@@ -1231,6 +1231,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // T key shortcut to open trace panel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl with a zoom key is the webview's own page zoom, and it is never
+      // wanted here -- scaling the whole interface is not what someone means by
+      // zooming a canvas. Swallowed before the typing check, since it applies
+      // just as much while a text field has focus.
+      if (e.ctrlKey && ['+', '=', '-', '_', '0'].includes(e.key)) {
+        e.preventDefault()
+      }
+
       // Don't trigger if user is typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       
@@ -2078,10 +2086,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const isOverUI = target.closest('[data-ui-element], .customize-menu, .layer-panel, select, input, textarea, button') !== null
         
         if (isOverUI) {
-          // Let the browser handle normal scrolling for UI elements
+          // Let the browser handle normal scrolling for UI elements -- but
+          // never a pinch or ctrl+scroll, which the desktop webview would take
+          // as an instruction to zoom the entire application. Scrolling a panel
+          // is meant; scaling the whole interface never is.
+          if (e.ctrlKey) e.preventDefault()
           return
         }
-        
+
         e.preventDefault()
         cameraFlyToRef.current = null // a manual gesture cancels any camera fly-to
 
