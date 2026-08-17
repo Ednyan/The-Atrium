@@ -39,6 +39,11 @@
   #   img/media https:          traces hotlink images and video from anywhere
   #                             the user pastes, which is the point of them.
   #   frame-src https:          same, for embeds. Can't be a list of hosts.
-  #   connect-src data:         ImportAtrium fetches its own data: URLs to turn
-  #                             embedded files back into blobs.
-  Content-Security-Policy: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https://rmowxvqkyxypgcbqcspy.supabase.co wss://rmowxvqkyxypgcbqcspy.supabase.co https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  #   connect-src https:        "Convert Embeds to Images" downloads the image
+  #                             behind an embed, from whatever host it lives on.
+  #                             Restricting this to Supabase blocked every one
+  #                             of those downloads, and the feature failed on
+  #                             every trace. data: is there because ImportAtrium
+  #                             fetches its own data: URLs to turn embedded
+  #                             files back into blobs.
+  Content-Security-Policy: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https: wss://rmowxvqkyxypgcbqcspy.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
