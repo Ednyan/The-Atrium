@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
@@ -373,11 +373,58 @@ function AtriumTransitionOverlay({
 // screen is fully white at the moment the atrium page takes over, whatever that
 // moment turns out to be.
 //
-// Nothing fades here at all. The fade lives on the other side of the handover,
-// in AtriumRevealOverlay, so both sides of the seam are solid white and the
-// join can't be seen no matter how long the wait was.
-function AtriumWhiteHold() {
-  return <div className="fixed inset-0 z-50 bg-white" />
+// The white itself never fades. The fade lives on the other side of the
+// handover, in AtriumRevealOverlay, so both sides of the seam are solid white
+// and the join can't be seen no matter how long the wait was.
+//
+// Only the indicator moves, and only when the wait is long enough to need one.
+// A short hold shows nothing at all -- an indicator that appears and vanishes
+// inside half a second is worse than a blank moment. Past the delay, six
+// seconds of featureless white reads as a frozen app, so it says otherwise.
+const HOLD_INDICATOR_DELAY_MS = 1200
+const HOLD_INDICATOR_FADE_MS = 500
+
+function AtriumWhiteHold({ finishing, onFinished }: { finishing: boolean; onFinished: () => void }) {
+  const [shown, setShown] = useState(false)
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setShown(true), HOLD_INDICATOR_DELAY_MS)
+    return () => clearTimeout(timeout)
+  }, [])
+
+  // The hold ends by unmounting, so an indicator still on screen would be cut
+  // rather than faded. Readiness therefore doesn't hand over directly: it fades
+  // the indicator first and hands over once it's gone. When nothing is showing
+  // -- the common case, where loading beat the delay -- there's nothing to fade
+  // and the handover is immediate, so this costs nothing in the fast path.
+  useEffect(() => {
+    if (!finishing) return
+    if (!shown) {
+      onFinished()
+      return
+    }
+    const timeout = setTimeout(onFinished, HOLD_INDICATOR_FADE_MS)
+    return () => clearTimeout(timeout)
+  }, [finishing, shown, onFinished])
+
+  return (
+    <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
+      <div
+        className="flex items-center gap-3"
+        style={{
+          opacity: shown && !finishing ? 1 : 0,
+          transition: `opacity ${HOLD_INDICATOR_FADE_MS}ms ease-in-out`,
+        }}
+      >
+        {/* Quiet, but not so quiet it can't be read: the word measures 5.45:1
+            against the white, where 4.5 is the readable minimum for text this
+            small. The mark carries the pulse and is softer, since it says the
+            same thing without having to be read. */}
+        <div className="w-1.5 h-1.5 rotate-45 border border-nier-black/55 animate-nier-pulse" />
+        <span className="text-nier-black/65 text-[9px] tracking-[0.3em] uppercase">Entering</span>
+      </div>
+    </div>
+  )
 }
 
 // The second half: the atrium page starts under solid white and clears to it.
@@ -518,6 +565,9 @@ function AppInner() {
   const [lobbyAccessError, setLobbyAccessError] = useState<string | null>(null)
   const [verifyingAccess, setVerifyingAccess] = useState(false)
   const [atriumTransitionPhase, setAtriumTransitionPhase] = useState<AtriumTransitionPhase>('loading')
+  // Set when the atrium's data has arrived (or the wait was capped). Separate
+  // from the phase because the white hold owns when it actually hands over.
+  const [atriumDataReady, setAtriumDataReady] = useState(false)
   const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
   const [enteringVideoReady, setEnteringVideoReady] = useState(false)
 
@@ -636,15 +686,26 @@ function AppInner() {
   // A max wait keeps it from hanging forever if the fetch is slow or fails: six
   // seconds of white then hands over regardless, which shows an atrium still
   // filling in but is far better than a screen that never moves.
+  //
+  // This only marks the atrium ready; the hold decides when to hand over, so
+  // that an indicator already on screen gets faded out rather than cut off.
   useEffect(() => {
-    if (atriumTransitionPhase !== 'flash') return
-    if (!tracesLoading) {
-      setAtriumTransitionPhase('ready')
+    if (atriumTransitionPhase !== 'flash') {
+      setAtriumDataReady(false)
       return
     }
-    const timeout = setTimeout(() => setAtriumTransitionPhase('ready'), 6000)
+    if (!tracesLoading) {
+      setAtriumDataReady(true)
+      return
+    }
+    const timeout = setTimeout(() => setAtriumDataReady(true), 6000)
     return () => clearTimeout(timeout)
   }, [atriumTransitionPhase, tracesLoading])
+
+  // Stable across renders: the hold runs its fade on a timeout keyed to this,
+  // and a new function identity every render would restart that timeout every
+  // render and never let it finish.
+  const handleHoldFinished = useCallback(() => setAtriumTransitionPhase('ready'), [])
 
   // Verify lobby access when trying to access via URL
   useEffect(() => {
@@ -1385,7 +1446,7 @@ function AppInner() {
       }
 
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'flash') {
-        return <AtriumWhiteHold />
+        return <AtriumWhiteHold finishing={atriumDataReady} onFinished={handleHoldFinished} />
       }
 
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase !== 'ready') {
