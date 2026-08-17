@@ -51,18 +51,6 @@
    phase -- it must NOT restart from opacity 0, which would flash back to
    black for an instant right where the video-to-overlay handoff needs to
    read as seamless. */
-@keyframes atrium-white-flash {
-  0% { opacity: 1; }
-  55% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-.atrium-flash-transition {
-  background: #ffffff;
-  opacity: 1;
-  animation: atrium-white-flash 850ms ease-out forwards;
-}
-
 body {
   margin: 0;
   padding: 0;

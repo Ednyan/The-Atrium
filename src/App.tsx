@@ -15,7 +15,7 @@ import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
 
-type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'finalizing' | 'ready'
+type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'ready'
 
 const ANIMATION_FPS = 40
 
@@ -364,8 +364,65 @@ function AtriumTransitionOverlay({
   )
 }
 
-function AtriumFlashOverlay({ onComplete }: { onComplete: () => void }) {
-  return <div className="fixed inset-0 z-50 atrium-flash-transition" onAnimationEnd={onComplete} />
+// The white the entering cinematic ends on, held.
+//
+// It used to fade itself out on a fixed 850ms timer, which meant the white
+// cleared on a schedule that had nothing to do with whether the atrium was
+// ready behind it -- on a slow machine it revealed the video's last frame, or a
+// black loading screen, before the canvas existed. Holding instead means the
+// screen is fully white at the moment the atrium page takes over, whatever that
+// moment turns out to be.
+//
+// Nothing fades here at all. The fade lives on the other side of the handover,
+// in AtriumRevealOverlay, so both sides of the seam are solid white and the
+// join can't be seen no matter how long the wait was.
+function AtriumWhiteHold() {
+  return <div className="fixed inset-0 z-50 bg-white" />
+}
+
+// The second half: the atrium page starts under solid white and clears to it.
+//
+// LobbyScene is mounted underneath from the first frame, so the canvas gets set
+// up, the traces draw and the camera settles while the white is still covering
+// everything -- what's revealed is a finished atrium rather than one assembling
+// itself.
+const ATRIUM_REVEAL_MS = 800
+
+function AtriumRevealOverlay() {
+  const [fading, setFading] = useState(false)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    // Two frames, not one: the first paints the white, the second starts the
+    // transition. Beginning the fade in the same frame the element mounts can
+    // be collapsed into a single style computation, which skips the animation
+    // and flicks the white away instantly -- the exact thing this exists to
+    // prevent.
+    let second = 0
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setFading(true))
+    })
+    return () => {
+      cancelAnimationFrame(first)
+      cancelAnimationFrame(second)
+    }
+  }, [])
+
+  // Unmounted once clear, rather than left at opacity 0 -- a full-screen
+  // element over the canvas is worth removing even when it can't be seen.
+  if (done) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 pointer-events-none"
+      style={{
+        background: '#ffffff',
+        opacity: fading ? 0 : 1,
+        transition: `opacity ${ATRIUM_REVEAL_MS}ms ease-out`,
+      }}
+      onTransitionEnd={() => setDone(true)}
+    />
+  )
 }
 
 // Local user ID constant (matches localDb.ts) — avoids importing Tauri dependencies in web mode
@@ -571,12 +628,16 @@ function AppInner() {
     tracesLoading,
   ])
 
-  // Flash always completes quickly on its own, but don't drop straight into
-  // the atrium until trace data (and pre-resolved local media) is actually
-  // ready — otherwise the flash just hides the same pop-in the user reported.
-  // A max wait keeps this from hanging if the fetch is slow or fails.
+  // The white hold waits here for the trace data (and pre-resolved local media)
+  // rather than clearing on a timer -- that's the whole point of holding it.
+  // Whatever this wait costs is spent behind solid white, so it reads as the
+  // transition taking a moment rather than as the atrium popping in unfinished.
+  //
+  // A max wait keeps it from hanging forever if the fetch is slow or fails: six
+  // seconds of white then hands over regardless, which shows an atrium still
+  // filling in but is far better than a screen that never moves.
   useEffect(() => {
-    if (atriumTransitionPhase !== 'finalizing') return
+    if (atriumTransitionPhase !== 'flash') return
     if (!tracesLoading) {
       setAtriumTransitionPhase('ready')
       return
@@ -1324,19 +1385,7 @@ function AppInner() {
       }
 
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'flash') {
-        return <AtriumFlashOverlay onComplete={() => setAtriumTransitionPhase('finalizing')} />
-      }
-
-      if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'finalizing') {
-        return (
-          <AtriumTransitionOverlay
-            title="Entering Atrium"
-            subtitle="◇ Finalizing atrium data"
-            frames={LOADING_ANIMATION_FRAMES}
-            loop={true}
-            progressClassName="h-full bg-white/80 animate-nier-slide"
-          />
-        )
+        return <AtriumWhiteHold />
       }
 
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase !== 'ready') {
@@ -1351,7 +1400,15 @@ function AppInner() {
         )
       }
 
-      return <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} />
+      // The atrium page's own half of the transition: the scene mounts under
+      // solid white, which then clears. Only after arriving through the
+      // cinematic -- opening an atrium any other way has nothing to fade from.
+      return (
+        <>
+          <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} />
+          {transitionLobbyId === route.lobbyId && <AtriumRevealOverlay />}
+        </>
+      )
     }
     
     // Still waiting for verification
