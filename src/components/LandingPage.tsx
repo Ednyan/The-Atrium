@@ -110,12 +110,12 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
     : 0
 
   return (
-    <section ref={sectionRef} className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-24 relative">
+    <section ref={sectionRef} className="flex items-center justify-center px-5 sm:px-12 pt-4 pb-24 relative">
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
           <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
-            Who keeps it running
+            Support the foundations
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -123,17 +123,23 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="grid md:grid-cols-2 gap-10 items-start">
           <div className="space-y-4">
             <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
-              The Digital Atrium is made by one person and free to use. Nothing is behind
-              a paywall, and nothing is going to be.
+              An atrium is a building, and buildings need keeping. This one is free to
+              enter and always will be — nothing here is behind a paywall, and nothing
+              is going to be.
             </p>
             <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
-              It does cost money every month, though — the database your atriums live in,
-              the email that handles new accounts, the domain it all sits on. Contributions
-              cover those, and the time that goes into building it.
+              But it stands on things that are paid for monthly: the database your
+              atriums live in, the email that lets new people through the door, the
+              domain above it. Left unpaid, none of that quietly degrades — it simply
+              stops, and everything inside goes with it.
+            </p>
+            <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
+              It's made and maintained by one person. Donations keep the lights on and
+              the work going.
             </p>
             <p className="text-nier-bg/70 text-[13px] leading-relaxed tracking-wide">
-              From €1, once or monthly. If you'd like your name on the contributors page,
-              you can choose one when you give.
+              From €1, once or monthly. Choose a name when you donate and it joins the
+              others holding the place up.
             </p>
           </div>
 
@@ -163,7 +169,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                 </>
               ) : (
                 <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-nier-bg/70">
-                  Running costs are covered by the people who use it
+                  This place is kept standing by the people who use it
                 </p>
               )}
 
@@ -208,7 +214,7 @@ function VideoShowcaseSection() {
   const [available, setAvailable] = useState(true)
 
   return (
-    <section className="flex items-center justify-center px-5 sm:px-12 py-24 relative">
+    <section className="flex items-center justify-center px-5 sm:px-12 pt-24 pb-10 relative">
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
@@ -261,7 +267,7 @@ function VideoShowcaseSection() {
 
 const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
-  { id: 'contributions', title: 'Who Keeps It Running', subtitle: 'What it costs, and who covers it' },
+  { id: 'contributions', title: 'The Foundations', subtitle: 'What holds the atrium up' },
   { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
   { id: 'how', title: 'How It Works', subtitle: 'Navigate, create, collaborate' },
   { id: 'desktop', title: 'Desktop App', subtitle: 'Your atriums, stored locally' },
