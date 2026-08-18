@@ -17,6 +17,20 @@ import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAd
 
 const RESEND_FROM = 'The Atrium <contributions@mail.scenefoundry.studio>'
 
+// The same rules create-contribution applies. An edit must not be able to put
+// something on the wall that the front door would have refused.
+const BANNED_NAME_PATTERN = /\b(fuck|shit|cunt|nigg|f[a4]g|rape|nazi|hitler)/i
+const URL_LIKE_PATTERN = /(https?:\/\/|www\.|\.(com|net|org|io|xyz)\b)/i
+const MAX_NAME_LENGTH = 40
+
+function nameProblem(name: string): string | null {
+  if (name.length === 0) return null
+  if (name.length > MAX_NAME_LENGTH) return `Names are limited to ${MAX_NAME_LENGTH} characters.`
+  if (BANNED_NAME_PATTERN.test(name)) return "That name can't be used here."
+  if (URL_LIKE_PATTERN.test(name)) return "Names can't contain web addresses."
+  return null
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -45,7 +59,7 @@ Deno.serve(async (req: Request) => {
     // here and tells everyone else nothing they couldn't already guess.
     if (!operator) return json({ error: 'Not allowed' }, 403)
 
-    const { action, id, reason } = await req.json()
+    const { action, id, reason, refund, displayName, amountEur, createdAt } = await req.json()
 
     switch (action) {
       // Everything still waiting on a decision. Rejected names keep their
@@ -59,13 +73,75 @@ Deno.serve(async (req: Request) => {
       case 'list': {
         const { data, error } = await admin
           .from('contributions')
-          .select('id, display_name, kind, name_approved, name_rejected_reason, created_at')
+          .select('id, display_name, kind, name_approved, name_rejected_reason, hidden, refunded, settled_eur_cents, created_at')
           .eq('livemode', true)
           .not('display_name', 'is', null)
           .order('created_at', { ascending: false })
           .limit(200)
         if (error) throw error
         return json({ entries: data ?? [] })
+      }
+
+      // Off the wall, still counted. Distinct from a rejection: this one was
+      // shown and then taken down, and unhide puts it back.
+      case 'hide':
+      case 'unhide': {
+        if (!id) return json({ error: 'Missing id' }, 400)
+        const { error } = await admin
+          .from('contributions')
+          .update({ hidden: action === 'hide' })
+          .eq('id', id)
+        if (error) throw error
+        return json({ ok: true })
+      }
+
+      // Gone entirely, including from the totals. The confirmation is in the
+      // interface, because this is the one action here with nothing behind it
+      // -- the row is the record, and Stripe's copy is not something this app
+      // can read back into place.
+      case 'delete': {
+        if (!id) return json({ error: 'Missing id' }, 400)
+        const { error } = await admin.from('contributions').delete().eq('id', id)
+        if (error) throw error
+        return json({ ok: true })
+      }
+
+      // Correcting what is displayed. Only the three fields the wall shows, and
+      // only ones sent -- an omitted field is left alone rather than nulled.
+      case 'edit': {
+        if (!id) return json({ error: 'Missing id' }, 400)
+
+        const patch: Record<string, unknown> = {}
+
+        if (typeof displayName === 'string') {
+          const trimmed = displayName.trim()
+          const problem = nameProblem(trimmed)
+          if (problem) return json({ error: problem }, 400)
+          patch.display_name = trimmed || null
+        }
+
+        if (amountEur !== undefined && amountEur !== null) {
+          const euros = Number(amountEur)
+          if (!Number.isFinite(euros) || euros < 0) return json({ error: 'That amount is not a number.' }, 400)
+          // Both, so the wall and the bar agree. They are separate columns
+          // because one is what the donor paid and the other is what settled in
+          // euros; an operator correcting a display has no way to distinguish
+          // them, so the correction applies to both.
+          patch.amount_cents = Math.round(euros * 100) || 1
+          patch.settled_eur_cents = Math.round(euros * 100)
+        }
+
+        if (typeof createdAt === 'string' && createdAt.trim()) {
+          const when = new Date(createdAt)
+          if (Number.isNaN(when.getTime())) return json({ error: 'That date could not be read.' }, 400)
+          patch.created_at = when.toISOString()
+        }
+
+        if (Object.keys(patch).length === 0) return json({ error: 'Nothing to change' }, 400)
+
+        const { error } = await admin.from('contributions').update(patch).eq('id', id)
+        if (error) throw error
+        return json({ ok: true })
       }
 
       case 'approve': {
@@ -88,9 +164,44 @@ Deno.serve(async (req: Request) => {
           .from('contributions')
           .update({ name_approved: false, name_rejected_reason: reason || 'Not suitable for the public list' })
           .eq('id', id)
-          .select('display_name, contact_email')
+          .select('display_name, contact_email, stripe_payment_id, refunded')
           .maybeSingle()
         if (error) throw error
+
+        // Refunding from here rather than the dashboard, when asked. A name
+        // that can't be published is sometimes a contribution nobody wants to
+        // keep, and making that a two-system errand is how it gets forgotten.
+        let refunded = false
+        let refundError = ''
+        if (refund && row?.stripe_payment_id && !row.refunded) {
+          const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
+          if (!stripeKey) {
+            refundError = 'Stripe is not configured on this project.'
+          } else {
+            try {
+              const form = new URLSearchParams()
+              form.set('payment_intent', row.stripe_payment_id)
+              const response = await fetch('https://api.stripe.com/v1/refunds', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${stripeKey}`,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: form.toString(),
+              })
+              const result = await response.json()
+              if (!response.ok) throw new Error(result?.error?.message ?? 'refund refused')
+              refunded = true
+              // Marked here as well as by the webhook. The webhook is what
+              // makes a dashboard refund count, but waiting for it would leave
+              // the operator looking at a row that still says it was paid.
+              await admin.from('contributions').update({ refunded: true }).eq('id', id)
+            } catch (error: any) {
+              refundError = error?.message ?? 'The refund could not be made.'
+              console.error('[moderate-contributors] refund failed:', error)
+            }
+          }
+        }
 
         const resendKey = Deno.env.get('RESEND_API_KEY')
         if (resendKey && row?.contact_email) {
@@ -122,7 +233,7 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        return json({ ok: true })
+        return json({ ok: true, refunded, refundError })
       }
 
       default:

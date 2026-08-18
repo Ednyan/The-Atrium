@@ -45,7 +45,21 @@ const TIERS = [
   { min: 0, label: '€1 – €4', color: '#CBCBCB', glow: 'rgba(203,203,203,0.16)' },
 ]
 
-const tierFor = (amount: number) => TIERS.find(tier => amount >= tier.min) ?? TIERS[TIERS.length - 1]
+// Monthly support has its own colour rather than a place in the amount scale.
+// It isn't a bigger version of a one-off gift, it's a different kind of thing --
+// someone who has decided to keep paying - and the wall should be able to say
+// that at a glance rather than only through the pulse.
+const MONTHLY_TIER = {
+  min: 0,
+  label: 'Monthly',
+  color: '#C77DFF',
+  glow: 'rgba(199,125,255,0.28)',
+}
+
+const tierFor = (person: { amountEur: number; isMonthly: boolean }) =>
+  person.isMonthly
+    ? MONTHLY_TIER
+    : TIERS.find(tier => person.amountEur >= tier.min) ?? TIERS[TIERS.length - 1]
 
 // Written out in full. "06" is a field in a database; "18 June 2026" is a date
 // someone gave money on, and this page is the one place that difference
@@ -277,7 +291,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
           {visible.map(({ person, x, y, width }, index) => {
-            const tier = tierFor(person.amountEur)
+            const tier = tierFor(person)
             return (
               <div
                 key={`${person.displayName}-${index}`}
@@ -378,10 +392,12 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             ))}
             <div className="flex items-center gap-2 pt-1">
               <span
-                className="w-3 h-[1px] bg-nier-bg/80"
-                style={{ animation: 'contributor-breath 3.6s ease-in-out infinite' }}
+                className="w-3 h-[1px]"
+                style={{ background: MONTHLY_TIER.color, animation: 'contributor-breath 3.6s ease-in-out infinite' }}
               />
-              <span className="text-[9px] tracking-wider text-nier-bg/80">Monthly</span>
+              <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
+                {MONTHLY_TIER.label}
+              </span>
             </div>
           </div>
         )}

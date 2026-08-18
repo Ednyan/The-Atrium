@@ -5,28 +5,51 @@ interface NameApprovalPanelProps {
   onClose: () => void
 }
 
-interface PendingName {
+interface Entry {
   id: string
   display_name: string
   kind: string
   name_approved: boolean
   name_rejected_reason: string | null
+  hidden: boolean
+  refunded: boolean
+  settled_eur_cents: number
   created_at: string
 }
 
-// Approving the names contributors chose.
+// Moderating the contributors wall.
 //
 // Only the operator ever sees the button that opens this, but that is
-// presentation. The Edge Function behind it re-checks who is asking on every
-// single request, because a hidden button is not a permission -- anyone can
-// call the URL. If this component were somehow rendered for someone else, they
-// would get a list of nothing and a 403 for every action.
+// presentation. The Edge Function behind it re-establishes who is asking on
+// every single request, because a hidden button is not a permission -- anyone
+// can call the URL. If this were somehow rendered for someone else they would
+// get an empty list and a 403 for every action.
+const DECIDED_SHOWN = 15
+
+const euros = (cents: number) => Math.round((cents ?? 0) / 100)
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
+
+// For a date input, which wants exactly this and nothing else.
+const toDateInput = (iso: string) => {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
+}
+
 export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
-  const [entries, setEntries] = useState<PendingName[] | null>(null)
+  const [entries, setEntries] = useState<Entry[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
-  const call = async (action: string, id?: string, reason?: string) => {
+  // The one being rejected, and the one being edited. Separate because they are
+  // different conversations with the operator.
+  const [rejecting, setRejecting] = useState<Entry | null>(null)
+  const [editing, setEditing] = useState<Entry | null>(null)
+  const [deleting, setDeleting] = useState<Entry | null>(null)
+
+  const call = async (action: string, body: Record<string, unknown> = {}) => {
     const baseUrl = import.meta.env.VITE_SUPABASE_URL
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
     const { data: { session } } = await supabase!.auth.getSession()
@@ -40,12 +63,12 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
         // reads to work out who is asking.
         Authorization: `Bearer ${session?.access_token ?? anonKey}`,
       },
-      body: JSON.stringify({ action, id, reason }),
+      body: JSON.stringify({ action, ...body }),
     })
 
-    const body = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(body?.error || 'Request failed')
-    return body
+    const result = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(result?.error || 'Request failed')
+    return result
   }
 
   const load = () => {
@@ -56,18 +79,14 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
 
   useEffect(load, [])
 
-  const decide = async (entry: PendingName, approve: boolean) => {
-    setBusyId(entry.id)
+  const run = async (id: string, work: () => Promise<any>) => {
+    setBusyId(id)
     setError('')
+    setNotice('')
     try {
-      if (approve) {
-        await call('approve', entry.id)
-      } else {
-        const reason = window.prompt(`Why can't "${entry.display_name}" be shown?\n\nThis is emailed to the contributor.`)
-        // Cancelled, as distinct from an empty reason.
-        if (reason === null) { setBusyId(null); return }
-        await call('reject', entry.id, reason)
-      }
+      const result = await work()
+      if (result?.refundError) setError(`Refund failed: ${result.refundError}`)
+      else if (result?.refunded) setNotice('Rejected, and the contribution was refunded.')
       load()
     } catch (e: any) {
       setError(e.message)
@@ -77,15 +96,13 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
   }
 
   const waiting = (entries ?? []).filter(e => !e.name_approved && !e.name_rejected_reason)
-  // The recent past, not the whole of it. This list exists to check a decision
-  // just made, and everything older is answered better by the page itself.
-  const DECIDED_SHOWN = 15
-  const decidedAll = (entries ?? []).filter(e => e.name_approved || e.name_rejected_reason)
+  const shown = (entries ?? []).filter(e => e.name_approved)
+  const decidedAll = (entries ?? []).filter(e => e.name_rejected_reason)
   const decided = decidedAll.slice(0, DECIDED_SHOWN)
 
   return (
     <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto" data-ui-element>
-      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-lg w-full mx-4 relative max-h-[85vh] overflow-y-auto">
+      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-xl w-full mx-4 relative max-h-[85vh] overflow-y-auto">
         <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
         <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
@@ -96,67 +113,76 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
           <h3 className="text-nier-bg tracking-[0.15em] uppercase">Contributor Names</h3>
         </div>
 
-        {entries === null && (
-          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">Loading…</p>
+        {entries === null && <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">Loading…</p>}
+
+        {/* Waiting on a decision */}
+        {entries !== null && (
+          <>
+            <SectionHeading label="Waiting" count={waiting.length} />
+            {waiting.length === 0 && (
+              <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase mb-4">Nothing waiting.</p>
+            )}
+            <div className="space-y-2 mb-5">
+              {waiting.map(entry => (
+                <Row key={entry.id} entry={entry}>
+                  <Action
+                    label="Approve"
+                    primary
+                    disabled={busyId === entry.id}
+                    onClick={() => run(entry.id, () => call('approve', { id: entry.id }))}
+                  />
+                  <Action label="Reject" disabled={busyId === entry.id} onClick={() => setRejecting(entry)} />
+                </Row>
+              ))}
+            </div>
+          </>
         )}
 
-        {entries !== null && waiting.length === 0 && (
-          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase mb-4">Nothing waiting.</p>
+        {/* On the wall */}
+        {shown.length > 0 && (
+          <>
+            <SectionHeading label="On the wall" count={shown.length} />
+            <div className="space-y-2 mb-5">
+              {shown.map(entry => (
+                <Row key={entry.id} entry={entry}>
+                  <Action
+                    label={entry.hidden ? 'Unhide' : 'Hide'}
+                    disabled={busyId === entry.id}
+                    onClick={() => run(entry.id, () => call(entry.hidden ? 'unhide' : 'hide', { id: entry.id }))}
+                  />
+                  <Action label="Edit" disabled={busyId === entry.id} onClick={() => setEditing(entry)} />
+                  <Action label="Delete" danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
+                </Row>
+              ))}
+            </div>
+          </>
         )}
 
-        <div className="space-y-2">
-          {waiting.map(entry => (
-            <div key={entry.id} className="bg-nier-black border border-nier-border/20 p-3 flex justify-between items-center gap-3">
-              <div className="min-w-0">
-                <div className="text-nier-bg text-sm tracking-wide truncate">{entry.display_name}</div>
-                <div className="text-[9px] text-nier-bg/70 tracking-wider uppercase mt-1">
-                  {entry.kind === 'monthly' ? 'Monthly' : 'One-off'} · {new Date(entry.created_at).toLocaleDateString()}
-                </div>
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  type="button"
-                  disabled={busyId === entry.id}
-                  onClick={() => decide(entry, true)}
-                  className="px-3 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30"
-                >
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  disabled={busyId === entry.id}
-                  onClick={() => decide(entry, false)}
-                  className="px-3 py-2 border border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-30"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {decided.length > 0 && (
-          <div className="mt-5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-nier-bg/80 text-[9px] tracking-[0.2em] uppercase">Recently decided</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              <span className="text-nier-bg/70 text-[9px] tracking-wider">
-                {decidedAll.length > DECIDED_SHOWN ? `${DECIDED_SHOWN} of ${decidedAll.length}` : decidedAll.length}
-              </span>
-            </div>
+        {/* Rejected, most recent first */}
+        {decidedAll.length > 0 && (
+          <>
+            <SectionHeading
+              label="Rejected"
+              count={decidedAll.length > DECIDED_SHOWN ? `${DECIDED_SHOWN} of ${decidedAll.length}` : decidedAll.length}
+            />
             <div className="space-y-1">
               {decided.map(entry => (
                 <div key={entry.id} className="flex items-center justify-between gap-3 text-[10px]">
                   <span className="text-nier-bg/80 truncate">{entry.display_name}</span>
-                  <span className={entry.name_approved ? 'text-green-400 shrink-0' : 'text-nier-bg/70 shrink-0'}>
-                    {entry.name_approved ? 'Shown' : 'Rejected'}
+                  <span className="text-nier-bg/70 shrink-0">
+                    {entry.refunded ? 'Rejected · refunded' : 'Rejected'}
                   </span>
                 </div>
               ))}
             </div>
-          </div>
+          </>
         )}
 
+        {notice && (
+          <div className="bg-nier-black border border-nier-border/20 p-3 mt-4">
+            <p className="text-green-400 text-[10px] tracking-wide">{notice}</p>
+          </div>
+        )}
         {error && (
           <div className="bg-red-900/20 border border-red-500/40 p-3 mt-4">
             <p className="text-red-400 text-[10px] tracking-wide">{error}</p>
@@ -169,6 +195,266 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
           className="w-full mt-5 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
           Close
+        </button>
+      </div>
+
+      {rejecting && (
+        <RejectDialog
+          entry={rejecting}
+          onCancel={() => setRejecting(null)}
+          onSend={(reason, refund) => {
+            const target = rejecting
+            setRejecting(null)
+            run(target.id, () => call('reject', { id: target.id, reason, refund }))
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditDialog
+          entry={editing}
+          onCancel={() => setEditing(null)}
+          onSave={patch => {
+            const target = editing
+            setEditing(null)
+            run(target.id, () => call('edit', { id: target.id, ...patch }))
+          }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDelete
+          entry={deleting}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            const target = deleting
+            setDeleting(null)
+            run(target.id, () => call('delete', { id: target.id }))
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function SectionHeading({ label, count }: { label: string; count: number | string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span className="text-nier-bg/80 text-[9px] tracking-[0.2em] uppercase">{label}</span>
+      <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+      <span className="text-nier-bg/70 text-[9px] tracking-wider">{count}</span>
+    </div>
+  )
+}
+
+function Row({ entry, children }: { entry: Entry; children: React.ReactNode }) {
+  return (
+    <div className="bg-nier-black border border-nier-border/20 p-3 flex justify-between items-center gap-3">
+      <div className="min-w-0">
+        <div className="text-nier-bg text-sm tracking-wide truncate">
+          {entry.display_name}
+          {entry.hidden && <span className="text-nier-bg/70 text-[9px] uppercase tracking-wider ml-2">hidden</span>}
+        </div>
+        <div className="text-[9px] text-nier-bg/70 tracking-wider uppercase mt-1">
+          €{euros(entry.settled_eur_cents)} · {entry.kind === 'monthly' ? 'Monthly' : 'One-off'} · {formatDate(entry.created_at)}
+        </div>
+      </div>
+      <div className="flex gap-2 shrink-0">{children}</div>
+    </div>
+  )
+}
+
+function Action({ label, onClick, disabled, primary, danger }: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  primary?: boolean
+  danger?: boolean
+}) {
+  const base = 'px-3 py-2 text-[10px] tracking-[0.1em] uppercase transition-colors disabled:opacity-30'
+  const style = primary
+    ? 'bg-nier-bg text-nier-black hover:bg-nier-bgDark'
+    : danger
+      ? 'border border-red-500/40 text-red-400 hover:border-red-500/70'
+      : 'border border-nier-border/40 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60'
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={`${base} ${style}`}>
+      {label}
+    </button>
+  )
+}
+
+// Rejecting a name, with the message that goes with it.
+//
+// A window.prompt was doing this, which gave no room to think about wording
+// someone is going to read, and no way to refund at the same time. A name that
+// can't be published is often a contribution nobody wants to keep, and making
+// that a second errand in another system is how it gets forgotten.
+function RejectDialog({ entry, onCancel, onSend }: {
+  entry: Entry
+  onCancel: () => void
+  onSend: (reason: string, refund: boolean) => void
+}) {
+  const [reason, setReason] = useState('')
+
+  return (
+    <Dialog title="Reject this name" onCancel={onCancel}>
+      <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-4">
+        <span className="text-nier-bg">{entry.display_name}</span> — €{euros(entry.settled_eur_cents)},{' '}
+        {formatDate(entry.created_at)}
+      </p>
+
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+        Why it can't be shown
+      </label>
+      <textarea
+        value={reason}
+        onChange={e => setReason(e.target.value)}
+        rows={4}
+        placeholder="Written to the contributor, so write it to them."
+        className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
+      />
+
+      <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
+        Emailed to the address Stripe collected. Their contribution still counts unless
+        you refund it.
+      </p>
+
+      <div className="flex flex-col sm:flex-row gap-2 mt-5">
+        <button
+          type="button"
+          onClick={() => onSend(reason.trim(), false)}
+          className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+        >
+          Send
+        </button>
+        <button
+          type="button"
+          onClick={() => onSend(reason.trim(), true)}
+          disabled={entry.refunded}
+          className="flex-1 py-3 border border-red-500/50 text-red-400 text-[10px] tracking-[0.15em] uppercase hover:border-red-500/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          {entry.refunded ? 'Already refunded' : 'Send & refund'}
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
+function EditDialog({ entry, onCancel, onSave }: {
+  entry: Entry
+  onCancel: () => void
+  onSave: (patch: { displayName: string; amountEur: number; createdAt: string }) => void
+}) {
+  const [displayName, setDisplayName] = useState(entry.display_name ?? '')
+  const [amount, setAmount] = useState(String(euros(entry.settled_eur_cents)))
+  const [date, setDate] = useState(toDateInput(entry.created_at))
+
+  return (
+    <Dialog title="Edit contribution" onCancel={onCancel}>
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Name</label>
+      <input
+        value={displayName}
+        onChange={e => setDisplayName(e.target.value)}
+        className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide focus:border-nier-border/60 transition-colors mb-4"
+      />
+
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Amount (€)</label>
+      <input
+        value={amount}
+        onChange={e => setAmount(e.target.value)}
+        inputMode="decimal"
+        className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide focus:border-nier-border/60 transition-colors mb-4"
+      />
+
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Date</label>
+      <input
+        type="date"
+        value={date}
+        onChange={e => setDate(e.target.value)}
+        className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide focus:border-nier-border/60 transition-colors"
+      />
+
+      <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
+        Changes what this app shows, not what Stripe recorded. Editing an amount makes
+        the bar disagree with the money that actually arrived.
+      </p>
+
+      <button
+        type="button"
+        onClick={() => onSave({ displayName, amountEur: Number(amount.replace(',', '.')), createdAt: date })}
+        className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+      >
+        Save
+      </button>
+    </Dialog>
+  )
+}
+
+function ConfirmDelete({ entry, onCancel, onConfirm }: {
+  entry: Entry
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog title="Delete this contribution" onCancel={onCancel}>
+      <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed">
+        <span className="text-nier-bg">{entry.display_name}</span> — €{euros(entry.settled_eur_cents)},{' '}
+        {formatDate(entry.created_at)}
+      </p>
+      <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mt-3">
+        This removes the row from the database entirely: off the wall, and out of the
+        totals. It cannot be undone from here, and no money moves — Stripe keeps its own
+        record either way.
+      </p>
+      <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
+        To take a name down without losing the contribution, use Hide.
+      </p>
+
+      <div className="flex gap-2 mt-5">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:text-nier-bg transition-colors"
+        >
+          Keep it
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="flex-1 py-3 bg-red-900/40 border border-red-500/60 text-red-300 text-[10px] tracking-[0.15em] uppercase hover:bg-red-900/60 transition-colors"
+        >
+          Delete permanently
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
+function Dialog({ title, children, onCancel }: {
+  title: string
+  children: React.ReactNode
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000400]" data-ui-element>
+      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative max-h-[85vh] overflow-y-auto">
+        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+          <h3 className="text-nier-bg tracking-[0.15em] uppercase">{title}</h3>
+        </div>
+
+        {children}
+
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-full mt-3 py-2 text-nier-bg/70 text-[10px] tracking-[0.15em] uppercase hover:text-nier-bg transition-colors"
+        >
+          Cancel
         </button>
       </div>
     </div>
