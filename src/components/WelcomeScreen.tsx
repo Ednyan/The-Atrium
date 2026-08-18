@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
-import ContributorsPanel from './ContributorsPanel'
 import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
 import NameApprovalPanel from './NameApprovalPanel'
@@ -21,7 +20,6 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
-  const [showContributors, setShowContributors] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
   const [showNameApproval, setShowNameApproval] = useState(false)
   // Whether the operator's entry point is shown at all. Presentation only: the
@@ -471,13 +469,12 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               Deliberately tiny and only rendered once there is data: this
               screen is height-constrained and was cut off on short laptops
               before, so nothing here may claim vertical space it hasn't
-              earned. Clicking it opens the same panel the menu button does --
-              a bar that fills is an invitation to look, and it should lead
-              somewhere. */}
+              earned. Clicking it goes where the menu row goes -- a bar that
+              fills is an invitation to look, and it should lead somewhere. */}
           {contributions.month && contributions.month.goalCents > 0 && (
             <button
               type="button"
-              onClick={() => setShowContributors(true)}
+              onClick={() => openContributors('/welcome')}
               className="w-full group text-left"
             >
               <div className="flex items-baseline justify-between mb-1">
@@ -532,12 +529,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
       </div>
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
-      {showContributors && (
-        <ContributorsPanel
-          onClose={() => setShowContributors(false)}
-          onContribute={() => { setShowContributors(false); setShowContribute(true) }}
-        />
-      )}
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
       {showNameApproval && <NameApprovalPanel onClose={() => setShowNameApproval(false)} />}
       {showAppeal && (

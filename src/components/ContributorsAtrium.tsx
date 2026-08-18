@@ -36,11 +36,14 @@ const TIERS = [
 
 const tierFor = (amount: number) => TIERS.find(tier => amount >= tier.min) ?? TIERS[TIERS.length - 1]
 
+// Written out in full. "06" is a field in a database; "18 June 2026" is a date
+// someone gave money on, and this page is the one place that difference
+// matters.
 const formatDate = (iso: string) => {
   const date = new Date(iso)
   return Number.isNaN(date.getTime())
     ? ''
-    : date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 export default function ContributorsAtrium({ onClose, onContribute }: ContributorsAtriumProps) {
