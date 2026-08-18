@@ -11,7 +11,16 @@ import {
 interface ContributorsAtriumProps {
   onClose: () => void
   onContribute: () => void
+  // Arriving back from checkout. Thanks is shown over the wall rather than on a
+  // page of its own, so the first thing a new contributor sees is the thing
+  // they have just joined.
+  thanks?: boolean
 }
+
+// Long enough to be read and felt, short enough not to be in the way of the
+// page it is covering.
+const THANKS_FADE_MS = 900
+const THANKS_HOLD_MS = 2600
 
 // The people who paid for this, drawn as an atrium of their own.
 //
@@ -48,9 +57,26 @@ const formatDate = (iso: string) => {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-export default function ContributorsAtrium({ onClose, onContribute }: ContributorsAtriumProps) {
+export default function ContributorsAtrium({ onClose, onContribute, thanks = false }: ContributorsAtriumProps) {
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
+
+  // Fades up over the wall, holds, fades away, and leaves the smaller note
+  // behind -- the part that answers "so where is my name?".
+  const [thanksVisible, setThanksVisible] = useState(false)
+  const [thanksDone, setThanksDone] = useState(!thanks)
+  useEffect(() => {
+    if (!thanks) return
+    // Next frame, so the element paints at zero before it starts moving.
+    const up = requestAnimationFrame(() => setThanksVisible(true))
+    const down = setTimeout(() => setThanksVisible(false), THANKS_FADE_MS + THANKS_HOLD_MS)
+    const finish = setTimeout(() => setThanksDone(true), THANKS_FADE_MS * 2 + THANKS_HOLD_MS)
+    return () => {
+      cancelAnimationFrame(up)
+      clearTimeout(down)
+      clearTimeout(finish)
+    }
+  }, [thanks])
 
   // The operator moderates this page, so their action here is approving the
   // names on it -- not donating to themselves. One button in one place, and
@@ -382,6 +408,48 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
         <span className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-black/40" />
         {isOperator ? '◇ Contributor Names' : '◇ Donate'}
       </button>
+
+      {/* The thanks itself: large, centred, over everything, and gone on its
+          own. Nothing to dismiss -- a contributor should not have to close a
+          message thanking them. */}
+      {thanks && !thanksDone && (
+        <div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{
+            opacity: thanksVisible ? 1 : 0,
+            transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
+            background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(25,25,25,0.92), rgba(25,25,25,0.55) 70%, transparent)',
+          }}
+        >
+          <div className="text-center px-6">
+            <div className="flex items-center justify-center gap-5 mb-5">
+              <div className="w-16 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
+              <div className="w-2 h-2 rotate-45 border border-nier-border/70" />
+              <div className="w-16 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
+            </div>
+            <h2 className="text-nier-bg text-[clamp(2rem,7vw,4.5rem)] font-extralight tracking-[0.3em] uppercase">
+              Thank you
+            </h2>
+          </div>
+        </div>
+      )}
+
+      {/* Stays after the thanks has gone, because it answers a question the
+          contributor is about to have: their name is not on the wall yet. */}
+      {thanks && (
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-[3.5rem] max-w-md px-6 text-center pointer-events-none"
+          style={{
+            opacity: thanksDone ? 1 : 0,
+            transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
+          }}
+        >
+          <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed">
+            If you chose a name, it appears here beside the others once it has been
+            checked. Stripe has emailed you a receipt.
+          </p>
+        </div>
+      )}
 
       {showNameApproval && <NameApprovalPanel onClose={() => setShowNameApproval(false)} />}
     </div>

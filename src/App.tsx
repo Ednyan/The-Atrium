@@ -6,7 +6,6 @@ import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
 import DesktopIntro from './components/DesktopIntro'
-import ContributedScreen from './components/ContributedScreen'
 import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
 import { contributorsReturnPath } from './lib/contributorsRoute'
@@ -1302,6 +1301,34 @@ function AppInner() {
   }
 
   // If not authenticated, only allow landing and login pages
+  // Both public, and checked before authentication rather than after.
+  //
+  // Donating deliberately needs no account, so Stripe returns people here who
+  // may never have signed in -- and the unauthenticated branch below answers
+  // every route with the landing page. That is why no thank-you appeared: you
+  // paid, and the app showed you its front door.
+  //
+  // The contributors page is public for the same reason. It is a wall of names,
+  // and asking someone to sign in to read who paid for a free app would be
+  // absurd.
+  //
+  // Returning from checkout lands on that wall rather than on a page of its
+  // own: the thanks belongs over the thing being joined, not beside it.
+  if (currentPage === 'contributed' || currentPage === 'contributors') {
+    return (
+      <>
+        <ContributorsAtrium
+          thanks={currentPage === 'contributed'}
+          onClose={() => navigate(contributorsReturnPath())}
+          onContribute={() => setShowContributeFromContributors(true)}
+        />
+        {showContributeFromContributors && (
+          <ContributePanel onClose={() => setShowContributeFromContributors(false)} />
+        )}
+      </>
+    )
+  }
+
   if (!isAuthenticated) {
     // In desktop mode, never show auth/landing (auto-auth handles it)
     if (isDesktop) {
@@ -1376,23 +1403,6 @@ function AppInner() {
     return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} />
   }
 
-  if (currentPage === 'contributed') {
-    return <ContributedScreen onContinue={() => navigate('/welcome')} />
-  }
-
-  if (currentPage === 'contributors') {
-    return (
-      <>
-        <ContributorsAtrium
-          onClose={() => navigate(contributorsReturnPath())}
-          onContribute={() => setShowContributeFromContributors(true)}
-        />
-        {showContributeFromContributors && (
-          <ContributePanel onClose={() => setShowContributeFromContributors(false)} />
-        )}
-      </>
-    )
-  }
   
   if (currentPage === 'browse') {
     return (
