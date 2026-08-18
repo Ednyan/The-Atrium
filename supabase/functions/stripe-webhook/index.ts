@@ -142,6 +142,10 @@ Deno.serve(async (req: Request) => {
           contact_email: session.customer_details?.email ?? null,
           stripe_event_id: event.id,
           stripe_payment_id: session.payment_intent ?? session.id,
+          // Stripe says so on every event. The public views count only live
+          // rows, so test payments and the sample event from the webhook page
+          // land here without putting money on the bar that nobody gave.
+          livemode: event.livemode === true,
         })
         if (error) throw error
         return ok()
@@ -173,6 +177,7 @@ Deno.serve(async (req: Request) => {
           contact_email: invoice.customer_email ?? null,
           stripe_event_id: event.id,
           stripe_payment_id: invoice.payment_intent ?? invoice.id,
+          livemode: event.livemode === true,
         })
         if (error) throw error
         return ok()

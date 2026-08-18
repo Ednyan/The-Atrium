@@ -58,11 +58,21 @@ CREATE TABLE IF NOT EXISTS public.contributions (
   -- stays honest, and excluded from every public total below.
   refunded boolean NOT NULL DEFAULT false,
 
+  -- Whether this came from Stripe's live mode or test mode. There is one
+  -- database behind both, so a test payment -- or the sample event Stripe sends
+  -- from the webhook page -- writes a row exactly like a real one. Recorded so
+  -- the public views can ignore them: testing the payment flow should not put
+  -- money on the bar that nobody gave.
+  --
+  -- Defaults to false, so anything written without saying is treated as a test
+  -- rather than counted.
+  livemode boolean NOT NULL DEFAULT false,
+
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS contributions_created_at_idx ON public.contributions (created_at DESC);
-CREATE INDEX IF NOT EXISTS contributions_public_idx ON public.contributions (name_approved, refunded);
+CREATE INDEX IF NOT EXISTS contributions_public_idx ON public.contributions (livemode, name_approved, refunded);
 
 ALTER TABLE public.contributions ENABLE ROW LEVEL SECURITY;
 
@@ -83,7 +93,8 @@ WITH (security_invoker = false) AS
     bool_or(kind = 'monthly') AS is_monthly,
     min(created_at) AS first_contributed_at
   FROM public.contributions
-  WHERE name_approved
+  WHERE livemode
+    AND name_approved
     AND NOT refunded
     AND display_name IS NOT NULL
   GROUP BY trim(display_name)
@@ -107,7 +118,8 @@ WITH (security_invoker = false) AS
     coalesce(sum(settled_eur_cents), 0)::bigint AS total_cents,
     count(*)::bigint AS contribution_count
   FROM public.contributions
-  WHERE NOT refunded
+  WHERE livemode
+    AND NOT refunded
     AND created_at >= date_trunc('month', now());
 
 -- All-time, kept separate: useful on a thank-you page, and not what the bar
@@ -118,7 +130,8 @@ WITH (security_invoker = false) AS
     coalesce(sum(settled_eur_cents), 0)::bigint AS total_cents,
     count(*)::bigint AS contribution_count
   FROM public.contributions
-  WHERE NOT refunded;
+  WHERE livemode
+    AND NOT refunded;
 
 GRANT SELECT ON public.contributors_public TO anon, authenticated;
 GRANT SELECT ON public.contributions_month TO anon, authenticated;
