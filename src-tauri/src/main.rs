@@ -473,6 +473,123 @@ fn move_tree_into(
     Ok(())
 }
 
+// Downloads a remote image so an embed can be converted into a stored one.
+//
+// This exists because the webview can't do it. Fetching an image from another
+// origin is governed by CORS, and a host that doesn't send the header refuses
+// the read -- while the very same image loads perfectly in an <img> tag, since
+// displaying is allowed and reading the pixels is not. Rust isn't a browser and
+// isn't bound by any of that.
+//
+// Nothing new is revealed to the remote host by this. The app already requests
+// that exact URL to show the embed; this asks for the same bytes from the same
+// place. What changes is only that the answer can be kept.
+//
+// The guards below are about the other direction: an atrium is shared, so its
+// embed URLs are written by other people, and "download whatever this says"
+// pointed at 127.0.0.1 or 192.168.1.1 would make this machine probe its own
+// network on someone else's behalf. Nothing here should be able to reach
+// anything the open internet couldn't.
+const MAX_DOWNLOAD_BYTES: u64 = 32 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_SECS: u64 = 30;
+
+fn address_is_reachable_from_anywhere(ip: &std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_unspecified()
+                // 100.64.0.0/10, carrier-grade NAT, and 169.254.169.254 lives in
+                // link-local above -- the cloud metadata address every SSRF
+                // write-up starts with.
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 0x40))
+        }
+        std::net::IpAddr::V6(v6) => {
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                // Unique-local (fc00::/7) and link-local (fe80::/10).
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+// Resolved rather than pattern-matched on the hostname: a name is free to point
+// wherever it likes, so the only meaningful question is what it actually
+// resolves to right now.
+fn url_is_safe_to_fetch(url: &reqwest::Url) -> bool {
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return false;
+    }
+
+    let host = match url.host_str() {
+        Some(host) => host,
+        None => return false,
+    };
+    let port = url.port_or_known_default().unwrap_or(443);
+
+    match std::net::ToSocketAddrs::to_socket_addrs(&(host, port)) {
+        Ok(addresses) => {
+            let mut any = false;
+            for address in addresses {
+                any = true;
+                if !address_is_reachable_from_anywhere(&address.ip()) {
+                    return false;
+                }
+            }
+            any
+        }
+        Err(_) => false,
+    }
+}
+
+#[tauri::command]
+async fn download_remote_image(url: String) -> Result<tauri::ipc::Response, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "That isn't a valid URL".to_string())?;
+    if !url_is_safe_to_fetch(&parsed) {
+        return Err("That address can't be downloaded from".to_string());
+    }
+
+    // Every redirect hop is checked too. A public URL that forwards to an
+    // internal one would otherwise walk straight past the check above.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(DOWNLOAD_TIMEOUT_SECS))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 5 {
+                attempt.stop()
+            } else if url_is_safe_to_fetch(attempt.url()) {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client.get(parsed).send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("The host answered {}", response.status().as_u16()));
+    }
+
+    // Checked before reading rather than after, where it's stated.
+    if let Some(length) = response.content_length() {
+        if length > MAX_DOWNLOAD_BYTES {
+            return Err("That image is too large".to_string());
+        }
+    }
+
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    // And again after, since content-length is a claim rather than a promise.
+    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
+        return Err("That image is too large".to_string());
+    }
+
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
@@ -501,7 +618,8 @@ fn main() {
             move_path,
             remove_path,
             rename_path,
-            consolidate_runtime_media
+            consolidate_runtime_media,
+            download_remote_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
