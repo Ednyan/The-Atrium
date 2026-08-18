@@ -7,6 +7,9 @@ import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
+import ContributorsPanel from './ContributorsPanel'
+import ContributePanel from './ContributePanel'
+import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
@@ -58,6 +61,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   // through a folder picker rather than the browser's download machinery.
   const [showExport, setShowExport] = useState(false)
   const [showVaultRecovery, setShowVaultRecovery] = useState(false)
+  const [showContributors, setShowContributors] = useState(false)
+  const [showContribute, setShowContribute] = useState(false)
+  // Cache first, refreshed behind: the line below the sections is drawn on the
+  // first frame and works offline, like the one on the welcome screen.
+  const [contributions, setContributions] = useState<ContributionsData>(() => getCachedContributions())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vaultPath, setVaultPath] = useState<string | null>(null)
@@ -126,6 +134,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     
     clearAndLoad()
   }, [])
+
+  useEffect(() => startContributionsRefresh(setContributions), [])
 
   useEffect(() => {
     if (!isDesktop) return
@@ -1117,6 +1127,40 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             </section>
           )}
 
+          {/* The quiet permanent one.
+
+              A line, not a panel, and nowhere near the atriums themselves --
+              this is the page people pass through, not the canvas they work
+              on. It shows the month's progress rather than asking for
+              anything, because a bar that is filling is a better invitation
+              than a request, and clicking it leads to the whole story rather
+              than straight to a payment form. Hidden entirely until there is
+              data, so a machine that has never been online sees nothing. */}
+          {contributions.month && contributions.month.goalCents > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowContributors(true)}
+              className="w-full group text-left mb-2"
+            >
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg tracking-[0.15em] uppercase transition-colors">
+                  ◇ Keeping this running — this month
+                </span>
+                <span className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg tracking-wider transition-colors">
+                  {Math.round(contributions.month.totalCents / 100)} / {Math.round(contributions.month.goalCents / 100)} €
+                </span>
+              </div>
+              <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden">
+                <div
+                  className="h-full bg-nier-bg/80 group-hover:bg-nier-bg transition-all duration-700 ease-out"
+                  style={{
+                    width: `${Math.min(100, (contributions.month.totalCents / contributions.month.goalCents) * 100)}%`,
+                  }}
+                />
+              </div>
+            </button>
+          )}
+
           {/* Public Atriums */}
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -1345,6 +1389,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
         />
       )}
+
+      {showContributors && (
+        <ContributorsPanel
+          onClose={() => setShowContributors(false)}
+          onContribute={() => { setShowContributors(false); setShowContribute(true) }}
+        />
+      )}
+      {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
 
       {showVaultRecovery && (
         <VaultRecoveryPanel

@@ -389,6 +389,19 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               </button>
             )}
 
+            {/* Contributing is its own row rather than something found inside
+                the contributors list. Someone who has decided to give should
+                not have to work out that the way there is through a page about
+                other people. */}
+            <button
+              onClick={() => setShowContribute(true)}
+              onMouseEnter={() => setIsHovered('contribute')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="menu-row"
+            >
+              <span className="relative z-10">◇ Contribute</span>
+            </button>
+
             {/* Contributors, on both platforms -- who paid for this is the same
                 question wherever the app is running. */}
             <button
