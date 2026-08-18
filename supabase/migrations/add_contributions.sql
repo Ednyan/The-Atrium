@@ -14,6 +14,15 @@ CREATE TABLE IF NOT EXISTS public.contributions (
   amount_cents integer NOT NULL CHECK (amount_cents > 0),
   currency text NOT NULL DEFAULT 'eur',
 
+  -- The same payment as it actually landed, in euros. Stripe settles into the
+  -- account currency and reports what arrived on the balance transaction, so
+  -- this is a recorded fact rather than a conversion done here with a rate
+  -- guessed after the event.
+  --
+  -- The monthly bar sums this. A goal of 50 euros that silently ignored dollars
+  -- would under-count real support and read as though nobody gave.
+  settled_eur_cents integer NOT NULL CHECK (settled_eur_cents >= 0),
+
   -- 'one_time' or 'monthly'. A monthly supporter writes one row per successful
   -- charge, so the bar counts what actually arrived rather than what was
   -- promised.
@@ -80,19 +89,39 @@ WITH (security_invoker = false) AS
   GROUP BY trim(display_name)
   ORDER BY min(created_at) ASC;
 
--- The bar. Net of refunds, and per currency, since adding euros to dollars
--- would be a number that means nothing.
-CREATE OR REPLACE VIEW public.contributions_totals
+-- The bar: this calendar month against the monthly goal, net of refunds.
+--
+-- Deliberately one row with no GROUP BY, so it returns a row even in a month
+-- with no donations yet -- the bar should read zero rather than have nothing to
+-- render.
+--
+-- The goal is a literal in the view rather than a constant in the app, so it
+-- can be changed with one statement and every client picks it up on its next
+-- refresh. A number compiled into a released desktop build would go stale on
+-- every machine that hadn't updated.
+CREATE OR REPLACE VIEW public.contributions_month
 WITH (security_invoker = false) AS
   SELECT
-    currency,
-    sum(amount_cents)::bigint AS total_cents,
+    date_trunc('month', now()) AS month_start,
+    5000::bigint AS goal_cents,
+    coalesce(sum(settled_eur_cents), 0)::bigint AS total_cents,
     count(*)::bigint AS contribution_count
   FROM public.contributions
   WHERE NOT refunded
-  GROUP BY currency;
+    AND created_at >= date_trunc('month', now());
+
+-- All-time, kept separate: useful on a thank-you page, and not what the bar
+-- measures.
+CREATE OR REPLACE VIEW public.contributions_totals
+WITH (security_invoker = false) AS
+  SELECT
+    coalesce(sum(settled_eur_cents), 0)::bigint AS total_cents,
+    count(*)::bigint AS contribution_count
+  FROM public.contributions
+  WHERE NOT refunded;
 
 GRANT SELECT ON public.contributors_public TO anon, authenticated;
+GRANT SELECT ON public.contributions_month TO anon, authenticated;
 GRANT SELECT ON public.contributions_totals TO anon, authenticated;
 
 COMMENT ON TABLE public.contributions IS 'One row per completed donation. Written only by the Stripe webhook (service role); read publicly only through contributors_public and contributions_totals.';
