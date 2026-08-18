@@ -16,7 +16,15 @@
 -- limitation and an acceptable one -- names are approved by hand, and that is
 -- the moment to notice a collision.
 
-CREATE OR REPLACE VIEW public.contributors_public
+-- Dropped rather than replaced. CREATE OR REPLACE VIEW can only append columns
+-- to the end of an existing view; it cannot rename or reorder them, and this
+-- changes both. Postgres refuses with "cannot change name of view column",
+-- which reads like a syntax problem and isn't one.
+--
+-- Dropping loses the grants with the view, so they are re-issued below.
+DROP VIEW IF EXISTS public.contributors_public;
+
+CREATE VIEW public.contributors_public
 WITH (security_invoker = false) AS
   SELECT
     trim(display_name) AS display_name,
