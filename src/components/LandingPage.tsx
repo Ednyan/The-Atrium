@@ -25,6 +25,10 @@ interface Section {
 // stays in the NieR greyscale family while still sitting a step brighter
 // than nier-bg, so glows and the filled CTA read as light, not colour. The
 // two real hues only ever appear alongside it in the feature rows.
+// The same orange the top contribution tier is drawn in, so the button and the
+// traces it produces read as one idea across two pages.
+const DONATE_ORANGE = '#FF8A3D'
+
 const ACCENT = {
   silver: '#D9D9D9',
   emerald: '#7FD1A6',
@@ -164,12 +168,21 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
               )}
 
               <div className="flex flex-col sm:flex-row gap-2 mt-6">
+                {/* The orange lives here rather than on the contributors
+                    page. This section has to earn attention among six others
+                    on a page people scroll past; the contributors page has
+                    nothing to compete with and shouldn't outshout the names
+                    it exists to show. */}
                 <button
                   type="button"
                   onClick={() => setShowContribute(true)}
-                  className="flex-1 py-3 bg-nier-bg text-nier-black font-mono text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                  className="flex-1 py-3 text-nier-black font-mono text-[10px] tracking-[0.15em] uppercase transition-transform hover:scale-[1.03]"
+                  style={{
+                    background: DONATE_ORANGE,
+                    boxShadow: `0 0 24px ${DONATE_ORANGE}44, 0 0 56px ${DONATE_ORANGE}22`,
+                  }}
                 >
-                  Contribute
+                  Donate
                 </button>
                 <button
                   type="button"

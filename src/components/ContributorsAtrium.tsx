@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createWheelGestures } from '../lib/canvasGestures'
+import { supabase, isDesktop } from '../lib/supabase'
+import NameApprovalPanel from './NameApprovalPanel'
 import {
   getCachedContributions,
   startContributionsRefresh,
@@ -49,6 +51,27 @@ const formatDate = (iso: string) => {
 export default function ContributorsAtrium({ onClose, onContribute }: ContributorsAtriumProps) {
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
+
+  // The operator moderates this page, so their action here is approving the
+  // names on it -- not donating to themselves. One button in one place, and
+  // which one depends on who is looking.
+  //
+  // Presentation only: the endpoint behind the panel re-establishes who is
+  // asking on every request. Web only, since it needs a signed-in Supabase
+  // session and the desktop app has none.
+  const [isOperator, setIsOperator] = useState(false)
+  const [showNameApproval, setShowNameApproval] = useState(false)
+  useEffect(() => {
+    if (isDesktop || !supabase) return
+    let cancelled = false
+    ;(supabase as any)
+      .rpc('is_platform_admin')
+      .then(({ data: allowed }: { data: boolean | null }) => {
+        if (!cancelled) setIsOperator(allowed === true)
+      })
+      .catch(() => { /* signed out, or not deployed: stay hidden */ })
+    return () => { cancelled = true }
+  }, [])
 
   // Where the view is looking. Kept in state rather than a ref because the
   // whole page is one transform -- there is no per-frame animation to protect,
@@ -335,29 +358,32 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
         </div>
       )}
 
-      {/* Contribute, bottom right, where an atrium keeps Leave a Trace.
+      {/* Bottom right, where an atrium keeps Leave a Trace: the one action this
+          page offers.
           
-          The loudest thing on the page, deliberately. Everything else here is
-          quiet grey on black; this carries the colour of the top tier, so the
-          button and the traces it produces are visibly the same idea. The glow
-          breathes at the same slow rate the monthly traces do -- the page has
-          one heartbeat rather than several. */}
+          White rather than the top tier's orange. The traces are the colourful
+          thing here and the button should not compete with the people it is
+          about -- white on black is loud enough in a room this dark. The orange
+          belongs on the landing page, where it has a whole section to carry.
+          
+          An operator gets the moderation button in the same place instead.
+          Approving names is their action on this page; donating to themselves
+          is not, and showing both would make the important one harder to
+          find. */}
       <button
         type="button"
-        onClick={onContribute}
-        className="group absolute bottom-6 right-6 px-7 py-4 text-nier-black text-[11px] tracking-[0.2em] uppercase transition-transform hover:scale-[1.04] active:scale-[0.99]"
-        style={{
-          background: TIERS[0].color,
-          boxShadow: `0 0 28px ${TIERS[0].glow}, 0 0 64px ${TIERS[0].glow}`,
-          animation: 'contributor-glow 3.6s ease-in-out infinite',
-        }}
+        onClick={isOperator ? () => setShowNameApproval(true) : onContribute}
+        className="absolute bottom-6 right-6 px-7 py-4 bg-nier-bg text-nier-black text-[11px] tracking-[0.2em] uppercase transition-transform hover:scale-[1.04] active:scale-[0.99]"
+        style={{ boxShadow: '0 0 28px rgba(203,203,203,0.22), 0 0 64px rgba(203,203,203,0.12)' }}
       >
         <span className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-black/40" />
         <span className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-black/40" />
         <span className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-black/40" />
         <span className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-black/40" />
-        ◇ Contribute
+        {isOperator ? '◇ Contributor Names' : '◇ Donate'}
       </button>
+
+      {showNameApproval && <NameApprovalPanel onClose={() => setShowNameApproval(false)} />}
     </div>
   )
 }

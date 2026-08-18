@@ -3,7 +3,6 @@ import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
-import NameApprovalPanel from './NameApprovalPanel'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
@@ -21,26 +20,6 @@ interface WelcomeScreenProps {
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
-  const [showNameApproval, setShowNameApproval] = useState(false)
-  // Whether the operator's entry point is shown at all. Presentation only: the
-  // function behind that panel re-establishes who is asking on every request,
-  // because a hidden button has never been a permission. Web only, since the
-  // moderation endpoint needs a signed-in Supabase session and the desktop app
-  // has none.
-  const [isOperator, setIsOperator] = useState(false)
-  useEffect(() => {
-    if (isDesktop || !supabase) return
-    let cancelled = false
-    ;(supabase as any)
-      .rpc('is_platform_admin')
-      .then(({ data }: { data: boolean | null }) => {
-        if (!cancelled) setIsOperator(data === true)
-      })
-      .catch(() => {
-        // Signed out, or the function isn't deployed. Stay hidden.
-      })
-    return () => { cancelled = true }
-  }, [])
   // Evaluated once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
   // launch, and this must never appear over the canvas.
@@ -375,19 +354,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <span className="relative z-10">◇ Profile Settings</span>
             </button>
 
-            {/* Operator only. Invisible to everyone else, and refused to them
-                even if it weren't. */}
-            {isOperator && (
-              <button
-                onClick={() => setShowNameApproval(true)}
-                onMouseEnter={() => setIsHovered('names')}
-                onMouseLeave={() => setIsHovered(null)}
-                className="menu-row"
-              >
-                <span className="relative z-10">◇ Contributor Names</span>
-              </button>
-            )}
-
             {/* Contributors, on both platforms -- who paid for this is the same
                 question wherever the app is running. */}
             <button
@@ -530,7 +496,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
-      {showNameApproval && <NameApprovalPanel onClose={() => setShowNameApproval(false)} />}
       {showAppeal && (
         <SupportAppeal
           onClose={() => setShowAppeal(false)}

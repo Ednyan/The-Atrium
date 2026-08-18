@@ -57,7 +57,7 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
           onClick={() => answer('donated')}
           className="w-full py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
         >
-          Contribute
+          Donate
         </button>
 
         <div className="flex gap-2 mt-2">

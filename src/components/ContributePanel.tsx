@@ -69,7 +69,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">Contribute</h3>
+          <h3 className="text-nier-bg tracking-[0.15em] uppercase">Donate</h3>
         </div>
 
         {/* One-off or monthly */}
@@ -137,7 +137,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
         ) : (
           <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
-            Shown with the total you've given and the month you started. Checked by a
+            Shown with the total you've donated and the month you started. Checked by a
             person before it appears — if it can't be used, you'll hear why by email
             rather than simply not seeing it. Leave it empty to give anonymously.
           </p>
@@ -155,7 +155,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           disabled={busy || !amountValid || !!nameProblem || !supabase}
           className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {busy ? 'Opening…' : monthly ? `Give €${chosenAmount || 0} monthly` : `Give €${chosenAmount || 0}`}
+          {busy ? 'Opening…' : monthly ? `Donate €${chosenAmount || 0} monthly` : `Donate €${chosenAmount || 0}`}
         </button>
 
         <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
