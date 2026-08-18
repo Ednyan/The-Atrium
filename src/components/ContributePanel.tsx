@@ -138,8 +138,9 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         ) : (
           <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
             Shown with the total you've donated and the month you started. Checked by a
-            person before it appears — if it can't be used, you'll hear why by email
-            rather than simply not seeing it. Leave it empty to give anonymously.
+            person before it appears — if it's offensive, or can't be used for some
+            other reason, you'll hear why by email. Leave it empty and your donation
+            stays anonymous.
           </p>
         )}
 
