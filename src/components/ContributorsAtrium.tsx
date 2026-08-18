@@ -106,6 +106,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [zoom, setZoom] = useState(1)
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [legendOpen, setLegendOpen] = useState(true)
 
   // The same reading an atrium uses -- shared, so a mouse zooms, two fingers
   // pan and a pinch zooms here exactly as they do on the canvas.
@@ -242,8 +243,6 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   }
 
   const month = data.month
-  const usedTiers = TIERS.filter(tier => placed.some(({ person }) => tierFor(person.amountEur) === tier))
-  const hasMonthly = placed.some(({ person }) => person.isMonthly)
 
   return (
     <div className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none" data-ui-element>
@@ -345,26 +344,48 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         ← Back
       </button>
 
-      {/* Legend, bottom left, where an atrium keeps its controls */}
-      {usedTiers.length > 0 && (
-        <div className="absolute bottom-6 left-6 pointer-events-none">
-          <div className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase mb-2">Contribution</div>
-          <div className="space-y-1">
-            {usedTiers.map(tier => (
+      {/* Bottom left, where an atrium keeps its controls.
+
+          Every rank is listed, not only the ones currently on the wall. The
+          legend answers "what would mine look like?" as much as "what am I
+          seeing?", and hiding the ranks nobody has reached yet hides exactly
+          the ones worth knowing about.
+
+          Collapsible because it is reference, not commentary: useful once,
+          then in the way of the space it sits over. */}
+      <div className="absolute bottom-6 left-6">
+        <button
+          type="button"
+          onClick={() => setLegendOpen(open => !open)}
+          className="flex items-center gap-2 text-nier-bg/70 hover:text-nier-bg text-[9px] tracking-[0.2em] uppercase transition-colors"
+        >
+          <span
+            className="inline-block transition-transform duration-200"
+            style={{ transform: legendOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
+          >
+            ◇
+          </span>
+          Donation ranks
+        </button>
+
+        {legendOpen && (
+          <div className="mt-2 space-y-1">
+            {TIERS.map(tier => (
               <div key={tier.label} className="flex items-center gap-2">
                 <span className="w-3 h-[1px]" style={{ background: tier.color }} />
                 <span className="text-[9px] tracking-wider" style={{ color: tier.color }}>{tier.label}</span>
               </div>
             ))}
-          </div>
-          {hasMonthly && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="w-3 h-[1px] bg-nier-bg/80" style={{ animation: 'contributor-breath 3.6s ease-in-out infinite' }} />
+            <div className="flex items-center gap-2 pt-1">
+              <span
+                className="w-3 h-[1px] bg-nier-bg/80"
+                style={{ animation: 'contributor-breath 3.6s ease-in-out infinite' }}
+              />
               <span className="text-[9px] tracking-wider text-nier-bg/80">Monthly</span>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {/* The month, bottom centre, where an atrium shows its usage */}
       {month && month.goalCents > 0 && (
