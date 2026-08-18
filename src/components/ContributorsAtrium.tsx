@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createWheelGestures } from '../lib/canvasGestures'
 import {
   getCachedContributions,
   startContributionsRefresh,
@@ -50,8 +51,74 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
   // whole page is one transform -- there is no per-frame animation to protect,
   // and a re-render per drag frame is cheap for a few dozen elements.
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+
+  // The same reading an atrium uses -- shared, so a mouse zooms, two fingers
+  // pan and a pinch zooms here exactly as they do on the canvas.
+  const gestures = useMemo(() => createWheelGestures(), [])
+
+  // Refs as well as state: the wheel listener is attached once and would
+  // otherwise close over the values from the render that attached it.
+  const offsetRef = useRef(offset)
+  const zoomRef = useRef(zoom)
+  useEffect(() => { offsetRef.current = offset }, [offset])
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
+
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      // Non-passive, so the page itself never scrolls underneath and a pinch
+      // doesn't reach the browser's own zoom.
+      event.preventDefault()
+
+      if (gestures.classify(event) === 'pan') {
+        // Screen-space, so two fingers moving an inch move the view an inch
+        // whatever the zoom -- the same rule the atrium pans by.
+        setOffset(current => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }))
+        return
+      }
+
+      const nextZoom = Math.max(0.25, Math.min(2.5, zoomRef.current * (1 + gestures.zoomDelta(event))))
+
+      // Zoom toward the cursor rather than the centre: the thing under the
+      // pointer is the thing being looked at, and it should stay put.
+      const pointer = {
+        x: event.clientX - window.innerWidth / 2,
+        y: event.clientY - window.innerHeight / 2,
+      }
+      const world = {
+        x: (pointer.x - offsetRef.current.x) / zoomRef.current,
+        y: (pointer.y - offsetRef.current.y) / zoomRef.current,
+      }
+      setOffset({ x: pointer.x - world.x * nextZoom, y: pointer.y - world.y * nextZoom })
+      setZoom(nextZoom)
+    }
+
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [gestures])
+
+  // Keyboard zoom, matching the atrium's: +/- to step, 0 to reset.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault()
+        setZoom(current => Math.min(2.5, current * 1.12))
+      } else if (event.key === '-' || event.key === '_') {
+        event.preventDefault()
+        setZoom(current => Math.max(0.25, current / 1.12))
+      } else if (event.key === '0') {
+        event.preventDefault()
+        setZoom(1)
+        setOffset({ x: 0, y: 0 })
+      } else if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   // Placed on a phyllotaxis spiral, sorted by what each person has given.
   //
@@ -98,8 +165,8 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
     const halfWidth = viewport.width / 2 + margin
     const halfHeight = viewport.height / 2 + margin
     return placed.filter(({ x, y }) =>
-      Math.abs(x + offset.x) < halfWidth && Math.abs(y + offset.y) < halfHeight)
-  }, [placed, offset, viewport])
+      Math.abs(x * zoom + offset.x) < halfWidth && Math.abs(y * zoom + offset.y) < halfHeight)
+  }, [placed, offset, viewport, zoom])
 
   const onPointerDown = (event: React.PointerEvent) => {
     if ((event.target as HTMLElement).closest('button')) return
@@ -141,7 +208,7 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
         style={{
           backgroundImage:
             'linear-gradient(rgba(203,203,203,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(203,203,203,0.5) 1px, transparent 1px)',
-          backgroundSize: '80px 80px',
+          backgroundSize: `${80 * zoom}px ${80 * zoom}px`,
           backgroundPosition: `${offset.x}px ${offset.y}px`,
         }}
       />
@@ -156,7 +223,7 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
       >
         <div
           className="absolute left-1/2 top-1/2"
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
+          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
           {visible.map(({ person, x, y, width }, index) => {
             const tier = tierFor(person.amountEur)
@@ -214,7 +281,7 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
           <h1 className="text-nier-bg text-sm tracking-[0.25em] uppercase">Contributors</h1>
         </div>
         <p className="text-nier-bg/70 text-[10px] tracking-wide mt-2 max-w-xs leading-relaxed">
-          Everyone who keeps this running. Drag to move through the space.
+          Everyone who keeps this running. Drag to move, scroll or pinch to zoom.
         </p>
       </div>
 
@@ -265,12 +332,27 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
         </div>
       )}
 
-      {/* Contribute, bottom right, where an atrium keeps Leave a Trace */}
+      {/* Contribute, bottom right, where an atrium keeps Leave a Trace.
+          
+          The loudest thing on the page, deliberately. Everything else here is
+          quiet grey on black; this carries the colour of the top tier, so the
+          button and the traces it produces are visibly the same idea. The glow
+          breathes at the same slow rate the monthly traces do -- the page has
+          one heartbeat rather than several. */}
       <button
         type="button"
         onClick={onContribute}
-        className="absolute bottom-6 right-6 px-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+        className="group absolute bottom-6 right-6 px-7 py-4 text-nier-black text-[11px] tracking-[0.2em] uppercase transition-transform hover:scale-[1.04] active:scale-[0.99]"
+        style={{
+          background: TIERS[0].color,
+          boxShadow: `0 0 28px ${TIERS[0].glow}, 0 0 64px ${TIERS[0].glow}`,
+          animation: 'contributor-glow 3.6s ease-in-out infinite',
+        }}
       >
+        <span className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-black/40" />
+        <span className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-black/40" />
+        <span className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-black/40" />
+        <span className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-black/40" />
         ◇ Contribute
       </button>
     </div>

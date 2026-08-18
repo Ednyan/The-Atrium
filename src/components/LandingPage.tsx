@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
 import ContributePanel from './ContributePanel'
+import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
 import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo, DemoMotionStyles } from './LandingDemos'
@@ -94,7 +95,7 @@ function ShowcaseFrame() {
 //
 // Kept out of `sections` for the same reason the reel is: it's an interlude,
 // not a stop, and adding it would shift every right-rail nav index below it.
-function ContributionsSection() {
+function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | null) => void }) {
   const [showContribute, setShowContribute] = useState(false)
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
@@ -105,7 +106,7 @@ function ContributionsSection() {
     : 0
 
   return (
-    <section className="flex items-center justify-center px-5 sm:px-12 py-24 relative">
+    <section ref={sectionRef} className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-24 relative">
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
@@ -172,7 +173,7 @@ function ContributionsSection() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { window.location.hash = '/contributors' }}
+                  onClick={() => openContributors('/')}
                   className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 font-mono text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
                   Contributors
@@ -247,6 +248,7 @@ function VideoShowcaseSection() {
 
 const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
+  { id: 'contributions', title: 'Who Keeps It Running', subtitle: 'What it costs, and who covers it' },
   { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
   { id: 'how', title: 'How It Works', subtitle: 'Navigate, create, collaborate' },
   { id: 'desktop', title: 'Desktop App', subtitle: 'Your atriums, stored locally' },
@@ -742,11 +744,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* The demo reel, once it exists (renders nothing until then) */}
       <VideoShowcaseSection />
-      <ContributionsSection />
+      <ContributionsSection sectionRef={el => sectionRefs.current[1] = el} />
 
       {/* SECTION 2: What Is This */}
       <section 
-        ref={el => sectionRefs.current[1] = el}
+        ref={el => sectionRefs.current[2] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-3xl w-full mx-auto" data-reveal>
@@ -820,7 +822,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* SECTION 3: How It Works */}
       <section 
-        ref={el => sectionRefs.current[2] = el}
+        ref={el => sectionRefs.current[3] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-3xl w-full mx-auto" data-reveal>
@@ -969,7 +971,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           links would be nonsense there. */}
       {!isDesktop && (
         <section
-          ref={el => sectionRefs.current[3] = el}
+          ref={el => sectionRefs.current[4] = el}
           className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
         >
           <DesktopAppSection />
@@ -978,7 +980,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* SECTION 5: But How Is This Free? */}
       <section
-        ref={el => sectionRefs.current[4] = el}
+        ref={el => sectionRefs.current[5] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
@@ -1043,7 +1045,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* SECTION 5: Who Am I */}
       <section 
-        ref={el => sectionRefs.current[5] = el}
+        ref={el => sectionRefs.current[6] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-2xl w-full mx-auto text-center" data-reveal>

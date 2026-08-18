@@ -7,8 +7,8 @@ import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
-import ContributorsPanel from './ContributorsPanel'
 import ContributePanel from './ContributePanel'
+import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
@@ -61,7 +61,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   // through a folder picker rather than the browser's download machinery.
   const [showExport, setShowExport] = useState(false)
   const [showVaultRecovery, setShowVaultRecovery] = useState(false)
-  const [showContributors, setShowContributors] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
   // Cache first, refreshed behind: the line below the sections is drawn on the
   // first frame and works offline, like the one on the welcome screen.
@@ -1139,7 +1138,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {contributions.month && contributions.month.goalCents > 0 && (
             <button
               type="button"
-              onClick={() => setShowContributors(true)}
+              onClick={() => openContributors('/browse')}
               className="w-full group text-left mb-2"
             >
               <div className="flex items-baseline justify-between mb-1">
@@ -1390,12 +1389,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         />
       )}
 
-      {showContributors && (
-        <ContributorsPanel
-          onClose={() => setShowContributors(false)}
-          onContribute={() => { setShowContributors(false); setShowContribute(true) }}
-        />
-      )}
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
 
       {showVaultRecovery && (

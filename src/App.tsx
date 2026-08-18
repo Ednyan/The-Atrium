@@ -9,6 +9,7 @@ import DesktopIntro from './components/DesktopIntro'
 import ContributedScreen from './components/ContributedScreen'
 import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
+import { contributorsReturnPath } from './lib/contributorsRoute'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -1383,7 +1384,7 @@ function AppInner() {
     return (
       <>
         <ContributorsAtrium
-          onClose={() => navigate('/welcome')}
+          onClose={() => navigate(contributorsReturnPath())}
           onContribute={() => setShowContributeFromContributors(true)}
         />
         {showContributeFromContributors && (

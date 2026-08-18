@@ -6,6 +6,7 @@ import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
 import NameApprovalPanel from './NameApprovalPanel'
 import { shouldShowAppeal } from '../lib/supportAppeal'
+import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -392,7 +393,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             {/* Contributors, on both platforms -- who paid for this is the same
                 question wherever the app is running. */}
             <button
-              onClick={() => { window.location.hash = '/contributors' }}
+              onClick={() => openContributors('/welcome')}
               onMouseEnter={() => setIsHovered('contributors')}
               onMouseLeave={() => setIsHovered(null)}
               className="menu-row"

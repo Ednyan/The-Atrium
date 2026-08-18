@@ -412,3 +412,11 @@ body.dragging * {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
+
+/* The Contribute button on the contributors page. The glow breathes at the same
+   rate the monthly traces do, so the page has one heartbeat rather than two
+   competing ones. The button itself never moves -- only the light around it. */
+@keyframes contributor-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.12); }
+}
