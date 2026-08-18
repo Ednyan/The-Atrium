@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
+import ContributePanel from './ContributePanel'
+import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
 import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo, DemoMotionStyles } from './LandingDemos'
 
@@ -83,6 +85,109 @@ function ShowcaseFrame() {
 // the frame shows a deliberate "transmission incoming" placeholder -- the
 // slot is visible and styled, and swaps to the reel the day the file is
 // dropped in, with no code change. Deliberately has no entry in the
+// Sits directly below the reel, and says what the app costs to run.
+//
+// Deliberately not a plea. The pitch of this whole page is that your work lives
+// in a folder you own, and a page that then begs undercuts it -- so this states
+// what it costs, shows what the month has raised, and offers a door. Anyone who
+// reads it and moves on has lost nothing, which is the point.
+//
+// Kept out of `sections` for the same reason the reel is: it's an interlude,
+// not a stop, and adding it would shift every right-rail nav index below it.
+function ContributionsSection() {
+  const [showContribute, setShowContribute] = useState(false)
+  const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
+  useEffect(() => startContributionsRefresh(setData), [])
+
+  const month = data.month
+  const percent = month && month.goalCents > 0
+    ? Math.min(100, (month.totalCents / month.goalCents) * 100)
+    : 0
+
+  return (
+    <section className="flex items-center justify-center px-5 sm:px-12 py-24 relative">
+      <div className="max-w-4xl w-full mx-auto" data-reveal>
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+            Who keeps it running
+          </h2>
+          <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-10 items-start">
+          <div className="space-y-4">
+            <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
+              The Digital Atrium is made by one person and free to use. Nothing is behind
+              a paywall, and nothing is going to be.
+            </p>
+            <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
+              It does cost money every month, though — the database your atriums live in,
+              the email that handles new accounts, the domain it all sits on. Contributions
+              cover those, and the time that goes into building it.
+            </p>
+            <p className="text-nier-bg/70 text-[13px] leading-relaxed tracking-wide">
+              From €1, once or monthly. If you'd like your name on the contributors page,
+              you can choose one when you give.
+            </p>
+          </div>
+
+          <div className="relative">
+            <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 pointer-events-none" />
+            <div className="border border-nier-border/30 bg-nier-black/60 p-6">
+              {month && month.goalCents > 0 ? (
+                <>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-nier-bg/70">This month</span>
+                    <span className="font-mono text-[11px] tracking-wider text-white">
+                      {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
+                    </span>
+                  </div>
+                  <div className="h-[4px] bg-nier-black border border-nier-border/30 overflow-hidden">
+                    <div
+                      className="h-full transition-all duration-700 ease-out"
+                      style={{ width: `${percent}%`, background: ACCENT.silver }}
+                    />
+                  </div>
+                  <p className="font-mono text-[9px] tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
+                    {month.contributionCount === 0
+                      ? 'Nobody yet this month'
+                      : `${month.contributionCount} contribution${month.contributionCount === 1 ? '' : 's'} this month`}
+                  </p>
+                </>
+              ) : (
+                <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-nier-bg/70">
+                  Running costs are covered by the people who use it
+                </p>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowContribute(true)}
+                  className="flex-1 py-3 bg-nier-bg text-nier-black font-mono text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                >
+                  Contribute
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { window.location.hash = '/contributors' }}
+                  className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 font-mono text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                >
+                  Contributors
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
+    </section>
+  )
+}
+
 // right-rail nav: it's a short interlude, not a stop, and keeping it out of
 // `sections` means its presence can't shift every nav index below it.
 function VideoShowcaseSection() {
@@ -637,6 +742,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
       {/* The demo reel, once it exists (renders nothing until then) */}
       <VideoShowcaseSection />
+      <ContributionsSection />
 
       {/* SECTION 2: What Is This */}
       <section 
