@@ -1,0 +1,30 @@
+# Supabase CLI project config.
+#
+# Only the parts that have to be right are set here. Everything else is left to
+# the CLI's defaults, since this project is deployed to a hosted Supabase
+# instance and never run locally.
+
+project_id = "rmowxvqkyxypgcbqcspy"
+
+# Edge Functions verify a Supabase JWT before the function runs, which is right
+# for everything called by the app -- but Stripe has never heard of Supabase and
+# sends no such token. With verification left on, every webhook would be
+# rejected with a 401 before a line of the handler executed, and the failure
+# would look like Stripe's fault rather than ours.
+#
+# Turning it off is safe here precisely because the handler does not trust the
+# request: it verifies Stripe's signature over the raw body first, which is a
+# stronger check than a shared anon token would have been.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Deliberately verified. Anyone may contribute, signed in or not, and the app
+# sends the anon key -- itself a valid project JWT -- so this passes for every
+# visitor while still refusing requests carrying nothing at all.
+[functions.create-contribution]
+verify_jwt = true
+
+# Verified, and then checked again inside: the token proves the caller is
+# someone, and the handler decides whether that someone is the operator.
+[functions.moderate-contributors]
+verify_jwt = true
