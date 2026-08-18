@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import ContributorsPanel from './ContributorsPanel'
 import SupportAppeal from './SupportAppeal'
+import ContributePanel from './ContributePanel'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import PortalLoop from './PortalLoop'
@@ -19,6 +20,7 @@ interface WelcomeScreenProps {
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showContributors, setShowContributors] = useState(false)
+  const [showContribute, setShowContribute] = useState(false)
   // Evaluated once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
   // launch, and this must never appear over the canvas.
@@ -495,13 +497,19 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
       </div>
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
-      {showContributors && <ContributorsPanel onClose={() => setShowContributors(false)} />}
+      {showContributors && (
+        <ContributorsPanel
+          onClose={() => setShowContributors(false)}
+          onContribute={() => { setShowContributors(false); setShowContribute(true) }}
+        />
+      )}
+      {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
       {showAppeal && (
         <SupportAppeal
           onClose={() => setShowAppeal(false)}
           onDonate={() => {
             setShowAppeal(false)
-            setShowContributors(true)
+            setShowContribute(true)
           }}
         />
       )}

@@ -15,10 +15,11 @@ const REQUIRED_DAYS = 14
 const DAY_MS = 24 * 60 * 60 * 1000
 const SILENCE_AFTER_DONATION_MS = 90 * DAY_MS
 
-// Nothing is asked for until there is somewhere to send the money. The appeal
-// is complete and wired; flip this on with the Stripe work rather than shipping
-// a button that leads nowhere.
-export const DONATIONS_ENABLED = false
+// Stripe is live and the checkout function is deployed, so the appeal has
+// somewhere to send people. Left as a single switch: if contributions ever need
+// turning off, this is the one line, and every other path already treats an
+// absent endpoint as "say nothing" rather than as an error.
+export const DONATIONS_ENABLED = true
 
 interface AppealState {
   firstUseAt: number

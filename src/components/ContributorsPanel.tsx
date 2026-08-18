@@ -7,6 +7,9 @@ import {
 
 interface ContributorsPanelProps {
   onClose: () => void
+  // Someone reading this list is the likeliest person in the app to join it,
+  // so it leads somewhere rather than only informing.
+  onContribute?: () => void
 }
 
 const formatEuros = (cents: number) =>
@@ -19,7 +22,7 @@ const formatEuros = (cents: number) =>
 // connection -- a desktop app that can't show a donor list offline would be a
 // strange thing, and this is the least important panel in the app to make
 // anyone wait for.
-export default function ContributorsPanel({ onClose }: ContributorsPanelProps) {
+export default function ContributorsPanel({ onClose, onContribute }: ContributorsPanelProps) {
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
 
   useEffect(() => startContributionsRefresh(setData), [])
@@ -66,10 +69,20 @@ export default function ContributorsPanel({ onClose }: ContributorsPanelProps) {
           they show.
         </p>
 
+        {onContribute && (
+          <button
+            type="button"
+            onClick={onContribute}
+            className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+          >
+            Contribute
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onClose}
-          className="w-full mt-5 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+          className="w-full mt-2 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
           Close
         </button>
