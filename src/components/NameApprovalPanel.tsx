@@ -95,9 +95,18 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
     }
   }
 
-  const waiting = (entries ?? []).filter(e => !e.name_approved && !e.name_rejected_reason)
-  const shown = (entries ?? []).filter(e => e.name_approved)
-  const decidedAll = (entries ?? []).filter(e => e.name_rejected_reason)
+  // A refunded contribution is out of every public view already, so asking the
+  // operator to approve or hide it is asking about something that can never
+  // appear. It gets its own section instead: still here, because the row is the
+  // local record that money arrived and went back -- what makes the totals
+  // reconcilable against Stripe, and what stops a redelivered webhook counting
+  // the payment twice. Delete is available there for anyone who wants it gone
+  // regardless.
+  const all = entries ?? []
+  const waiting = all.filter(e => !e.name_approved && !e.name_rejected_reason && !e.refunded)
+  const shown = all.filter(e => e.name_approved && !e.refunded)
+  const refunded = all.filter(e => e.refunded)
+  const decidedAll = all.filter(e => e.name_rejected_reason && !e.refunded)
   const decided = decidedAll.slice(0, DECIDED_SHOWN)
 
   return (
@@ -151,6 +160,20 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
                     onClick={() => run(entry.id, () => call(entry.hidden ? 'unhide' : 'hide', { id: entry.id }))}
                   />
                   <Action label="Edit" disabled={busyId === entry.id} onClick={() => setEditing(entry)} />
+                  <Action label="Delete" danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
+                </Row>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Refunded: a record, not a decision */}
+        {refunded.length > 0 && (
+          <>
+            <SectionHeading label="Refunded" count={refunded.length} />
+            <div className="space-y-2 mb-5">
+              {refunded.map(entry => (
+                <Row key={entry.id} entry={entry}>
                   <Action label="Delete" danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
                 </Row>
               ))}
@@ -254,6 +277,7 @@ function Row({ entry, children }: { entry: Entry; children: React.ReactNode }) {
         <div className="text-nier-bg text-sm tracking-wide truncate">
           {entry.display_name}
           {entry.hidden && <span className="text-nier-bg/70 text-[9px] uppercase tracking-wider ml-2">hidden</span>}
+          {entry.refunded && <span className="text-red-400/80 text-[9px] uppercase tracking-wider ml-2">refunded</span>}
         </div>
         <div className="text-[9px] text-nier-bg/70 tracking-wider uppercase mt-1">
           €{euros(entry.settled_eur_cents)} · {entry.kind === 'monthly' ? 'Monthly' : 'One-off'} · {formatDate(entry.created_at)}
