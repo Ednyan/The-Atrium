@@ -20,11 +20,15 @@ const REQUEST_TIMEOUT_MS = 8000
 
 export interface Contributor {
   displayName: string
-  // Euros, already rounded by the view. Shown on the contributors page beside
-  // the name, and what decides the colour a contribution is drawn in.
+  // Everything this person has given, in euros. Decides both the colour and
+  // how near the centre of the page they sit.
   amountEur: number
   isMonthly: boolean
-  contributedAt: string
+  // Their current monthly rate, when they have one. Null for one-off givers.
+  monthlyEur: number | null
+  // When they first gave, which is what "since" means on a monthly trace.
+  since: string
+  contributionCount: number
 }
 
 export interface MonthlyProgress {
@@ -92,7 +96,7 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
 
   try {
     const [contributorRows, monthRows] = await Promise.all([
-      getJson('contributors_public?select=display_name,amount_eur,is_monthly,created_at', controller.signal),
+      getJson('contributors_public?select=display_name,amount_eur,is_monthly,monthly_eur,since,contribution_count', controller.signal),
       getJson('contributions_month?select=total_cents,goal_cents,contribution_count', controller.signal),
     ])
 
@@ -102,7 +106,9 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
         displayName: String(row.display_name ?? ''),
         amountEur: Number(row.amount_eur) || 0,
         isMonthly: !!row.is_monthly,
-        contributedAt: String(row.created_at ?? ''),
+        monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
+        since: String(row.since ?? ''),
+        contributionCount: Number(row.contribution_count) || 1,
       })).filter((c: Contributor) => c.displayName.length > 0),
       month: month
         ? {

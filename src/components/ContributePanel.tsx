@@ -123,7 +123,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         )}
 
         <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mt-4 mb-2">
-          Name for the contributors list — optional
+          Name for the contributors page — optional
         </label>
         <input
           type="text"
@@ -137,8 +137,9 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
         ) : (
           <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
-            Checked by a person before it appears. If it can't be used, you'll hear why
-            by email rather than simply not seeing it.
+            Shown with the total you've given and the month you started. Checked by a
+            person before it appears — if it can't be used, you'll hear why by email
+            rather than simply not seeing it. Leave it empty to give anonymously.
           </p>
         )}
 

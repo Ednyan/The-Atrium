@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { packBoxesAroundCenter } from '../lib/binPack'
 import {
   getCachedContributions,
   startContributionsRefresh,
-  type Contributor,
   type ContributionsData,
 } from '../lib/contributions'
 
@@ -19,9 +17,11 @@ interface ContributorsAtriumProps {
 // through rather than stacked in a column -- turned on the people who keep it
 // running. It is the one page here that exists to honour rather than to inform.
 //
-// Built as ordinary DOM inside a transformed container rather than with Pixi:
-// there are tens of contributions, not thousands, and a canvas renderer would
-// mean reimplementing text, selection and hit-testing for no gain.
+// Built as ordinary DOM inside a transformed container rather than with Pixi.
+// Up to two thousand traces exist, but only what fits on screen is rendered, so
+// the document holds dozens at a time -- a canvas renderer would mean
+// reimplementing text and hit-testing to draw fewer elements than a settings
+// screen.
 
 // What a contribution is drawn in. Bands rather than a gradient, so the legend
 // can name them and someone can find their own.
@@ -53,27 +53,53 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
   const [dragging, setDragging] = useState(false)
 
-  // Laid out with the same packer the atrium uses for a multi-file drop, so
-  // this reads as the same kind of space rather than a grid pretending to be
-  // one. Recomputed only when the contributions change, never while panning.
+  // Placed on a phyllotaxis spiral, sorted by what each person has given.
+  //
+  // The bin-packer used elsewhere sorts by area, which would have ordered this
+  // wall by how long someone's name is. Here position means one thing: the
+  // largest contributions sit at the centre and it opens outward from there.
+  //
+  // The spiral is the arrangement seeds take on a sunflower head -- radius
+  // growing as the square root of the index, each step turned by the golden
+  // angle. It fills space evenly with no clustering and no gaps, needs no
+  // collision checks, and is O(n), which is what makes two thousand of them
+  // viable at all.
   const placed = useMemo(() => {
-    const contributors = data.contributors
-    if (contributors.length === 0) return [] as { person: Contributor; x: number; y: number; width: number }[]
+    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+    const SPACING = 132
 
-    const boxes = contributors.map(person => ({
-      // Wider for longer names, taller never: these are one-line traces.
-      width: Math.max(150, Math.min(320, 78 + person.displayName.length * 11)),
-      height: 74,
-    }))
-    const offsets = packBoxesAroundCenter(boxes, 46, 'circle')
-
-    return contributors.map((person, index) => ({
-      person,
-      x: offsets[index].x,
-      y: offsets[index].y,
-      width: boxes[index].width,
-    }))
+    return [...data.contributors]
+      .sort((a, b) => b.amountEur - a.amountEur || b.since.localeCompare(a.since))
+      .map((person, index) => {
+        const radius = SPACING * Math.sqrt(index)
+        const angle = index * GOLDEN_ANGLE
+        return {
+          person,
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius * 0.72, // flattened: screens are wider than they are tall
+          width: Math.max(150, Math.min(300, 84 + person.displayName.length * 10)),
+        }
+      })
   }, [data.contributors])
+
+  // Only what can be seen is rendered. Two thousand absolutely positioned
+  // elements is a lot to keep in a document, and all but a few dozen are off
+  // screen at any moment -- this is the difference between a page that pans
+  // smoothly and one that stutters on a laptop.
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight })
+  useEffect(() => {
+    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const visible = useMemo(() => {
+    const margin = 240
+    const halfWidth = viewport.width / 2 + margin
+    const halfHeight = viewport.height / 2 + margin
+    return placed.filter(({ x, y }) =>
+      Math.abs(x + offset.x) < halfWidth && Math.abs(y + offset.y) < halfHeight)
+  }, [placed, offset, viewport])
 
   const onPointerDown = (event: React.PointerEvent) => {
     if ((event.target as HTMLElement).closest('button')) return
@@ -98,6 +124,7 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
 
   const month = data.month
   const usedTiers = TIERS.filter(tier => placed.some(({ person }) => tierFor(person.amountEur) === tier))
+  const hasMonthly = placed.some(({ person }) => person.isMonthly)
 
   return (
     <div className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none" data-ui-element>
@@ -131,11 +158,11 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
           className="absolute left-1/2 top-1/2"
           style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
         >
-          {placed.map(({ person, x, y, width }, index) => {
+          {visible.map(({ person, x, y, width }, index) => {
             const tier = tierFor(person.amountEur)
             return (
               <div
-                key={`${person.displayName}-${person.contributedAt}-${index}`}
+                key={`${person.displayName}-${index}`}
                 className="absolute px-4 py-3"
                 style={{
                   left: x,
@@ -145,17 +172,23 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
                   border: `1px solid ${tier.color}`,
                   boxShadow: `0 0 24px ${tier.glow}`,
                   background: 'rgba(25,25,25,0.72)',
+                  // Ongoing support is still happening; a slow breath says that
+                  // where a label would only state it. Staggered so the wall
+                  // shimmers rather than pulsing in unison.
+                  animation: person.isMonthly ? `contributor-breath 3.6s ease-in-out ${(index % 7) * 0.4}s infinite` : undefined,
                 }}
               >
                 <div className="text-[13px] tracking-wide truncate" style={{ color: tier.color }}>
                   {person.displayName}
                 </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-[10px] tracking-wider" style={{ color: tier.color, opacity: 0.85 }}>
-                    €{person.amountEur}{person.isMonthly ? ' / month' : ''}
+                <div className="flex items-baseline justify-between mt-1 gap-2">
+                  <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: tier.color, opacity: 0.85 }}>
+                    {person.isMonthly && person.monthlyEur
+                      ? `€${person.monthlyEur} / month`
+                      : `€${person.amountEur}`}
                   </span>
-                  <span className="text-[9px] tracking-wider uppercase text-nier-bg/70">
-                    {formatDate(person.contributedAt)}
+                  <span className="text-[9px] tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
+                    {person.isMonthly ? `since ${formatDate(person.since)}` : formatDate(person.since)}
                   </span>
                 </div>
               </div>
@@ -205,6 +238,12 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
               </div>
             ))}
           </div>
+          {hasMonthly && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="w-3 h-[1px] bg-nier-bg/80" style={{ animation: 'contributor-breath 3.6s ease-in-out infinite' }} />
+              <span className="text-[9px] tracking-wider text-nier-bg/80">Monthly</span>
+            </div>
+          )}
         </div>
       )}
 

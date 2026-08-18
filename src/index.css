@@ -405,3 +405,10 @@ body.dragging * {
   border-left-color: #ff6161;
   background: rgba(255, 97, 97, 0.08);
 }
+
+/* A monthly contribution on the contributors page. Slow and shallow: it should
+   read as alive rather than as something demanding attention. */
+@keyframes contributor-breath {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
