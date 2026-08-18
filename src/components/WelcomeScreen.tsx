@@ -430,28 +430,33 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             )}
           </div>
 
-          {/* This month's support, as a line rather than a panel.
+          {/* This month's support.
               
-              Deliberately tiny and only rendered once there is data: this
-              screen is height-constrained and was cut off on short laptops
-              before, so nothing here may claim vertical space it hasn't
-              earned. Clicking it goes where the menu row goes -- a bar that
-              fills is an invitation to look, and it should lead somewhere. */}
+              It used to be squeezed to three pixels because three lines of
+              instructions sat under it on a screen that was already too tall.
+              Those are gone -- anyone who reaches this screen has been told how
+              to drag a canvas -- so the bar takes the room they were using: a
+              little air above it, larger type, and a rule you can actually
+              watch fill.
+              
+              Still only rendered once there is data, so a machine that has
+              never been online shows nothing rather than an empty gauge.
+              Clicking it goes where the menu row goes. */}
           {contributions.month && contributions.month.goalCents > 0 && (
             <button
               type="button"
               onClick={() => openContributors('/welcome')}
-              className="w-full group text-left"
+              className="w-full group text-left pt-2"
             >
-              <div className="flex items-baseline justify-between mb-1">
-                <span className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg tracking-[0.2em] uppercase transition-colors">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-[10px] text-nier-bg/80 group-hover:text-nier-bg tracking-[0.2em] uppercase transition-colors">
                   This month
                 </span>
-                <span className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg tracking-wider transition-colors">
+                <span className="text-[11px] text-nier-bg group-hover:text-nier-bg tracking-wider transition-colors">
                   {Math.round(contributions.month.totalCents / 100)} / {Math.round(contributions.month.goalCents / 100)} €
                 </span>
               </div>
-              <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden">
+              <div className="h-[6px] bg-nier-black border border-nier-border/30 overflow-hidden">
                 <div
                   className="h-full bg-nier-bg/80 group-hover:bg-nier-bg transition-all duration-700 ease-out"
                   style={{
@@ -459,15 +464,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                   }}
                 />
               </div>
+              <p className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg/80 tracking-wider mt-2 transition-colors">
+                ◇ Keeping the atrium running — see the contributors
+              </p>
             </button>
           )}
-
-          {/* Info */}
-          <div className="text-[10px] text-nier-bg/70 space-y-2 tracking-wider uppercase">
-            <p>◦ Drag to navigate the space</p>
-            <p>◦ Click to leave traces</p>
-            <p>◦ Share presence with others</p>
-          </div>
 
           {/* The hardcoded "v.1.0.0" that used to sit here would have gone
               stale the moment the app updated itself. Desktop now shows its
