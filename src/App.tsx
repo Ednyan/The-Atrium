@@ -6,6 +6,7 @@ import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
 import DesktopIntro from './components/DesktopIntro'
+import ContributedScreen from './components/ContributedScreen'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -504,6 +505,11 @@ function parseRoute(): { page: string; lobbyId?: string } {
       return { page: 'welcome' }
     case '/browse':
       return { page: 'browse' }
+    // Where Stripe returns a contributor after checkout. A real route rather
+    // than a query flag, so arriving here can't be confused with a normal
+    // visit, and so a reload shows the same page instead of a stale banner.
+    case '/contributed':
+      return { page: 'contributed' }
     default:
       return { page: 'landing' }
   }
@@ -1359,6 +1365,10 @@ function AppInner() {
   
   if (currentPage === 'welcome') {
     return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} />
+  }
+
+  if (currentPage === 'contributed') {
+    return <ContributedScreen onContinue={() => navigate('/welcome')} />
   }
   
   if (currentPage === 'browse') {
