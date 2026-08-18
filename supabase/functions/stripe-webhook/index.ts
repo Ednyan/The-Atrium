@@ -156,17 +156,44 @@ Deno.serve(async (req: Request) => {
       // month they signed up in.
       case 'invoice.paid': {
         const invoice = event.data.object
-        if (!invoice.subscription) return ok()
+
+        // Stripe restructured the Invoice object, and the fields this used to
+        // read are simply absent now: subscription and its metadata moved under
+        // `parent`, and payment_intent left the payload entirely. Reading the
+        // old shape meant this bailed on the first line, answered 200, and
+        // recorded nothing -- a subscription that looked delivered and wasn't.
+        //
+        // Both shapes are accepted rather than only the new one. The endpoint is
+        // pinned to an API version, but events can arrive from an older pin
+        // after a rotation, and being wrong here is silent.
+        const subscriptionDetails = invoice.parent?.subscription_details
+          ?? invoice.subscription_details
+        const subscriptionId = subscriptionDetails?.subscription ?? invoice.subscription
+        if (!subscriptionId) return ok()
         if (Number(invoice.amount_paid) <= 0) return ok()
 
-        const settled = invoice.payment_intent
-          ? await settledEurCents(invoice.payment_intent, stripeKey)
+        // The payment moved too, into a list that isn't expanded in the event,
+        // so it has to be fetched. Falls back to the invoice's own currency and
+        // amount if it can't be resolved, which is exact for euro invoices --
+        // the common case -- and only approximate for the rest.
+        let paymentIntentId: string | null = invoice.payment_intent ?? null
+        if (!paymentIntentId) {
+          try {
+            const expanded = await stripeGet('invoices/' + invoice.id + '?expand[]=payments', stripeKey)
+            paymentIntentId = expanded?.payments?.data?.[0]?.payment?.payment_intent ?? null
+          } catch (error) {
+            console.error('[stripe-webhook] could not expand the invoice payments:', error)
+          }
+        }
+
+        const settled = paymentIntentId
+          ? await settledEurCents(paymentIntentId, stripeKey)
           : null
 
-        // From the subscription: an invoice carries the subscription's metadata
-        // rather than the original checkout session's, which is why the same
-        // fields are set in both places when the session is created.
-        const metadata = invoice.subscription_details?.metadata ?? {}
+        // The invoice carries the subscription's metadata rather than the
+        // original checkout session's, which is why the same fields are set in
+        // both places when the session is created.
+        const metadata = subscriptionDetails?.metadata ?? {}
 
         const { error } = await admin.from('contributions').insert({
           amount_cents: invoice.amount_paid,
@@ -176,7 +203,7 @@ Deno.serve(async (req: Request) => {
           display_name: typeof metadata.display_name === 'string' ? metadata.display_name.trim() || null : null,
           contact_email: invoice.customer_email ?? null,
           stripe_event_id: event.id,
-          stripe_payment_id: invoice.payment_intent ?? invoice.id,
+          stripe_payment_id: paymentIntentId ?? invoice.id,
           livemode: event.livemode === true,
         })
         if (error) throw error
