@@ -7,6 +7,8 @@ import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
 import DesktopIntro from './components/DesktopIntro'
 import ContributedScreen from './components/ContributedScreen'
+import ContributorsAtrium from './components/ContributorsAtrium'
+import ContributePanel from './components/ContributePanel'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -510,6 +512,10 @@ function parseRoute(): { page: string; lobbyId?: string } {
     // visit, and so a reload shows the same page instead of a stale banner.
     case '/contributed':
       return { page: 'contributed' }
+    // A page rather than a panel: it is a space to move through, and a modal
+    // over the welcome screen would have been the wrong shape for that.
+    case '/contributors':
+      return { page: 'contributors' }
     default:
       return { page: 'landing' }
   }
@@ -577,6 +583,8 @@ function AppInner() {
   // Set when the atrium's data has arrived (or the wait was capped). Separate
   // from the phase because the white hold owns when it actually hands over.
   const [atriumDataReady, setAtriumDataReady] = useState(false)
+  // The contribute form, opened from the contributors page's own button.
+  const [showContributeFromContributors, setShowContributeFromContributors] = useState(false)
   const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
   const [enteringVideoReady, setEnteringVideoReady] = useState(false)
 
@@ -1369,6 +1377,20 @@ function AppInner() {
 
   if (currentPage === 'contributed') {
     return <ContributedScreen onContinue={() => navigate('/welcome')} />
+  }
+
+  if (currentPage === 'contributors') {
+    return (
+      <>
+        <ContributorsAtrium
+          onClose={() => navigate('/welcome')}
+          onContribute={() => setShowContributeFromContributors(true)}
+        />
+        {showContributeFromContributors && (
+          <ContributePanel onClose={() => setShowContributeFromContributors(false)} />
+        )}
+      </>
+    )
   }
   
   if (currentPage === 'browse') {

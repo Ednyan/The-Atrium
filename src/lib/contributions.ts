@@ -20,7 +20,11 @@ const REQUEST_TIMEOUT_MS = 8000
 
 export interface Contributor {
   displayName: string
+  // Euros, already rounded by the view. Shown on the contributors page beside
+  // the name, and what decides the colour a contribution is drawn in.
+  amountEur: number
   isMonthly: boolean
+  contributedAt: string
 }
 
 export interface MonthlyProgress {
@@ -88,7 +92,7 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
 
   try {
     const [contributorRows, monthRows] = await Promise.all([
-      getJson('contributors_public?select=display_name,is_monthly', controller.signal),
+      getJson('contributors_public?select=display_name,amount_eur,is_monthly,created_at', controller.signal),
       getJson('contributions_month?select=total_cents,goal_cents,contribution_count', controller.signal),
     ])
 
@@ -96,7 +100,9 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
     const data: ContributionsData = {
       contributors: (contributorRows ?? []).map((row: any) => ({
         displayName: String(row.display_name ?? ''),
+        amountEur: Number(row.amount_eur) || 0,
         isMonthly: !!row.is_monthly,
+        contributedAt: String(row.created_at ?? ''),
       })).filter((c: Contributor) => c.displayName.length > 0),
       month: month
         ? {
