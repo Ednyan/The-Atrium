@@ -14,6 +14,9 @@ import { useTraces } from './hooks/useTraces'
 import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
+import { noteAppStarted } from './lib/supportAppeal'
+
+noteAppStarted()
 
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'ready'
 

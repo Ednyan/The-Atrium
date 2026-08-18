@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import ContributorsPanel from './ContributorsPanel'
+import SupportAppeal from './SupportAppeal'
+import { shouldShowAppeal } from '../lib/supportAppeal'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -17,6 +19,10 @@ interface WelcomeScreenProps {
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showContributors, setShowContributors] = useState(false)
+  // Evaluated once, on mount, and shouldShowAppeal itself only answers true
+  // once per launch -- coming back here after leaving an atrium is not a new
+  // launch, and this must never appear over the canvas.
+  const [showAppeal, setShowAppeal] = useState(() => shouldShowAppeal())
   // Read from cache on mount and refreshed behind the screen, so the bar is
   // there on the first frame and offline, rather than appearing a moment later
   // and pushing the menu down.
@@ -490,6 +496,15 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
       {showContributors && <ContributorsPanel onClose={() => setShowContributors(false)} />}
+      {showAppeal && (
+        <SupportAppeal
+          onClose={() => setShowAppeal(false)}
+          onDonate={() => {
+            setShowAppeal(false)
+            setShowContributors(true)
+          }}
+        />
+      )}
       {showExport && (
         <Suspense fallback={null}>
           <ExportDatabase onClose={() => setShowExport(false)} />

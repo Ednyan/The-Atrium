@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { UserPresence, Trace } from '../types/database'
 import { isDesktop } from '../lib/supabase'
+import { recordTraceCreated } from '../lib/supportAppeal'
 
 export type CursorState = 'default' | 'pointer' | 'grab' | 'grabbing' | 'not-allowed'
 
@@ -222,6 +223,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         newTraces[existingIndex] = trace
         return { traces: newTraces }
       } else {
+        // Counted here rather than at the dozen places that insert a trace, so
+        // no creation path can be missed. Only this user's own, and only on
+        // first appearance -- an edit or a realtime echo takes the update
+        // branch above and never reaches this line.
+        if (trace.userId && trace.userId === state.userId) {
+          recordTraceCreated()
+        }
         // Add new trace
         return { traces: [...state.traces, trace] }
       }
