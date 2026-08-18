@@ -77,7 +77,11 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
   }
 
   const waiting = (entries ?? []).filter(e => !e.name_approved && !e.name_rejected_reason)
-  const decided = (entries ?? []).filter(e => e.name_approved || e.name_rejected_reason)
+  // The recent past, not the whole of it. This list exists to check a decision
+  // just made, and everything older is answered better by the page itself.
+  const DECIDED_SHOWN = 15
+  const decidedAll = (entries ?? []).filter(e => e.name_approved || e.name_rejected_reason)
+  const decided = decidedAll.slice(0, DECIDED_SHOWN)
 
   return (
     <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto" data-ui-element>
@@ -134,8 +138,11 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
         {decided.length > 0 && (
           <div className="mt-5">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-nier-bg/80 text-[9px] tracking-[0.2em] uppercase">Decided</span>
+              <span className="text-nier-bg/80 text-[9px] tracking-[0.2em] uppercase">Recently decided</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              <span className="text-nier-bg/70 text-[9px] tracking-wider">
+                {decidedAll.length > DECIDED_SHOWN ? `${DECIDED_SHOWN} of ${decidedAll.length}` : decidedAll.length}
+              </span>
             </div>
             <div className="space-y-1">
               {decided.map(entry => (

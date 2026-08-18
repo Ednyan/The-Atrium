@@ -29,11 +29,11 @@ interface ContributorsAtriumProps {
 // What a contribution is drawn in. Bands rather than a gradient, so the legend
 // can name them and someone can find their own.
 const TIERS = [
-  { min: 50, label: '50+', color: '#FF8A3D', glow: 'rgba(255,138,61,0.30)' },
-  { min: 25, label: '25 – 49', color: '#E8C15A', glow: 'rgba(232,193,90,0.26)' },
-  { min: 10, label: '10 – 24', color: '#9AD4C4', glow: 'rgba(154,212,196,0.22)' },
-  { min: 5, label: '5 – 9', color: '#A8B6D9', glow: 'rgba(168,182,217,0.20)' },
-  { min: 0, label: '1 – 4', color: '#CBCBCB', glow: 'rgba(203,203,203,0.16)' },
+  { min: 50, label: '€50 and above', color: '#FF8A3D', glow: 'rgba(255,138,61,0.30)' },
+  { min: 25, label: '€25 – €49', color: '#E8C15A', glow: 'rgba(232,193,90,0.26)' },
+  { min: 10, label: '€10 – €24', color: '#9AD4C4', glow: 'rgba(154,212,196,0.22)' },
+  { min: 5, label: '€5 – €9', color: '#A8B6D9', glow: 'rgba(168,182,217,0.20)' },
+  { min: 0, label: '€1 – €4', color: '#CBCBCB', glow: 'rgba(203,203,203,0.16)' },
 ]
 
 const tierFor = (amount: number) => TIERS.find(tier => amount >= tier.min) ?? TIERS[TIERS.length - 1]
@@ -327,7 +327,7 @@ export default function ContributorsAtrium({ onClose, onContribute }: Contributo
             {usedTiers.map(tier => (
               <div key={tier.label} className="flex items-center gap-2">
                 <span className="w-3 h-[1px]" style={{ background: tier.color }} />
-                <span className="text-[9px] tracking-wider" style={{ color: tier.color }}>€{tier.label}</span>
+                <span className="text-[9px] tracking-wider" style={{ color: tier.color }}>{tier.label}</span>
               </div>
             ))}
           </div>

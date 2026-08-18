@@ -51,10 +51,16 @@ Deno.serve(async (req: Request) => {
       // Everything still waiting on a decision. Rejected names keep their
       // reason and stay in the list, so a decision can be revisited -- and so
       // the same name arriving again is recognisable.
+      //
+      // Live rows only. A name typed during a test payment is not a real
+      // person asking to be listed, and the public views would refuse it
+      // anyway -- so putting it in front of the operator only invites a
+      // decision that means nothing, on a name nobody chose in earnest.
       case 'list': {
         const { data, error } = await admin
           .from('contributions')
           .select('id, display_name, kind, name_approved, name_rejected_reason, created_at')
+          .eq('livemode', true)
           .not('display_name', 'is', null)
           .order('created_at', { ascending: false })
           .limit(200)
