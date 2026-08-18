@@ -977,7 +977,15 @@ function AppInner() {
               // branch below, but that branch was unreachable whenever a
               // stored atrium existed, because the restore above ran first and
               // navigated away. Same bug, just harder to notice.
-              const explicitRoute = urlRoute.page === 'landing' || urlRoute.page === 'browse'
+              // The contributors wall and the page Stripe returns to belong
+              // here too. Without them, refreshing the wall threw you to the
+              // welcome screen -- and coming back from checkout did the same,
+              // which is why the thank-you never appeared: the app navigated
+              // away from it before it could be seen.
+              const explicitRoute = urlRoute.page === 'landing'
+                || urlRoute.page === 'browse'
+                || urlRoute.page === 'contributors'
+                || urlRoute.page === 'contributed'
 
               // A lobby id in the URL still wins -- that IS a request to open
               // that atrium. Only the fallback to the *stored* lobby is
@@ -1015,7 +1023,7 @@ function AppInner() {
                   }
                 }
               } else if (explicitRoute) {
-                // Already where the user asked to be -- landing or browse.
+                // Already where the user asked to be.
                 // The stored atrium is deliberately left in localStorage so
                 // Continue to Atrium still resumes it on demand.
               } else if (!storedLobbyId) {

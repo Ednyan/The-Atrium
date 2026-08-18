@@ -446,7 +446,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             <button
               type="button"
               onClick={() => openContributors('/welcome')}
-              className="w-full group text-left pt-2"
+              className="w-full group text-left pt-8"
             >
               <div className="flex items-baseline justify-between mb-2">
                 <span className="text-[10px] text-nier-bg/80 group-hover:text-nier-bg tracking-[0.2em] uppercase transition-colors">
