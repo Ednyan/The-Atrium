@@ -93,6 +93,22 @@ jobs:
           # and every installed app rejects the update as unsigned. The key
           # must be the same one whose public half is in tauri.conf.json.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Read by the frontend build that tauri-action runs
+          # (beforeBuildCommand). Desktop uses its local SQLite vault for
+          # everything an atrium is made of, so it never needed these before --
+          # but the contributors list and the monthly goal bar read the real
+          # database, and with these unset they are baked in as undefined and
+          # the panel is simply empty in every released build while looking
+          # correct in dev.
+          #
+          # Public by design: the anon key already ships inside the web bundle,
+          # and row-level security is what actually protects the data, not the
+          # secrecy of this. Repository *variables* are the right home. Accepted
+          # from either place, so adding them as secrets by mistake still works
+          # rather than silently producing the empty build this exists to
+          # prevent.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
           # Hardcoded empty rather than read from a secret: the key was
           # generated without a password, and GitHub refuses to store a secret
           # with an empty value. The variable still has to be present -- if it
