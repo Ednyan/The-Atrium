@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
+import ContributorsPanel from './ContributorsPanel'
+import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
 
@@ -14,6 +16,12 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
+  const [showContributors, setShowContributors] = useState(false)
+  // Read from cache on mount and refreshed behind the screen, so the bar is
+  // there on the first frame and offline, rather than appearing a moment later
+  // and pushing the menu down.
+  const [contributions, setContributions] = useState<ContributionsData>(() => getCachedContributions())
+  useEffect(() => startContributionsRefresh(setContributions), [])
   const [showExport, setShowExport] = useState(false)
   const [isHovered, setIsHovered] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -339,6 +347,17 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <span className="relative z-10">◇ Profile Settings</span>
             </button>
 
+            {/* Contributors, on both platforms -- who paid for this is the same
+                question wherever the app is running. */}
+            <button
+              onClick={() => setShowContributors(true)}
+              onMouseEnter={() => setIsHovered('contributors')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="menu-row"
+            >
+              <span className="relative z-10">◇ Contributors</span>
+            </button>
+
             {/* About button (desktop only) */}
             {isDesktop && onBackToLanding && (
               <button
@@ -404,6 +423,39 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             )}
           </div>
 
+          {/* This month's support, as a line rather than a panel.
+              
+              Deliberately tiny and only rendered once there is data: this
+              screen is height-constrained and was cut off on short laptops
+              before, so nothing here may claim vertical space it hasn't
+              earned. Clicking it opens the same panel the menu button does --
+              a bar that fills is an invitation to look, and it should lead
+              somewhere. */}
+          {contributions.month && contributions.month.goalCents > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowContributors(true)}
+              className="w-full group text-left"
+            >
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg tracking-[0.2em] uppercase transition-colors">
+                  This month
+                </span>
+                <span className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg tracking-wider transition-colors">
+                  {Math.round(contributions.month.totalCents / 100)} / {Math.round(contributions.month.goalCents / 100)} €
+                </span>
+              </div>
+              <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden">
+                <div
+                  className="h-full bg-nier-bg/80 group-hover:bg-nier-bg transition-all duration-700 ease-out"
+                  style={{
+                    width: `${Math.min(100, (contributions.month.totalCents / contributions.month.goalCents) * 100)}%`,
+                  }}
+                />
+              </div>
+            </button>
+          )}
+
           {/* Info */}
           <div className="text-[10px] text-nier-bg/70 space-y-2 tracking-wider uppercase">
             <p>◦ Drag to navigate the space</p>
@@ -437,6 +489,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
       </div>
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
+      {showContributors && <ContributorsPanel onClose={() => setShowContributors(false)} />}
       {showExport && (
         <Suspense fallback={null}>
           <ExportDatabase onClose={() => setShowExport(false)} />
