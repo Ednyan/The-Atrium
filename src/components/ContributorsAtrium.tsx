@@ -435,6 +435,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           // remounted it. The running light restarted on every pointer move
           // and looked like it had stopped.
           order: index,
+          // Folded once here rather than on every keystroke. At ten thousand
+          // traces, normalising the whole wall per character typed costs about
+          // 3ms; reading a string that was already folded costs half of one.
+          folded: normalise(person.displayName),
         }
       })
   }, [data.contributors, seeded, beyondWall])
@@ -446,7 +450,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const matches = useMemo(() => {
     const needle = normalise(query)
     if (!needle) return []
-    return placed.filter(item => normalise(item.person.displayName).includes(needle))
+    return placed.filter(item => item.folded.includes(needle))
   }, [placed, query])
 
   // Names rather than indices, so the dimming survives the culling that decides
@@ -457,10 +461,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     [matches],
   )
 
-  const matchedNames = useMemo(
-    () => new Set(matches.map(item => normalise(item.person.displayName))),
-    [matches],
-  )
+  const matchedNames = useMemo(() => new Set(matches.map(item => item.folded)), [matches])
 
   // Only what can be seen is rendered. Two thousand absolutely positioned
   // elements is a lot to keep in a document, and all but a few dozen are off
@@ -597,9 +598,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           className="absolute left-1/2 top-1/2"
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
-          {visible.map(({ person, x, y, order }) => {
+          {visible.map(({ person, x, y, order, folded }) => {
             const draw = drawFor(person)
-            const dimmed = query.trim().length > 0 && !matchedNames.has(normalise(person.displayName))
+            const dimmed = query.trim().length > 0 && !matchedNames.has(folded)
             return (
               <div
                 key={`${person.isSeed ? 's' : person.isBeyondWall ? 'b' : 'r'}|${person.displayName}`}

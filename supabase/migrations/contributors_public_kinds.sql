@@ -43,11 +43,18 @@ WITH (security_invoker = false) AS
     AND NOT refunded
     AND display_name IS NOT NULL
   GROUP BY trim(display_name)
-  -- The cap keeps the page drawable. Nothing is deleted -- every contribution
-  -- stays in the table and in the totals -- but the wall shows the largest
-  -- first and, among equals, the most recent. Small and old is what falls off
-  -- the end, which is the least unfair rule available when something has to.
+  -- The cap is about the payload, not the drawing. How many traces are on
+  -- screen is decided by the zoom -- roughly 90 at 1:1 and 1400 zoomed all the
+  -- way out, whatever the cap is -- so raising this does not put more elements
+  -- in the document, it only makes the spiral wider. What it does cost is the
+  -- download and the copy the desktop app keeps for working offline: ten
+  -- thousand rows is about 1.7 MB of each.
+  --
+  -- Nothing is deleted either way. Every contribution stays in the table and in
+  -- every total, the wall shows the largest first and, among equals, the most
+  -- recent, and anyone past the end is still found by name through
+  -- contributors_searchable.
   ORDER BY sum(settled_eur_cents) DESC, max(created_at) DESC
-  LIMIT 2000;
+  LIMIT 10000;
 
-COMMENT ON VIEW public.contributors_public IS 'One row per approved contributor: everything they have given, their monthly rate if any, whether they also gave one-off, and when they started. Capped at 2000, largest first.';
+COMMENT ON VIEW public.contributors_public IS 'One row per approved contributor: everything they have given, their monthly rate if any, whether they also gave one-off, and when they started. Capped at 10000, largest first.';
