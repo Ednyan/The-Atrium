@@ -30,7 +30,13 @@ export interface Contributor {
   // Everything this person has given, in euros. Decides both the colour and
   // how near the centre of the page they sit.
   amountEur: number
+  // Has ever subscribed. Decides the gradient, which every monthly contributor
+  // carries whether or not the subscription is still running.
   isMonthly: boolean
+  // Is subscribed right now. Decides the light, and whether a rate is shown at
+  // all. Derived from how recently a monthly payment landed, so a cancelled
+  // card, a failed one and a deliberate cancellation all read the same.
+  monthlyActive: boolean
   // Their current monthly rate, when they have one. Null for one-off givers.
   monthlyEur: number | null
   // When they first gave, which is what "since" means on a monthly trace.
@@ -93,6 +99,7 @@ const encode = (data: ContributionsData, limit: number) =>
       person.contributionCount,
       person.hasOneTime ? 1 : 0,
       person.oneTimeEur,
+      person.monthlyActive ? 1 : 0,
     ]),
     month: data.month,
     fetchedAt: data.fetchedAt,
@@ -114,6 +121,7 @@ function readCache(): ContributionsData {
             contributionCount: Number(row[5]) || 1,
             hasOneTime: row[6] === 1,
             oneTimeEur: Number(row[7]) || 0,
+            monthlyActive: row[8] === 1,
           }))
         : [],
       month: parsed.month ?? null,
@@ -165,6 +173,10 @@ function toContributor(row: any): Contributor {
     displayName: String(row.display_name ?? ''),
     amountEur: Number(row.amount_eur) || 0,
     isMonthly: !!row.is_monthly,
+    // Absent on a view that predates the subscription-state migration. Reading
+    // that as "not running" is the safe way round: the trace keeps its gradient
+    // and simply doesn't claim an active subscription.
+    monthlyActive: row.monthly_active === true,
     monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
     // Kept as a calendar date. The wall shows a day, never a time, and the
     // rest of an ISO timestamp was a fifth of the offline cache.
@@ -178,7 +190,7 @@ function toContributor(row: any): Contributor {
 }
 
 const CONTRIBUTOR_COLUMNS = 'display_name,amount_eur,is_monthly,monthly_eur,since,contribution_count'
-const CONTRIBUTOR_COLUMNS_KINDS = `${CONTRIBUTOR_COLUMNS},has_one_time,one_time_eur`
+const CONTRIBUTOR_COLUMNS_KINDS = `${CONTRIBUTOR_COLUMNS},has_one_time,one_time_eur,monthly_active`
 
 // Asks for the newer columns and falls back to the older shape if the view
 // hasn't got them yet.

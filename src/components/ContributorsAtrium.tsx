@@ -130,48 +130,42 @@ const delayFor = (order: number, lagMs: number) => {
 const rankFor = (person: { amountEur: number }) =>
   TIERS.find(tier => person.amountEur >= tier.min) ?? TIERS[TIERS.length - 1]
 
-// How a trace is drawn, which depends on which of the three kinds of
-// contributor it is.
+// How a trace is drawn. Two questions decide it, and they are separate.
 //
-// Someone who subscribes *and* has given one-off is not a monthly supporter
-// with a footnote: purple alone would erase the rank they reached by giving,
-// and their rank alone would hide that they are still giving. So the border
-// carries both -- their rank on one side, purple on the other -- while the
-// breath and the rate line stay purple, and the name keeps the rank's colour.
-function drawFor(person: { amountEur: number; isMonthly: boolean; hasOneTime: boolean }) {
+// Has this person ever subscribed? That decides the gradient: their rank on one
+// side, purple on the other. It stays true once it is true, because it is a
+// fact about them rather than about this month.
+//
+// Are they subscribed right now? That decides the light. A trace with a light
+// running around it is saying "this is still happening", and it should stop
+// saying that when it stops being true.
+//
+// Rank is decided by everything given, monthly and one-off alike. There is no
+// reason 3 euros a month for two years should count for less than 72 euros
+// given at once, and separating the two was making the page argue that it did.
+function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive: boolean }) {
   const rank = rankFor(person)
-  const both = person.isMonthly && person.hasOneTime
 
-  if (both) {
+  if (person.isMonthly) {
     return {
       nameColor: rank.color,
       metaColor: MONTHLY_TIER.color,
       glow: MONTHLY_TIER.glow,
       // A gradient border needs border-image; border-color takes one colour and
-      // that is the whole problem here. Drawn faint, because the light running
-      // over it is what makes it visible.
-      borderImage: `linear-gradient(135deg, ${withAlpha(rank.color, UNLIT)} 0%, ${withAlpha(rank.color, UNLIT)} 35%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%) 1`,
+      // that is the whole problem here. Drawn faint when a light runs over it,
+      // and at full strength when nothing will.
+      borderImage: person.monthlyActive
+        ? `linear-gradient(135deg, ${withAlpha(rank.color, UNLIT)} 0%, ${withAlpha(rank.color, UNLIT)} 35%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%) 1`
+        : `linear-gradient(135deg, ${rank.color} 0%, ${rank.color} 35%, ${MONTHLY_TIER.color} 100%) 1`,
       borderColor: undefined as string | undefined,
       // The light is the border, at full strength: the same gradient, defined
       // once per rank in the page's <defs> and referenced by every trace at
       // that rank.
-      runnerStroke: `url(#contributor-run-${TIERS.indexOf(rank)})`,
+      runnerStroke: person.monthlyActive ? `url(#contributor-run-${TIERS.indexOf(rank)})` : undefined,
       // The gradient's own colours can't light a drop-shadow, which takes one
       // colour. The rank's is the half that would otherwise be hardest to read
       // against the purple glow already around the box.
       runnerGlow: rank.color,
-    }
-  }
-
-  if (person.isMonthly) {
-    return {
-      nameColor: MONTHLY_TIER.color,
-      metaColor: MONTHLY_TIER.color,
-      glow: MONTHLY_TIER.glow,
-      borderImage: undefined as string | undefined,
-      borderColor: withAlpha(MONTHLY_TIER.color, UNLIT),
-      runnerStroke: MONTHLY_TIER.color,
-      runnerGlow: MONTHLY_TIER.color,
     }
   }
 
@@ -643,7 +637,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     a non-match is the one thing on the page that should not be
                     asking for any. Staggered so the wall has a current running
                     through it rather than everything moving in lockstep. */}
-                {person.isMonthly && !dimmed && (
+                {person.monthlyActive && !dimmed && (
                   <svg
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{ overflow: 'visible' }}
@@ -695,17 +689,16 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   </div>
                 )}
                 <div className="flex flex-wrap items-baseline justify-between mt-1 gap-x-2">
+                  {/* The total leads, always, because the total is what put
+                      this trace where it is. A running subscription adds its
+                      rate after it -- one number saying what they have given,
+                      one saying what they are still giving. */}
                   <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
-                    {person.isMonthly && person.monthlyEur
-                      ? `€${person.monthlyEur} / month`
-                      : `€${person.amountEur}`}
-                    {/* The total, for someone whose trace otherwise shows only
-                        a rate. Without it their one-off giving is in the sum
-                        that placed them here and nowhere on the trace. */}
-                    {person.isMonthly && person.hasOneTime && ` + €${person.amountEur} given`}
+                    €{person.amountEur}
+                    {person.monthlyActive && person.monthlyEur ? ` + €${person.monthlyEur} / month` : ''}
                   </span>
                   <span className="text-[9px] tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
-                    {person.isMonthly ? `since ${formatDate(person.since)}` : formatDate(person.since)}
+                    {person.monthlyActive ? `since ${formatDate(person.since)}` : formatDate(person.since)}
                   </span>
                 </div>
               </div>
@@ -819,6 +812,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 <span className="text-[9px] tracking-wider" style={{ color: tier.color }}>{tier.label}</span>
               </div>
             ))}
+            {/* Not a rank. Every contributor is placed by what they have
+                given, monthly included -- these two say what the purple half of
+                a border means, and whether it is still happening. */}
             <div className="flex items-center gap-2 pt-1">
               <span
                 className="w-3 h-[2px]"
@@ -829,18 +825,16 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 }}
               />
               <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
-                {MONTHLY_TIER.label}
+                Monthly, running
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span
                 className="w-3 h-[2px]"
-                style={{
-                  background: `linear-gradient(90deg, ${TIERS[TIERS.length - 1].color}, ${MONTHLY_TIER.color})`,
-                }}
+                style={{ background: `linear-gradient(90deg, ${TIERS[TIERS.length - 1].color}, ${MONTHLY_TIER.color})` }}
               />
               <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
-                Monthly + one-off
+                Monthly, ended
               </span>
             </div>
           </div>

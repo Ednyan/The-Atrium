@@ -125,15 +125,18 @@ function build({ count, seed }: SeedState): Contributor[] {
     if (isMonthly) {
       const monthlyEur = [1, 2, 3, 5, 10][Math.floor(random() * 5)]
       const months = 1 + Math.floor(random() * 14)
-      // Some of them gave once before subscribing, or once since. That is the
-      // third kind of contributor and the one the wall draws with a gradient,
-      // so the preview has to contain some or the drawing is never seen.
+      // Some of them gave once as well as subscribing.
       const hasOneTime = random() < 0.4
       const oneTimeEur = hasOneTime ? makeAmount(random) : 0
+      // And some of them have stopped. Roughly a third, which is enough that
+      // the preview shows both a wall of running lights and the still,
+      // full-strength gradients of the people who used to give.
+      const monthlyActive = random() > 0.33
       people.push({
         displayName: name,
         amountEur: monthlyEur * months + oneTimeEur,
         isMonthly: true,
+        monthlyActive,
         monthlyEur,
         since,
         contributionCount: months + (hasOneTime ? 1 : 0),
@@ -147,6 +150,7 @@ function build({ count, seed }: SeedState): Contributor[] {
         displayName: name,
         amountEur,
         isMonthly: false,
+        monthlyActive: false,
         monthlyEur: null,
         since,
         contributionCount: 1 + Math.floor(random() * 3),
