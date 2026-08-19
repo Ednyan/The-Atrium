@@ -427,7 +427,16 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   // Ongoing support is still happening; a slow breath says that
                   // where a label would only state it. Staggered so the wall
                   // shimmers rather than pulsing in unison.
-                  animation: person.isMonthly ? `contributor-breath 3.6s ease-in-out ${(index % 7) * 0.4}s infinite` : undefined,
+                  //
+                  // Stopped while dimmed by a search, and not only to look
+                  // tidy: the breath animates opacity, and a running animation
+                  // outranks an inline style in the cascade -- so a dimmed
+                  // monthly trace ignored the dim entirely and pulsed back to
+                  // full every few seconds. Movement is attention, which is the
+                  // one thing a non-match should not be asking for.
+                  animation: person.isMonthly && !dimmed
+                    ? `contributor-breath 3.6s ease-in-out ${(index % 7) * 0.4}s infinite`
+                    : undefined,
                 }}
               >
                 <div className="text-[13px] tracking-wide truncate" style={{ color: tier.color }}>
