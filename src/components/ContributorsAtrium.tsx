@@ -65,9 +65,16 @@ const MONTHLY_TIER = {
   glow: 'rgba(199,125,255,0.28)',
 }
 
-// The travelling light. Brighter than the border it runs over, or it would be
-// invisible against it -- the same purple, lit.
-const RUNNER_COLOR = '#EBC8FF'
+// #RRGGBB at an opacity, for the unlit border.
+const withAlpha = (hex: string, alpha: number) => {
+  const value = parseInt(hex.slice(1), 16)
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`
+}
+
+// What is left of a monthly trace's border where the light isn't. Present
+// enough to keep the box a box, faint enough that the light passing over it is
+// the thing you see.
+const UNLIT = 0.22
 
 // The rank someone has reached, by everything they have given.
 //
@@ -95,19 +102,42 @@ function drawFor(person: { amountEur: number; isMonthly: boolean; hasOneTime: bo
       metaColor: MONTHLY_TIER.color,
       glow: MONTHLY_TIER.glow,
       // A gradient border needs border-image; border-color takes one colour and
-      // that is the whole problem here.
-      borderImage: `linear-gradient(135deg, ${rank.color} 0%, ${rank.color} 35%, ${MONTHLY_TIER.color} 100%) 1`,
+      // that is the whole problem here. Drawn faint, because the light running
+      // over it is what makes it visible.
+      borderImage: `linear-gradient(135deg, ${withAlpha(rank.color, UNLIT)} 0%, ${withAlpha(rank.color, UNLIT)} 35%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%) 1`,
       borderColor: undefined as string | undefined,
+      // The light is the border, at full strength: the same gradient, defined
+      // once per rank in the page's <defs> and referenced by every trace at
+      // that rank.
+      runnerStroke: `url(#contributor-run-${TIERS.indexOf(rank)})`,
+      // The gradient's own colours can't light a drop-shadow, which takes one
+      // colour. The rank's is the half that would otherwise be hardest to read
+      // against the purple glow already around the box.
+      runnerGlow: rank.color,
     }
   }
 
-  const tier = person.isMonthly ? MONTHLY_TIER : rank
+  if (person.isMonthly) {
+    return {
+      nameColor: MONTHLY_TIER.color,
+      metaColor: MONTHLY_TIER.color,
+      glow: MONTHLY_TIER.glow,
+      borderImage: undefined as string | undefined,
+      borderColor: withAlpha(MONTHLY_TIER.color, UNLIT),
+      runnerStroke: MONTHLY_TIER.color,
+      runnerGlow: MONTHLY_TIER.color,
+    }
+  }
+
+  // Nothing runs around a one-off trace, so its border carries itself.
   return {
-    nameColor: tier.color,
-    metaColor: tier.color,
-    glow: tier.glow,
+    nameColor: rank.color,
+    metaColor: rank.color,
+    glow: rank.glow,
     borderImage: undefined as string | undefined,
-    borderColor: tier.color,
+    borderColor: rank.color,
+    runnerStroke: undefined as string | undefined,
+    runnerGlow: undefined as string | undefined,
   }
 }
 
@@ -352,6 +382,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           person,
           x: Math.cos(angle) * radius,
           y: Math.sin(angle) * radius * 0.72, // flattened: screens are wider than they are tall
+          // Position in the whole wall, which does not change as the view
+          // moves. Used for React's key and for the animation's stagger --
+          // both of which were being taken from the index within the *culled*
+          // list, so panning renumbered every trace, changed its key, and
+          // remounted it. The running light restarted on every pointer move
+          // and looked like it had stopped.
+          order: index,
         }
       })
   }, [data.contributors, seeded, beyondWall])
@@ -464,6 +501,22 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
   return (
     <div className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none" data-ui-element>
+      {/* One gradient per rank, for the light that runs around a contributor
+          who both subscribes and has given one-off. Defined once here rather
+          than inside every trace: a url(#id) stroke resolves against the whole
+          document, and the alternative was a duplicate definition per box. */}
+      <svg aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0 }}>
+        <defs>
+          {TIERS.map((tier, index) => (
+            <linearGradient key={tier.label} id={`contributor-run-${index}`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor={tier.color} />
+              <stop offset="35%" stopColor={tier.color} />
+              <stop offset="100%" stopColor={MONTHLY_TIER.color} />
+            </linearGradient>
+          ))}
+        </defs>
+      </svg>
+
       {/* Scanlines and grid, so this reads as the same material as an atrium. */}
       <div
         className="absolute inset-0 pointer-events-none opacity-[0.04]"
@@ -494,12 +547,12 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           className="absolute left-1/2 top-1/2"
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
-          {visible.map(({ person, x, y }, index) => {
+          {visible.map(({ person, x, y, order }) => {
             const draw = drawFor(person)
             const dimmed = query.trim().length > 0 && !matchedNames.has(normalise(person.displayName))
             return (
               <div
-                key={`${person.displayName}-${index}`}
+                key={`${person.isSeed ? 's' : person.isBeyondWall ? 'b' : 'r'}|${person.displayName}`}
                 className="absolute px-4 py-3"
                 style={{
                   left: x,
@@ -543,14 +596,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                       width="100%"
                       height="100%"
                       fill="none"
-                      stroke={RUNNER_COLOR}
+                      stroke={draw.runnerStroke}
                       strokeWidth="2"
                       strokeLinecap="round"
                       pathLength={100}
-                      strokeDasharray="14 86"
+                      strokeDasharray="16 84"
                       style={{
-                        animation: `contributor-run 3.6s linear ${(index % 7) * 0.45}s infinite`,
-                        filter: `drop-shadow(0 0 4px ${MONTHLY_TIER.color})`,
+                        animation: `contributor-run 3.6s linear ${(order % 7) * 0.45}s infinite`,
+                        filter: `drop-shadow(0 0 5px ${withAlpha(draw.runnerGlow ?? MONTHLY_TIER.color, 0.75)})`,
                       }}
                     />
                   </svg>
@@ -702,7 +755,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               <span
                 className="w-3 h-[2px]"
                 style={{
-                  background: `linear-gradient(90deg, ${MONTHLY_TIER.color} 0%, ${MONTHLY_TIER.color} 40%, ${RUNNER_COLOR} 50%, ${MONTHLY_TIER.color} 60%, ${MONTHLY_TIER.color} 100%)`,
+                  background: `linear-gradient(90deg, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 0%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 40%, ${MONTHLY_TIER.color} 50%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 60%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%)`,
                   backgroundSize: '300% 100%',
                   animation: 'contributor-run-line 3.6s linear infinite',
                 }}
