@@ -37,6 +37,11 @@ const DECIDED_SHOWN = 15
 
 const euros = (cents: number) => Math.round((cents ?? 0) / 100)
 
+// Case and accents removed, for deciding whether two names would be taken for
+// each other by someone reading the wall.
+const fold = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 
@@ -57,6 +62,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged 
   const [rejecting, setRejecting] = useState<Entry | null>(null)
   const [editing, setEditing] = useState<Entry | null>(null)
   const [deleting, setDeleting] = useState<Entry | null>(null)
+  const [messaging, setMessaging] = useState<Entry | null>(null)
 
   const call = async (action: string, body: Record<string, unknown> = {}) => {
     const baseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -118,6 +124,35 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged 
   const decidedAll = all.filter(e => e.name_rejected_reason && !e.refunded)
   const decided = decidedAll.slice(0, DECIDED_SHOWN)
 
+  // Two people who choose the same name become one trace with their amounts
+  // added together -- the wall groups by the name, because most contributors
+  // have no account to be told apart by. That is a decision made here, at
+  // approval, or not at all: once both are on the wall there is no undoing the
+  // merge without editing one of them.
+  //
+  // So the collision is put in front of the operator instead of being left to
+  // be noticed. Exact matches are the ones that actually merge; near matches
+  // are flagged separately because two traces reading "Ana" and "ana" are a
+  // different problem -- not merged, just indistinguishable.
+  const exactWall = new Set(shown.map(e => e.display_name.trim()))
+  const looseWall = new Map(shown.map(e => [fold(e.display_name), e.display_name] as const))
+
+  const collisionFor = (entry: Entry): string | null => {
+    const trimmed = entry.display_name.trim()
+    if (exactWall.has(trimmed)) {
+      return `"${trimmed}" is already on the wall. Approving this merges the two into one trace with both amounts added together.`
+    }
+
+    const near = looseWall.get(fold(entry.display_name))
+    if (near) return `Nearly identical to "${near}", already on the wall.`
+
+    // Two still waiting, which is the same collision one step earlier.
+    const twin = waiting.find(other => other.id !== entry.id && fold(other.display_name) === fold(entry.display_name))
+    if (twin) return 'Another contribution is waiting under this same name.'
+
+    return null
+  }
+
   return (
     <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto" data-ui-element>
       <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-xl w-full mx-4 relative max-h-[85vh] overflow-y-auto">
@@ -142,13 +177,14 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged 
             )}
             <div className="space-y-2 mb-5">
               {waiting.map(entry => (
-                <Row key={entry.id} entry={entry}>
+                <Row key={entry.id} entry={entry} warning={collisionFor(entry)}>
                   <Action
                     label="Approve"
                     primary
                     disabled={busyId === entry.id}
                     onClick={() => run(entry.id, () => call('approve', { id: entry.id }))}
                   />
+                  <Action label="Write" disabled={busyId === entry.id} onClick={() => setMessaging(entry)} />
                   <Action label="Reject" disabled={busyId === entry.id} onClick={() => setRejecting(entry)} />
                 </Row>
               ))}
@@ -271,6 +307,21 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged 
         </button>
       </div>
 
+      {messaging && (
+        <MessageDialog
+          entry={messaging}
+          onCancel={() => setMessaging(null)}
+          onSend={text => {
+            const target = messaging
+            setMessaging(null)
+            run(target.id, async () => {
+              await call('message', { id: target.id, message: text })
+              setNotice('Message sent.')
+            })
+          }}
+        />
+      )}
+
       {rejecting && (
         <RejectDialog
           entry={rejecting}
@@ -320,9 +371,13 @@ function SectionHeading({ label, count }: { label: string; count: number | strin
   )
 }
 
-function Row({ entry, children }: { entry: Entry; children: React.ReactNode }) {
+function Row({ entry, children, warning }: { entry: Entry; children: React.ReactNode; warning?: string | null }) {
   return (
-    <div className="bg-nier-black border border-nier-border/20 p-3 flex justify-between items-center gap-3">
+    <div
+      className="bg-nier-black border p-3"
+      style={{ borderColor: warning ? 'rgba(232,193,90,0.45)' : 'rgba(203,203,203,0.2)' }}
+    >
+    <div className="flex justify-between items-center gap-3">
       <div className="min-w-0">
         <div className="text-nier-bg text-sm tracking-wide truncate">
           {entry.display_name}
@@ -334,6 +389,16 @@ function Row({ entry, children }: { entry: Entry; children: React.ReactNode }) {
         </div>
       </div>
       <div className="flex gap-2 shrink-0">{children}</div>
+    </div>
+
+      {/* Amber rather than red: nothing has gone wrong, and approving anyway is
+          a legitimate answer. It is a thing to know before deciding, not a
+          refusal. */}
+      {warning && (
+        <p className="text-[9px] tracking-wider leading-relaxed mt-2 pt-2 border-t border-nier-border/15" style={{ color: '#E8C15A' }}>
+          {warning}
+        </p>
+      )}
     </div>
   )
 }
@@ -364,6 +429,80 @@ function Action({ label, onClick, disabled, primary, danger }: {
 // someone is going to read, and no way to refund at the same time. A name that
 // can't be published is often a contribution nobody wants to keep, and making
 // that a second errand in another system is how it gets forgotten.
+// Writing to a contributor without deciding anything about them yet.
+//
+// The row stays exactly where it is. That is the point: the common case is a
+// name already taken, where the right move is to ask for another one rather
+// than reject someone for being second.
+function MessageDialog({ entry, onCancel, onSend }: {
+  entry: Entry
+  onCancel: () => void
+  onSend: (message: string) => void
+}) {
+  const [message, setMessage] = useState('')
+
+  // The message that gets written over and over, offered rather than retyped.
+  // Editable afterwards -- it is a starting point, not a form letter.
+  const nameTaken = [
+    `Someone is already listed on the contributors wall as "${entry.display_name.trim()}".`,
+    '',
+    'The wall shows one trace per name, so two people sharing one would appear as a single contributor with both amounts added together — which would misrepresent you both.',
+    '',
+    'Could you reply with another name you would like to be shown under? Anything that tells you apart is enough. Your contribution is unaffected and still counts toward the month either way.',
+  ].join('\n')
+
+  return (
+    <Dialog title="Write to this contributor" onCancel={onCancel}>
+      <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-4">
+        <span className="text-nier-bg">{entry.display_name}</span> — €{euros(entry.settled_eur_cents)},{' '}
+        {formatDate(entry.created_at)}
+      </p>
+
+      <div className="flex items-center justify-between mb-2 gap-3">
+        <label className="text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase">Message</label>
+        <button
+          type="button"
+          onClick={() => setMessage(nameTaken)}
+          className="text-nier-bg/70 hover:text-nier-bg text-[9px] tracking-[0.15em] uppercase transition-colors"
+        >
+          ◇ Name already taken
+        </button>
+      </div>
+      <textarea
+        value={message}
+        onChange={e => setMessage(e.target.value)}
+        rows={8}
+        placeholder="Written to the contributor, so write it to them."
+        className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
+      />
+
+      <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
+        Sent to the address Stripe collected for this payment — the only one there is,
+        since donating needs no account. Replies reach thedigitalatrium@gmail.com.
+        Nothing about the name is decided by sending this; the row stays waiting.
+      </p>
+
+      <div className="flex flex-col sm:flex-row gap-2 mt-5">
+        <button
+          type="button"
+          onClick={() => onSend(message.trim())}
+          disabled={message.trim().length === 0}
+          className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Send
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
 function RejectDialog({ entry, onCancel, onSend }: {
   entry: Entry
   onCancel: () => void

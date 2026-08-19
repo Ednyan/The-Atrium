@@ -1101,7 +1101,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
               { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
               { name: 'Youtube', url: 'https://www.youtube.com/@mindeformer' },
-              { name: 'Email', url: 'mailto:mindeformer@gmail.com' },
+              { name: 'Email', url: 'mailto:thedigitalatrium@gmail.com' },
             ].map((social, i) => (
               <a
                 key={i}

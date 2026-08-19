@@ -16,7 +16,7 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
-const SUPPORT_EMAIL = 'mindeformer@gmail.com'
+const SUPPORT_EMAIL = 'thedigitalatrium@gmail.com'
 const RESEND_FROM = 'The Atrium <feedback@mail.scenefoundry.studio>'
 
 Deno.serve(async (req: Request) => {

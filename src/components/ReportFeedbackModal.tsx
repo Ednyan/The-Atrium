@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { isDesktop } from '../lib/supabase'
 import { sendFeedbackReport, canSendFeedbackDirectly } from '../lib/feedback'
 
-const SUPPORT_EMAIL = 'mindeformer@gmail.com'
+const SUPPORT_EMAIL = 'thedigitalatrium@gmail.com'
 
 interface ReportFeedbackModalProps {
   onClose: () => void

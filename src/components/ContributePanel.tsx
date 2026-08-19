@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { openExternalUrl } from '../lib/openExternal'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
+import { getCachedContributions, refreshContributions } from '../lib/contributions'
 
 interface ContributePanelProps {
   onClose: () => void
@@ -10,6 +11,11 @@ interface ContributePanelProps {
   // appeal was answered by contributing rather than dismissed.
   onStarted?: () => void
 }
+
+// Case and accents folded: "ines" and "Inês" are the same name to anyone
+// reading the wall, and warning about one but not the other would be arbitrary.
+const fold = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 const PRESETS_ONE_TIME = [3, 5, 10, 25]
 const PRESETS_MONTHLY = [1, 3, 5, 10]
@@ -28,6 +34,35 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  // Names already on the wall, so a collision is caught here rather than by the
+  // operator after the money has arrived.
+  //
+  // The wall groups by name -- most contributors have no account to be told
+  // apart by -- so two people under one name become a single trace with both
+  // amounts added together. Discovering that afterwards means writing to
+  // someone to ask them to change it, and the answer arrives days later if at
+  // all. Asking before paying costs one question.
+  //
+  // Only approved names are public, so a name still waiting on approval cannot
+  // be checked against. That gap is the operator's to close, and is why the
+  // check at approval exists as well as this one.
+  const [wallNames, setWallNames] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    const load = (names: string[]) => setWallNames(new Set(names.map(fold)))
+    load(getCachedContributions().contributors.map(c => c.displayName))
+    // Then the current list, since a cache from last week is exactly when this
+    // would be wrong. Failure is silent: the check is a courtesy, and the panel
+    // must still work with no network.
+    void refreshContributions().then(fresh => {
+      if (fresh) load(fresh.contributors.map(c => c.displayName))
+    })
+  }, [])
+
+  // Shown when they have typed a name someone else is already using, and again
+  // as a question if they try to go ahead with it anyway.
+  const [confirmingCollision, setConfirmingCollision] = useState(false)
+  const [collisionAccepted, setCollisionAccepted] = useState(false)
+
   const presets = monthly ? PRESETS_MONTHLY : PRESETS_ONE_TIME
 
   // Checked as it's typed, so nobody discovers their chosen name was refused
@@ -38,8 +73,18 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   const chosenAmount = customAmount.trim() ? Number(customAmount.replace(',', '.')) : amount
   const amountValid = Number.isFinite(chosenAmount) && chosenAmount >= 1
 
+  const taken = displayName.trim().length > 0 && wallNames.has(fold(displayName))
+
   const contribute = async () => {
     if (!amountValid || nameProblem) return
+
+    // Asked once. Answering "that was me" is a real answer and must not be
+    // asked again on the next attempt.
+    if (taken && !collisionAccepted) {
+      setConfirmingCollision(true)
+      return
+    }
+
     setBusy(true)
     setError('')
 
@@ -73,6 +118,61 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
         <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+
+        {/* The question, asked before any money moves.
+
+            Two people under one name become one trace with both amounts added
+            together, and there is no account behind most contributions to tell
+            them apart. Caught here it costs a question; caught after the
+            payment it costs an email, a reply, and a name that was wrong on the
+            wall in the meantime.
+
+            Deliberately not a refusal. Donating again under the name you
+            already used is the ordinary case, and the whole point is that only
+            the contributor knows which of the two this is. */}
+        {confirmingCollision && (
+          <div className="absolute inset-0 bg-nier-blackLight z-10 p-6 overflow-y-auto">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-1.5 h-1.5 rotate-45 border" style={{ borderColor: '#FF6161' }} />
+              <h3 className="tracking-[0.15em] uppercase" style={{ color: '#FF6161' }}>
+                That name is taken
+              </h3>
+            </div>
+
+            <p className="text-sm tracking-wide leading-relaxed font-bold mb-4" style={{ color: '#FF6161' }}>
+              Someone is already on the contributors wall as “{displayName.trim()}”.
+            </p>
+
+            <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-6">
+              The wall shows one trace per name. If you donate under this one, your
+              amount is added to theirs and you appear as a single contributor — so
+              please only continue if that earlier donation was yours.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => { setCollisionAccepted(true); setConfirmingCollision(false) }}
+              className="w-full py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+            >
+              Yes, that was me
+            </button>
+            <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 mb-5 leading-relaxed">
+              Your donations are added together under the one name.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => { setConfirmingCollision(false); setDisplayName('') }}
+              className="w-full py-3 border text-[10px] tracking-[0.15em] uppercase transition-colors"
+              style={{ borderColor: 'rgba(255,97,97,0.5)', color: '#FF6161' }}
+            >
+              No — I'll choose another name
+            </button>
+            <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
+              Takes you back to pick a name of your own.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
@@ -143,13 +243,18 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         <input
           type="text"
           value={displayName}
-          onChange={e => setDisplayName(e.target.value)}
+          onChange={e => { setDisplayName(e.target.value); setCollisionAccepted(false) }}
           placeholder="Leave empty to stay anonymous"
           maxLength={60}
           className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
         />
         {nameProblem ? (
           <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
+        ) : taken ? (
+          <p className="text-[10px] tracking-wider mt-2 font-bold leading-relaxed" style={{ color: '#FF6161' }}>
+            Someone is already listed as “{displayName.trim()}”. If that was you, carry
+            on — otherwise please choose a different name.
+          </p>
         ) : (
           <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
             Shown with the total you've donated and the month you started. Checked by a

@@ -15,7 +15,15 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
 
+// Sent from the verified domain, because that is what Resend can sign for and
+// what will not be dropped: a Gmail address cannot be a sending identity here,
+// and mail claiming to be from one would fail Gmail's own DMARC policy.
+//
+// Replies are a different question, and these messages invite them -- so they
+// are pointed at the address a person actually reads. Without this, "reply to
+// this email" meant replying into a domain that receives nothing.
 const RESEND_FROM = 'The Atrium <contributions@mail.scenefoundry.studio>'
+const RESEND_REPLY_TO = 'thedigitalatrium@gmail.com'
 
 // The same rules create-contribution applies. An edit must not be able to put
 // something on the wall that the front door would have refused.
@@ -59,7 +67,7 @@ Deno.serve(async (req: Request) => {
     // here and tells everyone else nothing they couldn't already guess.
     if (!operator) return json({ error: 'Not allowed' }, 403)
 
-    const { action, id, reason, refund, displayName, amountEur, createdAt } = await req.json()
+    const { action, id, reason, refund, displayName, amountEur, createdAt, message } = await req.json()
 
     switch (action) {
       // Everything still waiting on a decision. Rejected names keep their
@@ -154,6 +162,77 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true })
       }
 
+      // Writing to a contributor before deciding anything.
+      //
+      // The case this exists for: two people have asked for the same name, and
+      // the second one needs to choose another. Rejecting them outright would
+      // be the wrong answer -- they have done nothing wrong, they were simply
+      // second -- so this asks the question and leaves the row waiting.
+      //
+      // The address is whatever Stripe recorded for the payment. That is the
+      // only one there is: donating needs no account, so most rows have no user
+      // behind them, and the payer's email is what both cases have in common.
+      //
+      // Nothing about the address comes back in the response. This function has
+      // never handed contributors' email addresses to the browser and does not
+      // start here: the operator needs to send a message, not to see who they
+      // are sending it to.
+      case 'message': {
+        if (!id) return json({ error: 'Missing id' }, 400)
+
+        const body = typeof message === 'string' ? message.trim() : ''
+        if (!body) return json({ error: 'Nothing to send.' }, 400)
+        if (body.length > 4000) return json({ error: 'That message is too long to send.' }, 400)
+
+        const { data: row, error } = await admin
+          .from('contributions')
+          .select('display_name, contact_email')
+          .eq('id', id)
+          .maybeSingle()
+        if (error) throw error
+        if (!row) return json({ error: 'No such contribution.' }, 404)
+        if (!row.contact_email) {
+          return json({ error: 'Stripe recorded no address for this payment, so there is nowhere to write.' }, 400)
+        }
+
+        const resendKey = Deno.env.get('RESEND_API_KEY')
+        if (!resendKey) return json({ error: 'Email is not configured on this project.' }, 503)
+
+        // Unlike the rejection mail, a failure here is reported rather than
+        // logged and swallowed. Rejecting stands whether or not the message got
+        // out; a message that did not send has accomplished nothing at all, and
+        // the operator needs to know that rather than believing it was sent.
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: row.contact_email,
+            reply_to: RESEND_REPLY_TO,
+            subject: 'About the name on your contribution',
+            text: [
+              'Thank you for contributing to The Digital Atrium.',
+              '',
+              body,
+              '',
+              '--',
+              `You asked to be listed as "${row.display_name}". Your contribution is unaffected and still counts toward the month.`,
+              `Reply to this email and it reaches ${RESEND_REPLY_TO}.`,
+            ].join('\n'),
+          }),
+        })
+
+        if (!response.ok) {
+          console.error('[moderate-contributors] Resend refused the message:', response.status, await response.text())
+          return json({ error: 'The message could not be sent.' }, 502)
+        }
+
+        return json({ ok: true })
+      }
+
       // Rejecting writes the reason and, if there's an address and Resend is
       // configured, says so. Someone who asked to be listed and then isn't
       // deserves to know why rather than being left to notice.
@@ -215,6 +294,7 @@ Deno.serve(async (req: Request) => {
               body: JSON.stringify({
                 from: RESEND_FROM,
                 to: row.contact_email,
+                reply_to: RESEND_REPLY_TO,
                 subject: 'About the name on your contribution',
                 text: [
                   'Thank you for contributing to The Digital Atrium.',
