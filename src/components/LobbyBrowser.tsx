@@ -8,7 +8,7 @@ import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import ContributePanel from './ContributePanel'
-import DonateButton from './DonateButton'
+import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
 import { SOFT_SEPIA, WHITE_ROOM } from '../lib/atriumThemePresets'
@@ -779,11 +779,17 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         <div className="p-6 border-b border-nier-border/20">
           <div className="flex justify-between items-center">
             <div>
-              <div className="flex items-center gap-3 mb-1">
-                <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase">Atrium Browser</h2>
+              {/* Was eighteen pixels of the same extralight uppercase as the
+                  labels under it, which made the screen one continuous
+                  whisper. A heading should be able to be looked past; this one
+                  could only be read. */}
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
+                <h2 className="text-2xl text-nier-strong tracking-[0.08em] uppercase font-normal leading-none">
+                  Atrium Browser
+                </h2>
               </div>
-              <p className="text-nier-bg/75 text-[10px] tracking-[0.1em] uppercase ml-5">Select destination</p>
+              <p className="text-nier-bg/70 text-xs tracking-[0.18em] uppercase ml-5 mt-1.5">Select destination</p>
             </div>
             <div className="flex items-center gap-2">
               {/* First in the row, before the window controls: those are things
@@ -800,7 +806,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <button
                 onClick={loadLobbies}
                 disabled={loading}
-                className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
+                className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
               >
                 <span className={loading ? 'animate-spin' : ''}>↻</span>
                 Refresh
@@ -817,24 +823,24 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="mt-4 border border-nier-border/20 bg-nier-black/60 px-4 py-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <div className="text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-1">Desktop Vault</div>
-                  <p className="text-nier-bg/80 text-[10px] tracking-wide break-all">
+                  <div className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-1">Desktop Vault</div>
+                  <p className="text-nier-bg/80 text-xs tracking-wide break-all">
                     {vaultPath || 'Preparing local atrium vault...'}
                   </p>
-                  <p className="text-nier-bg/70 text-[9px] tracking-wide mt-2">
+                  <p className="text-nier-bg/70 text-xs tracking-wide mt-2">
                     Each atrium is mirrored into its own folder with an atrium.json file and copied local media.
                   </p>
                 </div>
                 <button
                   onClick={chooseVaultFolder}
                   disabled={vaultBusy}
-                  className="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
+                  className="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
                 >
                   {vaultBusy ? 'Syncing...' : 'Change Folder'}
                 </button>
               </div>
               {vaultError && (
-                <p className="text-[9px] tracking-wide mt-3" style={{ color: '#FF6161' }}>{vaultError}</p>
+                <p className="text-xs tracking-wide mt-3" style={{ color: '#FF6161' }}>{vaultError}</p>
               )}
             </div>
           )}
@@ -850,17 +856,17 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {/* Create Lobby */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">Create New</span>
+              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Create New</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               {!canCreateMore && (
-                <span className="text-[10px] tracking-wider" style={{ color: '#FF6161' }}>Limit reached</span>
+                <span className="text-xs tracking-wider" style={{ color: '#FF6161' }}>Limit reached</span>
               )}
             </div>
 
             {showCreateLobby ? (
               <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
                 <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Atrium Name</label>
                   <input
                     type="text"
                     // The form only exists while showCreateLobby is on, so this
@@ -876,7 +882,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Password (Optional)</label>
+                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Password (Optional)</label>
                   <input
                     type="password"
                     value={newLobbyPassword}
@@ -887,7 +893,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 </div>
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${newLobbyIsPublic ? 'border-nier-bg bg-nier-bg' : 'border-nier-border/40 group-hover:border-nier-border/60'}`}>
-                    {newLobbyIsPublic && <span className="text-nier-black text-[10px]">✓</span>}
+                    {newLobbyIsPublic && <span className="text-nier-black text-xs">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -895,28 +901,33 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
                     className="hidden"
                   />
-                  <span className="tracking-wider uppercase text-[10px]">{isDesktop ? 'Local Public (visible to others on this PC)' : 'Public (visible in browser)'}</span>
+                  <span className="tracking-wider uppercase text-xs">{isDesktop ? 'Local Public (visible to others on this PC)' : 'Public (visible in browser)'}</span>
                 </label>
                 <div className="flex gap-3 pt-2">
+                  {/* The cut corner every committing action wears. */}
                   <button
                     onClick={createLobby}
-                    className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                    className="flex-1 py-2.5 text-xs tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
+                    style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))', clipPath: DONATE_CUT }}
                   >
                     Create Atrium
                   </button>
                   <button
                     onClick={() => setShowCreateLobby(false)}
-                    className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                    className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
                     Cancel
                   </button>
                 </div>
               </div>
             ) : (
+              // Outlined rather than filled: it opens a form, it does not
+              // commit anything. The filled one is inside that form.
               <button
                 onClick={() => setShowCreateLobby(true)}
                 disabled={!canCreateMore}
-                className="w-full py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="w-full py-3 border-2 border-nier-border/30 text-nier-bg/85 text-xs tracking-[0.18em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ clipPath: DONATE_CUT }}
               >
                 ◇ Create New Atrium
               </button>
@@ -926,10 +937,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {/* Your Atriums */}
           {userLobbies.length > 0 && (
             <section>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">Your Atriums</span>
+              <div className="flex items-baseline gap-3 mb-4">
+                <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
+                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Your Atriums</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                <span className="text-nier-bg/70 text-[10px]">{userLobbies.length}/3</span>
+                <span className="text-nier-bg/70 text-xs tabular-nums">{userLobbies.length}/3</span>
               </div>
               <div className="grid gap-3">
                 {userLobbies.map(lobby => (
@@ -978,14 +990,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                                 setEditingLobbyId(lobby.id)
                                 setEditingLobbyName(lobby.name)
                               }}
-                              className="text-nier-bg/70 hover:text-nier-bg/80 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                               title="Rename"
                             >
                               ✎
                             </button>
                           </div>
                         )}
-                        <div className="flex gap-4 mt-2 text-[10px] text-nier-bg/75 tracking-wider uppercase">
+                        <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
                           <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
                           <span>{lobby.isPublic ? (isDesktop ? '◦ Local Public' : '◦ Public') : (isDesktop ? '◦ Local Private' : '◦ Private')}</span>
                           {lobby.passwordHash && <span>◦ Secured</span>}
@@ -994,27 +1006,27 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => onJoinLobby(lobby.id)}
-                          className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
+                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
                         >
                           Enter
                         </button>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           title="Copy this atrium's ID to share it"
                         >
                           Copy ID
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           title="Manage access, password, and autosave without entering"
                         >
                           Manage
                         </button>
                         <button
                           onClick={() => setDeleteConfirmId(lobby.id)}
-                          className="px-3 py-2 border border-nier-red/40 text-nier-bg/80 text-[10px] hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-red/40 text-nier-bg/80 text-xs hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
                           ×
                         </button>
@@ -1031,7 +1043,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {adminLobbies.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">Administered Atriums</span>
+                <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Administered Atriums</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
               <div className="grid gap-3">
@@ -1040,7 +1052,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
-                        <div className="flex gap-4 mt-2 text-[10px] text-nier-bg/75 tracking-wider uppercase">
+                        <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
                           <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
                           <span>{lobby.isPublic ? (isDesktop ? '◦ Local Public' : '◦ Public') : (isDesktop ? '◦ Local Private' : '◦ Private')}</span>
                           {lobby.passwordHash && <span>◦ Secured</span>}
@@ -1050,20 +1062,20 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleJoinClick(lobby)}
-                          className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
+                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
                         >
                           Enter
                         </button>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           title="Copy this atrium's ID to share it"
                         >
                           Copy ID
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           title="Manage access, password, and autosave without entering"
                         >
                           Manage
@@ -1085,7 +1097,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {(
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">
+                <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
                   {isDesktop ? 'Import, Export & Restore' : 'Import & Export'}
                 </span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
@@ -1097,7 +1109,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 <button
                   onClick={() => setShowImport(true)}
                   disabled={!canCreateMore}
-                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   ◇ Import (.json)
                 </button>
@@ -1106,7 +1118,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     downloads a file, desktop writes one to a chosen folder. */}
                 <button
                   onClick={() => (isDesktop ? setShowExport(true) : setShowDownload(true))}
-                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
                   ◇ Export (.json)
                 </button>
@@ -1118,14 +1130,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 {isDesktop && (
                   <button
                     onClick={() => setShowVaultRecovery(true)}
-                    className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                    className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
                     ◇ Restore From Vault
                   </button>
                 )}
               </div>
               {!canCreateMore && (
-                <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
+                <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
               )}
             </section>
           )}
@@ -1133,12 +1145,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {/* Public Atriums */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">Available Atriums</span>
+              <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
+              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Available Atriums</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              <span className="text-nier-bg/70 text-[10px]">{lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length} found</span>
+              <span className="text-nier-bg/70 text-xs">{lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length} found</span>
               <button
                 onClick={() => setShowJoinById(true)}
-                className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
+                className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
               >
                 Join by ID
               </button>
@@ -1177,9 +1190,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex-1">
                         <h4 className="text-nier-bg text-sm tracking-wide">
                           {lobby.name}
-                          {!lobby.isPublic && <span className="ml-2 text-nier-bg/70 text-[9px]">{isDesktop ? '[Local Private]' : '[Private]'}</span>}
+                          {!lobby.isPublic && <span className="ml-2 text-nier-bg/70 text-xs">{isDesktop ? '[Local Private]' : '[Private]'}</span>}
                         </h4>
-                        <div className="flex gap-4 mt-2 text-[10px] text-nier-bg/75 tracking-wider uppercase">
+                        <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
                           <span>Atrium by: ◇ {lobby.ownerUsername}</span>
                           <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
                           {lobby.passwordHash && <span>◦ Secured</span>}
@@ -1189,14 +1202,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           title="Copy this atrium's ID to share it"
                         >
                           Copy ID
                         </button>
                         <button
                           onClick={() => handleJoinClick(lobby)}
-                          className="px-4 py-2 border border-nier-border/40 text-nier-bg text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
+                          className="px-4 py-2 border border-nier-border/40 text-nier-bg text-xs tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
                         >
                           Enter
                         </button>
@@ -1248,7 +1261,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex gap-3">
               <button
                 onClick={handlePasswordSubmit}
-                className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
               >
                 Enter
               </button>
@@ -1257,7 +1270,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   setSelectedLobbyId(null)
                   setPasswordInput('')
                 }}
-                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
                 Cancel
               </button>
@@ -1276,7 +1289,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
             
             <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-2">◇ Join by ID</h3>
-            <p className="text-nier-bg/75 text-[10px] tracking-wider mb-4">
+            <p className="text-nier-bg/75 text-xs tracking-wider mb-4">
               Enter the atrium ID shared with you by the atrium owner.
             </p>
             {joinByIdError && (
@@ -1301,7 +1314,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <button
                 onClick={handleJoinById}
                 disabled={!lobbyIdInput || joinByIdLoading}
-                className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 {joinByIdLoading ? 'Checking...' : 'Enter'}
               </button>
@@ -1311,7 +1324,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   setLobbyIdInput('')
                   setJoinByIdError(null)
                 }}
-                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
                 Cancel
               </button>
@@ -1336,13 +1349,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex gap-3">
               <button
                 onClick={() => deleteLobby(deleteConfirmId)}
-                className="flex-1 py-2 bg-red-500/80 text-nier-strong text-[10px] tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
+                className="flex-1 py-2 bg-red-500/80 text-nier-strong text-xs tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
               >
                 Delete
               </button>
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
                 Cancel
               </button>
@@ -1403,7 +1416,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       {/* Report a problem / suggest a feature */}
       <button
         onClick={() => setShowReportForm(true)}
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-nier-bg/75 hover:text-nier-bg/75 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-nier-bg/75 hover:text-nier-bg/75 text-xs font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
       >
         Report a problem or suggest a feature
       </button>

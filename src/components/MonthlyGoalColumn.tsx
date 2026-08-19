@@ -59,8 +59,12 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: Mont
       }`}
       title="See who keeps this running"
     >
-      <span className="text-xs tracking-[0.2em] text-nier-bg/85 group-hover:text-nier-strong transition-colors tabular-nums">
-        €{raised}
+      {/* The goal sits at the top, where the column is trying to reach, and
+          the figure raised sits at the bottom with the fill it describes. The
+          other way round the two numbers were each at the wrong end of the
+          thing they referred to. */}
+      <span className="text-xs tracking-[0.2em] text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors tabular-nums">
+        €{goal}
       </span>
 
       <div className="relative w-[10px] h-[clamp(150px,34vh,300px)] border border-nier-border/30 bg-nier-black overflow-hidden">
@@ -91,8 +95,8 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: Mont
         <div className="absolute inset-x-0 top-0 h-px bg-nier-border/50" />
       </div>
 
-      <span className="text-xs tracking-[0.2em] text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors tabular-nums">
-        €{goal}
+      <span className="text-sm tracking-[0.2em] text-nier-bg/85 group-hover:text-nier-strong transition-colors tabular-nums">
+        €{raised}
       </span>
 
       {/* Set on its side rather than rotated with a transform: vertical-rl is
