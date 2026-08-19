@@ -115,14 +115,22 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           ))}
         </div>
 
-        <input
-          type="text"
-          inputMode="decimal"
-          value={customAmount}
-          onChange={e => setCustomAmount(e.target.value)}
-          placeholder="Or another amount"
-          className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors mb-1"
-        />
+        {/* The euro sits inside the field rather than in the placeholder, so it
+            is still there once something has been typed over it. A bare number
+            in a box that takes money reads as unfinished. */}
+        <div className="relative mb-1">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
+            €
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={customAmount}
+            onChange={e => setCustomAmount(e.target.value)}
+            placeholder="Another amount"
+            className="w-full pl-9 pr-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+          />
+        </div>
         {customAmount.trim() && !amountValid && (
           <p className="text-[9px] tracking-wider mb-2" style={{ color: '#FF6161' }}>
             The minimum is €1.
