@@ -1,4 +1,5 @@
--- Telling a subscription that is running from one that has stopped.
+-- Telling a subscription that is running from one that has stopped, and
+-- what each contributor gave recently.
 --
 -- Supersedes contributors_searchable.sql: run this instead, it creates both
 -- views. contributors_public is now that view with an order and a limit on it,
@@ -138,7 +139,19 @@ SELECT
 
   -- Appended. Whether a subscription is running right now, which is what
   -- decides if the light goes round the trace.
-  coalesce(latest_run.last_paid > now() - interval '50 days', false) AS monthly_active
+  coalesce(latest_run.last_paid > now() - interval '50 days', false) AS monthly_active,
+
+  -- What each person gave inside a window, so the wall can be asked "who has
+  -- been keeping this running lately" rather than only "who ever did".
+  --
+  -- Summed here rather than filtered in the client, because the client only
+  -- ever sees the aggregate -- one row per contributor, with no dates on the
+  -- payments behind it. Three columns instead of a parameterised query: a view
+  -- cannot take an argument, and three integers per row is a smaller price
+  -- than a function call the desktop app would have to make while offline.
+  round(coalesce(sum(live.settled_eur_cents) FILTER (WHERE live.created_at > now() - interval '7 days'), 0) / 100.0)::int AS amount_7d,
+  round(coalesce(sum(live.settled_eur_cents) FILTER (WHERE live.created_at > now() - interval '30 days'), 0) / 100.0)::int AS amount_30d,
+  round(coalesce(sum(live.settled_eur_cents) FILTER (WHERE live.created_at > now() - interval '365 days'), 0) / 100.0)::int AS amount_365d
 FROM live
 LEFT JOIN latest_run ON latest_run.name = live.name
 LEFT JOIN current_rate ON current_rate.name = live.name

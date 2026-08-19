@@ -105,6 +105,18 @@ function read(): SeedState | null {
 // Rebuilt from the stored seed rather than stored as rows: three hundred
 // objects is a lot of local storage to spend on something disposable, and this
 // way the same seed always produces the same wall.
+const amountEurTotal = (monthlyEur: number, months: number, oneTimeEur: number) =>
+  monthlyEur * months + oneTimeEur
+
+// A rough share of what somebody gave falling inside each window, based on when
+// they started. Enough for the range filter to have something to filter.
+const DAY_MS = 24 * 60 * 60 * 1000
+function windowsFor(total: number, since: string, now: number) {
+  const age = (now - new Date(since).getTime()) / DAY_MS
+  const share = (days: number) => (age <= days ? total : Math.round(total * (days / Math.max(age, 1))))
+  return { amount7d: share(7), amount30d: share(30), amount365d: share(365) }
+}
+
 function build({ count, seed }: SeedState): Contributor[] {
   const random = mulberry32(seed)
   const used = new Set<string>()
@@ -142,6 +154,7 @@ function build({ count, seed }: SeedState): Contributor[] {
         contributionCount: months + (hasOneTime ? 1 : 0),
         hasOneTime,
         oneTimeEur,
+        ...windowsFor(amountEurTotal(monthlyEur, months, oneTimeEur), since, now),
         isSeed: true,
       })
     } else {
@@ -156,6 +169,7 @@ function build({ count, seed }: SeedState): Contributor[] {
         contributionCount: 1 + Math.floor(random() * 3),
         hasOneTime: true,
         oneTimeEur: amountEur,
+        ...windowsFor(amountEur, since, now),
         isSeed: true,
       })
     }

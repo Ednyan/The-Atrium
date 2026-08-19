@@ -48,6 +48,12 @@ export interface Contributor {
   hasOneTime: boolean
   // How much of the total was one-off, in euros.
   oneTimeEur: number
+  // What they gave inside each window, in euros. Null when the view predates
+  // these columns, which is how the range filter knows to stay hidden rather
+  // than silently emptying the wall.
+  amount7d: number | null
+  amount30d: number | null
+  amount365d: number | null
   // Set only on locally generated previews (see lib/seedContributors). Never
   // arrives from the server, and is what makes a fake trace say so on the wall.
   isSeed?: boolean
@@ -100,6 +106,9 @@ const encode = (data: ContributionsData, limit: number) =>
       person.hasOneTime ? 1 : 0,
       person.oneTimeEur,
       person.monthlyActive ? 1 : 0,
+      person.amount7d,
+      person.amount30d,
+      person.amount365d,
     ]),
     month: data.month,
     fetchedAt: data.fetchedAt,
@@ -122,6 +131,9 @@ function readCache(): ContributionsData {
             hasOneTime: row[6] === 1,
             oneTimeEur: Number(row[7]) || 0,
             monthlyActive: row[8] === 1,
+            amount7d: row[9] ?? null,
+            amount30d: row[10] ?? null,
+            amount365d: row[11] ?? null,
           }))
         : [],
       month: parsed.month ?? null,
@@ -186,11 +198,14 @@ function toContributor(row: any): Contributor {
     // draws exactly as the wall did before these columns existed.
     hasOneTime: row.has_one_time === true,
     oneTimeEur: Number(row.one_time_eur) || 0,
+    amount7d: row.amount_7d == null ? null : Number(row.amount_7d) || 0,
+    amount30d: row.amount_30d == null ? null : Number(row.amount_30d) || 0,
+    amount365d: row.amount_365d == null ? null : Number(row.amount_365d) || 0,
   }
 }
 
 const CONTRIBUTOR_COLUMNS = 'display_name,amount_eur,is_monthly,monthly_eur,since,contribution_count'
-const CONTRIBUTOR_COLUMNS_KINDS = `${CONTRIBUTOR_COLUMNS},has_one_time,one_time_eur,monthly_active`
+const CONTRIBUTOR_COLUMNS_KINDS = `${CONTRIBUTOR_COLUMNS},has_one_time,one_time_eur,monthly_active,amount_7d,amount_30d,amount_365d`
 
 // Asks for the newer columns and falls back to the older shape if the view
 // hasn't got them yet.

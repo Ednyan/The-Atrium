@@ -231,6 +231,29 @@ const formatDate = (iso: string) => {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// How far back the wall is looking.
+//
+// "All" is not a range among four, it is the wall's real subject -- everyone
+// who ever kept this running -- and the others are questions asked of it. So
+// the control names it first and returns to it.
+const RANGES = [
+  { id: 'all', label: 'All time' },
+  { id: 'year', label: 'Last year' },
+  { id: 'month', label: 'Last month' },
+  { id: 'week', label: 'Last week' },
+] as const
+
+type RangeId = (typeof RANGES)[number]['id']
+
+// What somebody gave inside the chosen window. Null means the view has no
+// window columns yet, which is different from having given nothing.
+const givenIn = (person: Contributor, range: RangeId): number | null => {
+  if (range === 'all') return person.amountEur
+  if (range === 'week') return person.amount7d
+  if (range === 'month') return person.amount30d
+  return person.amount365d
+}
+
 // Case and accents folded, so searching is about the name rather than about
 // reproducing it exactly.
 const normalise = (value: string) =>
@@ -314,6 +337,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [legendOpen, setLegendOpen] = useState(true)
+
+  // The window the wall is showing, and whether the control for it is worth
+  // offering at all -- a view without the window columns cannot answer.
+  const [range, setRange] = useState<RangeId>('all')
+  const [rangeOpen, setRangeOpen] = useState(false)
 
   // Finding yourself, on a wall that can hold two thousand people.
   //
@@ -458,7 +486,22 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     // same sort puts the beyond-the-wall ones out at the rim, which is exactly
     // where they would have been if there had been room -- they are past the
     // cap because they are the smallest, and small is what the rim is.
-    return [...data.contributors, ...seeded, ...extra]
+    const everyone = [...data.contributors, ...seeded, ...extra]
+
+    // A window rebuilds the wall rather than dimming part of it. Somebody who
+    // gave 200 euros two years ago and 5 last week belongs at the rim of "last
+    // week" -- showing them at their lifetime size would answer a question
+    // nobody asked. So the amount is replaced by what they gave inside the
+    // window, and everything downstream -- rank, colour, position -- follows
+    // from that one substitution.
+    const showing = range === 'all'
+      ? everyone
+      : everyone
+          .map(person => ({ person, given: givenIn(person, range) ?? 0 }))
+          .filter(entry => entry.given > 0)
+          .map(entry => ({ ...entry.person, amountEur: entry.given }))
+
+    return showing
       .sort((a, b) => b.amountEur - a.amountEur || b.since.localeCompare(a.since))
       .map((person, index) => {
         const radius = SPACING * Math.sqrt(index)
@@ -480,7 +523,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           folded: normalise(person.displayName),
         }
       })
-  }, [data.contributors, seeded, beyondWall])
+  }, [data.contributors, seeded, beyondWall, range])
 
   // Accents folded and case ignored: someone typing "ines" should find "Inês",
   // and a person who put an accent in their name should not have to remember
@@ -579,6 +622,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // exercise. Synthesised when nothing has ever been fetched, so the bar can
   // still be looked at on a machine that has never been online.
   const seededCents = useMemo(() => seededMonthCents(seeded), [seeded])
+  // Older caches and older views have no window columns. Offering a control
+  // that would empty the wall is worse than not offering it.
+  const rangeAvailable = useMemo(
+    () => data.contributors.some(person => person.amount30d !== null) || seeded.length > 0,
+    [data.contributors, seeded],
+  )
+
   const month = useMemo(() => {
     if (!seededCents) return data.month
     const base = data.month ?? { totalCents: 0, goalCents: 5000, contributionCount: 0 }
@@ -753,9 +803,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           {placed.length === 0 && (
             <div className="absolute -translate-x-1/2 -translate-y-1/2 text-center w-[320px]">
               <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed">
-                {data.fetchedAt === null
-                  ? 'This atrium fills once the app has been online.'
-                  : 'Nobody here yet. The first name on this wall could be yours.'}
+                {range !== 'all'
+                  ? 'Nobody contributed in this period.'
+                  : data.fetchedAt === null
+                    ? 'This atrium fills once the app has been online.'
+                    : 'Nobody here yet. The first name on this wall could be yours.'}
               </p>
             </div>
           )}
@@ -817,7 +869,47 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </p>
       </div>
 
-      <div className="absolute top-6 right-6 flex items-center gap-2">
+      <div className="absolute top-6 right-6 flex items-start gap-2">
+        {/* Shaped like the donation ranks in the other corner: a diamond that
+            turns, and a list that appears under it. One idiom for "this panel
+            opens", used twice. */}
+        {rangeAvailable && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setRangeOpen(open => !open)}
+              className="flex items-center gap-2 px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 text-[11px] tracking-[0.15em] uppercase transition-colors"
+            >
+              <span
+                className="inline-block transition-transform duration-200"
+                style={{ transform: rangeOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
+              >
+                ◇
+              </span>
+              {RANGES.find(entry => entry.id === range)?.label}
+            </button>
+
+            {rangeOpen && (
+              <div className="absolute right-0 mt-1 w-full min-w-[9.5rem] border border-nier-border/40 bg-nier-black">
+                {RANGES.map(entry => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => { setRange(entry.id); setRangeOpen(false) }}
+                    className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
+                      entry.id === range
+                        ? 'text-nier-strong bg-nier-bg/10'
+                        : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
+                    }`}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <ThemeToggle />
         <button
           type="button"
