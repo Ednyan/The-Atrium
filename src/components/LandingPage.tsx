@@ -3,7 +3,7 @@ import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
 import ContributePanel from './ContributePanel'
 import { useLandingTheme } from '../lib/useLandingTheme'
-import DonateButton from './DonateButton'
+import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
@@ -109,7 +109,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-          <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+          <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
             Support the foundations
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -203,7 +203,7 @@ function VideoShowcaseSection() {
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-          <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+          <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
             Learn about the Digital Atrium
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -749,8 +749,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex flex-wrap items-center gap-4 mb-10">
               <button
                 onClick={onGetStarted}
-                className="group relative px-8 py-3.5 text-base tracking-[0.18em] uppercase font-medium transition-all duration-300"
+                className="group relative px-8 py-4 text-base tracking-[0.18em] uppercase font-medium transition-all duration-300"
                 style={{
+                  clipPath: DONATE_CUT,
                   backgroundColor: 'rgb(var(--c-accent))',
                   // The ground, not black. The button is filled with the
                   // strong neutral, which is bone on a dark page and ink on a
@@ -768,8 +769,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                <span className="absolute -top-1 -left-1 w-3 h-3 border-l border-t" style={{ borderColor: `rgb(var(--c-accent))` }} />
-                <span className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b" style={{ borderColor: `rgb(var(--c-accent))` }} />
                 {isAuthenticated ? 'Continue to Atrium' : 'Enter The Atrium'}
               </button>
 
@@ -783,8 +782,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <span className="text-nier-bg/50 text-sm tracking-[0.2em] uppercase">or</span>
                   <button
                     onClick={() => scrollToSection(3)}
-                    className="group px-6 py-3.5 border text-base tracking-[0.18em] uppercase transition-all duration-300"
-                    style={{ borderColor: `rgb(var(--c-accent) / 0.33)`, color: `rgb(var(--c-accent) / 0.87)` }}
+                    className="group px-6 py-4 border-2 text-base tracking-[0.18em] uppercase transition-all duration-300"
+                    style={{ clipPath: DONATE_CUT, borderColor: 'rgb(var(--c-accent) / 0.33)', color: 'rgb(var(--c-accent) / 0.87)' }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = 'rgb(var(--c-accent))'
                       e.currentTarget.style.backgroundColor = `rgb(var(--c-accent) / 0.06)`
@@ -854,7 +853,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
               What Is This
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -928,7 +927,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
               How It Works
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -1087,7 +1086,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
               But How?
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
@@ -1152,7 +1151,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
               Who and Why?
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />

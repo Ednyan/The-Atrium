@@ -4,6 +4,7 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
 import ThemeToggle from './ThemeToggle'
+import DonateButton, { DONATE_CUT } from './DonateButton'
 import {
   getCachedContributions,
   searchContributors,
@@ -772,14 +773,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 {/* Labelled, always. An unmarked fake is how a screenshot ends
                     up somewhere it shouldn't. */}
                 {person.isSeed && (
-                  <div className="text-[8px] tracking-[0.2em] uppercase mt-1" style={{ color: '#FF6161' }}>
+                  <div className="text-[11px] tracking-[0.2em] uppercase mt-1" style={{ color: '#FF6161' }}>
                     False donation
                   </div>
                 )}
                 {/* Answers the question this trace exists to answer: it is
                     still counted, it is just past what the page can draw. */}
                 {person.isBeyondWall && (
-                  <div className="text-[8px] tracking-[0.2em] uppercase mt-1 text-nier-bg/70">
+                  <div className="text-[11px] tracking-[0.2em] uppercase mt-1 text-nier-bg/70">
                     Still counted · found by search
                   </div>
                 )}
@@ -788,11 +789,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                       this trace where it is. A running subscription adds its
                       rate after it -- one number saying what they have given,
                       one saying what they are still giving. */}
-                  <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
+                  <span className="text-xs tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
                     €{person.amountEur}
                     {person.monthlyActive && person.monthlyEur ? ` + €${person.monthlyEur} / month` : ''}
                   </span>
-                  <span className="text-[9px] tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
+                  <span className="text-xs tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
                     {person.monthlyActive ? `since ${formatDate(person.since)}` : formatDate(person.since)}
                   </span>
                 </div>
@@ -817,7 +818,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       {/* Search, top centre, above the wall it filters */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(360px,70vw)]">
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-nier-bg/70 text-[11px] pointer-events-none">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
             ⌕
           </span>
           <input
@@ -834,7 +835,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </div>
 
         {query.trim().length > 0 && (
-          <p className="text-center text-[9px] tracking-[0.15em] uppercase mt-2 text-nier-bg/70">
+          <p className="text-center text-xs tracking-[0.15em] uppercase mt-2 text-nier-bg/70">
             {matches.length === 0
               ? 'Nobody here by that name'
               : matches.length === 1
@@ -852,7 +853,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           className="absolute top-[4.75rem] left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
           style={{ borderColor: 'rgba(255,97,97,0.5)', background: 'rgba(255,97,97,0.08)' }}
         >
-          <span className="text-[9px] tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
+          <span className="text-xs tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
             Preview — {seeded.length} false donations, visible only to you
           </span>
         </div>
@@ -862,9 +863,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       <div className="absolute top-6 left-6 pointer-events-none">
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h1 className="text-nier-bg text-sm tracking-[0.25em] uppercase">Contributors</h1>
+          <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">Contributors</h1>
         </div>
-        <p className="text-nier-bg/70 text-[10px] tracking-wide mt-2 max-w-xs leading-relaxed">
+        <p className="text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
           Everyone who keeps this running. Drag to move, scroll or pinch to zoom.
         </p>
       </div>
@@ -878,7 +879,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             <button
               type="button"
               onClick={() => setRangeOpen(open => !open)}
-              className="flex items-center gap-2 px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 text-[11px] tracking-[0.15em] uppercase transition-colors"
+              className="flex items-center gap-2 px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 text-sm tracking-[0.15em] uppercase transition-colors"
             >
               <span
                 className="inline-block transition-transform duration-200"
@@ -896,7 +897,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     key={entry.id}
                     type="button"
                     onClick={() => { setRange(entry.id); setRangeOpen(false) }}
-                    className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
+                    className={`block w-full text-left px-4 py-2 text-sm tracking-[0.15em] uppercase transition-colors ${
                       entry.id === range
                         ? 'text-nier-strong bg-nier-bg/10'
                         : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -915,6 +916,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           type="button"
           onClick={onClose}
           className="px-4 py-2 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+          style={{ clipPath: DONATE_CUT }}
         >
           ← Back
         </button>
@@ -933,7 +935,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <button
           type="button"
           onClick={() => setLegendOpen(open => !open)}
-          className="flex items-center gap-2 text-nier-bg/70 hover:text-nier-bg text-[9px] tracking-[0.2em] uppercase transition-colors"
+          className="flex items-center gap-2 text-nier-bg/70 hover:text-nier-bg text-xs tracking-[0.2em] uppercase transition-colors"
         >
           <span
             className="inline-block transition-transform duration-200"
@@ -949,7 +951,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             {TIERS.map(tier => (
               <div key={tier.label} className="flex items-center gap-2">
                 <span className="w-3 h-[2px]" style={{ background: lineOf(tier, isLight) }} />
-                <span className="text-[9px] tracking-wider" style={{ color: inkOf(tier, isLight) }}>{tier.label}</span>
+                <span className="text-xs tracking-wider" style={{ color: inkOf(tier, isLight) }}>{tier.label}</span>
               </div>
             ))}
             {/* Not a rank. Every contributor is placed by what they have
@@ -964,7 +966,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   animation: `contributor-run-line ${RHYTHM_MS}ms linear infinite`,
                 }}
               />
-              <span className="text-[9px] tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
+              <span className="text-xs tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
                 Monthly, running
               </span>
             </div>
@@ -973,7 +975,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 className="w-3 h-[2px]"
                 style={{ background: `linear-gradient(90deg, ${inkOf(TIERS[TIERS.length - 1], isLight)}, ${inkOf(MONTHLY_TIER, isLight)})` }}
               />
-              <span className="text-[9px] tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
+              <span className="text-xs tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
                 Monthly, ended
               </span>
             </div>
@@ -985,8 +987,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       {month && month.goalCents > 0 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[min(420px,60vw)] pointer-events-none">
           <div className="flex items-baseline justify-between mb-1">
-            <span className="text-[9px] text-nier-bg/70 tracking-[0.2em] uppercase">This month</span>
-            <span className="text-[9px] text-nier-bg/80 tracking-wider">
+            <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">This month</span>
+            <span className="text-xs text-nier-bg/80 tracking-wider">
               {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
             </span>
           </div>
@@ -1011,18 +1013,24 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           Approving names is their action on this page; donating to themselves
           is not, and showing both would make the important one harder to
           find. */}
-      <button
-        type="button"
-        onClick={isOperator ? () => setShowNameApproval(true) : onContribute}
-        className="absolute bottom-6 right-6 px-7 py-4 bg-nier-bg text-nier-black text-[11px] tracking-[0.2em] uppercase transition-transform hover:scale-[1.04] active:scale-[0.99]"
-        style={{ boxShadow: '0 0 28px rgb(var(--c-fg) / 0.22), 0 0 64px rgb(var(--c-fg) / 0.12)' }}
-      >
-        <span className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-black/40" />
-        <span className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-black/40" />
-        <span className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-black/40" />
-        <span className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-black/40" />
-        {isOperator ? '◇ Contributor Names' : '◇ Donate'}
-      </button>
+      {isOperator ? (
+        <button
+          type="button"
+          onClick={() => setShowNameApproval(true)}
+          className="absolute bottom-6 right-6 px-7 py-4 text-[11px] tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.03] active:scale-[0.99]"
+          style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))', clipPath: DONATE_CUT }}
+        >
+          ◇ Contributor Names
+        </button>
+      ) : (
+        // The same button it is everywhere else, hearts and all. It was
+        // hand-built here and had drifted into a different shape from the one
+        // on every other screen.
+        <DonateButton
+          onClick={onContribute}
+          className="absolute bottom-6 right-6 px-7 py-4 text-[11px]"
+        />
+      )}
 
       {/* The thanks: large, centred, over everything, and staying until it is
           dismissed. It holds both halves of the message together -- the thank
@@ -1056,7 +1064,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               checked. Stripe has emailed you a receipt.
             </p>
             <p
-              className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase mt-12"
+              className="text-nier-bg/70 text-xs tracking-[0.2em] uppercase mt-12"
               style={{
                 opacity: hintVisible ? 1 : 0,
                 transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
