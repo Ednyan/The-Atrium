@@ -191,7 +191,15 @@ function drawFor(person: { amountEur: number; isMonthly: boolean; hasOneTime: bo
 // someone gave money on, and this page is the one place that difference
 // matters.
 const formatDate = (iso: string) => {
-  const date = new Date(iso)
+  // "2026-08-19" parses as UTC midnight, which renders as the 18th for anyone
+  // west of Greenwich. Read as a local calendar date instead, so everybody sees
+  // the day the contribution is recorded against rather than their timezone's
+  // opinion of it.
+  const dayOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  const date = dayOnly
+    ? new Date(Number(dayOnly[1]), Number(dayOnly[2]) - 1, Number(dayOnly[3]))
+    : new Date(iso)
+
   return Number.isNaN(date.getTime())
     ? ''
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })

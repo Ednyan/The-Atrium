@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import SupportAppeal from './SupportAppeal'
@@ -10,7 +10,6 @@ import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
 
 // Lazy load desktop-only components to avoid importing Tauri deps in web mode
-const ExportDatabase = lazy(() => import('./ExportDatabase'))
 
 interface WelcomeScreenProps {
   onEnter: () => void
@@ -29,7 +28,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   // and pushing the menu down.
   const [contributions, setContributions] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setContributions), [])
-  const [showExport, setShowExport] = useState(false)
   const [isHovered, setIsHovered] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { username, setUsername } = useGameStore()
@@ -377,18 +375,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               </button>
             )}
 
-            {/* Export Atrium button (desktop only) */}
-            {isDesktop && (
-              <button
-                onClick={() => setShowExport(true)}
-                onMouseEnter={() => setIsHovered('export')}
-                onMouseLeave={() => setIsHovered(null)}
-                className="menu-row"
-              >
-                <span className="relative z-10">◇ Export Atrium</span>
-              </button>
-            )}
-
             {/* Fullscreen button */}
             <button
               onClick={toggleFullscreen}
@@ -505,11 +491,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             setShowContribute(true)
           }}
         />
-      )}
-      {showExport && (
-        <Suspense fallback={null}>
-          <ExportDatabase onClose={() => setShowExport(false)} />
-        </Suspense>
       )}
     </>
   )

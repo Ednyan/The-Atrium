@@ -15,7 +15,14 @@
 // A donor list is not worth a spinner, and is worth even less as an error.
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // hourly while the app is open
-const CACHE_KEY = 'atrium_contributions_cache_v1'
+const CACHE_KEY = 'atrium_contributions_cache_v2'
+// The v1 shape stored every contributor as an object with full property names,
+// which at ten thousand rows was most of a megabyte of the word "displayName".
+const LEGACY_CACHE_KEYS = ['atrium_contributions_cache_v1']
+
+// If a full cache won't fit, store fewer rather than none. Ordered largest
+// first, so what survives is what the wall would draw nearest the middle.
+const CACHE_STEPS = [Infinity, 6000, 3000, 1200, 400]
 const REQUEST_TIMEOUT_MS = 8000
 
 export interface Contributor {
@@ -65,17 +72,48 @@ const EMPTY: ContributionsData = { contributors: [], month: null, fetchedAt: nul
 const REST_URL = import.meta.env.VITE_SUPABASE_URL
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Contributors are stored as arrays rather than objects.
+//
+// This is the desktop app's whole offline copy of the wall, and at ten thousand
+// contributors the property names alone were about a megabyte -- the same eight
+// words repeated ten thousand times. Positional rows cut the stored size by
+// three quarters, which is the difference between comfortably inside the
+// origin's storage budget and quietly failing to write at all one day.
+//
+// The order below is the format. It cannot be reordered without changing
+// CACHE_KEY, which is what the version suffix is for.
+const encode = (data: ContributionsData, limit: number) =>
+  JSON.stringify({
+    rows: data.contributors.slice(0, limit).map(person => [
+      person.displayName,
+      person.amountEur,
+      person.isMonthly ? 1 : 0,
+      person.monthlyEur ?? 0,
+      person.since,
+      person.contributionCount,
+      person.hasOneTime ? 1 : 0,
+      person.oneTimeEur,
+    ]),
+    month: data.month,
+    fetchedAt: data.fetchedAt,
+  })
+
 function readCache(): ContributionsData {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return EMPTY
     const parsed = JSON.parse(raw)
     return {
-      contributors: Array.isArray(parsed.contributors)
-        ? parsed.contributors.map((c: any) => ({
-            ...c,
-            hasOneTime: c.hasOneTime === true,
-            oneTimeEur: Number(c.oneTimeEur) || 0,
+      contributors: Array.isArray(parsed.rows)
+        ? parsed.rows.map((row: any[]) => ({
+            displayName: String(row[0] ?? ''),
+            amountEur: Number(row[1]) || 0,
+            isMonthly: row[2] === 1,
+            monthlyEur: Number(row[3]) || null,
+            since: String(row[4] ?? ''),
+            contributionCount: Number(row[5]) || 1,
+            hasOneTime: row[6] === 1,
+            oneTimeEur: Number(row[7]) || 0,
           }))
         : [],
       month: parsed.month ?? null,
@@ -88,10 +126,25 @@ function readCache(): ContributionsData {
 
 function writeCache(data: ContributionsData) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data))
+    for (const key of LEGACY_CACHE_KEYS) localStorage.removeItem(key)
   } catch {
-    // A full or disabled local store costs a cache, not the feature.
+    // Storage disabled entirely. The loop below will find that out too.
   }
+
+  // Storing fewer contributors is a worse cache; storing none is no offline
+  // wall at all. A quota that the whole list won't fit into is not a reason to
+  // keep nothing, so this steps down until something does.
+  for (const limit of CACHE_STEPS) {
+    try {
+      localStorage.setItem(CACHE_KEY, encode(data, limit))
+      return
+    } catch {
+      // Almost certainly the quota. Try a smaller slice.
+    }
+  }
+
+  // Nothing fitted, so whatever is already stored stays: stale and real beats
+  // empty. Not an error worth reporting -- the page works online regardless.
 }
 
 async function getJson(path: string, signal: AbortSignal): Promise<any> {
@@ -113,7 +166,9 @@ function toContributor(row: any): Contributor {
     amountEur: Number(row.amount_eur) || 0,
     isMonthly: !!row.is_monthly,
     monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
-    since: String(row.since ?? ''),
+    // Kept as a calendar date. The wall shows a day, never a time, and the
+    // rest of an ISO timestamp was a fifth of the offline cache.
+    since: String(row.since ?? '').slice(0, 10),
     contributionCount: Number(row.contribution_count) || 1,
     // Absent on the older view shape, which reads as "no one-off known" -- and
     // draws exactly as the wall did before these columns existed.
