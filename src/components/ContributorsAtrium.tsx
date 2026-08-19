@@ -55,12 +55,20 @@ const HINT_DELAY_MS = 1800
 // that a watermark is readable. The light set keeps each hue and its
 // saturation and drops the lightness until it clears 4.8:1, which is the
 // difference between a wall of names and a wall of suggestions.
+// Each rank in two inks, and on paper the ink for lines is not the ink for
+// words.
+//
+// Text has to clear 4.5:1 to be read. A border does not: it is a graphical
+// object, where the threshold is 3:1, and holding lines to the text figure was
+// dragging every rank about sixty percent darker than it needed to be -- which
+// is why the wall looked like its brightness had been turned down. Lines sit
+// at 3:1 and are drawn thicker to earn it; names stay at their own figure.
 const TIERS = [
-  { min: 50, label: '€50 and above', color: '#FF8A3D', light: '#B24700', glow: 'rgba(255,138,61,0.30)' },
-  { min: 25, label: '€25 – €49', color: '#E8C15A', light: '#826312', glow: 'rgba(232,193,90,0.26)' },
-  { min: 10, label: '€10 – €24', color: '#9AD4C4', light: '#317462', glow: 'rgba(154,212,196,0.22)' },
-  { min: 5, label: '€5 – €9', color: '#A8B6D9', light: '#4A66AA', glow: 'rgba(168,182,217,0.20)' },
-  { min: 0, label: '€1 – €4', color: '#CBCBCB', light: '#676767', glow: 'rgba(203,203,203,0.16)' },
+  { min: 50, label: '€50 and above', color: '#FF8A3D', light: '#B24700', lightLine: '#E85C00', glow: 'rgba(255,138,61,0.30)' },
+  { min: 25, label: '€25 – €49', color: '#E8C15A', light: '#826312', lightLine: '#AA8218', glow: 'rgba(232,193,90,0.26)' },
+  { min: 10, label: '€10 – €24', color: '#9AD4C4', light: '#317462', lightLine: '#40967E', glow: 'rgba(154,212,196,0.22)' },
+  { min: 5, label: '€5 – €9', color: '#A8B6D9', light: '#4A66AA', lightLine: '#7188C1', glow: 'rgba(168,182,217,0.20)' },
+  { min: 0, label: '€1 – €4', color: '#CBCBCB', light: '#676767', lightLine: '#888888', glow: 'rgba(203,203,203,0.16)' },
 ]
 
 // Monthly support has its own colour rather than a place in the amount scale.
@@ -72,13 +80,18 @@ const MONTHLY_TIER = {
   label: 'Monthly',
   color: '#C77DFF',
   light: '#7B2CD6',
+  lightLine: '#B859FF',
   glow: 'rgba(199,125,255,0.28)',
 }
 
 // Which of the two a tier is drawn in. Read from the resolved theme rather
 // than from a media query, so the manual switch works as well as the machine's.
-type Tier = { color: string; light: string; glow: string }
+type Tier = { color: string; light: string; lightLine: string; glow: string }
+// For words.
 const inkOf = (tier: Tier, light: boolean) => (light ? tier.light : tier.color)
+// For borders, the running light, and anything else that is a line rather than
+// a letter.
+const lineOf = (tier: Tier, light: boolean) => (light ? tier.lightLine : tier.color)
 
 // #RRGGBB at an opacity, for the unlit border.
 const withAlpha = (hex: string, alpha: number) => {
@@ -161,7 +174,9 @@ const rankFor = (person: { amountEur: number }) =>
 function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive: boolean }, light: boolean) {
   const rankTier = rankFor(person)
   const rank = { ...rankTier, color: inkOf(rankTier, light) }
+  const rankLine = lineOf(rankTier, light)
   const monthly = { ...MONTHLY_TIER, color: inkOf(MONTHLY_TIER, light) }
+  const monthlyLine = lineOf(MONTHLY_TIER, light)
 
   if (person.isMonthly) {
     return {
@@ -172,8 +187,8 @@ function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive:
       // that is the whole problem here. Drawn faint when a light runs over it,
       // and at full strength when nothing will.
       borderImage: person.monthlyActive
-        ? `linear-gradient(135deg, ${withAlpha(rank.color, UNLIT)} 0%, ${withAlpha(rank.color, UNLIT)} 35%, ${withAlpha(monthly.color, UNLIT)} 100%) 1`
-        : `linear-gradient(135deg, ${rank.color} 0%, ${rank.color} 35%, ${monthly.color} 100%) 1`,
+        ? `linear-gradient(135deg, ${withAlpha(rankLine, UNLIT)} 0%, ${withAlpha(rankLine, UNLIT)} 35%, ${withAlpha(monthlyLine, UNLIT)} 100%) 1`
+        : `linear-gradient(135deg, ${rankLine} 0%, ${rankLine} 35%, ${monthlyLine} 100%) 1`,
       borderColor: undefined as string | undefined,
       // The light is the border, at full strength: the same gradient, defined
       // once per rank in the page's <defs> and referenced by every trace at
@@ -182,7 +197,7 @@ function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive:
       // The gradient's own colours can't light a drop-shadow, which takes one
       // colour. The rank's is the half that would otherwise be hardest to read
       // against the purple glow already around the box.
-      runnerGlow: rank.color,
+      runnerGlow: rankLine,
     }
   }
 
@@ -192,7 +207,7 @@ function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive:
     metaColor: rank.color,
     glow: rank.glow,
     borderImage: undefined as string | undefined,
-    borderColor: rank.color,
+    borderColor: rankLine,
     runnerStroke: undefined as string | undefined,
     runnerGlow: undefined as string | undefined,
   }
@@ -588,9 +603,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <defs>
           {TIERS.map((tier, index) => (
             <linearGradient key={tier.label} id={`contributor-run-${index}`} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor={inkOf(tier, isLight)} />
-              <stop offset="35%" stopColor={inkOf(tier, isLight)} />
-              <stop offset="100%" stopColor={inkOf(MONTHLY_TIER, isLight)} />
+              <stop offset="0%" stopColor={lineOf(tier, isLight)} />
+              <stop offset="35%" stopColor={lineOf(tier, isLight)} />
+              <stop offset="100%" stopColor={lineOf(MONTHLY_TIER, isLight)} />
             </linearGradient>
           ))}
         </defs>
@@ -647,7 +662,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   transform: 'translate(-50%, -50%)',
                   opacity: dimmed ? 0.12 : 1,
                   transition: 'opacity 220ms ease-out',
-                  border: '1px solid',
+                  // Heavier in light mode: a thicker stroke is a larger
+                  // graphical object, and that is what earns a lighter colour.
+                  border: isLight ? '1.5px solid' : '1px solid',
                   borderColor: draw.borderColor,
                   borderImage: draw.borderImage,
                   boxShadow: `0 0 24px ${draw.glow}`,
@@ -678,7 +695,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                         height="100%"
                         fill="none"
                         stroke={draw.runnerStroke}
-                        strokeWidth="2"
+                        strokeWidth={isLight ? 2.75 : 2}
                         strokeLinecap="butt"
                         opacity={segment.opacity}
                         pathLength={100}
@@ -837,7 +854,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           <div className="mt-2 space-y-1">
             {TIERS.map(tier => (
               <div key={tier.label} className="flex items-center gap-2">
-                <span className="w-3 h-[1px]" style={{ background: inkOf(tier, isLight) }} />
+                <span className="w-3 h-[2px]" style={{ background: lineOf(tier, isLight) }} />
                 <span className="text-[9px] tracking-wider" style={{ color: inkOf(tier, isLight) }}>{tier.label}</span>
               </div>
             ))}
