@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
+import ThemeToggle from './ThemeToggle'
+import { DONATE_CUT } from './DonateButton'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
@@ -687,10 +689,33 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const timeout = setTimeout(() => setIsAutosaving(false), remaining)
     return () => clearTimeout(timeout)
   }, [isSavingChanges])
+  // A save that has just finished, held for a moment so the button can
+  // confirm rather than simply vanishing.
+  const wasSavingRef = useRef(false)
+  useEffect(() => {
+    if (wasSavingRef.current && !isSavingChanges) {
+      setJustSaved(true)
+      const timer = setTimeout(() => setJustSaved(false), 1800)
+      wasSavingRef.current = false
+      return () => clearTimeout(timer)
+    }
+    wasSavingRef.current = isSavingChanges
+  }, [isSavingChanges])
+
   const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+
+  // Everything out of the way for a clean look at the atrium. The way out
+  // stays, because being unable to leave is not a feature -- it just goes
+  // quiet until somebody reaches for it.
+  const [uiHidden, setUiHidden] = useState(false)
+
+  // Held for a moment after a save finishes, so the button can confirm rather
+  // than simply vanishing. A control that disappears on success leaves you
+  // wondering whether it worked.
+  const [justSaved, setJustSaved] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
@@ -3656,7 +3681,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
   return (
     <div
-      className="fixed inset-0 bg-nier-black lobby-scene"
+      className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''}`}
       style={{ touchAction: 'none' }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -3713,22 +3738,83 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
       </div>
 
-      {/* Saving indicator -- tracks the shared isSavingChanges store flag, so
-          it shows for autosave, Ctrl+S, and the manual Save Changes button alike */}
-      {isAutosaving && (
-        <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
-          <p
-            className="text-nier-strong text-base tracking-[0.2em] uppercase animate-saving-fade"
-            style={{ textShadow: HUD_TEXT_OUTLINE }}
+      {/* Saving, and the button that starts it, in one place at the top.
+
+          They used to be two things in two corners: a button buried in the
+          left panel and a word that appeared on the right. One control that
+          changes state says the same thing with half the furniture, and puts
+          the answer where the question was asked.
+
+          Three states rather than two. A button that simply vanishes on
+          success leaves you wondering whether it worked, so it confirms for a
+          moment before it goes. */}
+      {!uiHidden && (hasPendingChanges() || isSavingChanges || isAutosaving || justSaved) && (
+        <div data-hud="true" className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto">
+          <button
+            type="button"
+            data-ui-element="true"
+            onClick={() => { if (!isSavingChanges) saveAllChanges() }}
+            disabled={isSavingChanges || (!hasPendingChanges() && !justSaved)}
+            className="px-6 py-2.5 text-xs tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
+            style={{
+              clipPath: DONATE_CUT,
+              background: justSaved && !isSavingChanges ? 'rgb(var(--c-accent) / 0.35)' : 'rgb(var(--c-accent))',
+              color: 'rgb(var(--c-ground))',
+            }}
           >
-            ◇ Saving...
-          </p>
+            {isSavingChanges || isAutosaving
+              ? '◇ Saving…'
+              : justSaved
+                ? '◇ Saved'
+                : `◇ Save changes (${pendingChanges.size + deletedTraces.size})`}
+          </button>
         </div>
       )}
 
+      {/* The three things that are about the session rather than the canvas.
+          Hide UI, the interface's light or dark, and the way out -- in that
+          order, so the one you press by accident least often is furthest from
+          the corner. */}
+      <div className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
+        {!uiHidden && (
+          <>
+            <button
+              type="button"
+              data-ui-element="true"
+              onClick={() => setUiHidden(true)}
+              className="px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors"
+              style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+              title="Hide the interface"
+            >
+              ◇ Hide UI
+            </button>
+            <ThemeToggle />
+          </>
+        )}
+
+        <button
+          type="button"
+          data-ui-element="true"
+          onClick={() => {
+            if (uiHidden) { setUiHidden(false); return }
+            if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
+            else onLeaveLobby()
+          }}
+          className={`px-4 py-2 border text-[11px] tracking-[0.15em] uppercase transition-all ${
+            uiHidden
+              ? 'opacity-25 hover:opacity-100 border-nier-border/40 text-nier-bg/80'
+              : 'border-red-500/50 text-red-300 hover:border-red-400 hover:text-red-200'
+          }`}
+          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          title={uiHidden ? 'Show the interface' : 'Leave this atrium'}
+        >
+          {uiHidden ? '◇ Show UI' : '◇ Leave Atrium'}
+        </button>
+      </div>
+
       {/* HUD + presentation quick-toggle, in one top-left row so the toggle
           always sits just to the right of the HUD regardless of its width. */}
-      <div className="fixed top-4 left-4 z-[9999] flex items-start gap-2 pointer-events-none">
+      <div data-hud="true" className="fixed top-4 left-4 z-[9999] flex items-start gap-2 pointer-events-none">
       <div ref={hudRef} data-ui-element="true" className="relative bg-nier-black px-3 py-2 border-2 border-nier-bg font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '160px' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-nier-bg"></div>
@@ -3803,19 +3889,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
         </p>
         {hasPendingChanges() && (
-          <button
-            onClick={() => saveAllChanges()}
-            disabled={isSavingChanges}
-            className={`w-full mt-1.5 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all ${
-              isSavingChanges
-                ? 'bg-nier-blackLight border-nier-border/40 text-nier-bg/60 cursor-not-allowed'
-                : 'bg-nier-blackLight border-nier-border/40 hover:border-nier-bg text-nier-strong'
-            }`}
-          >
-            {isSavingChanges ? 'Saving…' : `Save Changes (${pendingChanges.size + deletedTraces.size})`}
-          </button>
-        )}
-        {hasPendingChanges() && (
           showDiscardConfirm ? (
             <div className="w-full mt-1 flex gap-1">
               <button
@@ -3851,18 +3924,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           )
         )}
         <div className="flex gap-1 mt-1.5">
-          <button
-            onClick={() => {
-              if (useGameStore.getState().hasPendingChanges()) {
-                setShowLeaveDialog(true)
-              } else {
-                onLeaveLobby()
-              }
-            }}
-            className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong px-1 py-0.5 text-[11px] tracking-wider uppercase transition-all"
-          >
-            Leave
-          </button>
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
@@ -3969,7 +4030,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
         const isFull = !isDesktop && sizeBytes >= LOBBY_SIZE_LIMIT
         return (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+          <div data-hud="true" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
             {/* Only the operator sees this, and only when actually hidden.
                 Without it there's no way to tell this atrium is being viewed
                 invisibly, which is exactly the state where acting as though
@@ -4037,6 +4098,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
           setShowTracePanel(!showTracePanel)
         }}
+        data-hud="true"
         className={`fixed bottom-4 right-4 ${isFull ? 'bg-red-200 hover:bg-red-100 border-red-400' : 'bg-white hover:bg-nier-bg border-gray-400'} text-black px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
       >
         <span className="opacity-60 mr-2">◇</span>
@@ -4048,6 +4110,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Layers Button */}
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
+        data-hud="true"
         className="fixed bottom-36 right-4 bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-nier-border/50 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
@@ -4060,6 +4123,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           canEdit is false) */}
       <button
         onClick={() => setShowLocationsPanel(!showLocationsPanel)}
+        data-hud="true"
         className="fixed bottom-20 right-4 bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-nier-border/50 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
@@ -4077,6 +4141,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           }
           setIsDrawingMode(!isDrawingMode)
         }}
+        data-hud="true"
         className={`fixed bottom-52 right-4 ${isDrawingMode ? 'bg-white text-black border-nier-bg' : 'bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong border-nier-border/50'} px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
       >
         <span className="opacity-60 mr-2">✎</span>
@@ -4090,18 +4155,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           {/* Drawing controls panel */}
           <div
             data-ui-element="true"
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto"
-            style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
+            // Down the right edge rather than across the top. It was sitting
+            // exactly where the save control belongs, and a toolbar of stacked
+            // groups reads better as a column anyway -- each group becomes a
+            // row instead of another thing competing for the same strip.
+            className="fixed right-4 top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
           >
-            <div className="relative border-2 border-nier-bg px-6 py-3">
+            <div className="relative border-2 border-nier-bg px-4 py-3 w-[210px]">
               {/* Corner brackets */}
               <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg" />
               <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg" />
               <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg" />
               <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg" />
 
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col items-stretch gap-3">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Freehand Draw</p>
                   <button
                     onClick={() => setDrawControlsMinimized(!drawControlsMinimized)}
@@ -4769,7 +4838,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       )}
 
       {/* Instructions */}
-      <div className="fixed bottom-4 left-4 px-4 py-3 border-2 border-nier-bg z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
+      <div data-hud="true" className="fixed bottom-4 left-4 px-4 py-3 border-2 border-nier-bg z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
         <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>

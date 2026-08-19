@@ -569,3 +569,9 @@ body.dragging * {
 @media (prefers-reduced-motion: reduce) {
   .goal-bubble { animation: none !important; opacity: 0 !important; }
 }
+
+/* Hide UI, inside an atrium.
+   Marked rather than unmounted: taking the HUD out of the tree would throw
+   away panel state and rebuild things sitting next to a live Pixi canvas, for
+   a change that is only about looking at the room. */
+.lobby-scene.ui-hidden [data-hud] { display: none !important; }
