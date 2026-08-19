@@ -78,6 +78,11 @@ const formatDate = (iso: string) => {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// Case and accents folded, so searching is about the name rather than about
+// reproducing it exactly.
+const normalise = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
 export default function ContributorsAtrium({ onClose, onContribute, thanks = false }: ContributorsAtriumProps) {
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
@@ -152,6 +157,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [dragging, setDragging] = useState(false)
   const [legendOpen, setLegendOpen] = useState(true)
 
+  // Finding yourself, on a wall that can hold two thousand people.
+  //
+  // Scrolling until your own name happens to pass under the cursor is not
+  // finding it. Matching dims everything else and moves the view onto the hit,
+  // which is the only way this scales past a screenful.
+  const [query, setQuery] = useState('')
+  const [matchIndex, setMatchIndex] = useState(0)
+
   // The same reading an atrium uses -- shared, so a mouse zooms, two fingers
   // pan and a pinch zooms here exactly as they do on the canvas.
   const gestures = useMemo(() => createWheelGestures(), [])
@@ -199,6 +212,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // Keyboard zoom, matching the atrium's: +/- to step, 0 to reset.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // '+', '-' and '0' are zoom shortcuts on this page and characters in a
+      // search box. While the box has focus it wins -- otherwise typing a name
+      // with a digit in it zooms the page around.
+      if ((event.target as HTMLElement)?.tagName === 'INPUT') return
+
       if (event.key === '+' || event.key === '=') {
         event.preventDefault()
         setZoom(current => Math.min(2.5, current * 1.12))
@@ -246,10 +264,26 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           person,
           x: Math.cos(angle) * radius,
           y: Math.sin(angle) * radius * 0.72, // flattened: screens are wider than they are tall
-          width: Math.max(150, Math.min(300, 84 + person.displayName.length * 10)),
         }
       })
   }, [data.contributors, seeded])
+
+  // Accents folded and case ignored: someone typing "ines" should find "Inês",
+  // and a person who put an accent in their name should not have to remember
+  // exactly where. Substring rather than prefix, because people search for the
+  // part of their name they think is distinctive.
+  const matches = useMemo(() => {
+    const needle = normalise(query)
+    if (!needle) return []
+    return placed.filter(item => normalise(item.person.displayName).includes(needle))
+  }, [placed, query])
+
+  // Names rather than indices, so the dimming survives the culling that decides
+  // what is in the document at any moment.
+  const matchedNames = useMemo(
+    () => new Set(matches.map(item => normalise(item.person.displayName))),
+    [matches],
+  )
 
   // Only what can be seen is rendered. Two thousand absolutely positioned
   // elements is a lot to keep in a document, and all but a few dozen are off
@@ -269,6 +303,34 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     return placed.filter(({ x, y }) =>
       Math.abs(x * zoom + offset.x) < halfWidth && Math.abs(y * zoom + offset.y) < halfHeight)
   }, [placed, offset, viewport, zoom])
+
+  // Puts a trace in the middle of the screen at the current zoom. The page is
+  // one transform, so this is just the inverse of it.
+  const focusOn = (index: number) => {
+    const target = matches[index]
+    if (!target) return
+    setOffset({ x: -target.x * zoom, y: -target.y * zoom })
+  }
+
+  // A new search jumps to the best hit; Enter walks through the rest. Both live
+  // here rather than in the input so the counter and the view can't disagree.
+  useEffect(() => {
+    setMatchIndex(0)
+    if (matches.length > 0) {
+      const first = matches[0]
+      setOffset({ x: -first.x * zoom, y: -first.y * zoom })
+    }
+    // Deliberately not depending on zoom: re-centring every time someone zooms
+    // would fight them for control of the view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches])
+
+  const nextMatch = () => {
+    if (matches.length === 0) return
+    const next = (matchIndex + 1) % matches.length
+    setMatchIndex(next)
+    focusOn(next)
+  }
 
   const onPointerDown = (event: React.PointerEvent) => {
     if ((event.target as HTMLElement).closest('button')) return
@@ -338,8 +400,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           className="absolute left-1/2 top-1/2"
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
-          {visible.map(({ person, x, y, width }, index) => {
+          {visible.map(({ person, x, y }, index) => {
             const tier = tierFor(person)
+            const dimmed = query.trim().length > 0 && !matchedNames.has(normalise(person.displayName))
             return (
               <div
                 key={`${person.displayName}-${index}`}
@@ -347,8 +410,17 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 style={{
                   left: x,
                   top: y,
-                  width,
+                  // Sized by its contents rather than guessed from the length of
+                  // the name. The guess only measured the name, so a long date
+                  // underneath -- "19 de agosto de 2026", in whatever language
+                  // the reader's machine speaks -- ran straight out of the box.
+                  // The cap is where a name starts truncating, as before; the
+                  // line beneath always fits inside it.
+                  width: 'max-content',
+                  maxWidth: 300,
                   transform: 'translate(-50%, -50%)',
+                  opacity: dimmed ? 0.12 : 1,
+                  transition: 'opacity 220ms ease-out',
                   border: `1px solid ${tier.color}`,
                   boxShadow: `0 0 24px ${tier.glow}`,
                   background: 'rgba(25,25,25,0.72)',
@@ -368,7 +440,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     False donation
                   </div>
                 )}
-                <div className="flex items-baseline justify-between mt-1 gap-2">
+                <div className="flex flex-wrap items-baseline justify-between mt-1 gap-x-2">
                   <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: tier.color, opacity: 0.85 }}>
                     {person.isMonthly && person.monthlyEur
                       ? `€${person.monthlyEur} / month`
@@ -394,11 +466,41 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </div>
       </div>
 
+      {/* Search, top centre, above the wall it filters */}
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(360px,70vw)]">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-nier-bg/70 text-[11px] pointer-events-none">
+            ⌕
+          </span>
+          <input
+            type="text"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') { event.preventDefault(); nextMatch() }
+              if (event.key === 'Escape') { event.preventDefault(); setQuery('') }
+            }}
+            placeholder="Find a name"
+            className="w-full pl-8 pr-4 py-2 bg-nier-black/80 border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
+          />
+        </div>
+
+        {query.trim().length > 0 && (
+          <p className="text-center text-[9px] tracking-[0.15em] uppercase mt-2 text-nier-bg/70">
+            {matches.length === 0
+              ? 'Nobody here by that name'
+              : matches.length === 1
+                ? 'One match'
+                : `${matchIndex + 1} of ${matches.length} — Enter for the next`}
+          </p>
+        )}
+      </div>
+
       {/* Impossible to forget about. The count is the giveaway that the wall
           being looked at is not the wall anyone else sees. */}
       {seeded.length > 0 && (
         <div
-          className="absolute top-6 left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
+          className="absolute top-[4.75rem] left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
           style={{ borderColor: 'rgba(255,97,97,0.5)', background: 'rgba(255,97,97,0.08)' }}
         >
           <span className="text-[9px] tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
