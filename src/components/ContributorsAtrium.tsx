@@ -63,6 +63,10 @@ const MONTHLY_TIER = {
   glow: 'rgba(199,125,255,0.28)',
 }
 
+// The travelling light. Brighter than the border it runs over, or it would be
+// invisible against it -- the same purple, lit.
+const RUNNER_COLOR = '#EBC8FF'
+
 // The rank someone has reached, by everything they have given.
 //
 // The total rather than the one-off part of it, because position on this page
@@ -288,7 +292,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // viable at all.
   const placed = useMemo(() => {
     const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
-    const SPACING = 132
+    // Widened from 132 after the dual-contributor line ("+ €113 given") made
+    // boxes wider: simulating three hundred traces with real text metrics put
+    // 2-12% of them touching a neighbour at the old spacing, and under 1% here.
+    // The wall is a quarter larger for it, which the search box pays for.
+    const SPACING = 170
 
     // Seeded people are sorted in among the real ones rather than appended, so
     // the arrangement being judged is the arrangement that would happen.
@@ -463,21 +471,42 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   borderImage: draw.borderImage,
                   boxShadow: `0 0 24px ${draw.glow}`,
                   background: 'rgba(25,25,25,0.72)',
-                  // Ongoing support is still happening; a slow breath says that
-                  // where a label would only state it. Staggered so the wall
-                  // shimmers rather than pulsing in unison.
-                  //
-                  // Stopped while dimmed by a search, and not only to look
-                  // tidy: the breath animates opacity, and a running animation
-                  // outranks an inline style in the cascade -- so a dimmed
-                  // monthly trace ignored the dim entirely and pulsed back to
-                  // full every few seconds. Movement is attention, which is the
-                  // one thing a non-match should not be asking for.
-                  animation: person.isMonthly && !dimmed
-                    ? `contributor-breath 3.6s ease-in-out ${(index % 7) * 0.4}s infinite`
-                    : undefined,
+                  // The monthly animation lives on the border now (below),
+                  // not on the box's opacity.
                 }}
               >
+                {/* Ongoing support, drawn as something still going: a light
+                    running the perimeter, the way the snake moves.
+
+                    Stopped while dimmed by a search. Movement is attention, and
+                    a non-match is the one thing on the page that should not be
+                    asking for any. Staggered so the wall has a current running
+                    through it rather than everything moving in lockstep. */}
+                {person.isMonthly && !dimmed && (
+                  <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ overflow: 'visible' }}
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="0"
+                      y="0"
+                      width="100%"
+                      height="100%"
+                      fill="none"
+                      stroke={RUNNER_COLOR}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      pathLength={100}
+                      strokeDasharray="14 86"
+                      style={{
+                        animation: `contributor-run 3.6s linear ${(index % 7) * 0.45}s infinite`,
+                        filter: `drop-shadow(0 0 4px ${MONTHLY_TIER.color})`,
+                      }}
+                    />
+                  </svg>
+                )}
+
                 <div className="text-[13px] tracking-wide truncate" style={{ color: draw.nameColor }}>
                   {person.displayName}
                 </div>
@@ -496,7 +525,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     {/* The total, for someone whose trace otherwise shows only
                         a rate. Without it their one-off giving is in the sum
                         that placed them here and nowhere on the trace. */}
-                    {person.isMonthly && person.hasOneTime && ` · €${person.amountEur} given`}
+                    {person.isMonthly && person.hasOneTime && ` + €${person.amountEur} given`}
                   </span>
                   <span className="text-[9px] tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
                     {person.isMonthly ? `since ${formatDate(person.since)}` : formatDate(person.since)}
@@ -614,8 +643,12 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             ))}
             <div className="flex items-center gap-2 pt-1">
               <span
-                className="w-3 h-[1px]"
-                style={{ background: MONTHLY_TIER.color, animation: 'contributor-breath 3.6s ease-in-out infinite' }}
+                className="w-3 h-[2px]"
+                style={{
+                  background: `linear-gradient(90deg, ${MONTHLY_TIER.color} 0%, ${MONTHLY_TIER.color} 40%, ${RUNNER_COLOR} 50%, ${MONTHLY_TIER.color} 60%, ${MONTHLY_TIER.color} 100%)`,
+                  backgroundSize: '300% 100%',
+                  animation: 'contributor-run-line 3.6s linear infinite',
+                }}
               />
               <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
                 {MONTHLY_TIER.label}
@@ -623,10 +656,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             </div>
             <div className="flex items-center gap-2">
               <span
-                className="w-3 h-[1px]"
+                className="w-3 h-[2px]"
                 style={{
                   background: `linear-gradient(90deg, ${TIERS[TIERS.length - 1].color}, ${MONTHLY_TIER.color})`,
-                  animation: 'contributor-breath 3.6s ease-in-out infinite',
                 }}
               />
               <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>

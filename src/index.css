@@ -406,16 +406,33 @@ body.dragging * {
   background: rgba(255, 97, 97, 0.08);
 }
 
-/* A monthly contribution on the contributors page. Slow and shallow: it should
-   read as alive rather than as something demanding attention. */
-@keyframes contributor-breath {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+/* The light that runs around a monthly trace.
+
+   A dash travelling the perimeter rather than the whole box fading in and out.
+   Ongoing support is a thing that keeps going, and something moving along says
+   that; a pulse only says "look at me", and three hundred of them saying it at
+   once was noise. It also stopped fighting the search, which dimmed traces by
+   opacity -- the one property the old animation was overriding.
+
+   pathLength="100" on the rect normalises the perimeter to 100 units, so one
+   set of keyframes works for boxes of every width. Without it the dash length
+   and speed would depend on how long somebody's name is. */
+@keyframes contributor-run {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -100; }
 }
 
-/* The Contribute button on the contributors page. The glow breathes at the same
-   rate the monthly traces do, so the page has one heartbeat rather than two
-   competing ones. The button itself never moves -- only the light around it. */
+/* The same idea at legend scale, where a travelling dash has nowhere to travel:
+   a highlight sliding along a 12px line instead. */
+@keyframes contributor-run-line {
+  from { background-position: 200% 0; }
+  to { background-position: -100% 0; }
+}
+
+/* The Contribute button on the contributors page. It runs on the same 3.6s
+   period as the light travelling around the monthly traces, so the page keeps
+   one rhythm rather than two competing ones. The button itself never moves --
+   only the light around it. */
 @keyframes contributor-glow {
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.12); }
