@@ -294,6 +294,8 @@ function AtriumTransitionOverlay({
   onAnimationComplete?: () => void
   progressClassName: string
 }) {
+  // Which room this crossing happens in.
+  const light = useLandingTheme().resolved === 'light'
   const nearCompleteFiredRef = useRef(false)
   useEffect(() => {
     nearCompleteFiredRef.current = false
@@ -320,9 +322,16 @@ function AtriumTransitionOverlay({
   }, [videoSrc])
 
   return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4 overflow-hidden">
+    <div
+      className="fixed inset-0 flex items-center justify-center font-mono px-4 overflow-hidden"
+      // White rather than paper in light mode, and deliberately not a token:
+      // the animation under it is white line-art on black, and inverting it
+      // produces a pure white ground. Anything else would show as a rectangle
+      // with a slightly different white inside it.
+      style={{ background: light ? '#FFFFFF' : '#000000' }}
+    >
       <div className="w-full max-w-[1600px] flex flex-col items-center justify-center">
-        <p className="text-white text-[clamp(9px,2vw,15px)] tracking-[0.25em] uppercase mb-3 text-center">{title}</p>
+        <p className="text-nier-strong text-[clamp(11px,2vw,17px)] tracking-[0.25em] uppercase mb-3 text-center">{title}</p>
 
         {videoSrc ? (
           <>
@@ -334,6 +343,7 @@ function AtriumTransitionOverlay({
               playsInline
               aria-label={title}
               className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px] object-contain"
+            style={light ? { filter: 'invert(1)' } : undefined}
               onTimeUpdate={(e) => {
                 const video = e.currentTarget
                 if (nearCompleteFiredRef.current || !video.duration) return
@@ -362,15 +372,15 @@ function AtriumTransitionOverlay({
             onNearComplete={onNearComplete}
             onComplete={onAnimationComplete}
             alt={title}
-            className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px]"
+            className={`w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px] ${light ? 'invert' : ''}`}
           />
         )}
 
-        <div className="w-[60vw] sm:w-[420px] h-[3px] bg-white/10 overflow-hidden mx-auto mt-3">
+        <div className="w-[60vw] sm:w-[420px] h-[3px] bg-nier-bg/15 overflow-hidden mx-auto mt-3">
           <div className={progressClassName} />
         </div>
 
-        <p className="text-gray-500 text-[clamp(7px,1.6vw,11px)] tracking-[0.2em] uppercase mt-3 text-center">{subtitle}</p>
+        <p className="text-nier-bg/70 text-[clamp(11px,1.6vw,13px)] tracking-[0.2em] uppercase mt-3 text-center">{subtitle}</p>
       </div>
     </div>
   )
@@ -1493,7 +1503,7 @@ function AppInner() {
           subtitle="◇ Calibrating threshold"
           frames={LOADING_ANIMATION_FRAMES}
           loop={true}
-          progressClassName="h-full bg-white/80 animate-nier-slide"
+          progressClassName="h-full bg-nier-bg/80 animate-nier-slide"
         />
       )
     }
@@ -1557,7 +1567,7 @@ function AppInner() {
             subtitle="◇ Crossing into another realm"
             videoSrc={ENTERING_ANIMATION_VIDEO_SRC}
             onAnimationComplete={() => setAtriumTransitionPhase('flash')}
-            progressClassName="h-full bg-white/80"
+            progressClassName="h-full bg-nier-bg/80"
           />
         )
       }
@@ -1573,7 +1583,7 @@ function AppInner() {
             subtitle={enteringVideoReady ? '◇ Aligning the gate' : '◇ Preparing passage'}
             frames={LOADING_ANIMATION_FRAMES}
             loop={true}
-            progressClassName="h-full bg-white/80 animate-nier-slide"
+            progressClassName="h-full bg-nier-bg/80 animate-nier-slide"
           />
         )
       }
@@ -1596,7 +1606,7 @@ function AppInner() {
         subtitle="◇ Tuning spatial resonance"
         frames={LOADING_ANIMATION_FRAMES}
         loop={true}
-        progressClassName="h-full bg-white/80 animate-nier-slide"
+        progressClassName="h-full bg-nier-bg/80 animate-nier-slide"
       />
     )
   }

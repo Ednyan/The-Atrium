@@ -3,12 +3,6 @@ import { useEffect, useState } from 'react'
 const REPO = 'Ednyan/The-Atrium'
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
 
-const ACCENT = {
-  silver: '#D9D9D9',
-  emerald: '#7FD1A6',
-  sky: '#7FB6D9',
-} as const
-
 interface Build {
   os: 'Windows' | 'macOS' | 'Linux'
   // Matches the asset filename the release actually carries. Absent means no
@@ -73,19 +67,19 @@ export default function DesktopAppSection() {
   return (
     <div className="max-w-3xl w-full mx-auto" data-reveal>
       <div className="flex items-center gap-3 mb-10">
-        <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-        <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+        <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-silver) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-silver) / 0.27)` }} />
+        <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
           Desktop App
         </h2>
         <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
       </div>
 
-      <p className="text-nier-bg/80 text-sm md:text-base leading-relaxed mb-3">
+      <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed mb-3">
         The same atrium, running on your own machine. Your references live in a
         folder you control, images come straight off your drive instead of
         needing somewhere to host them, and nothing is capped.
       </p>
-      <p className="text-nier-bg/75 text-sm leading-relaxed mb-8">
+      <p className="text-nier-bg/75 text-base leading-relaxed mb-8">
         It's the better fit for a big personal reference library. The web version
         is the better fit for anything you want other people in.
       </p>
@@ -109,10 +103,10 @@ export default function DesktopAppSection() {
                   : 'border-nier-border/15 opacity-50 cursor-default'
               }`}
             >
-              <div className="text-nier-bg text-sm tracking-[0.1em] uppercase mb-1">
+              <div className="text-nier-bg text-base tracking-[0.1em] uppercase mb-1">
                 {available ? '↓ ' : ''}{build.os}
               </div>
-              <div className="text-nier-bg/70 text-[10px] tracking-wider">
+              <div className="text-nier-bg/70 text-xs tracking-wider">
                 {available ? build.note : 'Not available yet'}
               </div>
             </a>
@@ -126,7 +120,7 @@ export default function DesktopAppSection() {
           dead end into a known extra click. */}
       {assets['macOS'] && (
         <div className="border border-nier-border/25 bg-nier-black/40 p-3 mb-4">
-          <p className="text-nier-bg/80 text-[10px] tracking-wider leading-relaxed">
+          <p className="text-nier-bg/80 text-xs tracking-wider leading-relaxed">
             <span className="text-nier-bg">On macOS,</span> the first launch will say the app
             "cannot be opened because the developer cannot be verified". That's because the
             build isn't signed with an Apple Developer certificate, not because anything is
@@ -136,7 +130,7 @@ export default function DesktopAppSection() {
         </div>
       )}
 
-      <p className="text-nier-bg/70 text-[10px] tracking-wider mb-10">
+      <p className="text-nier-bg/70 text-xs tracking-wider mb-10">
         {version ? `Latest release ${version} · ` : ''}
         <a
           href={RELEASES_URL}
@@ -152,14 +146,14 @@ export default function DesktopAppSection() {
       {/* Comparison */}
       <div className="border border-nier-border/25">
         <div className="grid grid-cols-3 border-b border-nier-border/25 bg-nier-black/40">
-          <div className="p-3 text-nier-bg/70 text-[9px] tracking-[0.15em] uppercase" />
-          <div className="p-3 text-[9px] tracking-[0.15em] uppercase text-center" style={{ color: `${ACCENT.sky}CC` }}>Web</div>
-          <div className="p-3 text-[9px] tracking-[0.15em] uppercase text-center" style={{ color: `${ACCENT.emerald}CC` }}>Desktop</div>
+          <div className="p-3 text-nier-bg/70 text-xs tracking-[0.15em] uppercase" />
+          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-sky) / 0.8)` }}>Web</div>
+          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-emerald) / 0.8)` }}>Desktop</div>
         </div>
         {COMPARISON.map((row, i) => (
           <div
             key={row.feature}
-            className={`grid grid-cols-3 text-xs ${i % 2 === 0 ? 'bg-nier-black/20' : ''}`}
+            className={`grid grid-cols-3 text-sm ${i % 2 === 0 ? 'bg-nier-black/20' : ''}`}
           >
             <div className="p-3 text-nier-bg/80">{row.feature}</div>
             <div className={`p-3 text-center ${row.favours === 'web' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
@@ -172,7 +166,7 @@ export default function DesktopAppSection() {
         ))}
       </div>
 
-      <p className="text-nier-bg/70 text-xs leading-relaxed mt-6">
+      <p className="text-nier-bg/70 text-sm leading-relaxed mt-6">
         You can move between them: download an atrium from the web and import it
         into the desktop app, or upload a local one when you want to share it.
       </p>

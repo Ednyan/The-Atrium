@@ -222,12 +222,12 @@ input:focus, textarea:focus, select:focus {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(203, 203, 203, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--c-fg) / 0.1), transparent);
   transition: left 0.3s ease;
 }
 
 .nier-btn:hover {
-  background: rgba(203, 203, 203, 0.1);
+  background: rgb(var(--c-fg) / 0.1);
   border-color: var(--nier-bg);
 }
 
@@ -365,7 +365,7 @@ body.dragging * {
   font-size: 8px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(203, 203, 203, 0.88);
+  color: rgb(var(--c-fg) / 0.88);
   background: rgba(25, 25, 25, 0.85);
   border: 1px solid rgba(143, 143, 143, 0.75);
   padding: 2px 5px;
@@ -380,8 +380,8 @@ body.dragging * {
 
 .trace-nier-handle:hover {
   transform: translate(-50%, -50%) scale(1.14);
-  border-color: rgba(203, 203, 203, 0.95);
-  box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.95), 0 0 12px rgba(203, 203, 203, 0.32);
+  border-color: rgb(var(--c-fg) / 0.95);
+  box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.95), 0 0 12px rgb(var(--c-fg) / 0.32);
 }
 
 .trace-nier-handle-corner,
@@ -401,9 +401,9 @@ body.dragging * {
 .trace-nier-handle-center {
   width: 22px;
   height: 22px;
-  border: 1px solid rgba(203, 203, 203, 0.95);
+  border: 1px solid rgb(var(--c-fg) / 0.95);
   background: rgba(40, 40, 40, 0.98);
-  box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.9), 0 0 12px rgba(203, 203, 203, 0.25);
+  box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.9), 0 0 12px rgb(var(--c-fg) / 0.25);
 }
 
 .trace-nier-handle-center::before {
@@ -413,13 +413,13 @@ body.dragging * {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(203, 203, 203, 0.88);
+  color: rgb(var(--c-fg) / 0.88);
   font-size: 10px;
   line-height: 1;
 }
 
 .trace-nier-handle-active {
-  border-color: rgba(203, 203, 203, 0.95) !important;
+  border-color: rgb(var(--c-fg) / 0.95) !important;
   background: rgba(181, 181, 181, 0.35) !important;
 }
 
@@ -434,11 +434,11 @@ body.dragging * {
   width: 100%;
   padding: 0.45rem 0.75rem 0.45rem 1.5rem;
   text-align: left;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: rgba(203, 203, 203, 0.75);
-  border-left: 1px solid rgba(203, 203, 203, 0.15);
+  color: rgb(var(--c-fg) / 0.75);
+  border-left: 1px solid rgb(var(--c-fg) / 0.15);
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 
@@ -456,7 +456,7 @@ body.dragging * {
 .menu-row:hover {
   color: #cbcbcb;
   border-left-color: #cbcbcb;
-  background: rgba(203, 203, 203, 0.05);
+  background: rgb(var(--c-fg) / 0.05);
 }
 
 .menu-row:hover::before {

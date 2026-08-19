@@ -695,10 +695,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-bg/40" />
           <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-bg/40" />
           <p className="text-nier-strong text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
-          <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-            <div className="h-full bg-white/80 animate-nier-slide" />
+          <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/15 overflow-hidden mx-auto">
+            <div className="h-full bg-nier-bg/80 animate-nier-slide" />
           </div>
-          <p className="text-gray-300 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+          <p className="text-nier-bg/75 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
         </div>
       </div>
     )
@@ -1429,7 +1429,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       {/* Report a problem / suggest a feature */}
       <button
         onClick={() => setShowReportForm(true)}
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-gray-300 hover:text-gray-300 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-nier-bg/75 hover:text-nier-bg/75 text-[9px] font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
       >
         Report a problem or suggest a feature
       </button>

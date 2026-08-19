@@ -639,7 +639,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 1: Hero */}
       <section
         ref={el => sectionRefs.current[0] = el}
-        className="min-h-screen flex items-center px-5 sm:px-10 lg:px-16 py-28 relative overflow-hidden"
+        className="min-h-[calc(100vh-3.5rem)] flex items-center px-5 sm:px-10 lg:px-16 pt-10 pb-24 relative overflow-hidden"
       >
         {/* Corner brackets */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30 pointer-events-none" />
@@ -750,7 +750,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 className="group relative px-8 py-3.5 text-base tracking-[0.18em] uppercase font-medium transition-all duration-300"
                 style={{
                   backgroundColor: 'rgb(var(--c-accent))',
-                  color: '#191919',
+                  // The ground, not black. The button is filled with the
+                  // strong neutral, which is bone on a dark page and ink on a
+                  // light one -- a fixed dark label works on the first and
+                  // disappears into the second.
+                  color: 'rgb(var(--c-ground))',
                   boxShadow: `0 0 0 rgba(0,0,0,0)`,
                 }}
                 onMouseEnter={(e) => {
