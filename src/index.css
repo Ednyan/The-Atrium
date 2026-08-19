@@ -580,3 +580,49 @@ body.dragging * {
    away panel state and rebuild things sitting next to a live Pixi canvas, for
    a change that is only about looking at the room. */
 .lobby-scene.ui-hidden [data-hud] { display: none !important; }
+
+/* The atrium's controls, as one button rather than eleven.
+   Every floating control in there had grown its own padding, its own border
+   weight and its own idea of a hover, because each was written where it was
+   needed. This is the shape the top row established: its own ground so it can
+   sit over any canvas, a two-pixel rule, and the cut corner. */
+.atrium-btn {
+  padding: 0.5rem 1rem;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: rgb(var(--c-fg) / 0.8);
+  background-color: rgb(var(--c-ground) / 0.94);
+  border: 1px solid rgb(var(--c-line) / 0.4);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+.atrium-btn:hover {
+  color: rgb(var(--c-strong));
+  border-color: rgb(var(--c-line) / 0.7);
+}
+.atrium-btn[data-active='true'] {
+  color: rgb(var(--c-ground));
+  background-color: rgb(var(--c-accent));
+  border-color: rgb(var(--c-accent));
+}
+
+/* Panels arriving rather than appearing. Short enough not to be in the way of
+   somebody who knows where they are going, long enough to say where the thing
+   came from. */
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.panel-in { animation: panel-in 180ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes panel-in-right {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.panel-in-right { animation: panel-in-right 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-in, .panel-in-right { animation: none; }
+}

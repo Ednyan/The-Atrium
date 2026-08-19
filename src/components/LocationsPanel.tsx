@@ -83,48 +83,48 @@ export default function LocationsPanel({
   return (
     <div
       data-ui-element="true"
-      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
+      className="layer-panel fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
       style={{ backgroundColor: 'rgba(20,20,20,0.98)', top: '80px', right: '16px', height: 'calc(100vh - 160px)' }}
     >
-      <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-white pointer-events-none" />
-      <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-white pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-white pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-white pointer-events-none" />
+      <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-bg pointer-events-none" />
+      <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-bg pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-bg pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-bg pointer-events-none" />
 
       {/* Header */}
-      <div className="bg-black border-b border-gray-600 p-3 flex justify-between items-center">
+      <div className="bg-nier-black border-b border-nier-border/40 p-3 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
-          <h2 className="text-sm text-white tracking-[0.15em] uppercase">Locations</h2>
-          {dirty && <span className="text-amber-400 text-[8px] tracking-wider uppercase" title="Unsaved changes">● Unsaved</span>}
+          <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">Locations</h2>
+          {dirty && <span className="text-amber-400 text-[11px] tracking-wider uppercase" title="Unsaved changes">● Unsaved</span>}
         </div>
         <div className="flex gap-2">
           {canEdit && (
             <button
               onClick={() => { setDialogMode('create'); setDialogInput(''); setDialogTargetId(null) }}
-              className="px-3 py-1 bg-white text-black text-[9px] tracking-wider uppercase hover:bg-gray-200 transition-colors"
+              className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
               title="Save the current camera view as a location"
             >
               + Save View
             </button>
           )}
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-lg w-6 h-6 flex items-center justify-center transition-colors">×</button>
+          <button onClick={onClose} className="text-nier-bg/70 hover:text-nier-strong text-lg w-6 h-6 flex items-center justify-center transition-colors">×</button>
         </div>
       </div>
 
       {/* Presentation mode toggle */}
-      <div className="bg-black/60 border-b border-gray-700 px-3 py-2 flex items-center justify-between">
+      <div className="bg-nier-black/60 border-b border-nier-border/30 px-3 py-2 flex items-center justify-between">
         <div className="flex flex-col">
-          <span className="text-gray-300 text-[10px] tracking-wider uppercase">Presentation Mode</span>
-          <span className="text-gray-300 text-[8px] tracking-wide">← / → keys to move between locations</span>
+          <span className="text-nier-bg/80 text-xs tracking-wider uppercase">Presentation Mode</span>
+          <span className="text-nier-bg/80 text-[11px] tracking-wide">← / → keys to move between locations</span>
         </div>
         <button
           onClick={onTogglePresentation}
           disabled={locations.length === 0}
-          className={`px-3 py-1 text-[9px] tracking-wider uppercase transition-colors border ${
+          className={`px-3 py-1 text-xs tracking-wider uppercase transition-colors border ${
             presentationMode
               ? 'bg-emerald-500 border-emerald-400 text-black'
-              : 'bg-gray-900 border-gray-600 text-gray-300 hover:border-white hover:text-white disabled:opacity-30 disabled:cursor-not-allowed'
+              : 'bg-nier-black border-nier-border/40 text-nier-bg/80 hover:border-nier-bg hover:text-nier-strong disabled:opacity-30 disabled:cursor-not-allowed'
           }`}
         >
           {presentationMode ? 'On' : 'Off'}
@@ -134,7 +134,7 @@ export default function LocationsPanel({
       {/* Location list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {locations.length === 0 && (
-          <p className="text-gray-400 text-[10px] tracking-wide text-center px-4 py-6">
+          <p className="text-nier-bg/70 text-xs tracking-wide text-center px-4 py-6">
             {canEdit ? 'No locations yet. Frame a view and press "Save View".' : 'No locations saved.'}
           </p>
         )}
@@ -155,7 +155,7 @@ export default function LocationsPanel({
                   ? 'border-emerald-400 bg-emerald-900/20'
                   : isPresentationCurrent
                   ? 'border-emerald-400 bg-emerald-900/30'
-                  : 'border-gray-700 bg-gray-900 hover:bg-gray-800 hover:border-gray-500'
+                  : 'border-nier-border/30 bg-nier-black hover:bg-nier-blackLight hover:border-nier-border/50'
               }`}
               title="Double-click to fly here"
             >
@@ -171,10 +171,10 @@ export default function LocationsPanel({
                     ))}
                   </span>
                 )}
-                <span className="text-gray-300 text-[9px] font-mono w-5 shrink-0 text-right">{index + 1}</span>
+                <span className="text-nier-bg/80 text-xs font-mono w-5 shrink-0 text-right">{index + 1}</span>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-white/90 text-xs tracking-wide truncate">{loc.name}</span>
-                  <span className="text-gray-300 text-[8px] font-mono tracking-wide">
+                  <span className="text-nier-strong/90 text-xs tracking-wide truncate">{loc.name}</span>
+                  <span className="text-nier-bg/80 text-[11px] font-mono tracking-wide">
                     {Math.round(loc.positionX)}, {Math.round(loc.positionY)} · {loc.zoom.toFixed(2)}x
                   </span>
                 </div>
@@ -182,7 +182,7 @@ export default function LocationsPanel({
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={(e) => { e.stopPropagation(); onGoToLocation(loc) }}
-                  className="text-gray-400 hover:text-white text-[11px] px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
+                  className="text-nier-bg/70 hover:text-nier-strong text-sm px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
                   title="Fly here"
                 >
                   →
@@ -192,10 +192,10 @@ export default function LocationsPanel({
                     <button
                       onClick={(e) => { e.stopPropagation(); onUpdateCamera(loc.id) }}
                       disabled={loc.isLocked}
-                      className={`text-[10px] px-1.5 py-0.5 transition-colors ${
+                      className={`text-xs px-1.5 py-0.5 transition-colors ${
                         loc.isLocked
                           ? 'text-gray-700 cursor-not-allowed'
-                          : 'text-gray-400 hover:text-white'
+                          : 'text-nier-bg/70 hover:text-nier-strong'
                       }`}
                       title={loc.isLocked
                         ? 'Locked -- unlock to overwrite this view'
@@ -205,10 +205,10 @@ export default function LocationsPanel({
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onToggleLock(loc.id) }}
-                      className={`text-[10px] px-1.5 py-0.5 transition-colors ${
+                      className={`text-xs px-1.5 py-0.5 transition-colors ${
                         loc.isLocked
                           ? 'text-amber-400 hover:text-amber-300'
-                          : 'text-gray-400 hover:text-white'
+                          : 'text-nier-bg/70 hover:text-nier-strong'
                       }`}
                       title={loc.isLocked
                         ? 'Unlock -- allow this view to be overwritten'
@@ -218,14 +218,14 @@ export default function LocationsPanel({
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('rename'); setDialogInput(loc.name); setDialogTargetId(loc.id) }}
-                      className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 transition-colors"
+                      className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 transition-colors"
                       title="Rename"
                     >
                       ✎
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('delete'); setDialogTargetId(loc.id) }}
-                      className="text-red-400/60 hover:text-red-400 text-[10px] px-1.5 py-0.5 transition-colors"
+                      className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5 transition-colors"
                       title="Delete"
                     >
                       ×
@@ -240,16 +240,16 @@ export default function LocationsPanel({
 
       {/* Save / Discard footer -- only while there are unsaved edits */}
       {canEdit && dirty && (
-        <div className="bg-black border-t border-gray-600 p-2 flex gap-2">
+        <div className="bg-nier-black border-t border-nier-border/40 p-2 flex gap-2">
           <button
             onClick={onSave}
-            className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+            className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
           >
             Save Changes
           </button>
           <button
             onClick={onDiscard}
-            className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+            className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
           >
             Discard
           </button>
@@ -258,29 +258,29 @@ export default function LocationsPanel({
 
       {/* Dialog for create/rename/delete */}
       {dialogMode && (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-black border-2 border-white p-4 w-64 relative">
-            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-white pointer-events-none" />
-            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-white pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-white pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-white pointer-events-none" />
+        <div className="absolute inset-0 bg-nier-black/70 flex items-center justify-center z-50">
+          <div className="bg-nier-black border-2 border-nier-bg p-4 w-64 relative">
+            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-bg pointer-events-none" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-bg pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-bg pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-bg pointer-events-none" />
 
             {dialogMode === 'delete' ? (
               <>
-                <p className="text-white text-xs tracking-[0.15em] uppercase mb-4">Delete this location?</p>
+                <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-4">Delete this location?</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => { if (dialogTargetId) onDelete(dialogTargetId); setDialogMode(null) }}
-                    className="flex-1 bg-red-900 hover:bg-red-700 text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                    className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     Delete
                   </button>
-                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors">Cancel</button>
+                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">Cancel</button>
                 </div>
               </>
             ) : (
               <>
-                <p className="text-white text-xs tracking-[0.15em] uppercase mb-3">
+                <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-3">
                   {dialogMode === 'create' ? 'Location Name' : 'Rename Location'}
                 </p>
                 <input
@@ -296,7 +296,7 @@ export default function LocationsPanel({
                     }
                     if (e.key === 'Escape') setDialogMode(null)
                   }}
-                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider"
+                  className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-3 focus:border-nier-bg focus:outline-none tracking-wider"
                   placeholder="Location name..."
                 />
                 <div className="flex gap-2">
@@ -308,11 +308,11 @@ export default function LocationsPanel({
                       }
                       setDialogMode(null)
                     }}
-                    className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                    className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     {dialogMode === 'create' ? 'Save' : 'Rename'}
                   </button>
-                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors">Cancel</button>
+                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">Cancel</button>
                 </div>
               </>
             )}

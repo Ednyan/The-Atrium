@@ -56,6 +56,16 @@ const KEYBOARD_ZOOM_STEP_FINE = 0.12
 // a single drop shadow only works in one direction, whereas offsets on all
 // four sides plus a soft blur keep the text legible against a light theme
 // without looking heavy against a dark one.
+// What a stroke can be, without leaving the building.
+//
+// The five ranks the contributors wall uses, the accent, the two ends of the
+// greyscale and the two warm markers -- ten colours that already belong
+// together because everything else here is drawn from them.
+const DRAW_SWATCHES = [
+  '#CBCBCB', '#191919', '#8F8F8F', '#FF8A3D', '#E8C15A',
+  '#9AD4C4', '#A8B6D9', '#C77DFF', '#E87A6D', '#7FD1A6',
+]
+
 const HUD_TEXT_OUTLINE =
   '0 0 4px rgb(var(--c-ground) / 0.95), 1px 0 2px rgb(var(--c-ground) / 0.94), -1px 0 2px rgb(var(--c-ground) / 0.94), 0 1px 2px rgb(var(--c-ground) / 0.94), 0 -1px 2px rgb(var(--c-ground) / 0.94)'
 
@@ -3785,9 +3795,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <button
               type="button"
               data-ui-element="true"
+              onClick={toggleFullscreen}
+              className="atrium-btn"
+              title={isFullscreen ? 'Leave fullscreen' : 'Fullscreen'}
+            >
+              ◇ {isFullscreen ? 'Windowed' : 'Fullscreen'}
+            </button>
+            <button
+              type="button"
+              data-ui-element="true"
               onClick={() => setUiHidden(true)}
-              className="px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors"
-              style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+              className="atrium-btn"
               title="Hide the interface"
             >
               ◇ Hide UI
@@ -3938,7 +3956,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
-              className="flex-1 bg-white hover:bg-nier-bg text-black px-1 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+              className="atrium-btn flex-1"
             >
               Manage
             </button>
@@ -3947,7 +3965,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {currentLobby && (
           <button
             onClick={() => copyLobbyId(currentLobby.id)}
-            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+            className="atrium-btn w-full mt-1 text-left"
           >
             Copy Atrium ID
           </button>
@@ -3956,7 +3974,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <button
             onClick={handleConvertAllEmbeds}
             disabled={isConvertingEmbeds}
-            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="atrium-btn w-full mt-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
             title="Convert every embed trace in this atrium into an internal image"
           >
             {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
@@ -3965,7 +3983,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {!isDesktop && canEdit && pinterestConnected && (
           <button
             onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
-            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+            className="atrium-btn w-full mt-1 text-left"
             title="Import a Pinterest board's pins as traces"
           >
             Import from Pinterest
@@ -3973,7 +3991,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
         <button
           onClick={() => setShowProfileCustomization(true)}
-          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+          className="atrium-btn w-full mt-1 text-left"
         >
           Profile
         </button>
@@ -3984,27 +4002,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffsetRef.current = { x: 0, y: 0 }
             setWorldOffset({ x: 0, y: 0 })
           }}
-          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+          className="atrium-btn w-full mt-1 text-left"
         >
           Recenter
-        </button>
-        <button
-          onClick={toggleFullscreen}
-          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
-        >
-          {isFullscreen ? 'Windowed' : 'Fullscreen'}
         </button>
         {(isLobbyOwner || isLobbyAdmin) && (
           <button
             onClick={() => setShowThemeCustomization(true)}
-            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+            className="atrium-btn w-full mt-1 text-left"
           >
             Theme
           </button>
         )}
         <button
           onClick={() => setShowReportForm(true)}
-          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
+          className="atrium-btn w-full mt-1 text-left"
         >
           Report a Problem
         </button>
@@ -4110,7 +4122,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setShowTracePanel(!showTracePanel)
         }}
         data-hud="true"
-        className={`fixed bottom-4 right-4 ${isFull ? 'bg-red-200 hover:bg-red-100 border-red-400' : 'bg-white hover:bg-nier-bg border-gray-400'} text-black px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
+        className="atrium-btn fixed bottom-4 right-4 font-mono z-[9999] pointer-events-auto"
+        data-active={!isFull}
       >
         <span className="opacity-60 mr-2">◇</span>
         {isFull ? 'Atrium Full' : showTracePanel ? 'Close' : 'Leave Trace'}
@@ -4122,7 +4135,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
         data-hud="true"
-        className="fixed bottom-36 right-4 bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-nier-border/50 pointer-events-auto"
+        className="atrium-btn fixed bottom-36 right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLayerPanel ? 'Close' : 'Layers'}
@@ -4135,7 +4148,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       <button
         onClick={() => setShowLocationsPanel(!showLocationsPanel)}
         data-hud="true"
-        className="fixed bottom-20 right-4 bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-nier-border/50 pointer-events-auto"
+        className="atrium-btn fixed bottom-20 right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLocationsPanel ? 'Close' : 'Locations'}
@@ -4153,7 +4166,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setIsDrawingMode(!isDrawingMode)
         }}
         data-hud="true"
-        className={`fixed bottom-52 right-4 ${isDrawingMode ? 'bg-white text-black border-nier-bg' : 'bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong border-nier-border/50'} px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
+        className="atrium-btn fixed bottom-52 right-4 font-mono z-[9999] pointer-events-auto"
+        data-active={isDrawingMode}
       >
         <span className="opacity-60 mr-2">✎</span>
         {isDrawingMode ? 'Exit Draw' : 'Draw'}
@@ -4170,7 +4184,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             // exactly where the save control belongs, and a toolbar of stacked
             // groups reads better as a column anyway -- each group becomes a
             // row instead of another thing competing for the same strip.
-            className="fixed right-4 top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
+            className="panel-in-right fixed right-4 top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
           >
             <div className="relative border-2 border-nier-bg px-4 py-3 w-[210px]">
@@ -4212,13 +4226,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
                 {/* Color picker - only shown in brush mode */}
                 {!isEraserMode && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">Color</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">Colour</span>
                     <input
                       type="color"
                       value={drawingColor}
                       onChange={(e) => setDrawingColor(e.target.value)}
-                      className="w-6 h-6 cursor-pointer bg-transparent border border-nier-border/40"
+                      title="Any colour"
+                      className="flex-1 h-7 cursor-pointer bg-transparent border border-nier-border/40"
                     />
                   </div>
                 )}
@@ -4251,14 +4266,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   <span className="text-nier-bg/80 text-xs w-4">{drawingSmoothing}%</span>
                 </div>
 
-                {/* Quick colors - only in brush mode */}
+                {/* Quick colours.
+
+                    They were the corners of the RGB cube -- pure red, pure
+                    green, pure cyan, pure magenta -- which is what a colour
+                    picker defaults to and what nothing else in this app looks
+                    like. These are the palette the rest of the atrium is drawn
+                    from: the contribution ranks, the accent, and the two ends
+                    of its own greyscale. Anything drawn with them belongs to
+                    the room it is drawn in. */}
                 {!isEraserMode && (
-                  <div className="flex gap-1">
-                    {['#ffffff', '#ff4444', '#44ff44', '#4488ff', '#ffff44', '#ff44ff', '#44ffff'].map(color => (
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {DRAW_SWATCHES.map(color => (
                       <button
                         key={color}
                         onClick={() => setDrawingColor(color)}
-                        className={`w-4 h-4 border ${drawingColor === color ? 'border-nier-bg scale-125' : 'border-nier-border/40'} transition-all`}
+                        title={color}
+                        className={`h-5 border transition-all ${
+                          drawingColor.toLowerCase() === color.toLowerCase()
+                            ? 'border-nier-bg scale-110'
+                            : 'border-nier-border/40 hover:border-nier-border/70'
+                        }`}
                         style={{ backgroundColor: color }}
                       />
                     ))}

@@ -48,8 +48,8 @@ function MenuItem({ label, onClick, danger, disabled, busy, hint }: {
     <button
       disabled={disabled || busy}
       onClick={onClick}
-      className={`w-full text-left px-3 py-1.5 text-[11px] tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-        danger ? 'text-red-400/80 hover:bg-red-900/30 hover:text-red-300' : 'text-white hover:bg-gray-700'
+      className={`w-full text-left px-3 py-1.5 text-sm tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+        danger ? 'text-red-400/80 hover:bg-red-900/30 hover:text-red-300' : 'text-nier-strong hover:bg-nier-blackLight'
       }`}
       title={hint}
     >
@@ -1027,7 +1027,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   return (
     <div 
       data-ui-element="true"
-      className="layer-panel fixed w-80 border-2 border-white shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
+      className="layer-panel fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
       style={{ 
         backgroundColor: 'rgba(20,20,20,0.98)',
         top: '80px',
@@ -1036,19 +1036,19 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       }}
     >
       {/* Corner brackets */}
-      <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-white pointer-events-none" />
-      <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-white pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-white pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-white pointer-events-none" />
+      <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-bg pointer-events-none" />
+      <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-bg pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-bg pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-bg pointer-events-none" />
       
       {/* Header */}
-      <div className="bg-black border-b border-gray-600 p-3 flex justify-between items-center">
+      <div className="bg-nier-black border-b border-nier-border/40 p-3 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
-          <h2 className="text-sm text-white tracking-[0.15em] uppercase">Layers</h2>
+          <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">Layers</h2>
           {isReordering && (
             <span
-              className="w-3 h-3 border border-gray-500 border-t-white rounded-full animate-spin"
+              className="w-3 h-3 border border-nier-border/50 border-t-white rounded-full animate-spin"
               title="Updating order…"
             />
           )}
@@ -1057,7 +1057,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           {canEdit && (
           <button
             onClick={createGroup}
-            className="px-3 py-1 bg-white text-black text-[9px] tracking-wider uppercase hover:bg-gray-200 transition-colors"
+            className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
             title="Create new group"
           >
             + Group
@@ -1065,7 +1065,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           )}
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-lg w-6 h-6 flex items-center justify-center transition-colors"
+            className="text-nier-bg/70 hover:text-nier-strong text-lg w-6 h-6 flex items-center justify-center transition-colors"
           >
             ×
           </button>
@@ -1098,7 +1098,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             <div
               key={layer.id}
               className={`border transition-all ${
-                // A static bg-gray-800/80 used to always be present in the
+                // A static bg-nier-blackLight/80 used to always be present in the
                 // base classes here alongside this, which -- since Tailwind
                 // resolves same-specificity background-color utilities by
                 // stylesheet order, not by className order -- could win over
@@ -1112,7 +1112,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   ? 'border-blue-400 bg-blue-900/20'
                   : dropTargetId === layer.id
                     ? 'border-emerald-400 bg-emerald-900/20'
-                    : 'border-gray-600 bg-gray-800/80'
+                    : 'border-nier-border/40 bg-nier-blackLight/80'
               }`}
               onDragOver={(e) => handleGroupCardDragOver(e, layer.id)}
               onDrop={(e) => handleGroupCardDrop(e, layer.id)}
@@ -1121,7 +1121,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               {/* Group header */}
               <div
                 ref={setGroupHeaderRef(layer.id)}
-                className="p-2 flex items-center justify-between hover:bg-gray-700/50 cursor-pointer"
+                className="p-2 flex items-center justify-between hover:bg-nier-blackLight/50 cursor-pointer"
                 onContextMenu={(e) => openRowMenu(e, 'group', layer.id)}
               >
                 <div
@@ -1154,7 +1154,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     </span>
                   )}
                   <span
-                    className="text-gray-400 text-[10px] px-1 cursor-pointer"
+                    className="text-nier-bg/70 text-xs px-1 cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation()
                       toggleGroup(layer.id)
@@ -1178,7 +1178,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                   >
                     <span
-                      className={`text-xs ${isHardSelected ? 'text-amber-400' : 'text-gray-400'} hover:text-amber-300`}
+                      className={`text-xs ${isHardSelected ? 'text-amber-400' : 'text-nier-bg/70'} hover:text-amber-300`}
                       title="Select all traces in this group"
                       onClick={(e) => {
                         e.stopPropagation()
@@ -1192,10 +1192,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     >
                       {isHardSelected ? '◆' : '◇'}
                     </span>
-                    <span className="text-white text-xs tracking-wide">{layer.name}</span>
-                    <span className="text-gray-300 text-[10px]">({layerTraces.length})</span>
+                    <span className="text-nier-strong text-xs tracking-wide">{layer.name}</span>
+                    <span className="text-nier-bg/80 text-xs">({layerTraces.length})</span>
                     {isActiveLayer && (
-                      <span className={`text-[9px] tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
+                      <span className={`text-xs tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
                     )}
                   </div>
                 </div>
@@ -1206,7 +1206,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       moveLayerUp(layer)
                     }}
                     disabled={!canMoveUp}
-                    className={`text-[10px] px-2 py-1 ${canMoveUp ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
+                    className={`text-xs px-2 py-1 ${canMoveUp ? 'text-nier-bg/70 hover:text-nier-strong cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
                     title={canMoveUp ? "Move up" : "Already at top"}
                   >
                     ▲
@@ -1217,7 +1217,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       moveLayerDown(layer)
                     }}
                     disabled={!canMoveDown}
-                    className={`text-[10px] px-2 py-1 ${canMoveDown ? 'text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
+                    className={`text-xs px-2 py-1 ${canMoveDown ? 'text-nier-bg/70 hover:text-nier-strong cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
                     title={canMoveDown ? "Move down" : "Already at bottom"}
                   >
                     ▼
@@ -1227,7 +1227,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       space as features accumulated. */}
                   <button
                     onClick={(e) => openRowMenu(e, 'group', layer.id)}
-                    className="text-gray-400 hover:text-white text-[10px] px-2 py-1"
+                    className="text-nier-bg/70 hover:text-nier-strong text-xs px-2 py-1"
                     title="More actions (or right-click the group)"
                   >
                     ⋯
@@ -1242,12 +1242,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     <div
                       key={trace.id}
                       ref={setTraceRowRef(trace.id)}
-                      className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
+                      className={`bg-nier-black border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-nier-blackLight ${
                         dropTargetId === trace.id
                           ? 'border-emerald-400 bg-emerald-900/20'
                           : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                           ? 'border-blue-400 bg-blue-900/30'
-                          : 'border-gray-600'
+                          : 'border-nier-border/40'
                       }`}
                       onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                       onDrop={(e) => handleTraceRowDrop(e, trace.id)}
@@ -1276,17 +1276,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             ))}
                           </span>
                         )}
-                        <span className="text-gray-400 text-[10px]">
+                        <span className="text-nier-bg/70 text-xs">
                           {trace.type === 'text' && '◇'}
                           {trace.type === 'image' && '◻'}
                           {trace.type === 'audio' && '♪'}
                           {trace.type === 'video' && '▷'}
                           {trace.type === 'embed' && '⬡'}
                         </span>
-                        <span className="text-white/80 truncate tracking-wide">
+                        <span className="text-nier-strong/80 truncate tracking-wide">
                           {trace.content.substring(0, 20) || 'Untitled'}
                         </span>
-                        {trace.illuminate && <span className="text-yellow-400 text-[9px]" title="Emits light">★</span>}
+                        {trace.illuminate && <span className="text-yellow-400 text-xs" title="Emits light">★</span>}
                       </div>
                       <div className="flex items-center gap-1">
                         <button
@@ -1295,7 +1295,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             moveTraceWithinLayer(trace.id, trace.layerId ?? null, 'up')
                           }}
                           disabled={layerTraces.findIndex(t => t.id === trace.id) === 0}
-                          className={`text-[10px] px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                          className={`text-xs px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
                           title="Move up in group"
                         >
                           ▲
@@ -1306,7 +1306,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             moveTraceWithinLayer(trace.id, trace.layerId ?? null, 'down')
                           }}
                           disabled={layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1}
-                          className={`text-[10px] px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                          className={`text-xs px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
                           title="Move down in group"
                         >
                           ▼
@@ -1316,7 +1316,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             e.stopPropagation()
                             onGoToTrace?.(trace.id)
                           }}
-                          className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
+                          className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
                           title="Go to trace"
                         >
                           →
@@ -1330,7 +1330,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                               moveTraceToLayer(trace.id, null)
                             }
                           }}
-                          className="text-gray-300 hover:text-gray-300 text-[10px] px-1.5 py-0.5"
+                          className="text-nier-bg/80 hover:text-nier-bg/80 text-xs px-1.5 py-0.5"
                           title="Remove from group"
                         >
                           ↗
@@ -1340,7 +1340,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             e.stopPropagation()
                             doDeleteTrace(trace.id)
                           }}
-                          className="text-red-400/60 hover:text-red-400 text-[10px] px-1.5 py-0.5"
+                          className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
                           title="Delete trace"
                         >
                           ×
@@ -1360,7 +1360,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             className={`border p-2 transition-all ${
               !activeLayerId
                 ? 'border-amber-400 bg-amber-900/10 ring-1 ring-amber-400/60'
-                : dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-gray-600 bg-gray-900/50'
+                : dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-nier-border/40 bg-nier-black/50'
             }`}
             onDragOver={(e) => handleDropTargetDragOver(e, UNGROUPED_DROP_TARGET)}
             onDrop={(e) => handleDropTargetDrop(e, null)}
@@ -1377,7 +1377,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               return (
                 <div className="flex items-center gap-2 mb-2">
                   <span
-                    className={`text-xs cursor-pointer ${isUngroupedFullySelected ? 'text-amber-400' : 'text-gray-400'} hover:text-amber-300`}
+                    className={`text-xs cursor-pointer ${isUngroupedFullySelected ? 'text-amber-400' : 'text-nier-bg/70'} hover:text-amber-300`}
                     title="Select all ungrouped traces"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -1392,14 +1392,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     {isUngroupedFullySelected ? '◆' : '◇'}
                   </span>
                   <span
-                    className="text-gray-400 text-[9px] tracking-[0.15em] uppercase cursor-pointer hover:text-gray-200"
+                    className="text-nier-bg/70 text-xs tracking-[0.15em] uppercase cursor-pointer hover:text-gray-200"
                     title="Set 'Ungrouped' as the target for new traces"
                     onClick={() => onSetActiveLayer?.(null)}
                   >
                     Ungrouped
                   </span>
                   {!activeLayerId && (
-                    <span className={`text-[9px] tracking-wider uppercase ${isUngroupedFullySelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
+                    <span className={`text-xs tracking-wider uppercase ${isUngroupedFullySelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
                   )}
                 </div>
               )
@@ -1409,12 +1409,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <div
                   key={trace.id}
                   ref={setTraceRowRef(trace.id)}
-                  className={`bg-gray-900 border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-gray-700 ${
+                  className={`bg-nier-black border p-2 flex items-center justify-between text-xs transition-all cursor-pointer hover:bg-nier-blackLight ${
                     dropTargetId === trace.id
                       ? 'border-emerald-400 bg-emerald-900/20'
                       : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
                       ? 'border-blue-400 bg-blue-900/30'
-                      : 'border-gray-600'
+                      : 'border-nier-border/40'
                   }`}
                   onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                   onDrop={(e) => handleTraceRowDrop(e, trace.id)}
@@ -1443,17 +1443,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         ))}
                       </span>
                     )}
-                    <span className="text-gray-400 text-[10px]">
+                    <span className="text-nier-bg/70 text-xs">
                       {trace.type === 'text' && '◇'}
                       {trace.type === 'image' && '◻'}
                       {trace.type === 'audio' && '♪'}
                       {trace.type === 'video' && '▷'}
                       {trace.type === 'embed' && '⬡'}
                     </span>
-                    <span className="text-white/80 truncate tracking-wide">
+                    <span className="text-nier-strong/80 truncate tracking-wide">
                       {trace.content.substring(0, 20) || 'Untitled'}
                     </span>
-                    {trace.illuminate && <span className="text-yellow-400 text-[9px]" title="Emits light">★</span>}
+                    {trace.illuminate && <span className="text-yellow-400 text-xs" title="Emits light">★</span>}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -1462,7 +1462,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         moveTraceWithinLayer(trace.id, null, 'up')
                       }}
                       disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === 0}
-                      className={`text-[10px] px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                      className={`text-xs px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
                       title="Move up"
                     >
                       ▲
@@ -1473,7 +1473,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         moveTraceWithinLayer(trace.id, null, 'down')
                       }}
                       disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1}
-                      className={`text-[10px] px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                      className={`text-xs px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
                       title="Move down"
                     >
                       ▼
@@ -1483,7 +1483,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         e.stopPropagation()
                         onGoToTrace?.(trace.id)
                       }}
-                      className="text-gray-400 hover:text-white text-[10px] px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
+                      className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
                       title="Go to trace"
                     >
                       →
@@ -1495,7 +1495,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         e.stopPropagation()
                         doDeleteTrace(trace.id)
                       }}
-                      className="text-red-400/60 hover:text-red-400 text-[10px] px-1.5 py-0.5"
+                      className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
                       title="Delete trace"
                     >
                       ×
@@ -1526,7 +1526,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           <div
             ref={rowMenuRef}
             data-layer-row-menu
-            className="fixed bg-black border border-gray-500 shadow-xl z-[10000400] py-1 max-h-[90vh] overflow-y-auto"
+            className="panel-in-right fixed bg-nier-black border border-nier-border/50 shadow-xl z-[10000400] py-1 max-h-[90vh] overflow-y-auto"
             // Position comes from the measured element (see
             // useClampedMenuPosition). The estimated heights that used to be
             // here -- 300 for a group, 260 for a trace -- were guesses, and
@@ -1540,7 +1540,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             // since it expands in place rather than completing an action.
             onClick={closeRowMenu}
           >
-            <div className="px-3 py-1 text-[9px] tracking-[0.15em] uppercase text-gray-300 truncate border-b border-gray-700 mb-1">
+            <div className="px-3 py-1 text-xs tracking-[0.15em] uppercase text-nier-bg/80 truncate border-b border-nier-border/30 mb-1">
               {isGroup ? layer!.name : (trace!.content.substring(0, 18) || 'Untitled')}
             </div>
 
@@ -1566,7 +1566,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   disabled={groupTraces.length === 0}
                   hint="Frame the camera on everything in this group"
                 />
-                <div className="h-[1px] bg-gray-700 my-1" />
+                <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
                   label="Ungroup All"
                   onClick={() => moveTracesToLayer(groupTraces.map(t => t.id), null)}
@@ -1583,7 +1583,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, false)) }}
                   disabled={groupTraces.length === 0}
                 />
-                <div className="h-[1px] bg-gray-700 my-1" />
+                <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
                   label="Delete Group Only"
                   onClick={() => doDeleteGroupKeepTraces(rowMenu.id)}
@@ -1607,27 +1607,27 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
                   hint={trace!.isLocked ? 'Allow selecting/dragging on the canvas' : 'Prevent selecting/dragging on the canvas'}
                 />
-                <div className="h-[1px] bg-gray-700 my-1" />
+                <div className="h-[1px] bg-nier-blackLight my-1" />
                 {/* Inline flyout rather than a hover submenu -- the panel is
                     narrow and a side flyout would open off-screen as often as
                     not. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setMoveToGroupOpen(o => !o) }}
-                  className="w-full text-left px-3 py-1.5 text-[11px] tracking-wider text-white hover:bg-gray-700 flex items-center justify-between"
+                  className="w-full text-left px-3 py-1.5 text-sm tracking-wider text-nier-strong hover:bg-nier-blackLight flex items-center justify-between"
                 >
-                  Move to Group <span className="text-gray-300">{moveToGroupOpen ? '▾' : '▸'}</span>
+                  Move to Group <span className="text-nier-bg/80">{moveToGroupOpen ? '▾' : '▸'}</span>
                 </button>
                 {moveToGroupOpen && (
-                  <div className="max-h-40 overflow-y-auto border-y border-gray-700 my-1 bg-gray-900/60">
+                  <div className="max-h-40 overflow-y-auto border-y border-nier-border/30 my-1 bg-nier-black/60">
                     {layers.length === 0 && (
-                      <div className="px-4 py-1.5 text-[10px] text-gray-300 italic">No groups yet</div>
+                      <div className="px-4 py-1.5 text-xs text-nier-bg/80 italic">No groups yet</div>
                     )}
                     {layers.map(l => (
                       <button
                         key={l.id}
                         disabled={(trace!.layerId ?? null) === l.id}
                         onClick={() => { moveTraceToLayer(rowMenu.id, l.id); closeRowMenu() }}
-                        className="w-full text-left px-4 py-1.5 text-[10px] tracking-wider text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed truncate"
+                        className="w-full text-left px-4 py-1.5 text-xs tracking-wider text-nier-strong hover:bg-nier-blackLight disabled:opacity-30 disabled:cursor-not-allowed truncate"
                       >
                         {l.name}
                       </button>
@@ -1641,7 +1641,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     hint="Move this trace out to Ungrouped"
                   />
                 )}
-                <div className="h-[1px] bg-gray-700 my-1" />
+                <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem label="Delete" onClick={() => doDeleteTrace(rowMenu.id)} danger />
               </>
             )}
@@ -1651,16 +1651,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
       {/* Dialog for create/rename/delete */}
       {dialogMode && (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-black border-2 border-white p-4 w-64">
-            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-white pointer-events-none" />
-            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-white pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-white pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-white pointer-events-none" />
+        <div className="absolute inset-0 bg-nier-black/70 flex items-center justify-center z-50">
+          <div className="bg-nier-black border-2 border-nier-bg p-4 w-64">
+            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-bg pointer-events-none" />
+            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-bg pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-bg pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-bg pointer-events-none" />
 
             {dialogMode === 'delete' ? (
               <>
-                <p className="text-white text-xs tracking-[0.15em] uppercase mb-4">
+                <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-4">
                   Delete this group and all traces inside it?
                 </p>
                 <div className="flex gap-2">
@@ -1669,13 +1669,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       if (dialogTargetId) doDeleteGroup(dialogTargetId)
                       setDialogMode(null)
                     }}
-                    className="flex-1 bg-red-900 hover:bg-red-700 text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                    className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     Delete
                   </button>
                   <button
                     onClick={() => setDialogMode(null)}
-                    className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                    className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     Cancel
                   </button>
@@ -1683,7 +1683,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               </>
             ) : (
               <>
-                <p className="text-white text-xs tracking-[0.15em] uppercase mb-3">
+                <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-3">
                   {dialogMode === 'create' ? 'New Group Name' : 'Rename Group'}
                 </p>
                 <input
@@ -1699,7 +1699,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }
                     if (e.key === 'Escape') setDialogMode(null)
                   }}
-                  className="w-full bg-gray-900 border border-gray-600 text-white text-xs px-3 py-2 mb-3 focus:border-white focus:outline-none tracking-wider"
+                  className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-3 focus:border-nier-bg focus:outline-none tracking-wider"
                   placeholder="Group name..."
                 />
                 <div className="flex gap-2">
@@ -1711,13 +1711,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       }
                       setDialogMode(null)
                     }}
-                    className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                    className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     {dialogMode === 'create' ? 'Create' : 'Rename'}
                   </button>
                   <button
                     onClick={() => setDialogMode(null)}
-                    className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+                    className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     Cancel
                   </button>
