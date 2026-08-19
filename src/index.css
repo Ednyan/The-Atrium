@@ -41,6 +41,18 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
 
+  /* The word ATRIUM, as metal rather than as a colour.
+   *
+   * Seven stops instead of a two-tone fade: metal reads as metal because the
+   * highlights are narrow and repeat, and a single sweep from light to dark
+   * reads as a fade. Silver on black, brass on paper -- art nouveau brass,
+   * which is a dark warm alloy with a sheen, not the yellow of a medal.
+   *
+   * The lightest stop is held at about 3:1 against its ground on purpose. This
+   * is a display word, where that is the threshold, and anything brighter is a
+   * highlight that stops being a letter. */
+  --metal-title: linear-gradient(100deg, #7C7C7C 0%, #FFFFFF 15%, #C0C0C0 32%, #FFFFFF 50%, #9A9A9A 67%, #EDEDED 84%, #8A8A8A 100%);
+
   --nier-bg: #cbcbcb;
   --nier-bg-dark: #b5b5b5;
   --nier-text: #464646;
@@ -66,6 +78,7 @@
   --c-warm: 122 93 30;
   --c-emerald: 42 118 78;
   --c-sky: 45 110 151;
+  --metal-title: linear-gradient(100deg, #5A4315 0%, #A9873C 15%, #6B5119 32%, #A9873C 50%, #5E4718 67%, #9C7B33 84%, #54401A 100%);
 }
 
 [data-landing-theme='dark'] {
@@ -79,6 +92,7 @@
   --c-warm: 217 217 217;
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
+  --metal-title: linear-gradient(100deg, #7C7C7C 0%, #FFFFFF 15%, #C0C0C0 32%, #FFFFFF 50%, #9A9A9A 67%, #EDEDED 84%, #8A8A8A 100%);
 }
 
 @keyframes pulse {

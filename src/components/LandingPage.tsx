@@ -723,11 +723,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <span
                 className="block text-[clamp(3.4rem,9vw,7.5rem)]"
                 style={{
-                  backgroundImage: 'linear-gradient(100deg, rgb(var(--c-shimmer)) 8%, rgb(var(--c-warm)) 58%, rgb(var(--c-shimmer)) 96%)',
+                  backgroundImage: 'var(--metal-title)',
                   WebkitBackgroundClip: 'text',
                   backgroundClip: 'text',
                   color: 'transparent',
-                  filter: `drop-shadow(0 0 34px rgb(var(--c-accent) / 0.25))`,
+                  // On black this is the metal throwing light. On paper a dark
+                  // halo behind dark letters is just a smudge, so it goes.
+                  filter: 'drop-shadow(0 0 34px rgb(var(--c-shimmer) / 0.22))',
                 }}
               >
                 ATRIUM
