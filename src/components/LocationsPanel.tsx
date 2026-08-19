@@ -84,7 +84,7 @@ export default function LocationsPanel({
     <div
       data-ui-element="true"
       className="layer-panel fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
-      style={{ backgroundColor: 'rgba(20,20,20,0.98)', top: '80px', right: '16px', height: 'calc(100vh - 160px)' }}
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.98)', top: '80px', right: '16px', height: 'calc(100vh - 160px)' }}
     >
       <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-bg pointer-events-none" />
       <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-bg pointer-events-none" />

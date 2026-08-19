@@ -717,7 +717,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   }, [isAutosaving])
 
   const [hudMinimized, setHudMinimized] = useState(true)
-  const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
   const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
 
@@ -3810,7 +3809,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             >
               ◇ Hide UI
             </button>
-            <ThemeToggle />
+            <ThemeToggle variant="atrium" />
           </>
         )}
 
@@ -3822,14 +3821,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
             else onLeaveLobby()
           }}
-          className={`px-4 py-2 border text-[11px] tracking-[0.15em] uppercase transition-all ${
-            uiHidden
-              ? 'opacity-25 hover:opacity-100 border-nier-border/40 text-nier-bg/80'
-              : 'hover:brightness-110'
-          }`}
+          className={`atrium-btn ${uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}`}
           style={{
-            clipPath: DONATE_CUT,
-            backgroundColor: 'rgb(var(--c-ground) / 0.94)',
             // red-300 is 1.65:1 on paper -- a warning nobody can read. The
             // token carries the red each theme can actually show.
             borderColor: uiHidden ? undefined : 'rgb(var(--c-danger) / 0.55)',
@@ -3852,26 +3845,30 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-nier-bg"></div>
         
         {/* Header with username, online count, and minimize toggle */}
-        <div className="flex items-center justify-between gap-2">
+        {/* The whole header opens it. A chevron the width of a character is a
+            target you have to aim at; the row you are already reading is not. */}
+        <div
+          className="flex items-center justify-between gap-2 cursor-pointer select-none"
+          onClick={() => setHudMinimized(!hudMinimized)}
+          title={hudMinimized ? 'Open' : 'Close'}
+        >
           <p className="text-nier-strong text-xs tracking-[0.1em] uppercase font-bold truncate">
             {username}
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button
-              onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
-              className="flex items-center gap-1 hover:bg-white/10 px-1 py-0.5 -mx-1 transition-colors"
-              title="Show online users"
+            {/* A readout, not a button. It was both, which meant the one
+                thing on this panel that only ever reports something also
+                opened a panel when clicked. The list has its own row below. */}
+            <div className="flex items-center gap-1 px-1 py-0.5 -mx-1" title="People here now">
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--c-emerald))' }} />
+              <span className="text-[11px] tabular-nums" style={{ color: 'rgb(var(--c-emerald))' }}>{onlinePlayerCount}</span>
+            </div>
+            <span
+              className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
+              style={{ display: 'inline-block', transform: hudMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-green-400 text-[11px]">{onlinePlayerCount}</span>
-            </button>
-            <button
-              onClick={() => setHudMinimized(!hudMinimized)}
-              className="text-nier-bg/80 hover:text-nier-strong text-[14px] transition-colors leading-none px-0.5"
-              title={hudMinimized ? 'Expand' : 'Minimize'}
-            >
-              {hudMinimized ? '▸' : '▾'}
-            </button>
+              ▾
+            </span>
           </div>
         </div>
 
@@ -3879,8 +3876,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {showOnlineUsersList && (
           <div
             data-ui-element="true"
-            className="absolute left-0 top-full mt-1 w-64 bg-nier-black border-2 border-nier-bg z-[10000] font-mono"
-            style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
+            className="panel-in absolute left-0 top-full mt-1 w-64 border-2 border-nier-border/50 z-[10000] font-mono"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.97)' }}
           >
             <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
               <div className="flex items-center justify-between gap-2">
@@ -3908,7 +3905,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           </div>
         )}
         {!hudMinimized && (
-          <>
+          <div className="panel-in">
         {currentLobby && (
           <p className="text-nier-bg/80 text-[11px] tracking-wider truncate">
             {currentLobby.name} {isLobbyOwner && '(Owner)'}{!isLobbyOwner && isLobbyAdmin && '(Admin)'}
@@ -4014,13 +4011,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             Theme
           </button>
         )}
+        {/* The list of people here, given its own row. The green readout above
+            states how many; this is the thing you press to see who. */}
+        <button
+          onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
+          className="atrium-btn w-full mt-1 text-left"
+          data-active={showOnlineUsersList}
+        >
+          Online ({onlinePlayerCount})
+        </button>
         <button
           onClick={() => setShowReportForm(true)}
           className="atrium-btn w-full mt-1 text-left"
         >
           Report a Problem
         </button>
-          </>
+          </div>
         )}
       </div>
 
@@ -4197,16 +4203,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <div className="flex flex-col items-stretch gap-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Freehand Draw</p>
-                  <button
-                    onClick={() => setDrawControlsMinimized(!drawControlsMinimized)}
-                    className="text-nier-bg/80 hover:text-nier-strong text-[14px] transition-colors leading-none px-0.5"
-                    title={drawControlsMinimized ? 'Expand controls' : 'Minimize controls'}
-                  >
-                    {drawControlsMinimized ? '▸' : '▾'}
-                  </button>
                 </div>
 
-                {!drawControlsMinimized && (<>
+                <>
 
                 {/* Draw / Eraser toggle */}
                 <div className="flex border border-nier-border/40">
@@ -4233,7 +4232,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       value={drawingColor}
                       onChange={(e) => setDrawingColor(e.target.value)}
                       title="Any colour"
-                      className="flex-1 h-7 cursor-pointer bg-transparent border border-nier-border/40"
+                      className="flex-1 h-7 cursor-pointer border border-nier-border/40"
                     />
                   </div>
                 )}
@@ -4470,25 +4469,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 >
                   Exit
                 </button>
-                </>)}
+                </>
 
-                {drawControlsMinimized && (
-                  <button
-                    onClick={() => {
-                      setIsDrawingMode(false)
-                      setCompletedStrokes([])
-                      currentStrokeRef.current = []
-                      setIsEraserMode(false)
-                    }}
-                    className="ml-2 bg-red-900 hover:bg-red-700 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-red-600"
-                  >
-                    Exit
-                  </button>
-                )}
               </div>
-              {!drawControlsMinimized && (
-                <p className="text-nier-bg/80 text-[11px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
-              )}
+              <p className="text-nier-bg/80 text-[11px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
             </div>
           </div>
 
@@ -4884,18 +4868,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg"></div>
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
 
-        <div className="flex items-center justify-between gap-3">
+        <div
+          className="flex items-center justify-between gap-3 cursor-pointer select-none"
+          onClick={() => setControlsMinimized(!controlsMinimized)}
+          title={controlsMinimized ? 'Open' : 'Close'}
+        >
           <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Controls</p>
-          <button
-            onClick={() => setControlsMinimized(!controlsMinimized)}
-            className="text-nier-bg/80 hover:text-nier-strong text-[14px] transition-colors leading-none px-0.5"
-            title={controlsMinimized ? 'Expand' : 'Minimize'}
+          <span
+            className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
+            style={{ display: 'inline-block', transform: controlsMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
           >
-            {controlsMinimized ? '▸' : '▾'}
-          </button>
+            ▾
+          </span>
         </div>
         {!controlsMinimized && (
-          <div className="space-y-1 mt-2">
+          <div className="panel-in space-y-1 mt-2">
             <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
               <span className="text-nier-bg/80">◇</span> Leave Trace : "T"
             </p>

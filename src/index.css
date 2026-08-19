@@ -587,7 +587,14 @@ body.dragging * {
    needed. This is the shape the top row established: its own ground so it can
    sit over any canvas, a two-pixel rule, and the cut corner. */
 .atrium-btn {
-  padding: 0.5rem 1rem;
+  /* A fixed height rather than padding plus whatever line-height the text
+     inherits. Padding alone made every one of these a different height
+     depending on what was inside it, which is why the row never lined up. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.125rem;
+  padding: 0 1rem;
   font-size: 11px;
   letter-spacing: 0.15em;
   text-transform: uppercase;

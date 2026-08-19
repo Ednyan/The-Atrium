@@ -12,7 +12,13 @@
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { DONATE_CUT } from './DonateButton'
 
-export default function ThemeToggle({ className = '' }: { className?: string }) {
+export default function ThemeToggle({ className = '', variant = 'panel' }: {
+  className?: string
+  // Inside an atrium every control shares one definition, so the toggle drops
+  // its own styling and takes that instead -- otherwise it is a different
+  // height from everything standing next to it.
+  variant?: 'panel' | 'atrium'
+}) {
   const { preference, resolved, cycle } = useLandingTheme()
 
   const label = preference === 'system'
@@ -25,11 +31,13 @@ export default function ThemeToggle({ className = '' }: { className?: string }) 
       onClick={cycle}
       title={`Theme: ${label}`}
       aria-label={`Theme: ${label}. Click to change.`}
-      className={`px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors ${className}`}
+      className={variant === 'atrium'
+        ? `atrium-btn ${className}`
+        : `px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors ${className}`}
       // Its own ground and the same cut as its neighbours. Without a
       // background it was transparent, which is fine on a page and wrong over
       // an atrium, where whatever is on the canvas showed through it.
-      style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+      style={variant === 'atrium' ? undefined : { clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
     >
       {preference === 'system' ? '◐' : resolved === 'dark' ? '☾' : '☀'}
       <span className="hidden sm:inline ml-2">{label}</span>
