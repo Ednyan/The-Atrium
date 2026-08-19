@@ -13,19 +13,23 @@ export default {
         // errors/delete/danger, which is a deliberate exception, not an
         // oversight.
         nier: {
-          bg: '#CBCBCB',        // Main background
+          // Driven by CSS variables so the landing page can be light or dark
+          // without every class in it changing. Everywhere else they resolve
+          // to the same values they always had.
+          bg: 'rgb(var(--c-fg) / <alpha-value>)',
+          strong: 'rgb(var(--c-strong) / <alpha-value>)',
           bgDark: '#B5B5B5',    // Darker
           bgDarker: '#9B9B9B',  // Even darker
           text: '#464646',      // Dark text
           textLight: '#656565', // Lighter text
           textMuted: '#848484', // Muted text
           accent: '#393939',    // Dark accent
-          border: '#8F8F8F',    // Border color
+          border: 'rgb(var(--c-line) / <alpha-value>)',
           highlight: '#FFFFFF', // White highlight
           shadow: 'rgba(0,0,0,0.15)', // Subtle shadow
           // Alternative darker theme for night mode
-          black: '#191919',
-          blackLight: '#282828',
+          black: 'rgb(var(--c-ground) / <alpha-value>)',
+          blackLight: 'rgb(var(--c-surface) / <alpha-value>)',
           blackMuted: '#373737',
           gold: '#808080',      // Formerly gold accent; kept for compatibility, unused
           red: '#8B0000',       // Warning red (kept as the one semantic accent)

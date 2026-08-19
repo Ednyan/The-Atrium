@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
 import ContributePanel from './ContributePanel'
+import { useLandingTheme } from '../lib/useLandingTheme'
+import DonateButton from './DonateButton'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
@@ -114,7 +116,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
             Support the foundations
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -151,7 +153,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                 <>
                   <div className="flex items-baseline justify-between mb-2">
                     <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-nier-bg/70">This month</span>
-                    <span className="font-mono text-[11px] tracking-wider text-white">
+                    <span className="font-mono text-[11px] tracking-wider text-nier-strong">
                       {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
                     </span>
                   </div>
@@ -218,7 +220,7 @@ function VideoShowcaseSection() {
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
             Learn about the Digital Atrium
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -275,7 +277,95 @@ const sections: Section[] = [
   { id: 'who', title: 'Who Am I', subtitle: 'The creator behind the project' },
 ]
 
+// The bar across the top.
+//
+// The page had only the HUD rail down the right edge, which is handsome and is
+// not what anybody arriving from the rest of the web looks for. A website says
+// what it contains along its top edge; this one does that, and keeps the rail
+// on screens wide enough to carry both.
+//
+function TopNav({ sections, activeSection, onJump, onDonate, theme }: {
+  sections: { id: string; title: string }[]
+  activeSection: number
+  onJump: (index: number) => void
+  onDonate: () => void
+  theme: ReturnType<typeof useLandingTheme>
+}) {
+  const label = theme.preference === 'system'
+    ? `Auto · ${theme.resolved}`
+    : theme.preference === 'dark' ? 'Dark' : 'Light'
+
+  return (
+    <div className="sticky top-0 z-50">
+      <div
+        className="backdrop-blur-md border-b border-nier-border/25"
+        style={{ background: 'rgb(var(--c-ground) / 0.82)' }}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
+
+          <button
+            type="button"
+            onClick={() => onJump(0)}
+            className="flex items-center gap-2.5 shrink-0 group"
+          >
+            <span
+              className="w-2 h-2 rotate-45 border transition-colors"
+              style={{ borderColor: '#FF8A3D' }}
+            />
+            <span className="text-nier-strong text-[11px] sm:text-xs tracking-[0.22em] uppercase whitespace-nowrap">
+              The Digital Atrium
+            </span>
+          </button>
+
+          {/* The sections. Hidden where they would wrap into two rows and stop
+              being a bar at all -- the rail and the scroll still work there. */}
+          <nav className="hidden lg:flex items-center gap-1 mx-auto">
+            {sections.map((section, index) => {
+              const isActive = activeSection === index
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => onJump(index)}
+                  className={`relative px-3 py-2 text-[10px] tracking-[0.18em] uppercase transition-colors ${
+                    isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
+                  }`}
+                >
+                  {section.title}
+                  {isActive && (
+                    <span
+                      className="absolute left-3 right-3 -bottom-px h-[2px]"
+                      style={{ background: '#FF8A3D' }}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </nav>
+
+          <div className="flex items-center gap-2 ml-auto lg:ml-0 shrink-0">
+            <button
+              type="button"
+              onClick={theme.cycle}
+              title={`Theme: ${label}`}
+              aria-label={`Theme: ${label}. Click to change.`}
+              className="px-3 py-2 border border-nier-border/30 text-nier-bg/75 hover:text-nier-bg hover:border-nier-border/60 text-[10px] tracking-[0.15em] uppercase transition-colors"
+            >
+              {theme.preference === 'system' ? '◐' : theme.resolved === 'dark' ? '☾' : '☀'}
+              <span className="hidden sm:inline ml-2">{label}</span>
+            </button>
+
+            <DonateButton onClick={onDonate} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPageProps) {
+  const theme = useLandingTheme()
+  const [showDonate, setShowDonate] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -388,6 +478,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
     return () => container?.removeEventListener('scroll', handleScroll)
   }, [])
 
+  // Indices stay tied to sectionRefs, so the Desktop entry is filtered out
+  // after indexing rather than removed -- dropping it would shift every
+  // section below it out of sync with its ref.
+  const visibleSections = sections.filter(section => !(isDesktop && section.id === 'desktop'))
+
   const scrollToSection = (index: number) => {
     sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -395,8 +490,19 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
   return (
     <div 
       ref={containerRef}
+      data-landing-theme={theme.resolved}
       className="h-screen bg-nier-black text-nier-bg overflow-y-auto overflow-x-hidden scroll-smooth"
     >
+      <TopNav
+        sections={visibleSections}
+        activeSection={activeSection}
+        onJump={scrollToSection}
+        onDonate={() => setShowDonate(true)}
+        theme={theme}
+      />
+
+      {showDonate && <ContributePanel onClose={() => setShowDonate(false)} />}
+
       {/* Fixed overlays */}
       {/* Scanline overlay */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.02] z-50"
@@ -413,8 +519,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         style={{
           inset: '-40px',
           backgroundImage: `
-            linear-gradient(rgba(203, 203, 203, 0.2) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(203, 203, 203, 0.2) 1px, transparent 1px)
+            linear-gradient(rgb(var(--c-fg) / 0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgb(var(--c-fg) / 0.2) 1px, transparent 1px)
           `,
           backgroundSize: '60px 60px',
           transform: 'translate3d(calc(var(--px, 0) * 12px), calc(var(--py, 0) * 12px), 0)',
@@ -427,7 +533,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       <div
         className="fixed inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(circle at 50% 45%, rgba(203,203,203,0.07), transparent 62%)',
+          background: 'radial-gradient(circle at 50% 45%, rgb(var(--c-fg) / 0.07), transparent 62%)',
           animation: 'atriumBreathe 11s ease-in-out infinite',
         }}
       />
@@ -483,7 +589,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       </div>
 
       {/* Section indicators (Nier-style, on the right) */}
-      <div className="fixed right-2 sm:right-8 top-1/2 -translate-y-1/2 z-40 flex flex-col items-end gap-4 sm:gap-6">
+      <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 hidden xl:flex flex-col items-end gap-6">
         {/* Indices stay tied to sectionRefs, so the Desktop entry is filtered
             out AFTER indexing rather than removed from the array -- dropping
             it would shift every section below it out of sync with its ref. */}
@@ -641,7 +747,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 THE
               </span>
               <span
-                className="block text-[clamp(3.4rem,9vw,7.5rem)] text-white"
+                className="block text-[clamp(3.4rem,9vw,7.5rem)] text-nier-strong"
                 style={{ textShadow: '0 0 60px rgba(255,255,255,0.14)' }}
               >
                 DIGITAL
@@ -774,7 +880,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               What Is This
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -848,7 +954,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               How It Works
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -857,7 +963,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="space-y-10">
             {/* Controls */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">01</span>
                 Navigation
               </h3>
@@ -871,7 +977,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   { key: 'T Key', desc: 'Quick-place a trace' },
                 ].map((control, i) => (
                   <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
-                    <div className="text-white text-sm font-mono mb-2">{control.key}</div>
+                    <div className="text-nier-strong text-sm font-mono mb-2">{control.key}</div>
                     <div className="text-nier-bg/75 text-xs">{control.desc}</div>
                   </div>
                 ))}
@@ -880,7 +986,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* Creating traces */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">02</span>
                 Leaving Traces
               </h3>
@@ -913,7 +1019,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* Storage recommendation */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">03</span>
                 Adding Your Content
               </h3>
@@ -932,7 +1038,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   ].map((platform, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                      <span className="text-nier-bg/80"><span className="text-white">{platform.name}</span> — {platform.desc}</span>
+                      <span className="text-nier-bg/80"><span className="text-nier-strong">{platform.name}</span> — {platform.desc}</span>
                     </div>
                   ))}
                 </div>
@@ -944,7 +1050,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* The ecosystem */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-white mb-5 flex items-center gap-3">
+              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">04</span>
                 The Ecosystem
               </h3>
@@ -1007,7 +1113,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               But How?
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
@@ -1020,7 +1126,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
             <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
-              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-white">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
+              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
@@ -1035,7 +1141,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-sm font-mono">3</span>
                   </div>
-                  <span className="text-white text-sm tracking-wider uppercase">Atriums per user</span>
+                  <span className="text-nier-strong text-sm tracking-wider uppercase">Atriums per user</span>
                 </div>
                 <p className="text-nier-bg/70 text-xs leading-relaxed">
                   Each account can create up to three atriums — more than enough to get started.
@@ -1047,7 +1153,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-xs font-mono">10<span className="text-[8px]">MB</span></span>
                   </div>
-                  <span className="text-white text-sm tracking-wider uppercase">Per atrium</span>
+                  <span className="text-nier-strong text-sm tracking-wider uppercase">Per atrium</span>
                 </div>
                 <p className="text-nier-bg/70 text-xs leading-relaxed">
                   Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
@@ -1072,7 +1178,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-white">
+            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               Who and Why?
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
@@ -1092,6 +1198,22 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
               What came out feels like a mix of Pinterest, PureRef, Canva and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
             </p>
+          </div>
+
+          {/* The ask, at the end.
+              
+              The Foundations section higher up explains why the place costs
+              money; by the time somebody has read to the bottom they have the
+              argument and no longer need it repeated, only somewhere to act on
+              it. So this is a button and one line, not a second case. */}
+          <div className="max-w-3xl mx-auto w-full mb-14">
+            <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-10" />
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
+              <p className="text-nier-bg/75 text-sm leading-relaxed tracking-wide max-w-sm">
+                Free to enter, and kept standing by the people who use it.
+              </p>
+              <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-[11px]" />
+            </div>
           </div>
 
           {/* Social links placeholder */}

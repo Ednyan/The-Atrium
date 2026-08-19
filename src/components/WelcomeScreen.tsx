@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
+import DonateButton from './DonateButton'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
@@ -221,6 +222,13 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         {/* Corner brackets decoration */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l border-t border-nier-border/30" />
         <div className="absolute top-8 right-8 w-16 h-16 border-r border-t border-nier-border/30" />
+
+        {/* Top right, where nothing else lives. The appeal only appears when
+            somebody has used the place for a while; this is for the rest of
+            the time, when they simply want to. */}
+        <div className="absolute top-6 right-6 z-30">
+          <DonateButton onClick={() => setShowContribute(true)} variant="quiet" />
+        </div>
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l border-b border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r border-b border-nier-border/30" />
 

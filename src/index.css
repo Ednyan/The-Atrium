@@ -3,7 +3,27 @@
 @tailwind utilities;
 
 /* Nier:Automata Inspired Theme */
+/* Colour as roles rather than as names.
+ *
+ * The four tokens the landing page is built from are declared here as RGB
+ * channels so Tailwind's opacity modifiers keep working (text-nier-bg/70 and
+ * the like compile to rgb(var(--x) / 0.7), which needs channels, not a hex).
+ *
+ * The names are historical and the roles are what matter: --c-fg is whatever
+ * the text is, --c-ground is whatever it sits on. Swapping the two is the
+ * whole of light mode, which is why every existing class themes itself without
+ * being touched.
+ *
+ * Scoped to [data-landing-theme] on purpose. The atrium itself is a dark room
+ * by design -- a canvas you place things on, where a bright chrome would
+ * compete with the work. Only the page that faces outward gets a choice. */
 :root {
+  --c-fg: 203 203 203;
+  --c-strong: 255 255 255;
+  --c-line: 143 143 143;
+  --c-ground: 25 25 25;
+  --c-surface: 40 40 40;
+
   --nier-bg: #cbcbcb;
   --nier-bg-dark: #b5b5b5;
   --nier-text: #464646;
@@ -12,6 +32,25 @@
   --nier-accent: #393939;
   --nier-black: #191919;
   --nier-black-light: #282828;
+}
+
+/* Paper rather than pure white: #FFF against dark type is a glare at this
+ * amount of text, and the warmth keeps the NieR temperature the dark side has.
+ * The ink is not pure black for the same reason in reverse. */
+[data-landing-theme='light'] {
+  --c-fg: 48 44 39;
+  --c-strong: 22 20 18;
+  --c-line: 154 146 134;
+  --c-ground: 242 239 232;
+  --c-surface: 252 250 246;
+}
+
+[data-landing-theme='dark'] {
+  --c-fg: 203 203 203;
+  --c-strong: 255 255 255;
+  --c-line: 143 143 143;
+  --c-ground: 25 25 25;
+  --c-surface: 40 40 40;
 }
 
 @keyframes pulse {
@@ -434,4 +473,20 @@ body.dragging * {
 @keyframes contributor-glow {
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.12); }
+}
+
+/* Hearts drifting up behind the Donate label.
+   Rises the full height of the button and a little past it, fading at both
+   ends so nothing pops in or out at the clip edge. The sideways drift is a
+   per-heart variable, so eight of them do not travel in parallel. */
+@keyframes donate-heart {
+  0%   { transform: translate3d(0, 0, 0) scale(0.85); opacity: 0; }
+  18%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translate3d(var(--drift, 0px), -280%, 0) scale(1.05); opacity: 0; }
+}
+
+/* An animation nobody can turn off is one they have to sit through. */
+@media (prefers-reduced-motion: reduce) {
+  .donate-heart { animation: none !important; opacity: 0 !important; }
 }

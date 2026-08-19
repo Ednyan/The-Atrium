@@ -8,6 +8,7 @@ import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import ContributePanel from './ContributePanel'
+import DonateButton from './DonateButton'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
@@ -785,7 +786,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </div>
               <p className="text-nier-bg/75 text-[10px] tracking-[0.1em] uppercase ml-5">Select destination</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {/* First in the row, before the window controls: those are things
+                  you do to the browser, and this is not one of them. */}
+              <DonateButton onClick={() => setShowContribute(true)} variant="quiet" className="mr-1" />
               <button
                 onClick={toggleFullscreen}
                 className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
