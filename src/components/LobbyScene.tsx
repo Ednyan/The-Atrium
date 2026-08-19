@@ -55,7 +55,7 @@ const KEYBOARD_ZOOM_STEP_FINE = 0.12
 // four sides plus a soft blur keep the text legible against a light theme
 // without looking heavy against a dark one.
 const HUD_TEXT_OUTLINE =
-  '0 0 4px rgba(0,0,0,0.95), 1px 0 2px rgba(0,0,0,0.9), -1px 0 2px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9), 0 -1px 2px rgba(0,0,0,0.9)'
+  '0 0 4px rgb(var(--c-ground) / 0.95), 1px 0 2px rgb(var(--c-ground) / 0.94), -1px 0 2px rgb(var(--c-ground) / 0.94), 0 1px 2px rgb(var(--c-ground) / 0.94), 0 -1px 2px rgb(var(--c-ground) / 0.94)'
 
 function mapLocationRow(row: any): LobbyLocation {
   return {
@@ -3657,10 +3657,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   return (
     <div
       className="fixed inset-0 bg-nier-black lobby-scene"
-      // Opted out of the interface's light/dark choice on purpose. What is
-      // behind this chrome is the atrium's own theme, set per atrium, and a
-      // light interface says nothing about whether somebody's canvas is dark.
-      data-landing-theme="dark"
       style={{ touchAction: 'none' }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -3700,7 +3696,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             visible while dragging directly over traces. */}
         <div
           ref={areaSelectRectRef}
-          className="fixed border border-dashed border-white/70 bg-white/10 pointer-events-none"
+          className="fixed border border-dashed border-nier-bg/70 bg-white/10 pointer-events-none"
           style={{ display: 'none', zIndex: 1_500_000 }}
         />
 
@@ -3708,7 +3704,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {isDragOver && (
           <div className="absolute inset-0 z-[9998] pointer-events-none flex items-center justify-center"
                style={{ backgroundColor: 'rgba(203, 203, 203, 0.08)', border: '2px dashed rgba(143, 143, 143, 0.5)' }}>
-            <div className="bg-black/80 border border-nier-border px-6 py-3">
+            <div className="bg-nier-black/80 border border-nier-border px-6 py-3">
               <p className="text-nier-bg text-sm tracking-[0.15em] uppercase font-mono">
                 {isDesktop ? 'DROP FILE TO CREATE TRACE' : 'DROP LINK TO CREATE TRACE'}
               </p>
@@ -3722,7 +3718,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {isAutosaving && (
         <div className="fixed top-4 right-4 z-[9999] font-mono pointer-events-none">
           <p
-            className="text-white text-base tracking-[0.2em] uppercase animate-saving-fade"
+            className="text-nier-strong text-base tracking-[0.2em] uppercase animate-saving-fade"
             style={{ textShadow: HUD_TEXT_OUTLINE }}
           >
             ◇ Saving...
@@ -3733,16 +3729,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* HUD + presentation quick-toggle, in one top-left row so the toggle
           always sits just to the right of the HUD regardless of its width. */}
       <div className="fixed top-4 left-4 z-[9999] flex items-start gap-2 pointer-events-none">
-      <div ref={hudRef} data-ui-element="true" className="relative bg-black px-3 py-2 border-2 border-white font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxWidth: '160px' }}>
+      <div ref={hudRef} data-ui-element="true" className="relative bg-nier-black px-3 py-2 border-2 border-nier-bg font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '160px' }}>
         {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white"></div>
-        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white"></div>
-        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white"></div>
-        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white"></div>
+        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-nier-bg"></div>
+        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-nier-bg"></div>
+        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-nier-bg"></div>
+        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-nier-bg"></div>
         
         {/* Header with username, online count, and minimize toggle */}
         <div className="flex items-center justify-between gap-2">
-          <p className="text-white text-[10px] tracking-[0.1em] uppercase font-bold truncate">
+          <p className="text-nier-strong text-xs tracking-[0.1em] uppercase font-bold truncate">
             {username}
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -3752,11 +3748,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               title="Show online users"
             >
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-green-400 text-[8px]">{onlinePlayerCount}</span>
+              <span className="text-green-400 text-[11px]">{onlinePlayerCount}</span>
             </button>
             <button
               onClick={() => setHudMinimized(!hudMinimized)}
-              className="text-gray-300 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+              className="text-nier-bg/80 hover:text-nier-strong text-[14px] transition-colors leading-none px-0.5"
               title={hudMinimized ? 'Expand' : 'Minimize'}
             >
               {hudMinimized ? '▸' : '▾'}
@@ -3768,22 +3764,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {showOnlineUsersList && (
           <div
             data-ui-element="true"
-            className="absolute left-0 top-full mt-1 w-64 bg-black border-2 border-white z-[10000] font-mono"
+            className="absolute left-0 top-full mt-1 w-64 bg-nier-black border-2 border-nier-bg z-[10000] font-mono"
             style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
           >
             <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-white text-[10px] tracking-wide truncate">{username} (you)</span>
-                <span className="text-gray-300 text-[9px] flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
+                <span className="text-nier-strong text-xs tracking-wide truncate">{username} (you)</span>
+                <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
               </div>
               {Object.values(otherUsers).map(user => (
                 <div key={user.userId} className="flex items-center justify-between gap-2">
-                  <span className="text-gray-300 text-[10px] tracking-wide truncate">{user.username}</span>
-                  <span className="text-gray-300 text-[9px] flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
+                  <span className="text-nier-bg/80 text-xs tracking-wide truncate">{user.username}</span>
+                  <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
                   {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
                     <button
                       onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
-                      className="text-red-500 hover:text-red-400 text-[9px] tracking-wider uppercase transition-colors flex-shrink-0"
+                      className="text-red-500 hover:text-red-400 text-xs tracking-wider uppercase transition-colors flex-shrink-0"
                     >
                       Kick
                     </button>
@@ -3791,7 +3787,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 </div>
               ))}
               {Object.keys(otherUsers).length === 0 && (
-                <p className="text-gray-400 text-[9px] tracking-wide">No one else is here</p>
+                <p className="text-nier-bg/70 text-xs tracking-wide">No one else is here</p>
               )}
             </div>
           </div>
@@ -3799,21 +3795,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {!hudMinimized && (
           <>
         {currentLobby && (
-          <p className="text-gray-300 text-[8px] tracking-wider truncate">
+          <p className="text-nier-bg/80 text-[11px] tracking-wider truncate">
             {currentLobby.name} {isLobbyOwner && '(Owner)'}{!isLobbyOwner && isLobbyAdmin && '(Admin)'}
           </p>
         )}
-        <p className="text-gray-300 text-[8px] tracking-wider">
+        <p className="text-nier-bg/80 text-[11px] tracking-wider">
           ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
         </p>
         {hasPendingChanges() && (
           <button
             onClick={() => saveAllChanges()}
             disabled={isSavingChanges}
-            className={`w-full mt-1.5 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all ${
+            className={`w-full mt-1.5 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all ${
               isSavingChanges
-                ? 'bg-gray-800 border-gray-600 text-gray-500 cursor-not-allowed'
-                : 'bg-gray-800 border-gray-600 hover:border-white text-white'
+                ? 'bg-nier-blackLight border-nier-border/40 text-nier-bg/60 cursor-not-allowed'
+                : 'bg-nier-blackLight border-nier-border/40 hover:border-nier-bg text-nier-strong'
             }`}
           >
             {isSavingChanges ? 'Saving…' : `Save Changes (${pendingChanges.size + deletedTraces.size})`}
@@ -3830,7 +3826,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   setShowDiscardConfirm(false)
                 }}
                 disabled={isDiscarding || isSavingChanges}
-                className="flex-1 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all bg-red-900/40 border-red-500/60 hover:border-red-400 text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-red-900/40 border-red-500/60 hover:border-red-400 text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Revert all unsaved changes to the last saved state"
               >
                 {isDiscarding ? 'Discarding…' : 'Confirm Discard'}
@@ -3838,7 +3834,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <button
                 onClick={() => setShowDiscardConfirm(false)}
                 disabled={isDiscarding}
-                className="flex-1 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all bg-gray-800 border-gray-600 hover:border-white text-white disabled:opacity-40"
+                className="flex-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-nier-blackLight border-nier-border/40 hover:border-nier-bg text-nier-strong disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -3847,7 +3843,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <button
               onClick={() => setShowDiscardConfirm(true)}
               disabled={isSavingChanges}
-              className="w-full mt-1 border px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all bg-gray-800 border-gray-600 hover:border-red-400 text-gray-300 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full mt-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-nier-blackLight border-nier-border/40 hover:border-red-400 text-nier-bg/80 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
               title="Revert all unsaved changes to the last saved state"
             >
               Don't Save
@@ -3863,14 +3859,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 onLeaveLobby()
               }
             }}
-            className="flex-1 bg-red-900 hover:bg-red-700 text-white px-1 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+            className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong px-1 py-0.5 text-[11px] tracking-wider uppercase transition-all"
           >
             Leave
           </button>
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
-              className="flex-1 bg-white hover:bg-gray-200 text-black px-1 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+              className="flex-1 bg-white hover:bg-nier-bg text-black px-1 py-0.5 text-[11px] tracking-wider uppercase transition-all"
             >
               Manage
             </button>
@@ -3879,7 +3875,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {currentLobby && (
           <button
             onClick={() => copyLobbyId(currentLobby.id)}
-            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
           >
             Copy ID
           </button>
@@ -3888,7 +3884,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <button
             onClick={handleConvertAllEmbeds}
             disabled={isConvertingEmbeds}
-            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             title="Convert every embed trace in this atrium into an internal image"
           >
             {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
@@ -3897,7 +3893,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {!isDesktop && canEdit && pinterestConnected && (
           <button
             onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
-            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
             title="Import a Pinterest board's pins as traces"
           >
             Import from Pinterest
@@ -3905,7 +3901,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
         <button
           onClick={() => setShowProfileCustomization(true)}
-          className="w-full mt-1 bg-gray-700 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
         >
           Profile
         </button>
@@ -3916,27 +3912,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffsetRef.current = { x: 0, y: 0 }
             setWorldOffset({ x: 0, y: 0 })
           }}
-          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
         >
           Recenter
         </button>
         <button
           onClick={toggleFullscreen}
-          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
         >
           {isFullscreen ? 'Windowed' : 'Fullscreen'}
         </button>
         {(isLobbyOwner || isLobbyAdmin) && (
           <button
             onClick={() => setShowThemeCustomization(true)}
-            className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+            className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
           >
             Theme
           </button>
         )}
         <button
           onClick={() => setShowReportForm(true)}
-          className="w-full mt-1 bg-gray-800 border border-gray-600 hover:border-white text-white px-2 py-0.5 text-[8px] tracking-wider uppercase transition-all"
+          className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
         >
           Report a Problem
         </button>
@@ -3952,10 +3948,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {workingLocations.length > 0 && (
         <button
           onClick={togglePresentationMode}
-          className={`group pointer-events-auto h-9 w-9 hover:w-auto hover:px-3 border-2 font-mono text-[10px] tracking-[0.15em] uppercase transition-colors shadow-lg flex items-center justify-center ${
+          className={`group pointer-events-auto h-9 w-9 hover:w-auto hover:px-3 border-2 font-mono text-xs tracking-[0.15em] uppercase transition-colors shadow-lg flex items-center justify-center ${
             presentationMode
               ? 'bg-emerald-500 border-emerald-400 text-black'
-              : 'bg-black/90 border-white text-white hover:bg-gray-800'
+              : 'bg-nier-black/90 border-nier-bg text-nier-strong hover:bg-nier-blackLight'
           }`}
           title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
         >
@@ -3980,7 +3976,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 others can see you would be a mistake. */}
             {isGhostEntry && (
               <p
-                className="text-[9px] font-mono tracking-[0.12em] uppercase"
+                className="text-xs font-mono tracking-[0.12em] uppercase"
                 style={{ color: '#A78BFA', textShadow: HUD_TEXT_OUTLINE }}
               >
                 ◇ Hidden — You are not visible to anyone in this atrium
@@ -3988,7 +3984,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             )}
             {!canEdit && (
               <p
-                className="text-[9px] font-mono tracking-[0.12em] uppercase"
+                className="text-xs font-mono tracking-[0.12em] uppercase"
                 style={{ color: '#FF6161', textShadow: HUD_TEXT_OUTLINE }}
               >
                 ◇ View Only — You don't have permission to edit this atrium
@@ -3996,25 +3992,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             )}
             {multiSelectedTraceIds.length > 1 && (
               <p
-                className="text-green-400 text-[9px] font-mono tracking-[0.12em] uppercase"
+                className="text-green-400 text-xs font-mono tracking-[0.12em] uppercase"
                 style={{ textShadow: HUD_TEXT_OUTLINE }}
               >
                 {multiSelectedTraceIds.length} traces selected
               </p>
             )}
-            <div className="pointer-events-auto flex items-center gap-2 bg-black/90 border border-gray-600 px-3 py-2" title={isDesktop ? `${sizeMB.toFixed(2)}MB used` : `${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
-              <span className={`text-[9px] font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-gray-400'}`}>
+            <div className="pointer-events-auto flex items-center gap-2 bg-nier-black/90 border border-nier-border/40 px-3 py-2" title={isDesktop ? `${sizeMB.toFixed(2)}MB used` : `${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
+              <span className={`text-xs font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-nier-bg/70'}`}>
                 Usage
               </span>
               {!isDesktop && (
-              <div className="w-20 h-2 bg-gray-800 border border-gray-700 overflow-hidden">
+              <div className="w-20 h-2 bg-nier-blackLight border border-nier-border/30 overflow-hidden">
                 <div
                   className={`h-full transition-all duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-white/50'}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
               )}
-              <span className={`text-[9px] font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-gray-300'}`}>
+              <span className={`text-xs font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-bg/80'}`}>
                 {sizeMB.toFixed(1)}{isDesktop ? 'MB' : `/${limitMB}MB`}
               </span>
             </div>
@@ -4041,7 +4037,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
           setShowTracePanel(!showTracePanel)
         }}
-        className={`fixed bottom-4 right-4 ${isFull ? 'bg-red-200 hover:bg-red-100 border-red-400' : 'bg-white hover:bg-gray-200 border-gray-400'} text-black px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
+        className={`fixed bottom-4 right-4 ${isFull ? 'bg-red-200 hover:bg-red-100 border-red-400' : 'bg-white hover:bg-nier-bg border-gray-400'} text-black px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
       >
         <span className="opacity-60 mr-2">◇</span>
         {isFull ? 'Atrium Full' : showTracePanel ? 'Close' : 'Leave Trace'}
@@ -4052,7 +4048,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Layers Button */}
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
-        className="fixed bottom-36 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
+        className="fixed bottom-36 right-4 bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-nier-border/50 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLayerPanel ? 'Close' : 'Layers'}
@@ -4064,7 +4060,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           canEdit is false) */}
       <button
         onClick={() => setShowLocationsPanel(!showLocationsPanel)}
-        className="fixed bottom-20 right-4 bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-gray-500 pointer-events-auto"
+        className="fixed bottom-20 right-4 bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 border-nier-border/50 pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLocationsPanel ? 'Close' : 'Locations'}
@@ -4081,7 +4077,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           }
           setIsDrawingMode(!isDrawingMode)
         }}
-        className={`fixed bottom-52 right-4 ${isDrawingMode ? 'bg-white text-black border-white' : 'bg-gray-800 hover:bg-gray-700 text-white border-gray-500'} px-5 py-2.5 font-mono text-[11px] tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
+        className={`fixed bottom-52 right-4 ${isDrawingMode ? 'bg-white text-black border-nier-bg' : 'bg-nier-blackLight hover:bg-nier-blackLight text-nier-strong border-nier-border/50'} px-5 py-2.5 font-mono text-sm tracking-[0.15em] uppercase transition-all shadow-lg z-[9999] border-2 pointer-events-auto`}
       >
         <span className="opacity-60 mr-2">✎</span>
         {isDrawingMode ? 'Exit Draw' : 'Draw'}
@@ -4097,19 +4093,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto"
             style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}
           >
-            <div className="relative border-2 border-white px-6 py-3">
+            <div className="relative border-2 border-nier-bg px-6 py-3">
               {/* Corner brackets */}
-              <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white" />
-              <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white" />
-              <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white" />
-              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white" />
+              <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg" />
+              <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg" />
+              <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg" />
+              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg" />
 
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <p className="text-white text-[10px] tracking-[0.15em] uppercase">Freehand Draw</p>
+                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Freehand Draw</p>
                   <button
                     onClick={() => setDrawControlsMinimized(!drawControlsMinimized)}
-                    className="text-gray-300 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+                    className="text-nier-bg/80 hover:text-nier-strong text-[14px] transition-colors leading-none px-0.5"
                     title={drawControlsMinimized ? 'Expand controls' : 'Minimize controls'}
                   >
                     {drawControlsMinimized ? '▸' : '▾'}
@@ -4119,16 +4115,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {!drawControlsMinimized && (<>
 
                 {/* Draw / Eraser toggle */}
-                <div className="flex border border-gray-600">
+                <div className="flex border border-nier-border/40">
                   <button
                     onClick={() => setIsEraserMode(false)}
-                    className={`px-3 py-1 text-[9px] tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1 text-xs tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
                   >
                     ✎ Brush
                   </button>
                   <button
                     onClick={() => setIsEraserMode(true)}
-                    className={`px-3 py-1 text-[9px] tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1 text-xs tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
                   >
                     ◻ Eraser
                   </button>
@@ -4137,19 +4133,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {/* Color picker - only shown in brush mode */}
                 {!isEraserMode && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-gray-400 text-[8px] tracking-wider uppercase">Color</span>
+                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">Color</span>
                     <input
                       type="color"
                       value={drawingColor}
                       onChange={(e) => setDrawingColor(e.target.value)}
-                      className="w-6 h-6 cursor-pointer bg-transparent border border-gray-600"
+                      className="w-6 h-6 cursor-pointer bg-transparent border border-nier-border/40"
                     />
                   </div>
                 )}
 
                 {/* Stroke width */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-gray-400 text-[8px] tracking-wider uppercase">{isEraserMode ? 'Size' : 'Width'}</span>
+                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{isEraserMode ? 'Size' : 'Width'}</span>
                   <input
                     type="range"
                     min="1"
@@ -4158,12 +4154,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     onChange={(e) => setDrawingWidth(Number(e.target.value))}
                     className="w-16 h-1 cursor-pointer accent-white"
                   />
-                  <span className="text-gray-300 text-[9px] w-4">{drawingWidth}</span>
+                  <span className="text-nier-bg/80 text-xs w-4">{drawingWidth}</span>
                 </div>
 
                 {/* Smoothing */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-gray-400 text-[8px] tracking-wider uppercase">Smooth</span>
+                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">Smooth</span>
                   <input
                     type="range"
                     min="0"
@@ -4172,7 +4168,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     onChange={(e) => setDrawingSmoothing(Number(e.target.value))}
                     className="w-16 h-1 cursor-pointer accent-white"
                   />
-                  <span className="text-gray-300 text-[9px] w-4">{drawingSmoothing}%</span>
+                  <span className="text-nier-bg/80 text-xs w-4">{drawingSmoothing}%</span>
                 </div>
 
                 {/* Quick colors - only in brush mode */}
@@ -4182,7 +4178,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       <button
                         key={color}
                         onClick={() => setDrawingColor(color)}
-                        className={`w-4 h-4 border ${drawingColor === color ? 'border-white scale-125' : 'border-gray-600'} transition-all`}
+                        className={`w-4 h-4 border ${drawingColor === color ? 'border-nier-bg scale-125' : 'border-nier-border/40'} transition-all`}
                         style={{ backgroundColor: color }}
                       />
                     ))}
@@ -4193,7 +4189,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 {completedStrokes.length > 0 && (
                   <button
                     onClick={() => setCompletedStrokes(prev => prev.slice(0, -1))}
-                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-gray-500"
+                    className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
                   >
                     Undo
                   </button>
@@ -4206,7 +4202,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       setCompletedStrokes([])
                       currentStrokeRef.current = []
                     }}
-                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-gray-500"
+                    className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
                   >
                     Clear
                   </button>
@@ -4349,7 +4345,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       setCompletedStrokes([])
                       currentStrokeRef.current = []
                     }}
-                    className="bg-white hover:bg-gray-200 text-black px-4 py-1 text-[9px] tracking-wider uppercase transition-all border border-white font-bold"
+                    className="bg-white hover:bg-nier-bg text-black px-4 py-1 text-xs tracking-wider uppercase transition-all border border-nier-bg font-bold"
                   >
                     {isSavingDrawing ? '...' : `⎙ Print (${completedStrokes.length})`}
                   </button>
@@ -4362,7 +4358,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     currentStrokeRef.current = []
                     setIsEraserMode(false)
                   }}
-                  className="ml-2 bg-red-900 hover:bg-red-700 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-red-600"
+                  className="ml-2 bg-red-900 hover:bg-red-700 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-red-600"
                 >
                   Exit
                 </button>
@@ -4376,14 +4372,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       currentStrokeRef.current = []
                       setIsEraserMode(false)
                     }}
-                    className="ml-2 bg-red-900 hover:bg-red-700 text-white px-3 py-1 text-[9px] tracking-wider uppercase transition-all border border-red-600"
+                    className="ml-2 bg-red-900 hover:bg-red-700 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-red-600"
                   >
                     Exit
                   </button>
                 )}
               </div>
               {!drawControlsMinimized && (
-                <p className="text-gray-300 text-[8px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
+                <p className="text-nier-bg/80 text-[11px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
               )}
             </div>
           </div>
@@ -4569,7 +4565,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               const canPasteEmbed = true
 
               const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
-              const entryClass = 'w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2'
+              const entryClass = 'w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2'
 
               return (
                 <div className="border-b border-nier-border/20 mb-1 pb-1">
@@ -4599,7 +4595,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               )
             })()}
 
-            <div className="px-3 py-1.5 text-nier-bg/70 text-[8px] tracking-[0.2em] uppercase select-none">
+            <div className="px-3 py-1.5 text-nier-bg/70 text-[11px] tracking-[0.2em] uppercase select-none">
               Place Trace
             </div>
             {([
@@ -4615,7 +4611,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             ]).map((item) => (
               <button
                 key={item.label}
-                className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
                 onClick={() => {
                   setClickedTracePosition({ x: mapContextMenu.worldX, y: mapContextMenu.worldY })
                   setTracePanelInitialType(item.type)
@@ -4632,7 +4628,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <>
                 <div className="border-t border-nier-border/20 mt-1 pt-1">
                   <button
-                    className="w-full px-3 py-1.5 text-left text-nier-bg text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                    className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
                     onClick={() => {
                       const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
                       setMapContextMenu(null)
@@ -4773,18 +4769,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       )}
 
       {/* Instructions */}
-      <div className="fixed bottom-4 left-4 px-4 py-3 border-2 border-white z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+      <div className="fixed bottom-4 left-4 px-4 py-3 border-2 border-nier-bg z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
         {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white"></div>
-        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-white"></div>
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-white"></div>
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white"></div>
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
+        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg"></div>
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
 
         <div className="flex items-center justify-between gap-3">
-          <p className="text-white text-[10px] tracking-[0.15em] uppercase">Controls</p>
+          <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Controls</p>
           <button
             onClick={() => setControlsMinimized(!controlsMinimized)}
-            className="text-gray-300 hover:text-white text-[14px] transition-colors leading-none px-0.5"
+            className="text-nier-bg/80 hover:text-nier-strong text-[14px] transition-colors leading-none px-0.5"
             title={controlsMinimized ? 'Expand' : 'Minimize'}
           >
             {controlsMinimized ? '▸' : '▾'}
@@ -4792,29 +4788,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         {!controlsMinimized && (
           <div className="space-y-1 mt-2">
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Leave Trace : "T"
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Leave Trace : "T"
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Freehand Draw : "D"
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Freehand Draw : "D"
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Edit Trace : Right Click It
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Edit Trace : Right Click It
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Multi-select : Shift + Click Traces
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Multi-select : Shift + Click Traces
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Undo / Redo : Ctrl+Z / Ctrl+Shift+Z
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Undo / Redo : Ctrl+Z / Ctrl+Shift+Z
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Copy / Paste : Ctrl+C / Ctrl+V
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Copy / Paste : Ctrl+C / Ctrl+V
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Delete Selected : Delete Key
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Delete Selected : Delete Key
             </p>
-            <p className="text-gray-300 text-[9px] tracking-wider flex items-center gap-2">
-              <span className="text-gray-300">◇</span> Save Changes : Ctrl+S
+            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+              <span className="text-nier-bg/80">◇</span> Save Changes : Ctrl+S
             </p>
           </div>
         )}
@@ -4914,20 +4910,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClick={() => setShowLeaveDialog(false)}
         >
           <div
-            className="bg-gray-900 border border-gray-500 p-6 absolute left-4"
+            className="bg-nier-black border border-nier-border/50 p-6 absolute left-4"
             style={{ top: `${hudBottom + 8}px`, maxWidth: '200px' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/50 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/50 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/50 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
-            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-gray-400 mr-2">◇</span>Unsaved Changes
+            <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-nier-bg/70 mr-2">◇</span>Unsaved Changes
             </h3>
-            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+            <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
               You have {useGameStore.getState().pendingChanges.size + useGameStore.getState().deletedTraces.size} unsaved change(s). Are you sure you want to leave?
             </p>
 
@@ -4946,7 +4942,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   setShowLeaveDialog(false)
                   onLeaveLobby()
                 }}
-                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+                className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
                 ◇ Save and Leave
               </button>
@@ -4956,13 +4952,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   setShowLeaveDialog(false)
                   onLeaveLobby()
                 }}
-                className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
+                className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
               >
                 Yes, Leave Without Saving
               </button>
               <button
                 onClick={() => setShowLeaveDialog(false)}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+                className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40"
               >
                 Return to Atrium
               </button>
@@ -4976,13 +4972,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           "x": the only way out is Leave Atrium, since staying isn't an
           option -- the panel is telling you what already happened. */}
       {kickedNotice && (
-        <div className="fixed inset-0 z-[10000200] bg-black/80 flex items-center justify-center pointer-events-auto">
+        <div className="fixed inset-0 z-[10000200] bg-nier-black/80 flex items-center justify-center pointer-events-auto">
           <div
-            className={`bg-gray-900 border p-6 relative ${kickedNotice.blacklisted ? 'border-red-600' : 'border-gray-500'}`}
+            className={`bg-nier-black border p-6 relative ${kickedNotice.blacklisted ? 'border-red-600' : 'border-nier-border/50'}`}
             style={{ maxWidth: '360px' }}
           >
             {(() => {
-              const corner = kickedNotice.blacklisted ? 'border-red-600' : 'border-gray-500'
+              const corner = kickedNotice.blacklisted ? 'border-red-600' : 'border-nier-border/50'
               return (
                 <>
                   <div className={`absolute top-0 left-0 w-4 h-4 border-l border-t ${corner} pointer-events-none`} />
@@ -4993,23 +4989,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               )
             })()}
 
-            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className={`mr-2 ${kickedNotice.blacklisted ? 'text-red-500' : 'text-gray-400'}`}>◇</span>
+            <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className={`mr-2 ${kickedNotice.blacklisted ? 'text-red-500' : 'text-nier-bg/70'}`}>◇</span>
               {kickedNotice.blacklisted ? 'Removed & Blacklisted' : 'Removed From Atrium'}
             </h3>
 
-            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
+            <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
               {kickedNotice.blacklisted
                 ? 'An administrator has removed you from this atrium and blocked you from returning.'
                 : 'An administrator has removed you from this atrium.'}
             </p>
             {kickedNotice.blacklisted && (
-              <p className="text-red-400/70 text-[10px] font-mono tracking-wider text-center mb-6">
+              <p className="text-red-400/70 text-xs font-mono tracking-wider text-center mb-6">
                 You will not be able to rejoin.
               </p>
             )}
             {!kickedNotice.blacklisted && (
-              <p className="text-gray-300 text-[10px] font-mono tracking-wider text-center mb-6">
+              <p className="text-nier-bg/80 text-xs font-mono tracking-wider text-center mb-6">
                 You may rejoin if you're allowed back in.
               </p>
             )}
@@ -5017,7 +5013,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <button
               onClick={() => { setKickedNotice(null); onLeaveLobby() }}
               autoFocus
-              className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
             >
               Leave Atrium
             </button>
@@ -5028,45 +5024,45 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Kick User Confirmation */}
       {kickTarget && (
         <div
-          className="fixed inset-0 z-[10000100] bg-black/70 flex items-center justify-center pointer-events-auto"
+          className="fixed inset-0 z-[10000100] bg-nier-black/70 flex items-center justify-center pointer-events-auto"
           onClick={() => !isKicking && setKickTarget(null)}
         >
           <div
-            className="bg-gray-900 border border-gray-500 p-6 relative"
+            className="bg-nier-black border border-nier-border/50 p-6 relative"
             style={{ maxWidth: '320px' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/50 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/50 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/50 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
-            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-gray-400 mr-2">◇</span>Kick User
+            <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-nier-bg/70 mr-2">◇</span>Kick User
             </h3>
-            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
-              Remove <span className="text-white">{kickTarget.username}</span> from this atrium?
+            <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
+              Remove <span className="text-nier-strong">{kickTarget.username}</span> from this atrium?
             </p>
 
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => executeKick(kickTarget.userId, false)}
                 disabled={isKicking}
-                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
+                className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
               >
                 {isKicking ? 'Kicking...' : 'Kick'}
               </button>
               <button
                 onClick={() => executeKick(kickTarget.userId, true)}
                 disabled={isKicking}
-                className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600 disabled:opacity-50"
+                className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600 disabled:opacity-50"
               >
                 {isKicking ? 'Kicking...' : 'Kick + Blacklist'}
               </button>
               <button
                 onClick={() => setKickTarget(null)}
                 disabled={isKicking}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600 disabled:opacity-50"
+                className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -5078,23 +5074,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* Local File Drop Blocked (web only) */}
       {showLocalFileBlockedDialog && (
         <div
-          className="fixed inset-0 z-[10000100] bg-black/70 flex items-center justify-center pointer-events-auto"
+          className="fixed inset-0 z-[10000100] bg-nier-black/70 flex items-center justify-center pointer-events-auto"
           onClick={() => setShowLocalFileBlockedDialog(false)}
         >
           <div
-            className="bg-gray-900 border border-gray-500 p-6 relative"
+            className="bg-nier-black border border-nier-border/50 p-6 relative"
             style={{ maxWidth: '360px' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/50 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/50 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/50 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
-            <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-gray-400 mr-2">◇</span>Local Files Not Supported
+            <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+              <span className="text-nier-bg/70 mr-2">◇</span>Local Files Not Supported
             </h3>
-            <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
+            <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
               Importing files from your computer isn't available in the web version yet. Get the desktop app to drag in images, audio, and video files directly.
             </p>
 
@@ -5103,13 +5099,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 href="https://example.com/download"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all text-center"
+                className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all text-center"
               >
                 ◇ Get the Desktop App
               </a>
               <button
                 onClick={() => setShowLocalFileBlockedDialog(false)}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+                className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40"
               >
                 Close
               </button>
