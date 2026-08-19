@@ -40,6 +40,11 @@
    * so the light set is the same hue taken down to where it can be seen. */
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
+  --c-amber: 232 197 92;
+  --c-coral: 232 122 109;
+  /* What a drop shadow is made of. Black under a dark page, and a warm grey
+   * under a light one -- black on paper reads as a hole rather than as depth. */
+  --c-shadow: 0 0 0;
 
   /* The word ATRIUM, as metal rather than as a colour.
    *
@@ -78,6 +83,9 @@
   --c-warm: 122 93 30;
   --c-emerald: 42 118 78;
   --c-sky: 45 110 151;
+  --c-amber: 168 132 24;
+  --c-coral: 227 94 79;
+  --c-shadow: 122 112 96;
   --metal-title: linear-gradient(100deg, #5A4315 0%, #A9873C 15%, #6B5119 32%, #A9873C 50%, #5E4718 67%, #9C7B33 84%, #54401A 100%);
 }
 
@@ -92,6 +100,9 @@
   --c-warm: 217 217 217;
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
+  --c-amber: 232 197 92;
+  --c-coral: 232 122 109;
+  --c-shadow: 0 0 0;
   --metal-title: linear-gradient(100deg, #7C7C7C 0%, #FFFFFF 15%, #C0C0C0 32%, #FFFFFF 50%, #9A9A9A 67%, #EDEDED 84%, #8A8A8A 100%);
 }
 

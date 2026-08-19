@@ -11,14 +11,14 @@
 // these two files are the only consumers and a shared module for three hex
 // strings is more plumbing than it saves.
 const C = {
-  silver: '#D9D9D9',
-  emerald: '#7FD1A6',
-  sky: '#7FB6D9',
+  silver: 'rgb(var(--c-accent))',
+  emerald: 'rgb(var(--c-emerald))',
+  sky: 'rgb(var(--c-sky))',
 } as const
 
 const GRID_BG = {
   backgroundImage:
-    'linear-gradient(rgba(203,203,203,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(203,203,203,0.09) 1px, transparent 1px)',
+    'linear-gradient(rgb(var(--c-fg) / 0.09) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.09) 1px, transparent 1px)',
   backgroundSize: '36px 36px',
 } as const
 
@@ -35,18 +35,18 @@ function DemoCursor({ name, color, className, style }: {
 }) {
   return (
     <div className={`absolute pointer-events-none ${className ?? ''}`} style={{ zIndex: 30, ...style }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" style={{ filter: `drop-shadow(0 0 6px ${color}66) drop-shadow(0 1px 2px rgba(0,0,0,0.6))` }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" style={{ filter: `drop-shadow(0 0 6px ${color}66) drop-shadow(0 1px 2px rgb(var(--c-shadow) / 0.6))` }}>
         <path
           d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
           fill={color}
-          stroke="rgba(25,25,25,0.9)"
+          stroke="rgb(var(--c-ground) / 0.9)"
           strokeWidth="1.2"
         />
       </svg>
       {name && (
         <span
           className="absolute left-3.5 top-4 font-mono text-[8px] tracking-wider whitespace-nowrap px-1 py-px"
-          style={{ color, backgroundColor: 'rgba(25,25,25,0.75)', border: `1px solid ${color}55` }}
+          style={{ color, backgroundColor: 'rgb(var(--c-ground) / 0.75)', border: `1px solid ${color}55` }}
         >
           {name}
         </span>
@@ -56,7 +56,7 @@ function DemoCursor({ name, color, className, style }: {
 }
 
 // Corner brackets used on every card; `glow` drives the selection flash.
-function Brackets({ color = 'rgba(203,203,203,0.55)', className }: { color?: string; className?: string }) {
+function Brackets({ color = 'rgb(var(--c-fg) / 0.55)', className }: { color?: string; className?: string }) {
   const seg = { borderColor: color }
   return (
     <span className={`absolute inset-0 pointer-events-none ${className ?? ''}`}>
@@ -78,7 +78,7 @@ function DemoTrace({ kind, className, style, children }: {
   return (
     <div
       className={`absolute border border-nier-border/40 ${className ?? ''}`}
-      style={{ backgroundColor: 'rgba(25,25,25,0.92)', boxShadow: '0 4px 14px rgba(0,0,0,0.5)', ...style }}
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)', boxShadow: '0 4px 14px rgb(var(--c-shadow) / 0.5)', ...style }}
     >
       <Brackets />
       <div className="w-full h-full p-1.5 flex flex-col justify-center gap-1 overflow-hidden">
@@ -90,7 +90,7 @@ function DemoTrace({ kind, className, style, children }: {
           </>
         )}
         {kind === 'image' && (
-          <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(203,203,203,0.14), rgba(203,203,203,0.04))' }}>
+          <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgb(var(--c-fg) / 0.14), rgb(var(--c-fg) / 0.04))' }}>
             <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
           </div>
         )}
@@ -146,7 +146,7 @@ export function LivingAtriumScene() {
         {/* the typing trace */}
         <div
           className="absolute w-28 border border-nier-border/40 p-2"
-          style={{ left: '56%', top: '30%', backgroundColor: 'rgba(25,25,25,0.92)', boxShadow: '0 4px 14px rgba(0,0,0,0.5)' }}
+          style={{ left: '56%', top: '30%', backgroundColor: 'rgb(var(--c-ground) / 0.92)', boxShadow: '0 4px 14px rgb(var(--c-shadow) / 0.5)' }}
         >
           <Brackets />
           <span
@@ -233,7 +233,7 @@ export function AtriumMapDiagram() {
   return (
     <div
       className="relative w-full h-44 border border-nier-border/25 overflow-hidden landing-demo"
-      style={{ backgroundColor: 'rgba(25,25,25,0.5)', ...GRID_BG }}
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.5)', ...GRID_BG }}
       aria-hidden="true"
     >
       {dots.map((d, i) => (
@@ -242,8 +242,8 @@ export function AtriumMapDiagram() {
           className="absolute border"
           style={{
             left: d.left, top: d.top, width: d.w, height: d.h,
-            borderColor: d.bright ? `${C.silver}88` : 'rgba(203,203,203,0.28)',
-            backgroundColor: d.bright ? `${C.silver}22` : 'rgba(203,203,203,0.07)',
+            borderColor: d.bright ? `${C.silver}88` : 'rgb(var(--c-fg) / 0.28)',
+            backgroundColor: d.bright ? `${C.silver}22` : 'rgb(var(--c-fg) / 0.07)',
           }}
         />
       ))}
@@ -253,14 +253,14 @@ export function AtriumMapDiagram() {
           the section-accent hues, with the same name tags the hero cursors
           carry so they read as people, not markers */}
       {([
-        { name: 'Drifter', color: '#E8C55C', anim: 'ldMapVisitorA 17s ease-in-out infinite' },
-        { name: 'Echo', color: '#E87A6D', anim: 'ldMapVisitorB 23s ease-in-out infinite' },
+        { name: 'Drifter', color: 'rgb(var(--c-amber))', anim: 'ldMapVisitorA 17s ease-in-out infinite' },
+        { name: 'Echo', color: 'rgb(var(--c-coral))', anim: 'ldMapVisitorB 23s ease-in-out infinite' },
       ] as const).map(({ name, color, anim }) => (
         <div key={name} className="absolute" style={{ animation: anim }}>
           <div className="w-1.5 h-1.5 rotate-45" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
           <span
             className="absolute left-2.5 top-0.5 font-mono text-[8px] tracking-wider whitespace-nowrap px-1 py-px"
-            style={{ color, backgroundColor: 'rgba(25,25,25,0.75)', border: `1px solid ${color}55` }}
+            style={{ color, backgroundColor: 'rgb(var(--c-ground) / 0.75)', border: `1px solid ${color}55` }}
           >
             {name}
           </span>
@@ -305,7 +305,7 @@ export function AtriumMapDiagram() {
 
 export function PanZoomDemo() {
   return (
-    <div className="relative w-full h-36 border border-nier-border/25 overflow-hidden mb-5 landing-demo" style={{ backgroundColor: 'rgba(25,25,25,0.5)' }} aria-hidden="true">
+    <div className="relative w-full h-36 border border-nier-border/25 overflow-hidden mb-5 landing-demo" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.5)' }} aria-hidden="true">
       <div className="absolute -inset-[25%]" style={{ ...GRID_BG, animation: 'ldPanWorld 12s ease-in-out infinite' }}>
         <DemoTrace kind="text" className="w-16 h-10" style={{ left: '30%', top: '30%' }} />
         <DemoTrace kind="image" className="w-12 h-12" style={{ left: '58%', top: '52%' }} />
@@ -361,7 +361,7 @@ export function TraceCycleDemo() {
   })
   return (
     <div className="relative w-28 h-24 shrink-0 landing-demo" aria-hidden="true">
-      <div className="absolute inset-0 border border-nier-border/40" style={{ backgroundColor: 'rgba(25,25,25,0.92)' }}>
+      <div className="absolute inset-0 border border-nier-border/40" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}>
         <Brackets color={`${C.silver}AA`} />
         {/* text */}
         <div className="absolute inset-0 p-3 flex flex-col justify-center gap-1.5" style={{ opacity: 0, ...phase('ldCycle', '0s') }}>
@@ -403,7 +403,7 @@ export function TraceCycleDemo() {
 // triptych. Each animates the verb it sits under: a trace being made, a
 // canvas filling up, a camera roaming.
 
-const ECO_FRAME: React.CSSProperties = { backgroundColor: 'rgba(25,25,25,0.5)', ...GRID_BG }
+const ECO_FRAME: React.CSSProperties = { backgroundColor: 'rgb(var(--c-ground) / 0.5)', ...GRID_BG }
 
 // Create: the cursor clicks and a trace comes into being under it.
 export function CreateTraceDemo() {
@@ -416,7 +416,7 @@ export function CreateTraceDemo() {
       />
       {/* the trace that gets created */}
       <div className="absolute w-24 h-14" style={{ left: 'calc(50% - 48px)', top: 'calc(50% - 28px)', opacity: 0, animation: 'ldCreateCard 8s ease-out infinite' }}>
-        <div className="absolute inset-0 border border-nier-border/50" style={{ backgroundColor: 'rgba(25,25,25,0.94)' }}>
+        <div className="absolute inset-0 border border-nier-border/50" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
           <Brackets color={`${C.silver}88`} />
           <div className="p-2 flex flex-col gap-1.5 justify-center h-full">
             <div className="h-[3px] bg-nier-border/55" style={{ width: 0, animation: 'ldCreateLine1 8s linear infinite' }} />
@@ -479,7 +479,7 @@ export function PopulateDemo() {
 // roaming an atrium that is bigger than the frame.
 export function ExploreDemo() {
   return (
-    <div className="relative w-full h-24 border border-nier-border/25 overflow-hidden mt-4 landing-demo" style={{ backgroundColor: 'rgba(25,25,25,0.5)' }} aria-hidden="true">
+    <div className="relative w-full h-24 border border-nier-border/25 overflow-hidden mt-4 landing-demo" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.5)' }} aria-hidden="true">
       <div className="absolute -inset-[35%]" style={{ ...GRID_BG, animation: 'ldExploreWorld 16s ease-in-out infinite' }}>
         <DemoTrace kind="text" className="w-14 h-9" style={{ left: '16%', top: '24%' }} />
         <DemoTrace kind="image" className="w-11 h-11" style={{ left: '44%', top: '48%' }} />
