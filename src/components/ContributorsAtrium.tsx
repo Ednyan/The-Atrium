@@ -870,7 +870,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </p>
       </div>
 
-      <div className="absolute top-6 right-6 flex items-start gap-2">
+      <div className="absolute top-6 right-6 flex items-center gap-2">
         {/* Shaped like the donation ranks in the other corner: a diamond that
             turns, and a list that appears under it. One idiom for "this panel
             opens", used twice. */}
@@ -879,7 +879,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             <button
               type="button"
               onClick={() => setRangeOpen(open => !open)}
-              className="flex items-center gap-2 px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 text-sm tracking-[0.15em] uppercase transition-colors"
+              className="flex items-center gap-2 px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
+              style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
             >
               <span
                 className="inline-block transition-transform duration-200"
@@ -897,7 +898,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     key={entry.id}
                     type="button"
                     onClick={() => { setRange(entry.id); setRangeOpen(false) }}
-                    className={`block w-full text-left px-4 py-2 text-sm tracking-[0.15em] uppercase transition-colors ${
+                    className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
                       entry.id === range
                         ? 'text-nier-strong bg-nier-bg/10'
                         : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -1026,10 +1027,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         // The same button it is everywhere else, hearts and all. It was
         // hand-built here and had drifted into a different shape from the one
         // on every other screen.
-        <DonateButton
-          onClick={onContribute}
-          className="absolute bottom-6 right-6 px-7 py-4 text-[11px]"
-        />
+        // Positioned by a wrapper rather than by classes handed to the button.
+        // Its own padding classes and the ones passed in both landed in the
+        // same class list, and which won was decided by the stylesheet's order
+        // rather than by intent -- which is what threw it out of line.
+        <div className="absolute bottom-6 right-6">
+          <DonateButton onClick={onContribute} className="px-7 py-3.5" />
+        </div>
       )}
 
       {/* The thanks: large, centred, over everything, and staying until it is

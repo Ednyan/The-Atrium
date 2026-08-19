@@ -10,6 +10,7 @@
 // laptop turns dark at sunset should turn with it.
 
 import { useLandingTheme } from '../lib/useLandingTheme'
+import { DONATE_CUT } from './DonateButton'
 
 export default function ThemeToggle({ className = '' }: { className?: string }) {
   const { preference, resolved, cycle } = useLandingTheme()
@@ -24,7 +25,11 @@ export default function ThemeToggle({ className = '' }: { className?: string }) 
       onClick={cycle}
       title={`Theme: ${label}`}
       aria-label={`Theme: ${label}. Click to change.`}
-      className={`px-3 py-2 border border-nier-border/30 text-nier-bg/75 hover:text-nier-bg hover:border-nier-border/60 text-[11px] tracking-[0.15em] uppercase transition-colors ${className}`}
+      className={`px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors ${className}`}
+      // Its own ground and the same cut as its neighbours. Without a
+      // background it was transparent, which is fine on a page and wrong over
+      // an atrium, where whatever is on the canvas showed through it.
+      style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
     >
       {preference === 'system' ? '◐' : resolved === 'dark' ? '☾' : '☀'}
       <span className="hidden sm:inline ml-2">{label}</span>

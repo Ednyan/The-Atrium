@@ -693,14 +693,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // confirm rather than simply vanishing.
   const wasSavingRef = useRef(false)
   useEffect(() => {
-    if (wasSavingRef.current && !isSavingChanges) {
+    // Timed off the indicator, not the store flag. The indicator holds
+    // "Saving" for four seconds so a quick save is readable, and the flag
+    // clears long before that -- so "Saved" was being shown and expiring
+    // underneath a label that still said Saving.
+    if (wasSavingRef.current && !isAutosaving) {
       setJustSaved(true)
-      const timer = setTimeout(() => setJustSaved(false), 1800)
+      const timer = setTimeout(() => setJustSaved(false), 2200)
       wasSavingRef.current = false
       return () => clearTimeout(timer)
     }
-    wasSavingRef.current = isSavingChanges
-  }, [isSavingChanges])
+    if (isAutosaving) wasSavingRef.current = true
+  }, [isAutosaving])
 
   const [hudMinimized, setHudMinimized] = useState(true)
   const [drawControlsMinimized, setDrawControlsMinimized] = useState(false)
@@ -3803,9 +3807,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           className={`px-4 py-2 border text-[11px] tracking-[0.15em] uppercase transition-all ${
             uiHidden
               ? 'opacity-25 hover:opacity-100 border-nier-border/40 text-nier-bg/80'
-              : 'border-red-500/50 text-red-300 hover:border-red-400 hover:text-red-200'
+              : 'hover:brightness-110'
           }`}
-          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          style={{
+            clipPath: DONATE_CUT,
+            backgroundColor: 'rgb(var(--c-ground) / 0.94)',
+            // red-300 is 1.65:1 on paper -- a warning nobody can read. The
+            // token carries the red each theme can actually show.
+            borderColor: uiHidden ? undefined : 'rgb(var(--c-danger) / 0.55)',
+            color: uiHidden ? undefined : 'rgb(var(--c-danger))',
+          }}
           title={uiHidden ? 'Show the interface' : 'Leave this atrium'}
         >
           {uiHidden ? '◇ Show UI' : '◇ Leave Atrium'}
@@ -3938,7 +3949,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             onClick={() => copyLobbyId(currentLobby.id)}
             className="w-full mt-1 bg-nier-blackLight border border-nier-border/40 hover:border-nier-bg text-nier-strong px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all"
           >
-            Copy ID
+            Copy Atrium ID
           </button>
         )}
         {isDesktop && (

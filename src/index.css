@@ -42,6 +42,9 @@
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
   --c-coral: 232 122 109;
+  /* Leaving, deleting, refusing. red-300 sits at 1.65:1 on paper, which is a
+   * warning nobody can read; each theme gets the red that works against it. */
+  --c-danger: 255 97 97;
   /* What a drop shadow is made of. Black under a dark page, and a warm grey
    * under a light one -- black on paper reads as a hole rather than as depth. */
   --c-shadow: 0 0 0;
@@ -86,6 +89,7 @@
   --c-sky: 45 110 151;
   --c-amber: 168 132 24;
   --c-coral: 227 94 79;
+  --c-danger: 180 35 26;
   --c-shadow: 122 112 96;
   --metal-title: linear-gradient(100deg, #B8860B 0%, #8A6620 100%);
 }
@@ -103,6 +107,7 @@
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
   --c-coral: 232 122 109;
+  --c-danger: 255 97 97;
   --c-shadow: 0 0 0;
   --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 }
