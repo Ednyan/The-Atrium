@@ -125,23 +125,33 @@ function build({ count, seed }: SeedState): Contributor[] {
     if (isMonthly) {
       const monthlyEur = [1, 2, 3, 5, 10][Math.floor(random() * 5)]
       const months = 1 + Math.floor(random() * 14)
+      // Some of them gave once before subscribing, or once since. That is the
+      // third kind of contributor and the one the wall draws with a gradient,
+      // so the preview has to contain some or the drawing is never seen.
+      const hasOneTime = random() < 0.4
+      const oneTimeEur = hasOneTime ? makeAmount(random) : 0
       people.push({
         displayName: name,
-        amountEur: monthlyEur * months,
+        amountEur: monthlyEur * months + oneTimeEur,
         isMonthly: true,
         monthlyEur,
         since,
-        contributionCount: months,
+        contributionCount: months + (hasOneTime ? 1 : 0),
+        hasOneTime,
+        oneTimeEur,
         isSeed: true,
       })
     } else {
+      const amountEur = makeAmount(random)
       people.push({
         displayName: name,
-        amountEur: makeAmount(random),
+        amountEur,
         isMonthly: false,
         monthlyEur: null,
         since,
         contributionCount: 1 + Math.floor(random() * 3),
+        hasOneTime: true,
+        oneTimeEur: amountEur,
         isSeed: true,
       })
     }

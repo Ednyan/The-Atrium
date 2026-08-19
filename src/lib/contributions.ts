@@ -29,6 +29,12 @@ export interface Contributor {
   // When they first gave, which is what "since" means on a monthly trace.
   since: string
   contributionCount: number
+  // Whether any of what they gave was a one-off. Someone who has both a
+  // subscription and a one-off is a third kind of contributor, and the wall
+  // draws them as one.
+  hasOneTime: boolean
+  // How much of the total was one-off, in euros.
+  oneTimeEur: number
   // Set only on locally generated previews (see lib/seedContributors). Never
   // arrives from the server, and is what makes a fake trace say so on the wall.
   isSeed?: boolean
@@ -62,7 +68,13 @@ function readCache(): ContributionsData {
     if (!raw) return EMPTY
     const parsed = JSON.parse(raw)
     return {
-      contributors: Array.isArray(parsed.contributors) ? parsed.contributors : [],
+      contributors: Array.isArray(parsed.contributors)
+        ? parsed.contributors.map((c: any) => ({
+            ...c,
+            hasOneTime: c.hasOneTime === true,
+            oneTimeEur: Number(c.oneTimeEur) || 0,
+          }))
+        : [],
       month: parsed.month ?? null,
       fetchedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : null,
     }
@@ -88,6 +100,24 @@ async function getJson(path: string, signal: AbortSignal): Promise<any> {
   return response.json()
 }
 
+const CONTRIBUTOR_COLUMNS = 'display_name,amount_eur,is_monthly,monthly_eur,since,contribution_count'
+const CONTRIBUTOR_COLUMNS_KINDS = `${CONTRIBUTOR_COLUMNS},has_one_time,one_time_eur`
+
+// Asks for the newer columns and falls back to the older shape if the view
+// hasn't got them yet.
+//
+// PostgREST answers a request for a column that doesn't exist with an error,
+// not by ignoring it -- so a client deployed before its migration was run would
+// empty the wall rather than degrade. That ordering is easy to get wrong and
+// expensive to notice, and the cost of not depending on it is one retry.
+async function getContributors(signal: AbortSignal): Promise<any[]> {
+  try {
+    return await getJson(`contributors_public?select=${CONTRIBUTOR_COLUMNS_KINDS}`, signal)
+  } catch {
+    return await getJson(`contributors_public?select=${CONTRIBUTOR_COLUMNS}`, signal)
+  }
+}
+
 // Fetches both views, writes the cache, and returns what it got. Resolves to
 // null on any failure -- offline, blocked, no endpoint configured -- because
 // every one of those means the same thing here: keep showing what we had.
@@ -99,7 +129,7 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
 
   try {
     const [contributorRows, monthRows] = await Promise.all([
-      getJson('contributors_public?select=display_name,amount_eur,is_monthly,monthly_eur,since,contribution_count', controller.signal),
+      getContributors(controller.signal),
       getJson('contributions_month?select=total_cents,goal_cents,contribution_count', controller.signal),
     ])
 
@@ -112,6 +142,10 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
         monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
         since: String(row.since ?? ''),
         contributionCount: Number(row.contribution_count) || 1,
+        // Absent on the older view shape, which reads as "no one-off known" --
+        // and draws exactly as the wall did before these columns existed.
+        hasOneTime: row.has_one_time === true,
+        oneTimeEur: Number(row.one_time_eur) || 0,
       })).filter((c: Contributor) => c.displayName.length > 0),
       month: month
         ? {

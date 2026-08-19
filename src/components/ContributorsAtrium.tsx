@@ -63,10 +63,47 @@ const MONTHLY_TIER = {
   glow: 'rgba(199,125,255,0.28)',
 }
 
-const tierFor = (person: { amountEur: number; isMonthly: boolean }) =>
-  person.isMonthly
-    ? MONTHLY_TIER
-    : TIERS.find(tier => person.amountEur >= tier.min) ?? TIERS[TIERS.length - 1]
+// The rank someone has reached, by everything they have given.
+//
+// The total rather than the one-off part of it, because position on this page
+// is decided by the total -- a trace coloured for one rank while sitting in
+// another would read as a mistake rather than as information.
+const rankFor = (person: { amountEur: number }) =>
+  TIERS.find(tier => person.amountEur >= tier.min) ?? TIERS[TIERS.length - 1]
+
+// How a trace is drawn, which depends on which of the three kinds of
+// contributor it is.
+//
+// Someone who subscribes *and* has given one-off is not a monthly supporter
+// with a footnote: purple alone would erase the rank they reached by giving,
+// and their rank alone would hide that they are still giving. So the border
+// carries both -- their rank on one side, purple on the other -- while the
+// breath and the rate line stay purple, and the name keeps the rank's colour.
+function drawFor(person: { amountEur: number; isMonthly: boolean; hasOneTime: boolean }) {
+  const rank = rankFor(person)
+  const both = person.isMonthly && person.hasOneTime
+
+  if (both) {
+    return {
+      nameColor: rank.color,
+      metaColor: MONTHLY_TIER.color,
+      glow: MONTHLY_TIER.glow,
+      // A gradient border needs border-image; border-color takes one colour and
+      // that is the whole problem here.
+      borderImage: `linear-gradient(135deg, ${rank.color} 0%, ${rank.color} 35%, ${MONTHLY_TIER.color} 100%) 1`,
+      borderColor: undefined as string | undefined,
+    }
+  }
+
+  const tier = person.isMonthly ? MONTHLY_TIER : rank
+  return {
+    nameColor: tier.color,
+    metaColor: tier.color,
+    glow: tier.glow,
+    borderImage: undefined as string | undefined,
+    borderColor: tier.color,
+  }
+}
 
 // Written out in full. "06" is a field in a database; "18 June 2026" is a date
 // someone gave money on, and this page is the one place that difference
@@ -401,7 +438,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
           {visible.map(({ person, x, y }, index) => {
-            const tier = tierFor(person)
+            const draw = drawFor(person)
             const dimmed = query.trim().length > 0 && !matchedNames.has(normalise(person.displayName))
             return (
               <div
@@ -421,8 +458,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   transform: 'translate(-50%, -50%)',
                   opacity: dimmed ? 0.12 : 1,
                   transition: 'opacity 220ms ease-out',
-                  border: `1px solid ${tier.color}`,
-                  boxShadow: `0 0 24px ${tier.glow}`,
+                  border: '1px solid',
+                  borderColor: draw.borderColor,
+                  borderImage: draw.borderImage,
+                  boxShadow: `0 0 24px ${draw.glow}`,
                   background: 'rgba(25,25,25,0.72)',
                   // Ongoing support is still happening; a slow breath says that
                   // where a label would only state it. Staggered so the wall
@@ -439,7 +478,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     : undefined,
                 }}
               >
-                <div className="text-[13px] tracking-wide truncate" style={{ color: tier.color }}>
+                <div className="text-[13px] tracking-wide truncate" style={{ color: draw.nameColor }}>
                   {person.displayName}
                 </div>
                 {/* Labelled, always. An unmarked fake is how a screenshot ends
@@ -450,10 +489,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   </div>
                 )}
                 <div className="flex flex-wrap items-baseline justify-between mt-1 gap-x-2">
-                  <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: tier.color, opacity: 0.85 }}>
+                  <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
                     {person.isMonthly && person.monthlyEur
                       ? `€${person.monthlyEur} / month`
                       : `€${person.amountEur}`}
+                    {/* The total, for someone whose trace otherwise shows only
+                        a rate. Without it their one-off giving is in the sum
+                        that placed them here and nowhere on the trace. */}
+                    {person.isMonthly && person.hasOneTime && ` · €${person.amountEur} given`}
                   </span>
                   <span className="text-[9px] tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
                     {person.isMonthly ? `since ${formatDate(person.since)}` : formatDate(person.since)}
@@ -576,6 +619,18 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               />
               <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
                 {MONTHLY_TIER.label}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-3 h-[1px]"
+                style={{
+                  background: `linear-gradient(90deg, ${TIERS[TIERS.length - 1].color}, ${MONTHLY_TIER.color})`,
+                  animation: 'contributor-breath 3.6s ease-in-out infinite',
+                }}
+              />
+              <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
+                Monthly + one-off
               </span>
             </div>
           </div>
