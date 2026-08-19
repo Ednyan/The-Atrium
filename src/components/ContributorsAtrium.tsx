@@ -76,6 +76,52 @@ const withAlpha = (hex: string, alpha: number) => {
 // the thing you see.
 const UNLIT = 0.22
 
+// One lap of a trace's border. Slow: this is meant to be noticed in passing
+// rather than watched, and a wall of them moving quickly is a wall that will
+// not let you read anything else on it.
+const RHYTHM_MS = 7000
+
+// The light, as a comet rather than a dash.
+//
+// SVG can't fade a stroke along its own path -- a gradient on a stroke runs
+// across the shape's box, not around it -- so the tail is drawn as segments,
+// each one a little further behind and a little dimmer than the one in front.
+// Nine of them covering just under a third of the perimeter.
+//
+// They are offset by animation-delay rather than by their dash pattern: one
+// keyframe set drives all of them, and a segment made to start later in the
+// cycle simply sits further back on the path.
+//
+// Every delay is normalised to be negative (see delayFor). A positive delay
+// makes the browser wait before starting, and a trace that has just come back
+// into view would sit dark for up to a few seconds first -- which is exactly
+// what culling does to it every time it crosses the edge of the screen.
+const TAIL_SEGMENTS = 9
+const TAIL_SEGMENT_LENGTH = 3.5 // in the 100 units pathLength normalises to
+
+// Butt caps, not round: round ones overhang each join, and two translucent
+// segments overlapping would draw a bright seam at every one.
+const TAIL = Array.from({ length: TAIL_SEGMENTS }, (_, index) => ({
+  index,
+  // Eased so the head stays bright for a moment before falling away, rather
+  // than dimming linearly from the first segment.
+  opacity: Math.pow(1 - index / TAIL_SEGMENTS, 1.6),
+  // The head is furthest through the cycle, so it leads.
+  lagMs: (TAIL_SEGMENTS - 1 - index) * (TAIL_SEGMENT_LENGTH / 100) * RHYTHM_MS,
+}))
+
+// Where in its cycle a segment starts, always expressed as a negative delay.
+//
+// An animation is periodic, so any phase can be written as a head start
+// somewhere in the previous lap -- and a negative delay begins already in
+// progress rather than waiting. It means a trace scrolled back into view is
+// lit the instant it mounts instead of standing dark until its turn came round.
+const delayFor = (order: number, lagMs: number) => {
+  const raw = (order % 7) * 600 - lagMs
+  const phase = ((raw % RHYTHM_MS) + RHYTHM_MS) % RHYTHM_MS
+  return phase - RHYTHM_MS
+}
+
 // The rank someone has reached, by everything they have given.
 //
 // The total rather than the one-off part of it, because position on this page
@@ -428,7 +474,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   }, [])
 
   const visible = useMemo(() => {
-    const margin = 240
+    // Generous, because leaving the document is not free here: a trace that
+    // unmounts loses its running light and starts a fresh lap when it returns.
+    // Holding a screen's worth on each side means ordinary panning stops
+    // crossing that boundary at all.
+    const margin = 460
     const halfWidth = viewport.width / 2 + margin
     const halfHeight = viewport.height / 2 + margin
     return placed.filter(({ x, y }) =>
@@ -590,22 +640,31 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     style={{ overflow: 'visible' }}
                     aria-hidden="true"
                   >
-                    <rect
-                      x="0"
-                      y="0"
-                      width="100%"
-                      height="100%"
-                      fill="none"
-                      stroke={draw.runnerStroke}
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      pathLength={100}
-                      strokeDasharray="16 84"
-                      style={{
-                        animation: `contributor-run 3.6s linear ${(order % 7) * 0.45}s infinite`,
-                        filter: `drop-shadow(0 0 5px ${withAlpha(draw.runnerGlow ?? MONTHLY_TIER.color, 0.75)})`,
-                      }}
-                    />
+                    {TAIL.map(segment => (
+                      <rect
+                        key={segment.index}
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        fill="none"
+                        stroke={draw.runnerStroke}
+                        strokeWidth="2"
+                        strokeLinecap="butt"
+                        opacity={segment.opacity}
+                        pathLength={100}
+                        strokeDasharray={`${TAIL_SEGMENT_LENGTH} ${100 - TAIL_SEGMENT_LENGTH}`}
+                        style={{
+                          animation: `contributor-run ${RHYTHM_MS}ms linear ${delayFor(order, segment.lagMs)}ms infinite`,
+                          // Only the head is lit. Nine shadows per trace, on
+                          // every monthly trace on screen, is a lot of blur to
+                          // ask for and the tail is too faint to show one.
+                          filter: segment.index === 0
+                            ? `drop-shadow(0 0 5px ${withAlpha(draw.runnerGlow ?? MONTHLY_TIER.color, 0.75)})`
+                            : undefined,
+                        }}
+                      />
+                    ))}
                   </svg>
                 )}
 
@@ -757,7 +816,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 style={{
                   background: `linear-gradient(90deg, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 0%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 40%, ${MONTHLY_TIER.color} 50%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 60%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%)`,
                   backgroundSize: '300% 100%',
-                  animation: 'contributor-run-line 3.6s linear infinite',
+                  animation: `contributor-run-line ${RHYTHM_MS}ms linear infinite`,
                 }}
               />
               <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
