@@ -14,6 +14,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
+import { renderContributorEmail } from '../_shared/contributorEmail.ts'
 
 // Sent from the verified domain, because that is what Resend can sign for and
 // what will not be dropped: a Gmail address cannot be a sending identity here,
@@ -246,15 +247,14 @@ Deno.serve(async (req: Request) => {
             to: row.contact_email,
             reply_to: RESEND_REPLY_TO,
             subject: 'About the name on your contribution',
-            text: [
-              'Thank you for contributing to The Digital Atrium.',
-              '',
+            ...renderContributorEmail({
+              heading: 'About your name',
               body,
-              '',
-              '--',
-              `You asked to be listed as "${row.display_name}". Your contribution is unaffected and still counts toward the month.`,
-              `Reply to this email and it reaches ${RESEND_REPLY_TO}.`,
-            ].join('\n'),
+              footnote: [
+                `You asked to be listed as "${row.display_name}". Your contribution is unaffected and still counts toward the month.`,
+                `Reply to this email and it reaches ${RESEND_REPLY_TO}.`,
+              ].join('\n'),
+            }),
           }),
         })
 
@@ -329,14 +329,19 @@ Deno.serve(async (req: Request) => {
                 to: row.contact_email,
                 reply_to: RESEND_REPLY_TO,
                 subject: 'About the name on your contribution',
-                text: [
-                  'Thank you for contributing to The Digital Atrium.',
-                  '',
-                  `You asked to be listed as "${row.display_name}", and that name can't be shown on the public contributors list.`,
-                  reason ? `Reason: ${reason}` : '',
-                  '',
-                  'Your contribution is unaffected, and still counts toward the month. If you would like a different name shown, reply to this email and it will be changed.',
-                ].filter(Boolean).join('\n'),
+                ...renderContributorEmail({
+                  heading: 'About your name',
+                  body: [
+                    'Thank you for contributing to The Digital Atrium.',
+                    '',
+                    `You asked to be listed as "${row.display_name}", and that name can't be shown on the public contributors list.`,
+                  ].join('\n'),
+                  quote: reason || undefined,
+                  footnote: [
+                    'Your contribution is unaffected, and still counts toward the month.',
+                    `If you would like a different name shown, reply to this email and it will be changed.`,
+                  ].join('\n'),
+                }),
               }),
             })
           } catch (mailError) {

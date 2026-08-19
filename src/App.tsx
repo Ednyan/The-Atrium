@@ -624,8 +624,16 @@ function AppInner() {
     // leaving the wall doesn't bounce them straight back onto it.
     if (route.page === 'contributed') return
 
-    // Back from the wall should return where they were when they donated.
-    rememberContributorsReturn(window.location.hash.replace(/^#/, '') || '/welcome')
+    // Back from the wall should return where they were when they donated --
+    // unless that was the wall. Donating from the contributors page itself is
+    // the ordinary case, and recording it as the way back made Back a button
+    // that returned you to the page you were already looking at, minus the
+    // thanks. Leaving the stored value alone sends them where they came from
+    // before they opened the wall at all.
+    const origin = window.location.hash.replace(/^#/, '')
+    if (origin !== '/contributors' && origin !== '/contributed') {
+      rememberContributorsReturn(origin || '/welcome')
+    }
     navigate('/contributed')
   }, [contributionConfirmed, route.page])
   const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
