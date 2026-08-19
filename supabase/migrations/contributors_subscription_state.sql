@@ -17,15 +17,28 @@
 -- all of them mean the same thing. It also works on rows already in the table,
 -- which an event handler never could.
 --
--- The cost is precision at the boundary. A subscription reads as running until
--- 40 days after its last payment -- a month, plus room for Stripe's retries --
--- so someone who cancels today keeps a running light for a few weeks. Nothing
--- about the money is affected: the monthly bar counts rows in the current
--- month, and a cancelled subscription simply stops writing them.
+-- One threshold does both jobs here: 50 days without a payment means the
+-- subscription was not running over that stretch. It ends a run, and if the
+-- stretch reaches up to now, it means the subscription is not running at all.
+--
+-- Why 50. Stripe bills on the same day each month, so consecutive charges are
+-- 28 to 31 days apart -- the gap is measured between each adjacent pair, not
+-- accumulated, so a subscription running for ten years never has a single gap
+-- over 31 days. That leaves 19 days of slack, which is what Smart Retries need:
+-- a failed card is chased for about three weeks before Stripe gives up, and at
+-- 40 days a payment that eventually succeeded would have been read as a new
+-- subscription starting, resetting the "since" date on someone who never
+-- actually stopped.
+--
+-- The cost is precision at the other end. Someone who cancels today keeps a
+-- running light until 50 days after their last payment -- under two billing
+-- cycles, and nothing about the money is affected: the monthly bar counts rows
+-- in the current month, and a cancelled subscription simply stops writing
+-- them.
 
 -- Monthly payments grouped into runs.
 --
--- A gap of more than 40 days between two payments means the first subscription
+-- A gap of more than 50 days between two payments means the first subscription
 -- ended and a second one began later. That matters because someone who
 -- subscribes, stops, and comes back should read as giving their *new* rate
 -- since their *new* start date, with everything from before counted as money
@@ -51,7 +64,7 @@ monthly_marked AS (
     created_at,
     CASE
       WHEN lag(created_at) OVER (PARTITION BY name ORDER BY created_at) IS NULL THEN 1
-      WHEN created_at - lag(created_at) OVER (PARTITION BY name ORDER BY created_at) > interval '40 days' THEN 1
+      WHEN created_at - lag(created_at) OVER (PARTITION BY name ORDER BY created_at) > interval '50 days' THEN 1
       ELSE 0
     END AS starts_run
   FROM live
@@ -110,7 +123,7 @@ SELECT
   -- a month since January" -- a sentence about a subscription that did not
   -- exist yet.
   CASE
-    WHEN latest_run.last_paid > now() - interval '40 days' THEN latest_run.started
+    WHEN latest_run.last_paid > now() - interval '50 days' THEN latest_run.started
     ELSE min(live.created_at)
   END AS since,
 
@@ -120,7 +133,7 @@ SELECT
 
   -- Appended. Whether a subscription is running right now, which is what
   -- decides if the light goes round the trace.
-  coalesce(latest_run.last_paid > now() - interval '40 days', false) AS monthly_active
+  coalesce(latest_run.last_paid > now() - interval '50 days', false) AS monthly_active
 FROM live
 LEFT JOIN latest_run ON latest_run.name = live.name
 LEFT JOIN current_rate ON current_rate.name = live.name
