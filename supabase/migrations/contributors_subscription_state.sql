@@ -54,6 +54,11 @@ WITH live AS (
   FROM public.contributions
   WHERE livemode
     AND name_approved
+    -- Taken off the wall by the operator after approval. Distinct from
+    -- unapproved, and it still counts toward the month -- only the wall
+    -- changes. This filter was lost when the view was rewritten for the
+    -- one-off/monthly columns, which quietly put hidden contributors back.
+    AND NOT hidden
     AND NOT refunded
     AND display_name IS NOT NULL
 ),

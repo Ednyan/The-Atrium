@@ -195,17 +195,63 @@ Deno.serve(async (req: Request) => {
         // both places when the session is created.
         const metadata = subscriptionDetails?.metadata ?? {}
 
-        const { error } = await admin.from('contributions').insert({
+        // What this subscription looked like last month.
+        //
+        // A renewal is the same person under the same name, already judged.
+        // Reading the name from the subscription's metadata instead meant two
+        // things went wrong: the operator was asked to approve the same person
+        // twelve times a year, and a name they had corrected reverted on the
+        // next invoice -- splitting one contributor into two traces, because
+        // the wall groups by name.
+        //
+        // So the previous row decides. The database is the record; Stripe's
+        // metadata is only what the name was at checkout.
+        const { data: previous } = await admin
+          .from('contributions')
+          .select('display_name, name_approved, name_rejected_reason')
+          .eq('stripe_subscription_id', subscriptionId)
+          .eq('livemode', event.livemode === true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        const metadataName = typeof metadata.display_name === 'string'
+          ? metadata.display_name.trim() || null
+          : null
+
+        const row = {
           amount_cents: invoice.amount_paid,
           currency: invoice.currency ?? 'eur',
           settled_eur_cents: settled ?? (invoice.currency === 'eur' ? invoice.amount_paid : 0),
           kind: 'monthly',
-          display_name: typeof metadata.display_name === 'string' ? metadata.display_name.trim() || null : null,
+          // Inherited when there is something to inherit -- which is every
+          // renewal. The first payment of a subscription finds nothing and
+          // falls back to the metadata, unapproved, exactly as before.
+          display_name: previous ? previous.display_name : metadataName,
+          name_approved: previous ? previous.name_approved === true : false,
+          name_rejected_reason: previous ? previous.name_rejected_reason : null,
           contact_email: invoice.customer_email ?? null,
           stripe_event_id: event.id,
           stripe_payment_id: paymentIntentId ?? invoice.id,
+          stripe_subscription_id: subscriptionId,
           livemode: event.livemode === true,
-        })
+        }
+
+        const { error } = await admin.from('contributions').insert(row)
+
+        // The column is added by its own migration, and a function deploys the
+        // moment it is pushed. If a renewal lands in between, refusing the
+        // insert would lose a payment over a column that only makes moderation
+        // tidier -- so it is written without it and the money is recorded.
+        // Harmless once the migration has run; this branch stops being reached.
+        if (error && /stripe_subscription_id/.test(error.message ?? '')) {
+          console.error('[stripe-webhook] stripe_subscription_id column missing; recording without it')
+          const { stripe_subscription_id: _omitted, ...withoutColumn } = row
+          const { error: retryError } = await admin.from('contributions').insert(withoutColumn)
+          if (retryError) throw retryError
+          return ok()
+        }
+
         if (error) throw error
         return ok()
       }

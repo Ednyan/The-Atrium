@@ -147,9 +147,42 @@ Deno.serve(async (req: Request) => {
 
         if (Object.keys(patch).length === 0) return json({ error: 'Nothing to change' }, 400)
 
+        // A rename applies to the whole contributor, not to one payment.
+        //
+        // The wall groups by name, so a trace showing 60 euros is every row
+        // carrying that name. Renaming one of them used to leave the rest
+        // behind under the old name -- which did not correct the trace, it
+        // split it in two and divided the money between them.
+        //
+        // Amount and date stay on the row they were edited on: those describe
+        // one payment, and correcting one is not a statement about the others.
+        let renamed = 0
+        if (patch.display_name !== undefined) {
+          const { data: target } = await admin
+            .from('contributions')
+            .select('display_name, livemode')
+            .eq('id', id)
+            .maybeSingle()
+
+          const previousName = target?.display_name?.trim()
+          if (previousName) {
+            const { data: siblings, error: renameError } = await admin
+              .from('contributions')
+              .update({ display_name: patch.display_name })
+              .eq('display_name', previousName)
+              .eq('livemode', target?.livemode === true)
+              .neq('id', id)
+              .select('id')
+            if (renameError) throw renameError
+            renamed = siblings?.length ?? 0
+          }
+        }
+
         const { error } = await admin.from('contributions').update(patch).eq('id', id)
         if (error) throw error
-        return json({ ok: true })
+        // Reported so the operator knows a rename reached the rest of the
+        // contributor's history rather than only the row they clicked.
+        return json({ ok: true, renamed })
       }
 
       case 'approve': {
