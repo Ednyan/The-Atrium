@@ -87,7 +87,23 @@ export default function DonateButton({
           both cases the hearts are the ground showing through rather than a
           second colour introduced on top. */}
       <DonateHearts color={accent ? 'rgb(var(--c-ground) / 0.42)' : 'rgba(255,138,61,0.30)'} />
-      <span className="relative">◇ {label}</span>
+      {/* A heart, not a diamond. The diamond is this app's punctuation and it
+          means "an item" everywhere else; on the one button that asks for
+          money it should say what it is asking for. Drawn as two arcs and a
+          point rather than the emoji, which arrives in a different typeface on
+          every machine and in colour on most of them. */}
+      <span className="relative inline-flex items-center gap-2">
+        <svg viewBox="0 0 24 22" width="11" height="10" aria-hidden="true" className="shrink-0">
+          <path
+            d="M12 21S2.5 14.6 2.5 8.2A5.7 5.7 0 0 1 12 4.4a5.7 5.7 0 0 1 9.5 3.8C21.5 14.6 12 21 12 21Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {label}
+      </span>
     </button>
   )
 }

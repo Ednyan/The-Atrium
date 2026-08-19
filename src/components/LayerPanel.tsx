@@ -1027,7 +1027,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   return (
     <div 
       data-ui-element="true"
-      className="layer-panel fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
+      className="layer-panel panel-in-right fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
       style={{ 
         backgroundColor: 'rgb(var(--c-ground) / 0.98)',
         top: '80px',
@@ -1526,7 +1526,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           <div
             ref={rowMenuRef}
             data-layer-row-menu
-            className="panel-in-right fixed bg-nier-black border border-nier-border/50 shadow-xl z-[10000400] py-1 max-h-[90vh] overflow-y-auto"
+            className="panel-in fixed bg-nier-black border border-nier-border/50 shadow-xl z-[10000400] py-1 max-h-[90vh] overflow-y-auto"
             // Position comes from the measured element (see
             // useClampedMenuPosition). The estimated heights that used to be
             // here -- 300 for a group, 260 for a trace -- were guesses, and

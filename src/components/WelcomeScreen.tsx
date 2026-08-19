@@ -327,8 +327,12 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 and has its own rules (cooldown, validation) that belong with
                 the rest of the account settings. */}
             {isDesktop ? (
-              <div className="flex items-center justify-center gap-2 text-sm tracking-wide">
-                <span className="text-nier-bg/60">User:</span>
+              // The name somebody chose for themselves, presented as such. It
+              // read "User: name" in the same small type as the position
+              // readout -- a field label and its value, which is how you write
+              // a record, not how you greet somebody.
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-nier-bg/60 text-[11px] tracking-[0.25em] uppercase">Signed in as</span>
                 {editingName ? (
                   <input
                     autoFocus
@@ -340,7 +344,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                       if (e.key === 'Escape') { e.preventDefault(); setEditingName(false) }
                     }}
                     maxLength={32}
-                    className="bg-transparent border-b border-nier-border/60 text-nier-bg text-sm tracking-wide text-center focus:outline-none focus:border-nier-bg w-40"
+                    className="bg-transparent border-b border-nier-border/60 text-nier-strong text-lg tracking-[0.08em] text-center focus:outline-none focus:border-nier-bg w-48"
                   />
                 ) : (
                   <button

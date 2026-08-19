@@ -33,7 +33,7 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
       aria-label={`Theme: ${label}. Click to change.`}
       className={variant === 'atrium'
         ? `atrium-btn ${className}`
-        : `px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors ${className}`}
+        : `inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors ${className}`}
       // Its own ground and the same cut as its neighbours. Without a
       // background it was transparent, which is fine on a page and wrong over
       // an atrium, where whatever is on the canvas showed through it.

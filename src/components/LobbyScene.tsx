@@ -3848,7 +3848,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {/* The whole header opens it. A chevron the width of a character is a
             target you have to aim at; the row you are already reading is not. */}
         <div
-          className="flex items-center justify-between gap-2 cursor-pointer select-none"
+          className="flex items-center justify-between gap-2 cursor-pointer select-none h-[1.375rem]"
           onClick={() => setHudMinimized(!hudMinimized)}
           title={hudMinimized ? 'Open' : 'Close'}
         >
@@ -4465,9 +4465,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     currentStrokeRef.current = []
                     setIsEraserMode(false)
                   }}
-                  className="ml-2 bg-red-900 hover:bg-red-700 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-red-600"
+                  className="atrium-btn w-full hover:brightness-110"
+                  style={{
+                    borderColor: 'rgb(var(--c-danger) / 0.55)',
+                    color: 'rgb(var(--c-danger))',
+                  }}
                 >
-                  Exit
+                  Exit drawing
                 </button>
                 </>
 
@@ -4869,7 +4873,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
 
         <div
-          className="flex items-center justify-between gap-3 cursor-pointer select-none"
+          className="flex items-center justify-between gap-3 cursor-pointer select-none h-[1.375rem]"
           onClick={() => setControlsMinimized(!controlsMinimized)}
           title={controlsMinimized ? 'Open' : 'Close'}
         >

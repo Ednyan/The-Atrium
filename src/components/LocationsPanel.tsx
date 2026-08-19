@@ -32,6 +32,70 @@ interface LocationsPanelProps {
   presentationIndex: number
 }
 
+// The four things you can do to a location, drawn rather than typed.
+//
+// They were an emoji padlock beside three text glyphs, at twelve pixels: the
+// padlock arrived in a different typeface on every machine and in full colour
+// on most of them, which is the one thing nothing else in this app does. These
+// are line drawings on the same 16-unit grid at the same stroke weight, so the
+// row reads as four of one thing rather than four things that happened to end
+// up next to each other.
+function LocationIcon({ name }: { name: 'capture' | 'locked' | 'unlocked' | 'rename' | 'delete' }) {
+  const common = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.4,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+
+  if (name === 'capture') {
+    // A viewfinder: brackets around a point, which is what setting a location
+    // actually is -- framing the view you are looking at.
+    return (
+      <svg {...common}>
+        <path d="M2 5.2V2.6h2.6M11.4 2.6H14v2.6M14 10.8v2.6h-2.6M4.6 13.4H2v-2.6" />
+        <circle cx="8" cy="8" r="1.6" />
+      </svg>
+    )
+  }
+
+  if (name === 'locked' || name === 'unlocked') {
+    // One drawing in two states: the shackle stands over the body when locked
+    // and lifts off to one side when open, so the difference is a movement
+    // rather than two unrelated pictures.
+    return (
+      <svg {...common}>
+        <rect x="3.2" y="7.4" width="9.6" height="6.2" rx="0.6" />
+        {name === 'locked'
+          ? <path d="M5.6 7.4V5.2a2.4 2.4 0 0 1 4.8 0v2.2" />
+          : <path d="M5.6 7.4V5.2a2.4 2.4 0 0 1 4.8 0" />}
+        <path d="M8 9.6v1.8" />
+      </svg>
+    )
+  }
+
+  if (name === 'rename') {
+    // A nib, not a pencil: it is the mark this app already makes everywhere.
+    return (
+      <svg {...common}>
+        <path d="M11.2 2.6 13.4 4.8 5.6 12.6 2.6 13.4l0.8-3z" />
+        <path d="M9.8 4 12 6.2" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...common}>
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  )
+}
+
 export default function LocationsPanel({
   onClose,
   canEdit = true,
@@ -83,7 +147,7 @@ export default function LocationsPanel({
   return (
     <div
       data-ui-element="true"
-      className="layer-panel fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
+      className="layer-panel panel-in-right fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.98)', top: '80px', right: '16px', height: 'calc(100vh - 160px)' }}
     >
       <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-bg pointer-events-none" />
@@ -192,43 +256,45 @@ export default function LocationsPanel({
                     <button
                       onClick={(e) => { e.stopPropagation(); onUpdateCamera(loc.id) }}
                       disabled={loc.isLocked}
-                      className={`text-xs px-1.5 py-0.5 transition-colors ${
+                      className={`inline-flex items-center justify-center w-7 h-7 border transition-colors ${
                         loc.isLocked
-                          ? 'text-gray-700 cursor-not-allowed'
-                          : 'text-nier-bg/70 hover:text-nier-strong'
+                          ? 'border-transparent text-nier-bg/25 cursor-not-allowed'
+                          : 'border-nier-border/25 text-nier-bg/75 hover:text-nier-strong hover:border-nier-border/60'
                       }`}
                       title={loc.isLocked
                         ? 'Locked -- unlock to overwrite this view'
                         : 'Set this location to the current camera view'}
                     >
-                      ⌖
+                      <LocationIcon name="capture" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onToggleLock(loc.id) }}
-                      className={`text-xs px-1.5 py-0.5 transition-colors ${
-                        loc.isLocked
-                          ? 'text-amber-400 hover:text-amber-300'
-                          : 'text-nier-bg/70 hover:text-nier-strong'
+                      className={`inline-flex items-center justify-center w-7 h-7 border transition-colors ${
+                        loc.isLocked ? '' : 'border-nier-border/25 text-nier-bg/75 hover:text-nier-strong hover:border-nier-border/60'
                       }`}
+                      style={loc.isLocked
+                        ? { borderColor: 'rgb(var(--c-amber) / 0.55)', color: 'rgb(var(--c-amber))' }
+                        : undefined}
                       title={loc.isLocked
                         ? 'Unlock -- allow this view to be overwritten'
                         : 'Lock -- protect this view from being overwritten'}
                     >
-                      {loc.isLocked ? '🔒' : '🔓'}
+                      <LocationIcon name={loc.isLocked ? 'locked' : 'unlocked'} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('rename'); setDialogInput(loc.name); setDialogTargetId(loc.id) }}
-                      className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 transition-colors"
+                      className="inline-flex items-center justify-center w-7 h-7 border border-nier-border/25 text-nier-bg/75 hover:text-nier-strong hover:border-nier-border/60 transition-colors"
                       title="Rename"
                     >
-                      ✎
+                      <LocationIcon name="rename" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('delete'); setDialogTargetId(loc.id) }}
-                      className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5 transition-colors"
+                      className="inline-flex items-center justify-center w-7 h-7 border border-transparent hover:border-nier-border/40 transition-colors"
+                      style={{ color: 'rgb(var(--c-danger) / 0.75)' }}
                       title="Delete"
                     >
-                      ×
+                      <LocationIcon name="delete" />
                     </button>
                   </>
                 )}

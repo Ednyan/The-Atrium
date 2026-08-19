@@ -879,7 +879,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             <button
               type="button"
               onClick={() => setRangeOpen(open => !open)}
-              className="flex items-center gap-2 px-4 py-2 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
+              className="flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
               style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
             >
               <span
@@ -916,8 +916,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-          style={{ clipPath: DONATE_CUT }}
+          className="inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
+          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
         >
           ← Back
         </button>
@@ -1032,7 +1032,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         // same class list, and which won was decided by the stylesheet's order
         // rather than by intent -- which is what threw it out of line.
         <div className="absolute bottom-6 right-6">
-          <DonateButton onClick={onContribute} className="px-7 py-3.5" />
+          <DonateButton onClick={onContribute} className="px-9 py-4 text-xs tracking-[0.22em]" />
         </div>
       )}
 
