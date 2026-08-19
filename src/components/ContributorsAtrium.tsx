@@ -662,9 +662,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   transform: 'translate(-50%, -50%)',
                   opacity: dimmed ? 0.12 : 1,
                   transition: 'opacity 220ms ease-out',
-                  // Heavier in light mode: a thicker stroke is a larger
-                  // graphical object, and that is what earns a lighter colour.
-                  border: isLight ? '1.5px solid' : '1px solid',
+                  // A hairline was thinner than these needed to be in either
+                  // room. On paper the weight is what earns the lighter line
+                  // its 3:1; on black it simply reads as a made thing rather
+                  // than a drawn outline.
+                  border: '1.5px solid',
                   borderColor: draw.borderColor,
                   borderImage: draw.borderImage,
                   boxShadow: `0 0 24px ${draw.glow}`,
@@ -695,7 +697,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                         height="100%"
                         fill="none"
                         stroke={draw.runnerStroke}
-                        strokeWidth={isLight ? 2.75 : 2}
+                        strokeWidth={2.75}
                         strokeLinecap="butt"
                         opacity={segment.opacity}
                         pathLength={100}
