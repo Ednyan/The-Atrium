@@ -554,3 +554,18 @@ body.dragging * {
 @media (prefers-reduced-motion: reduce) {
   .donate-heart { animation: none !important; opacity: 0 !important; }
 }
+
+/* Bubbles rising through the monthly gauge.
+   Clipped by the fill they live inside, so they vanish at the surface rather
+   than at an arbitrary height. Slow and small: this is a gauge, not an
+   aquarium, and the motion exists only to say the column holds something. */
+@keyframes goal-bubble {
+  0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+  12%  { opacity: 0.9; }
+  85%  { opacity: 0.5; }
+  100% { transform: translateY(-260px) scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-bubble { animation: none !important; opacity: 0 !important; }
+}

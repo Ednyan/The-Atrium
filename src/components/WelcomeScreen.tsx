@@ -5,6 +5,7 @@ import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
+import MonthlyGoalColumn from './MonthlyGoalColumn'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { openContributors } from '../lib/contributorsRoute'
@@ -229,6 +230,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         {/* Top right, where nothing else lives. The appeal only appears when
             somebody has used the place for a while; this is for the rest of
             the time, when they simply want to. */}
+        <MonthlyGoalColumn
+          month={contributions.month}
+          onOpen={() => openContributors('/welcome')}
+        />
+
         <div className="absolute top-6 right-6 z-30 flex items-center gap-2">
           <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} />
@@ -453,46 +459,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               </button>
             )}
           </div>
-
-          {/* This month's support.
-              
-              It used to be squeezed to three pixels because three lines of
-              instructions sat under it on a screen that was already too tall.
-              Those are gone -- anyone who reaches this screen has been told how
-              to drag a canvas -- so the bar takes the room they were using: a
-              little air above it, larger type, and a rule you can actually
-              watch fill.
-              
-              Still only rendered once there is data, so a machine that has
-              never been online shows nothing rather than an empty gauge.
-              Clicking it goes where the menu row goes. */}
-          {contributions.month && contributions.month.goalCents > 0 && (
-            <button
-              type="button"
-              onClick={() => openContributors('/welcome')}
-              className="w-full group text-left pt-8"
-            >
-              <div className="flex items-baseline justify-between mb-2">
-                <span className="text-[10px] text-nier-bg/80 group-hover:text-nier-bg tracking-[0.2em] uppercase transition-colors">
-                  This month
-                </span>
-                <span className="text-[11px] text-nier-bg group-hover:text-nier-bg tracking-wider transition-colors">
-                  {Math.round(contributions.month.totalCents / 100)} / {Math.round(contributions.month.goalCents / 100)} €
-                </span>
-              </div>
-              <div className="h-[6px] bg-nier-black border border-nier-border/30 overflow-hidden">
-                <div
-                  className="h-full bg-nier-bg/80 group-hover:bg-nier-bg transition-all duration-700 ease-out"
-                  style={{
-                    width: `${Math.min(100, (contributions.month.totalCents / contributions.month.goalCents) * 100)}%`,
-                  }}
-                />
-              </div>
-              <p className="text-[9px] text-nier-bg/70 group-hover:text-nier-bg/80 tracking-wider mt-2 transition-colors">
-                ◇ Keeping the atrium running — see the contributors
-              </p>
-            </button>
-          )}
 
           {/* The hardcoded "v.1.0.0" that used to sit here would have gone
               stale the moment the app updated itself. Desktop now shows its
