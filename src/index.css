@@ -46,17 +46,18 @@
    * under a light one -- black on paper reads as a hole rather than as depth. */
   --c-shadow: 0 0 0;
 
-  /* The word ATRIUM, as metal rather than as a colour.
+  /* The word ATRIUM.
    *
-   * Seven stops instead of a two-tone fade: metal reads as metal because the
-   * highlights are narrow and repeat, and a single sweep from light to dark
-   * reads as a fade. Silver on black, brass on paper -- art nouveau brass,
-   * which is a dark warm alloy with a sheen, not the yellow of a medal.
+   * A plain two-stop sweep. Seven stops with repeating highlights were an
+   * attempt at a reflecting surface, and a gradient cannot be one -- it has no
+   * geometry to reflect anything off, so the extra stops read as banding
+   * rather than as sheen. Two stops read as one lit surface, which is honest
+   * and brighter for it.
    *
-   * The lightest stop is held at about 3:1 against its ground on purpose. This
-   * is a display word, where that is the threshold, and anything brighter is a
-   * highlight that stops being a letter. */
-  --metal-title: linear-gradient(100deg, #7C7C7C 0%, #FFFFFF 15%, #C0C0C0 32%, #FFFFFF 50%, #9A9A9A 67%, #EDEDED 84%, #8A8A8A 100%);
+   * Silver on black, gold on paper. The gold's light end sits near the 3:1
+   * that display text is held to; at this size the word is around 120px, well
+   * past where that threshold applies. */
+  --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 
   --nier-bg: #cbcbcb;
   --nier-bg-dark: #b5b5b5;
@@ -86,7 +87,7 @@
   --c-amber: 168 132 24;
   --c-coral: 227 94 79;
   --c-shadow: 122 112 96;
-  --metal-title: linear-gradient(100deg, #5A4315 0%, #A9873C 15%, #6B5119 32%, #A9873C 50%, #5E4718 67%, #9C7B33 84%, #54401A 100%);
+  --metal-title: linear-gradient(100deg, #B8860B 0%, #8A6620 100%);
 }
 
 [data-landing-theme='dark'] {
@@ -103,7 +104,7 @@
   --c-amber: 232 197 92;
   --c-coral: 232 122 109;
   --c-shadow: 0 0 0;
-  --metal-title: linear-gradient(100deg, #7C7C7C 0%, #FFFFFF 15%, #C0C0C0 32%, #FFFFFF 50%, #9A9A9A 67%, #EDEDED 84%, #8A8A8A 100%);
+  --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 }
 
 @keyframes pulse {
