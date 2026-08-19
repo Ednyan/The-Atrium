@@ -3,7 +3,7 @@ import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
-import DonateButton from './DonateButton'
+import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { shouldShowAppeal } from '../lib/supportAppeal'
@@ -253,7 +253,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               
               <div className="flex items-center gap-3">
                 <span className="text-nier-bg/75 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
-                <span className="text-[10px] tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">Back</span>
+                <span className="text-xs tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">Back</span>
               </div>
             </div>
           </button>
@@ -271,12 +271,25 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           <div className="space-y-[clamp(0.5rem,1.5vh,1rem)]">
             <div className="flex items-center justify-center gap-4">
               <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
-              <span className="text-nier-bg/75 text-[10px] tracking-[0.3em] uppercase">Welcome to the</span>
+              <span className="text-nier-bg/75 text-xs tracking-[0.3em] uppercase">Welcome to the</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
+            {/* The same face the website's title wears -- silver on black,
+                gold on paper. Two screens, one name, one surface: it was
+                previously flat bone here and metal there, which read as two
+                different products wearing the same words.
+
+                Tighter and heavier than it was. Wide tracking on a light
+                weight is what makes a title look like a caption of itself. */}
             <h1
-              className="text-nier-strong tracking-[0.3em] uppercase font-light leading-tight"
-              style={{ fontSize: 'clamp(1.6rem, 5vh, 3rem)' }}
+              className="tracking-[0.16em] uppercase font-normal leading-[0.95]"
+              style={{
+                fontSize: 'clamp(1.9rem, 5.6vh, 3.4rem)',
+                backgroundImage: 'var(--metal-title)',
+                WebkitBackgroundClip: 'text',
+                backgroundClip: 'text',
+                color: 'transparent',
+              }}
             >
               DIGITAL ATRIUM
             </h1>
@@ -287,7 +300,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 least missed. PortalLoop takes className only, so the sizing
                 goes through an arbitrary-value class. */}
             <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" ink={theme.resolved === 'light'} />
-            <p className="text-nier-bg/80 text-[11px] tracking-[0.2em] uppercase">
+            <p className="text-nier-bg/80 text-xs tracking-[0.2em] uppercase">
               A quiet space for creative presence
             </p>
           </div>
@@ -331,7 +344,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                     title="Click to rename"
                   >
                     {username}
-                    <span className="text-nier-bg/70 group-hover:text-nier-bg text-[10px] ml-2 transition-colors">✎</span>
+                    <span className="text-nier-bg/70 group-hover:text-nier-bg text-xs ml-2 transition-colors">✎</span>
                   </button>
                 )}
               </div>
@@ -342,16 +355,29 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             )}
 
             {/* Enter Button */}
+            {/* Filled, not outlined. This is the reason the screen exists,
+                and it used to have exactly the weight of the four rows under
+                it -- an outlined box among outlined boxes. Filled with the
+                strong neutral it is unmistakably the way in, and it leaves the
+                orange to mean one thing only.
+
+                The cut corner is the shape Donate wears, and now the shape
+                every committing action wears. */}
             <button
               onClick={onEnter}
               onMouseEnter={() => setIsHovered('enter')}
               onMouseLeave={() => setIsHovered(null)}
-              className="relative w-full py-4 border border-nier-border/60 text-nier-bg text-xs tracking-[0.2em] uppercase transition-all duration-300 hover:bg-nier-bg hover:text-nier-black hover:border-nier-bg group"
+              className="relative w-full py-4 text-sm tracking-[0.22em] uppercase font-medium transition-transform duration-300 hover:scale-[1.015] active:scale-[0.995] group"
+              style={{
+                background: 'rgb(var(--c-accent))',
+                color: 'rgb(var(--c-ground))',
+                clipPath: DONATE_CUT,
+              }}
             >
               <span className="relative z-10">Enter the Atrium</span>
               {/* Animated brackets on hover */}
-              <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-nier-bg/80 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>[</span>
-              <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-nier-bg/80 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}`}>]</span>
+              <span className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-70 translate-x-0' : 'opacity-0 -translate-x-2'}`}>[</span>
+              <span className={`absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-70 translate-x-0' : 'opacity-0 translate-x-2'}`}>]</span>
             </button>
 
             {/* Settings Button */}

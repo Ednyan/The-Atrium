@@ -458,14 +458,17 @@ body.dragging * {
   position: relative;
   display: block;
   width: 100%;
-  padding: 0.45rem 0.75rem 0.45rem 1.5rem;
+  padding: 0.6rem 0.75rem 0.6rem 1.6rem;
   text-align: left;
   font-size: 0.8rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: rgb(var(--c-fg) / 0.75);
-  border-left: 1px solid rgb(var(--c-fg) / 0.15);
-  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+  /* Two pixels rather than one. A hairline down the side of a row reads as an
+     edge of the layout; a rule reads as something the row is attached to. */
+  border-left: 2px solid rgb(var(--c-fg) / 0.18);
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease,
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* The pointer marker sits in the padding rather than shifting the label, so
@@ -480,9 +483,14 @@ body.dragging * {
 }
 
 .menu-row:hover {
-  color: #cbcbcb;
-  border-left-color: #cbcbcb;
-  background: rgb(var(--c-fg) / 0.05);
+  /* Was #cbcbcb outright, which is a light grey wherever it is -- on paper the
+     row went pale on hover instead of coming forward. */
+  color: rgb(var(--c-strong));
+  border-left-color: rgb(var(--c-accent));
+  background: rgb(var(--c-fg) / 0.06);
+  /* A row that steps toward you when addressed. Two pixels, once -- enough to
+     feel answered, not enough to be an animation. */
+  transform: translateX(2px);
 }
 
 .menu-row:hover::before {
