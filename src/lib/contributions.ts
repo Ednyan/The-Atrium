@@ -29,6 +29,9 @@ export interface Contributor {
   // When they first gave, which is what "since" means on a monthly trace.
   since: string
   contributionCount: number
+  // Set only on locally generated previews (see lib/seedContributors). Never
+  // arrives from the server, and is what makes a fake trace say so on the wall.
+  isSeed?: boolean
 }
 
 export interface MonthlyProgress {

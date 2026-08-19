@@ -7,6 +7,11 @@ import {
   startContributionsRefresh,
   type ContributionsData,
 } from '../lib/contributions'
+import {
+  getSeededContributors,
+  seededCount,
+  seededMonthCents,
+} from '../lib/seedContributors'
 
 interface ContributorsAtriumProps {
   onClose: () => void
@@ -119,6 +124,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // session and the desktop app has none.
   const [isOperator, setIsOperator] = useState(false)
   const [showNameApproval, setShowNameApproval] = useState(false)
+
+  // Fake contributors, for seeing what this looks like with a crowd on it.
+  // Local to this browser and switched on from the operator's own panel -- the
+  // public wall never sees them (lib/seedContributors explains why they are not
+  // rows in the database). Held in state so the two components stay in step.
+  const [seeded, setSeeded] = useState(getSeededContributors)
+  const refreshSeeded = () => setSeeded(getSeededContributors())
   useEffect(() => {
     if (isDesktop || !supabase) return
     let cancelled = false
@@ -223,7 +235,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
     const SPACING = 132
 
-    return [...data.contributors]
+    // Seeded people are sorted in among the real ones rather than appended, so
+    // the arrangement being judged is the arrangement that would happen.
+    return [...data.contributors, ...seeded]
       .sort((a, b) => b.amountEur - a.amountEur || b.since.localeCompare(a.since))
       .map((person, index) => {
         const radius = SPACING * Math.sqrt(index)
@@ -235,7 +249,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           width: Math.max(150, Math.min(300, 84 + person.displayName.length * 10)),
         }
       })
-  }, [data.contributors])
+  }, [data.contributors, seeded])
 
   // Only what can be seen is rendered. Two thousand absolutely positioned
   // elements is a lot to keep in a document, and all but a few dozen are off
@@ -277,7 +291,20 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     setDragging(false)
   }
 
-  const month = data.month
+  // The goal bar counts the seeded month too, otherwise the one part of this
+  // page that changes shape with the numbers is the one part a preview cannot
+  // exercise. Synthesised when nothing has ever been fetched, so the bar can
+  // still be looked at on a machine that has never been online.
+  const seededCents = useMemo(() => seededMonthCents(seeded), [seeded])
+  const month = useMemo(() => {
+    if (!seededCents) return data.month
+    const base = data.month ?? { totalCents: 0, goalCents: 5000, contributionCount: 0 }
+    return {
+      ...base,
+      totalCents: base.totalCents + seededCents,
+      contributionCount: base.contributionCount + seeded.length,
+    }
+  }, [data.month, seeded, seededCents])
 
   return (
     <div className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none" data-ui-element>
@@ -334,6 +361,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 <div className="text-[13px] tracking-wide truncate" style={{ color: tier.color }}>
                   {person.displayName}
                 </div>
+                {/* Labelled, always. An unmarked fake is how a screenshot ends
+                    up somewhere it shouldn't. */}
+                {person.isSeed && (
+                  <div className="text-[8px] tracking-[0.2em] uppercase mt-1" style={{ color: '#FF6161' }}>
+                    False donation
+                  </div>
+                )}
                 <div className="flex items-baseline justify-between mt-1 gap-2">
                   <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: tier.color, opacity: 0.85 }}>
                     {person.isMonthly && person.monthlyEur
@@ -359,6 +393,19 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           )}
         </div>
       </div>
+
+      {/* Impossible to forget about. The count is the giveaway that the wall
+          being looked at is not the wall anyone else sees. */}
+      {seeded.length > 0 && (
+        <div
+          className="absolute top-6 left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
+          style={{ borderColor: 'rgba(255,97,97,0.5)', background: 'rgba(255,97,97,0.08)' }}
+        >
+          <span className="text-[9px] tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
+            Preview — {seeded.length} false donations, visible only to you
+          </span>
+        </div>
+      )}
 
       {/* Title, top left, out of the way of the space */}
       <div className="absolute top-6 left-6 pointer-events-none">
@@ -511,7 +558,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </div>
       )}
 
-      {showNameApproval && <NameApprovalPanel onClose={() => setShowNameApproval(false)} />}
+      {showNameApproval && (
+        <NameApprovalPanel
+          onClose={() => setShowNameApproval(false)}
+          seededCount={seededCount()}
+          onSeedChanged={refreshSeeded}
+        />
+      )}
     </div>
   )
 }

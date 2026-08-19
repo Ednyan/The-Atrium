@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import {
+  SEED_PRESETS,
+  clearSeededContributors,
+  seedContributors,
+} from '../lib/seedContributors'
 
 interface NameApprovalPanelProps {
   onClose: () => void
+  // How many fake contributors are currently drawn on the wall behind this,
+  // and how to tell it that the number changed.
+  seededCount: number
+  onSeedChanged: () => void
 }
 
 interface Entry {
@@ -37,7 +46,7 @@ const toDateInput = (iso: string) => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
 }
 
-export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
+export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged }: NameApprovalPanelProps) {
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -211,6 +220,47 @@ export default function NameApprovalPanel({ onClose }: NameApprovalPanelProps) {
             <p className="text-red-400 text-[10px] tracking-wide">{error}</p>
           </div>
         )}
+
+        {/* Filling the wall up, to see how it behaves with a crowd on it.
+
+            These are generated in this browser and drawn only here. They are
+            not rows in the contributions table, deliberately: that table is
+            what the money is reconciled against, and inventing entries in it
+            would put fictional people on the public wall now and leave the
+            totals wrong forever if one were ever missed. Nobody else sees
+            these, and Clear removes them completely. */}
+        <div className="mt-6 pt-4 border-t border-nier-border/20">
+          <SectionHeading
+            label="Preview"
+            count={seededCount > 0 ? `${seededCount} false` : ''}
+          />
+          <p className="text-nier-bg/70 text-[9px] tracking-wider leading-relaxed mb-3">
+            Fills the wall with false donations across every rank, so the layout
+            can be judged with a crowd on it. Local to this browser, marked as
+            false on every trace, and invisible to everyone else.
+          </p>
+          <div className="flex gap-2">
+            {SEED_PRESETS.map(count => (
+              <button
+                key={count}
+                type="button"
+                onClick={() => { seedContributors(count); onSeedChanged() }}
+                className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+              >
+                {count}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => { clearSeededContributors(); onSeedChanged() }}
+              disabled={seededCount === 0}
+              className="flex-1 py-2 border text-[10px] tracking-[0.15em] uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{ borderColor: 'rgba(255,97,97,0.4)', color: '#FF6161' }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
 
         <button
           type="button"
