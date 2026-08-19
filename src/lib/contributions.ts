@@ -38,6 +38,9 @@ export interface Contributor {
   // Set only on locally generated previews (see lib/seedContributors). Never
   // arrives from the server, and is what makes a fake trace say so on the wall.
   isSeed?: boolean
+  // Found by searching past the wall's 2000-row cap: still a contributor, just
+  // one the page has no room to draw until somebody asks for them by name.
+  isBeyondWall?: boolean
 }
 
 export interface MonthlyProgress {
@@ -100,6 +103,25 @@ async function getJson(path: string, signal: AbortSignal): Promise<any> {
   return response.json()
 }
 
+// Enough to find yourself among namesakes, few enough that a search never
+// pours hundreds of traces onto a wall that was not drawn to hold them.
+const SEARCH_LIMIT = 40
+
+function toContributor(row: any): Contributor {
+  return {
+    displayName: String(row.display_name ?? ''),
+    amountEur: Number(row.amount_eur) || 0,
+    isMonthly: !!row.is_monthly,
+    monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
+    since: String(row.since ?? ''),
+    contributionCount: Number(row.contribution_count) || 1,
+    // Absent on the older view shape, which reads as "no one-off known" -- and
+    // draws exactly as the wall did before these columns existed.
+    hasOneTime: row.has_one_time === true,
+    oneTimeEur: Number(row.one_time_eur) || 0,
+  }
+}
+
 const CONTRIBUTOR_COLUMNS = 'display_name,amount_eur,is_monthly,monthly_eur,since,contribution_count'
 const CONTRIBUTOR_COLUMNS_KINDS = `${CONTRIBUTOR_COLUMNS},has_one_time,one_time_eur`
 
@@ -135,18 +157,7 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
 
     const month = monthRows?.[0]
     const data: ContributionsData = {
-      contributors: (contributorRows ?? []).map((row: any) => ({
-        displayName: String(row.display_name ?? ''),
-        amountEur: Number(row.amount_eur) || 0,
-        isMonthly: !!row.is_monthly,
-        monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
-        since: String(row.since ?? ''),
-        contributionCount: Number(row.contribution_count) || 1,
-        // Absent on the older view shape, which reads as "no one-off known" --
-        // and draws exactly as the wall did before these columns existed.
-        hasOneTime: row.has_one_time === true,
-        oneTimeEur: Number(row.one_time_eur) || 0,
-      })).filter((c: Contributor) => c.displayName.length > 0),
+      contributors: (contributorRows ?? []).map(toContributor).filter((c: Contributor) => c.displayName.length > 0),
       month: month
         ? {
             // Postgres returns bigint as a string, since it doesn't fit a JS
@@ -163,6 +174,40 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
     return data
   } catch {
     return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// Looking somebody up past the cap.
+//
+// contributors_public stops at 2000 rows because that is what can be drawn.
+// contributors_searchable is the same aggregation with no limit, asked one
+// narrow question at a time -- which is affordable in a way of downloading
+// every contributor to search locally is not.
+//
+// Resolves to an empty list on any failure, including the view not existing
+// yet. A search that quietly finds nothing extra is the same experience the
+// page had before this, which is the right way to fail.
+export async function searchContributors(query: string): Promise<Contributor[]> {
+  const needle = query.trim()
+  if (!REST_URL || !ANON_KEY || needle.length < 2) return []
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  try {
+    // PostgREST reads * as the wildcard in an ilike, so the value is encoded
+    // rather than interpolated -- a name with a comma or a dot in it would
+    // otherwise be read as filter syntax.
+    const pattern = encodeURIComponent(`*${needle}*`)
+    const rows = await getJson(
+      `contributors_searchable?select=${CONTRIBUTOR_COLUMNS_KINDS}&display_name=ilike.${pattern}&limit=${SEARCH_LIMIT}`,
+      controller.signal,
+    )
+    return (rows ?? []).map(toContributor).filter((c: Contributor) => c.displayName.length > 0)
+  } catch {
+    return []
   } finally {
     clearTimeout(timeout)
   }

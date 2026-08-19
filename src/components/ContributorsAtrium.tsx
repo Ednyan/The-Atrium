@@ -4,7 +4,9 @@ import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
 import {
   getCachedContributions,
+  searchContributors,
   startContributionsRefresh,
+  type Contributor,
   type ContributionsData,
 } from '../lib/contributions'
 import {
@@ -206,6 +208,36 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [query, setQuery] = useState('')
   const [matchIndex, setMatchIndex] = useState(0)
 
+  // Contributors the wall has no room for.
+  //
+  // The page draws the largest 2000 and drops the smallest and oldest past
+  // that. Nothing about them was deleted -- they are in the table and in every
+  // total -- but from where they are sitting, not being on the wall looks
+  // exactly like having been removed. So a search asks the server as well as
+  // the page, and anyone it turns up is drawn for as long as the search lasts.
+  const [beyondWall, setBeyondWall] = useState<Contributor[]>([])
+
+  useEffect(() => {
+    const needle = query.trim()
+    if (needle.length < 2) {
+      setBeyondWall([])
+      return
+    }
+
+    // Debounced: this is a request per search, not per keystroke.
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void searchContributors(needle).then(found => {
+        if (!cancelled) setBeyondWall(found)
+      })
+    }, 350)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [query])
+
   // The same reading an atrium uses -- shared, so a mouse zooms, two fingers
   // pan and a pinch zooms here exactly as they do on the canvas.
   const gestures = useMemo(() => createWheelGestures(), [])
@@ -298,9 +330,20 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     // The wall is a quarter larger for it, which the search box pays for.
     const SPACING = 170
 
+    // Only the ones not already on the wall. A search matches the local list
+    // first, and the server answers without knowing what was drawn -- so most
+    // of what comes back is usually already here.
+    const drawn = new Set(data.contributors.map(person => normalise(person.displayName)))
+    const extra = beyondWall
+      .filter(person => !drawn.has(normalise(person.displayName)))
+      .map(person => ({ ...person, isBeyondWall: true }))
+
     // Seeded people are sorted in among the real ones rather than appended, so
-    // the arrangement being judged is the arrangement that would happen.
-    return [...data.contributors, ...seeded]
+    // the arrangement being judged is the arrangement that would happen. The
+    // same sort puts the beyond-the-wall ones out at the rim, which is exactly
+    // where they would have been if there had been room -- they are past the
+    // cap because they are the smallest, and small is what the rim is.
+    return [...data.contributors, ...seeded, ...extra]
       .sort((a, b) => b.amountEur - a.amountEur || b.since.localeCompare(a.since))
       .map((person, index) => {
         const radius = SPACING * Math.sqrt(index)
@@ -311,7 +354,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           y: Math.sin(angle) * radius * 0.72, // flattened: screens are wider than they are tall
         }
       })
-  }, [data.contributors, seeded])
+  }, [data.contributors, seeded, beyondWall])
 
   // Accents folded and case ignored: someone typing "ines" should find "Inês",
   // and a person who put an accent in their name should not have to remember
@@ -325,6 +368,12 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
   // Names rather than indices, so the dimming survives the culling that decides
   // what is in the document at any moment.
+  // For the counter. Only the ones actually being drawn because of the search.
+  const beyondCount = useMemo(
+    () => matches.filter(item => (item.person as Contributor).isBeyondWall).length,
+    [matches],
+  )
+
   const matchedNames = useMemo(
     () => new Set(matches.map(item => normalise(item.person.displayName))),
     [matches],
@@ -517,6 +566,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     False donation
                   </div>
                 )}
+                {/* Answers the question this trace exists to answer: it is
+                    still counted, it is just past what the page can draw. */}
+                {person.isBeyondWall && (
+                  <div className="text-[8px] tracking-[0.2em] uppercase mt-1 text-nier-bg/70">
+                    Still counted · found by search
+                  </div>
+                )}
                 <div className="flex flex-wrap items-baseline justify-between mt-1 gap-x-2">
                   <span className="text-[10px] tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
                     {person.isMonthly && person.monthlyEur
@@ -573,6 +629,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               : matches.length === 1
                 ? 'One match'
                 : `${matchIndex + 1} of ${matches.length} — Enter for the next`}
+            {beyondCount > 0 && ` · ${beyondCount} beyond the wall`}
           </p>
         )}
       </div>

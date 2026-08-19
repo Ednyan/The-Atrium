@@ -20,7 +20,7 @@ import type { Contributor } from './contributions'
 
 const KEY = 'atrium_seeded_contributors_v1'
 
-export const SEED_PRESETS = [50, 300, 1200]
+export const SEED_PRESETS = [50, 600, 2000]
 
 // Small, fast, and repeatable -- the same seed gives the same wall, so a layout
 // problem spotted once can be looked at again instead of being reshuffled away.
