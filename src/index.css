@@ -24,6 +24,23 @@
   --c-ground: 25 25 25;
   --c-surface: 40 40 40;
 
+  /* The page's own accent, as three roles rather than one colour.
+   *
+   * --c-accent is whatever a primary action or a marker is made of.
+   * --c-shimmer and --c-warm are the ends and the middle of the title's
+   * gradient. On black they are all near-white, which is what makes silver
+   * type glow. On paper silver sits at 1.23:1 against the background, which is
+   * not a light colour, it is an absent one -- so the light set is ink with a
+   * gold running through it, which is where this palette came from before the
+   * saturation was taken out of it. */
+  --c-accent: 217 217 217;
+  --c-shimmer: 255 255 255;
+  --c-warm: 217 217 217;
+  /* The two feature markers. Pastels on black, and 1.6:1 and 1.9:1 on paper,
+   * so the light set is the same hue taken down to where it can be seen. */
+  --c-emerald: 127 209 166;
+  --c-sky: 127 182 217;
+
   --nier-bg: #cbcbcb;
   --nier-bg-dark: #b5b5b5;
   --nier-text: #464646;
@@ -43,6 +60,12 @@
   --c-line: 154 146 134;
   --c-ground: 242 239 232;
   --c-surface: 252 250 246;
+  /* 12.7:1, 14.2:1 and 5.4:1 on the paper above. */
+  --c-accent: 46 40 34;
+  --c-shimmer: 36 31 26;
+  --c-warm: 122 93 30;
+  --c-emerald: 42 118 78;
+  --c-sky: 45 110 151;
 }
 
 [data-landing-theme='dark'] {
@@ -51,6 +74,11 @@
   --c-line: 143 143 143;
   --c-ground: 25 25 25;
   --c-surface: 40 40 40;
+  --c-accent: 217 217 217;
+  --c-shimmer: 255 255 255;
+  --c-warm: 217 217 217;
+  --c-emerald: 127 209 166;
+  --c-sky: 127 182 217;
 }
 
 @keyframes pulse {

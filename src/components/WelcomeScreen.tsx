@@ -4,6 +4,8 @@ import ProfileSettings from './ProfileSettings'
 import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
 import DonateButton from './DonateButton'
+import ThemeToggle from './ThemeToggle'
+import { useLandingTheme } from '../lib/useLandingTheme'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
@@ -19,6 +21,7 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
+  const theme = useLandingTheme()
   const [showContribute, setShowContribute] = useState(false)
   // Evaluated once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
@@ -226,7 +229,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         {/* Top right, where nothing else lives. The appeal only appears when
             somebody has used the place for a while; this is for the rest of
             the time, when they simply want to. */}
-        <div className="absolute top-6 right-6 z-30">
+        <div className="absolute top-6 right-6 z-30 flex items-center gap-2">
+          <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} />
         </div>
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l border-b border-nier-border/30" />
@@ -282,7 +286,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 a short window -- it's the most decorative element here and the
                 least missed. PortalLoop takes className only, so the sizing
                 goes through an arbitrary-value class. */}
-            <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" />
+            <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" ink={theme.resolved === 'light'} />
             <p className="text-nier-bg/80 text-[11px] tracking-[0.2em] uppercase">
               A quiet space for creative presence
             </p>

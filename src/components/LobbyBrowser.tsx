@@ -9,6 +9,7 @@ import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import ContributePanel from './ContributePanel'
 import DonateButton from './DonateButton'
+import ThemeToggle from './ThemeToggle'
 import { SOFT_SEPIA, WHITE_ROOM } from '../lib/atriumThemePresets'
 import { resolveThemeNow } from '../lib/useLandingTheme'
 import { openContributors } from '../lib/contributorsRoute'
@@ -779,6 +780,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex items-center gap-2">
               {/* First in the row, before the window controls: those are things
                   you do to the browser, and this is not one of them. */}
+              <ThemeToggle />
               <DonateButton onClick={() => setShowContribute(true)} className="mr-1" />
               <button
                 onClick={toggleFullscreen}

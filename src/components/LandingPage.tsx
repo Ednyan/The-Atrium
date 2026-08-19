@@ -4,6 +4,7 @@ import PortalLoop from './PortalLoop'
 import ContributePanel from './ContributePanel'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton from './DonateButton'
+import ThemeToggle from './ThemeToggle'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
@@ -29,12 +30,6 @@ interface Section {
 // two real hues only ever appear alongside it in the feature rows.
 // The same orange the top contribution tier is drawn in, so the button and the
 // traces it produces read as one idea across two pages.
-const ACCENT = {
-  silver: '#D9D9D9',
-  emerald: '#7FD1A6',
-  sky: '#7FB6D9',
-} as const
-
 // Drop a demo reel at this path in public/ and the In Motion section below
 // the hero appears with it, no code change. The hero itself keeps the CSS
 // diorama permanently -- the two do different jobs (a living sketch of the
@@ -113,7 +108,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
     <section ref={sectionRef} className="flex items-center justify-center px-5 sm:px-12 pt-4 pb-24 relative">
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
             Support the foundations
           </h2>
@@ -158,7 +153,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                   <div className="h-[4px] bg-nier-black border border-nier-border/30 overflow-hidden">
                     <div
                       className="h-full transition-all duration-700 ease-out"
-                      style={{ width: `${percent}%`, background: ACCENT.silver }}
+                      style={{ width: `${percent}%`, background: 'rgb(var(--c-accent))' }}
                     />
                   </div>
                   <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
@@ -207,7 +202,7 @@ function VideoShowcaseSection() {
     <section className="flex items-center justify-center px-5 sm:px-12 pt-24 pb-10 relative">
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
             Learn about the Digital Atrium
           </h2>
@@ -243,7 +238,7 @@ function VideoShowcaseSection() {
                   backgroundSize: '36px 36px',
                 }}
               >
-                <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 12px ${ACCENT.silver}55` }} />
+                <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 12px rgb(var(--c-accent) / 0.33)` }} />
                 <p className="font-mono text-sm tracking-[0.3em] uppercase text-nier-bg/80">Transmission incoming</p>
                 <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70">A tour of the atrium is being recorded</p>
               </div>
@@ -272,17 +267,12 @@ const sections: Section[] = [
 // what it contains along its top edge; this one does that, and keeps the rail
 // on screens wide enough to carry both.
 //
-function TopNav({ sections, activeSection, onJump, onDonate, theme }: {
+function TopNav({ sections, activeSection, onJump, onDonate }: {
   sections: { id: string; title: string }[]
   activeSection: number
   onJump: (index: number) => void
   onDonate: () => void
-  theme: ReturnType<typeof useLandingTheme>
 }) {
-  const label = theme.preference === 'system'
-    ? `Auto · ${theme.resolved}`
-    : theme.preference === 'dark' ? 'Dark' : 'Light'
-
   return (
     <div className="sticky top-0 z-50">
       <div
@@ -332,16 +322,7 @@ function TopNav({ sections, activeSection, onJump, onDonate, theme }: {
           </nav>
 
           <div className="flex items-center gap-2 ml-auto lg:ml-0 shrink-0">
-            <button
-              type="button"
-              onClick={theme.cycle}
-              title={`Theme: ${label}`}
-              aria-label={`Theme: ${label}. Click to change.`}
-              className="px-3 py-2 border border-nier-border/30 text-nier-bg/75 hover:text-nier-bg hover:border-nier-border/60 text-xs tracking-[0.15em] uppercase transition-colors"
-            >
-              {theme.preference === 'system' ? '◐' : theme.resolved === 'dark' ? '☾' : '☀'}
-              <span className="hidden sm:inline ml-2">{label}</span>
-            </button>
+            <ThemeToggle />
 
             <DonateButton onClick={onDonate} />
           </div>
@@ -486,7 +467,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         activeSection={activeSection}
         onJump={scrollToSection}
         onDonate={() => setShowDonate(true)}
-        theme={theme}
       />
 
       {showDonate && <ContributePanel onClose={() => setShowDonate(false)} />}
@@ -624,7 +604,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 transition-all duration-300 ${
                     isActive ? '' : 'bg-transparent border border-nier-border/60 group-hover:border-nier-border'
                   }`}
-                  style={isActive ? { backgroundColor: ACCENT.silver, boxShadow: `0 0 10px ${ACCENT.silver}AA` } : undefined}
+                  style={isActive ? { backgroundColor: 'rgb(var(--c-accent))', boxShadow: `0 0 10px rgb(var(--c-accent) / 0.67)` } : undefined}
                 />
                 
                 {/* Distance line (when not active) */}
@@ -699,7 +679,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             height: '55vw',
             maxWidth: 780,
             maxHeight: 780,
-            background: `radial-gradient(circle, ${ACCENT.silver}1F, transparent 68%)`,
+            background: `radial-gradient(circle, rgb(var(--c-accent) / 0.12), transparent 68%)`,
             filter: 'blur(30px)',
             transform: 'translate3d(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -18px), 0)',
             transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
@@ -715,12 +695,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* LEFT: type + actions */}
           <div className="text-left">
             {/* Status strip, styled like the app's own HUD readouts */}
-            <div className="inline-flex items-center gap-3 border px-3 py-1.5 mb-8" style={{ borderColor: `${ACCENT.silver}40`, backgroundColor: `${ACCENT.silver}0A` }}>
+            <div className="inline-flex items-center gap-3 border px-3 py-1.5 mb-8" style={{ borderColor: `rgb(var(--c-accent) / 0.25)`, backgroundColor: `rgb(var(--c-accent) / 0.04)` }}>
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: ACCENT.silver }} />
-                <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: ACCENT.silver }} />
+                <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: 'rgb(var(--c-accent))' }} />
+                <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: 'rgb(var(--c-accent))' }} />
               </span>
-              <span className="text-xs tracking-[0.28em] uppercase" style={{ color: `${ACCENT.silver}E6` }}>
+              <span className="text-xs tracking-[0.28em] uppercase" style={{ color: `rgb(var(--c-accent) / 0.9)` }}>
                 A Shared Canvas Experience
               </span>
             </div>
@@ -743,11 +723,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <span
                 className="block text-[clamp(3.4rem,9vw,7.5rem)]"
                 style={{
-                  backgroundImage: `linear-gradient(100deg, #FFFFFF 8%, ${ACCENT.silver} 58%, #FFFFFF 96%)`,
+                  backgroundImage: 'linear-gradient(100deg, rgb(var(--c-shimmer)) 8%, rgb(var(--c-warm)) 58%, rgb(var(--c-shimmer)) 96%)',
                   WebkitBackgroundClip: 'text',
                   backgroundClip: 'text',
                   color: 'transparent',
-                  filter: `drop-shadow(0 0 34px ${ACCENT.silver}40)`,
+                  filter: `drop-shadow(0 0 34px rgb(var(--c-accent) / 0.25))`,
                 }}
               >
                 ATRIUM
@@ -769,12 +749,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 onClick={onGetStarted}
                 className="group relative px-8 py-3.5 text-base tracking-[0.18em] uppercase font-medium transition-all duration-300"
                 style={{
-                  backgroundColor: ACCENT.silver,
+                  backgroundColor: 'rgb(var(--c-accent))',
                   color: '#191919',
                   boxShadow: `0 0 0 rgba(0,0,0,0)`,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = `0 10px 40px ${ACCENT.silver}55`
+                  e.currentTarget.style.boxShadow = `0 10px 40px rgb(var(--c-accent) / 0.33)`
                   e.currentTarget.style.transform = 'translateY(-2px)'
                 }}
                 onMouseLeave={(e) => {
@@ -782,8 +762,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                <span className="absolute -top-1 -left-1 w-3 h-3 border-l border-t" style={{ borderColor: `${ACCENT.silver}` }} />
-                <span className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b" style={{ borderColor: `${ACCENT.silver}` }} />
+                <span className="absolute -top-1 -left-1 w-3 h-3 border-l border-t" style={{ borderColor: `rgb(var(--c-accent))` }} />
+                <span className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b" style={{ borderColor: `rgb(var(--c-accent))` }} />
                 {isAuthenticated ? 'Continue to Atrium' : 'Enter The Atrium'}
               </button>
 
@@ -798,13 +778,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <button
                     onClick={() => scrollToSection(3)}
                     className="group px-6 py-3.5 border text-base tracking-[0.18em] uppercase transition-all duration-300"
-                    style={{ borderColor: `${ACCENT.silver}55`, color: `${ACCENT.silver}DD` }}
+                    style={{ borderColor: `rgb(var(--c-accent) / 0.33)`, color: `rgb(var(--c-accent) / 0.87)` }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = ACCENT.silver
-                      e.currentTarget.style.backgroundColor = `${ACCENT.silver}0F`
+                      e.currentTarget.style.borderColor = 'rgb(var(--c-accent))'
+                      e.currentTarget.style.backgroundColor = `rgb(var(--c-accent) / 0.06)`
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = `${ACCENT.silver}55`
+                      e.currentTarget.style.borderColor = `rgb(var(--c-accent) / 0.33)`
                       e.currentTarget.style.backgroundColor = 'transparent'
                     }}
                   >
@@ -827,9 +807,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 so they read as one grounded line under the actions. */}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-xs tracking-[0.16em] uppercase text-nier-bg/80">
               {([
-                { label: 'Infinite Canvas', color: ACCENT.silver },
-                { label: 'Private Atriums', color: ACCENT.emerald },
-                { label: 'Live Presence', color: ACCENT.sky },
+                { label: 'Infinite Canvas', color: 'rgb(var(--c-accent))' },
+                { label: 'Private Atriums', color: 'rgb(var(--c-emerald))' },
+                { label: 'Live Presence', color: 'rgb(var(--c-sky))' },
               ] as const).map(({ label, color }) => (
                 <div key={label} className="flex items-center gap-2 group/feat">
                   <div
@@ -867,7 +847,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               What Is This
             </h2>
@@ -900,7 +880,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="space-y-4">
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.silver, boxShadow: `0 0 8px ${ACCENT.silver}88` }} />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-accent))', boxShadow: `0 0 8px rgb(var(--c-accent) / 0.53)` }} />
                   <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Traces</span>
                 </div>
                 <p className="text-nier-bg/75 text-base leading-relaxed">
@@ -910,7 +890,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.emerald, boxShadow: `0 0 8px ${ACCENT.emerald}88` }} />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-emerald))', boxShadow: `0 0 8px rgb(var(--c-emerald) / 0.53)` }} />
                   <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Atriums</span>
                 </div>
                 <p className="text-nier-bg/75 text-base leading-relaxed">
@@ -921,7 +901,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.sky, boxShadow: `0 0 8px ${ACCENT.sky}88` }} />
+                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-sky))', boxShadow: `0 0 8px rgb(var(--c-sky) / 0.53)` }} />
                   <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Presence</span>
                 </div>
                 <p className="text-nier-bg/75 text-base leading-relaxed">
@@ -941,7 +921,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-3xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               How It Works
             </h2>
@@ -1100,11 +1080,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               But How?
             </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
           </div>
 
@@ -1165,11 +1145,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               Who and Why?
             </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
           </div>
 

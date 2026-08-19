@@ -41,12 +41,33 @@ function systemTheme(): ResolvedTheme {
 // The same answer, for code that needs it once rather than continuously --
 // an event handler deciding what a new atrium should look like, for instance.
 export function resolveThemeNow(): ResolvedTheme {
-  const preference = readPreference()
+  const preference = current ?? readPreference()
   return preference === 'system' ? systemTheme() : preference
 }
 
+// Every hook instance reads the same value and hears about every change.
+//
+// Without this each one kept its own copy: the switch on the welcome screen
+// would update the switch on the welcome screen, and the effect at the root of
+// the app that actually applies the theme would never hear about it. A control
+// that changes nothing outside itself is worse than no control.
+const listeners = new Set<() => void>()
+let current: ThemePreference | null = null
+
+function setStored(next: ThemePreference) {
+  current = next
+  try {
+    if (next === 'system') localStorage.removeItem(KEY)
+    else localStorage.setItem(KEY, next)
+  } catch {
+    // Private browsing. The choice holds for this visit and is forgotten,
+    // which is a smaller loss than refusing to switch at all.
+  }
+  listeners.forEach(listener => listener())
+}
+
 export function useLandingTheme() {
-  const [preference, setPreferenceState] = useState<ThemePreference>(readPreference)
+  const [preference, setPreferenceState] = useState<ThemePreference>(() => current ?? readPreference())
   const [system, setSystem] = useState<ResolvedTheme>(systemTheme)
 
   // Followed live, not read once. Someone whose machine switches at sunset
@@ -65,16 +86,15 @@ export function useLandingTheme() {
 
   const resolved: ResolvedTheme = preference === 'system' ? system : preference
 
-  const setPreference = (next: ThemePreference) => {
-    setPreferenceState(next)
-    try {
-      if (next === 'system') localStorage.removeItem(KEY)
-      else localStorage.setItem(KEY, next)
-    } catch {
-      // Private browsing. The choice holds for this visit and is forgotten,
-      // which is a smaller loss than refusing to switch at all.
-    }
-  }
+  // Subscribed rather than owned: the value lives in the module, and this is
+  // one of possibly several components watching it.
+  useEffect(() => {
+    const listener = () => setPreferenceState(current ?? readPreference())
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }, [])
+
+  const setPreference = (next: ThemePreference) => setStored(next)
 
   // Cycles the way a three-state control should read: whatever you are looking
   // at now, its opposite, then back to following the machine.

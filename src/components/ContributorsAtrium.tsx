@@ -3,6 +3,7 @@ import { createWheelGestures } from '../lib/canvasGestures'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
+import ThemeToggle from './ThemeToggle'
 import {
   getCachedContributions,
   searchContributors,
@@ -797,13 +798,16 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </p>
       </div>
 
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-6 right-6 px-4 py-2 border border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-      >
-        ← Back
-      </button>
+      <div className="absolute top-6 right-6 flex items-center gap-2">
+        <ThemeToggle />
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-2 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+        >
+          ← Back
+        </button>
+      </div>
 
       {/* Bottom left, where an atrium keeps its controls.
 
