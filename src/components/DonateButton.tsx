@@ -73,10 +73,15 @@ export default function DonateButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative px-4 sm:px-5 py-2 text-[10px] tracking-[0.18em] uppercase transition-transform hover:scale-[1.03] active:scale-[0.99] ${
+      className={`relative px-4 sm:px-5 py-2.5 text-[11px] tracking-[0.18em] uppercase transition-transform hover:scale-[1.03] active:scale-[0.99] ${
         accent ? 'text-nier-black font-semibold' : 'border border-nier-border/40 text-nier-bg/85 hover:text-nier-bg'
       } ${className}`}
-      style={accent ? { background: '#FF8A3D', clipPath: DONATE_CUT } : { clipPath: DONATE_CUT }}
+      // The glow travels with the button. It is the one thing on any screen
+      // asking for money, and it should be findable at a glance in a room
+      // built out of thin grey lines.
+      style={accent
+        ? { background: '#FF8A3D', clipPath: DONATE_CUT, boxShadow: '0 0 22px rgba(255,138,61,0.30), 0 0 52px rgba(255,138,61,0.14)' }
+        : { clipPath: DONATE_CUT }}
     >
       {/* Dark hearts on the orange fill, orange ones on the dark outline: in
           both cases the hearts are the ground showing through rather than a

@@ -227,7 +227,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             somebody has used the place for a while; this is for the rest of
             the time, when they simply want to. */}
         <div className="absolute top-6 right-6 z-30">
-          <DonateButton onClick={() => setShowContribute(true)} variant="quiet" />
+          <DonateButton onClick={() => setShowContribute(true)} />
         </div>
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l border-b border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r border-b border-nier-border/30" />

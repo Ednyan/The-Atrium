@@ -29,8 +29,6 @@ interface Section {
 // two real hues only ever appear alongside it in the feature rows.
 // The same orange the top contribution tier is drawn in, so the button and the
 // traces it produces read as one idea across two pages.
-const DONATE_ORANGE = '#FF8A3D'
-
 const ACCENT = {
   silver: '#D9D9D9',
   emerald: '#7FD1A6',
@@ -59,7 +57,7 @@ function ShowcaseFrame() {
       <div
         className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video"
         style={{
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
+          boxShadow: '0 24px 60px rgb(var(--c-ground) / 0.55)',
           // Lifts very slightly against the pointer, so the frame reads as
           // sitting in front of the parallax layers rather than pasted on.
           transform: 'translate3d(calc(var(--px, 0) * 6px), calc(var(--py, 0) * 6px), 0)',
@@ -73,14 +71,14 @@ function ShowcaseFrame() {
           className="absolute inset-0 pointer-events-none opacity-[0.06]"
           style={{
             backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203,203,203,0.5) 2px, rgba(203,203,203,0.5) 4px)',
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.5) 2px, rgb(var(--c-fg) / 0.5) 4px)',
           }}
         />
         {/* Vignette so the frame's edges sink into the page instead of ending
             on a hard rectangle */}
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{ boxShadow: 'inset 0 0 90px 20px rgba(25,25,25,0.9)' }}
+          style={{ boxShadow: 'inset 0 0 90px 20px rgb(var(--c-ground) / 0.9)' }}
         />
       </div>
     </div>
@@ -116,7 +114,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+          <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
             Support the foundations
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -124,22 +122,22 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
 
         <div className="grid md:grid-cols-2 gap-10 items-start">
           <div className="space-y-4">
-            <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
+            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
               An atrium is a building, and buildings need keeping. This one is free to
               enter and always will be — nothing here is behind a paywall, and nothing
               is going to be.
             </p>
-            <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
+            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
               But it stands on things that are paid for monthly: the database your
               atriums live in, the email that lets new people through the door, the
               domain above it. Left unpaid, none of that quietly degrades — it simply
               stops, and everything inside goes with it.
             </p>
-            <p className="text-nier-bg/80 text-sm leading-relaxed tracking-wide">
+            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
               It's made and maintained by one person. Donations keep the lights on and
               the work going.
             </p>
-            <p className="text-nier-bg/70 text-[13px] leading-relaxed tracking-wide">
+            <p className="text-nier-bg/70 text-base leading-relaxed tracking-wide">
               From €1, once or monthly. Choose a name when you donate and it joins the
               others holding the place up.
             </p>
@@ -152,8 +150,8 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
               {month && month.goalCents > 0 ? (
                 <>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-nier-bg/70">This month</span>
-                    <span className="font-mono text-[11px] tracking-wider text-nier-strong">
+                    <span className="font-mono text-xs tracking-[0.2em] uppercase text-nier-bg/70">This month</span>
+                    <span className="font-mono text-sm tracking-wider text-nier-strong">
                       {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
                     </span>
                   </div>
@@ -163,14 +161,14 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                       style={{ width: `${percent}%`, background: ACCENT.silver }}
                     />
                   </div>
-                  <p className="font-mono text-[9px] tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
+                  <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
                     {month.contributionCount === 0
                       ? 'Nobody yet this month'
                       : `${month.contributionCount} contribution${month.contributionCount === 1 ? '' : 's'} this month`}
                   </p>
                 </>
               ) : (
-                <p className="font-mono text-[10px] tracking-[0.15em] uppercase text-nier-bg/70">
+                <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70">
                   This place is kept standing by the people who use it
                 </p>
               )}
@@ -181,21 +179,11 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                     on a page people scroll past; the contributors page has
                     nothing to compete with and shouldn't outshout the names
                     it exists to show. */}
-                <button
-                  type="button"
-                  onClick={() => setShowContribute(true)}
-                  className="flex-1 py-3 text-nier-black font-mono text-[10px] tracking-[0.15em] uppercase transition-transform hover:scale-[1.03]"
-                  style={{
-                    background: DONATE_ORANGE,
-                    boxShadow: `0 0 24px ${DONATE_ORANGE}44, 0 0 56px ${DONATE_ORANGE}22`,
-                  }}
-                >
-                  Donate
-                </button>
+                <DonateButton onClick={() => setShowContribute(true)} className="flex-1 py-3" />
                 <button
                   type="button"
                   onClick={() => openContributors('/')}
-                  className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 font-mono text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
                   Contributors
                 </button>
@@ -220,7 +208,7 @@ function VideoShowcaseSection() {
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+          <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
             Learn about the Digital Atrium
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -231,7 +219,7 @@ function VideoShowcaseSection() {
           <div className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60 z-10 pointer-events-none" />
           <div className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60 z-10 pointer-events-none" />
           <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 z-10 pointer-events-none" />
-          <div className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video" style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.55)' }}>
+          <div className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video" style={{ boxShadow: '0 24px 60px rgb(var(--c-ground) / 0.55)' }}>
             {available ? (
               <video
                 src={SHOWCASE_VIDEO_SRC}
@@ -251,13 +239,13 @@ function VideoShowcaseSection() {
                 className="absolute inset-0 flex flex-col items-center justify-center gap-4"
                 style={{
                   backgroundImage:
-                    'linear-gradient(rgba(203,203,203,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(203,203,203,0.05) 1px, transparent 1px)',
+                    'linear-gradient(rgb(var(--c-fg) / 0.05) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.05) 1px, transparent 1px)',
                   backgroundSize: '36px 36px',
                 }}
               >
                 <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 12px ${ACCENT.silver}55` }} />
-                <p className="font-mono text-[11px] tracking-[0.3em] uppercase text-nier-bg/80">Transmission incoming</p>
-                <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-bg/70">A tour of the atrium is being recorded</p>
+                <p className="font-mono text-sm tracking-[0.3em] uppercase text-nier-bg/80">Transmission incoming</p>
+                <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70">A tour of the atrium is being recorded</p>
               </div>
             )}
           </div>
@@ -312,7 +300,7 @@ function TopNav({ sections, activeSection, onJump, onDonate, theme }: {
               className="w-2 h-2 rotate-45 border transition-colors"
               style={{ borderColor: '#FF8A3D' }}
             />
-            <span className="text-nier-strong text-[11px] sm:text-xs tracking-[0.22em] uppercase whitespace-nowrap">
+            <span className="text-nier-strong text-sm sm:text-sm tracking-[0.22em] uppercase whitespace-nowrap">
               The Digital Atrium
             </span>
           </button>
@@ -327,7 +315,7 @@ function TopNav({ sections, activeSection, onJump, onDonate, theme }: {
                   key={section.id}
                   type="button"
                   onClick={() => onJump(index)}
-                  className={`relative px-3 py-2 text-[10px] tracking-[0.18em] uppercase transition-colors ${
+                  className={`relative px-3 py-2 text-xs tracking-[0.18em] uppercase transition-colors ${
                     isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
                   }`}
                 >
@@ -349,7 +337,7 @@ function TopNav({ sections, activeSection, onJump, onDonate, theme }: {
               onClick={theme.cycle}
               title={`Theme: ${label}`}
               aria-label={`Theme: ${label}. Click to change.`}
-              className="px-3 py-2 border border-nier-border/30 text-nier-bg/75 hover:text-nier-bg hover:border-nier-border/60 text-[10px] tracking-[0.15em] uppercase transition-colors"
+              className="px-3 py-2 border border-nier-border/30 text-nier-bg/75 hover:text-nier-bg hover:border-nier-border/60 text-xs tracking-[0.15em] uppercase transition-colors"
             >
               {theme.preference === 'system' ? '◐' : theme.resolved === 'dark' ? '☾' : '☀'}
               <span className="hidden sm:inline ml-2">{label}</span>
@@ -507,7 +495,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* Scanline overlay */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.02] z-50"
         style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.1) 2px, rgb(var(--c-fg) / 0.1) 4px)',
         }}
       />
 
@@ -608,7 +596,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             >
               {/* Section label (shows on hover or when active) */}
               <span 
-                className={`text-[10px] tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline ${
+                className={`text-xs tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline ${
                   isActive 
                     ? 'text-nier-bg opacity-100' 
                     : 'text-nier-bg/75 opacity-0 group-hover:opacity-100'
@@ -662,7 +650,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               style={{ height: `${scrollProgress * 100}%` }}
             />
           </div>
-          <span className="text-[8px] text-nier-bg/70 tracking-widest -mr-2">
+          <span className="text-[11px] text-nier-bg/70 tracking-widest -mr-2">
             {Math.round(scrollProgress * 100)}%
           </span>
         </div>
@@ -696,7 +684,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             transition: 'transform 0.7s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
-          <PortalLoop className="h-[60vh] lg:h-[85vh] max-h-[820px]" playbackRate={0.5} />
+          <PortalLoop className="h-[60vh] lg:h-[85vh] max-h-[820px]" playbackRate={0.5} ink={theme.resolved === 'light'} />
         </div>
 
         {/* Warm bloom anchored behind the headline. Gives the type something to
@@ -732,7 +720,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: ACCENT.silver }} />
                 <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: ACCENT.silver }} />
               </span>
-              <span className="text-[10px] tracking-[0.28em] uppercase" style={{ color: `${ACCENT.silver}E6` }}>
+              <span className="text-xs tracking-[0.28em] uppercase" style={{ color: `${ACCENT.silver}E6` }}>
                 A Shared Canvas Experience
               </span>
             </div>
@@ -748,7 +736,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               </span>
               <span
                 className="block text-[clamp(3.4rem,9vw,7.5rem)] text-nier-strong"
-                style={{ textShadow: '0 0 60px rgba(255,255,255,0.14)' }}
+                style={{ textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' }}
               >
                 DIGITAL
               </span>
@@ -766,9 +754,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               </span>
             </h1>
 
-            <p className="text-nier-bg/80 text-base md:text-lg font-light leading-relaxed max-w-md mb-9">
+            <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">
               A museum of references created by you.
-              <span className="block text-nier-bg/70 text-sm mt-2">
+              <span className="block text-nier-bg/70 text-base mt-2">
                 Create your atrium. Discover others. Leave traces.
               </span>
             </p>
@@ -779,7 +767,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex flex-wrap items-center gap-4 mb-10">
               <button
                 onClick={onGetStarted}
-                className="group relative px-8 py-3.5 text-sm tracking-[0.18em] uppercase font-medium transition-all duration-300"
+                className="group relative px-8 py-3.5 text-base tracking-[0.18em] uppercase font-medium transition-all duration-300"
                 style={{
                   backgroundColor: ACCENT.silver,
                   color: '#191919',
@@ -806,10 +794,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   desktop build it would scroll to a section that isn't there. */}
               {!isDesktop && (
                 <>
-                  <span className="text-nier-bg/50 text-[11px] tracking-[0.2em] uppercase">or</span>
+                  <span className="text-nier-bg/50 text-sm tracking-[0.2em] uppercase">or</span>
                   <button
                     onClick={() => scrollToSection(3)}
-                    className="group px-6 py-3.5 border text-sm tracking-[0.18em] uppercase transition-all duration-300"
+                    className="group px-6 py-3.5 border text-base tracking-[0.18em] uppercase transition-all duration-300"
                     style={{ borderColor: `${ACCENT.silver}55`, color: `${ACCENT.silver}DD` }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = ACCENT.silver
@@ -830,14 +818,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 two actions inline, a third inline item made the row read as
                 three peers. */}
             {!isAuthenticated && (
-              <p className="text-nier-bg/70 text-[11px] tracking-wider mb-10 -mt-6">
+              <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">
                 Free to use • No credit card
               </p>
             )}
 
             {/* Three pillars as a rule-separated row rather than floating chips,
                 so they read as one grounded line under the actions. */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-[10px] tracking-[0.16em] uppercase text-nier-bg/80">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-xs tracking-[0.16em] uppercase text-nier-bg/80">
               {([
                 { label: 'Infinite Canvas', color: ACCENT.silver },
                 { label: 'Private Atriums', color: ACCENT.emerald },
@@ -862,7 +850,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
         {/* Scroll hint, pinned low but out of the content's way */}
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-pulse pointer-events-none">
-          <span className="text-[10px] text-nier-bg/70 tracking-[0.2em] uppercase">Scroll</span>
+          <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">Scroll</span>
           <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
         </div>
       </section>
@@ -880,7 +868,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               What Is This
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -888,14 +876,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-4">
-              <p className="text-nier-bg/80 text-sm md:text-base leading-relaxed">
+              <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed">
                 <span className="text-nier-bg">The Digital Atrium</span> is a collaborative infinite canvas 
                 where people gather to share, explore, and build together.
               </p>
-              <p className="text-nier-bg/80 text-sm leading-relaxed">
+              <p className="text-nier-bg/80 text-base leading-relaxed">
                 Like a grand entrance hall in a museum, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
               </p>
-              <p className="text-nier-bg/80 text-sm leading-relaxed">
+              <p className="text-nier-bg/80 text-base leading-relaxed">
                Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium walls.
                It's a living document of collective expression for sharing and brainstorming. Have you heard of mind maps?
               </p>
@@ -904,7 +892,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   the bracket viewport is you -- the concept the paragraphs
                   describe, drawn instead of described. */}
               <AtriumMapDiagram />
-              <p className="font-mono text-[9px] tracking-[0.18em] uppercase text-nier-bg/70 -mt-2">
+              <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70 -mt-2">
                 an atrium, from above
               </p>
             </div>
@@ -913,9 +901,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.silver, boxShadow: `0 0 8px ${ACCENT.silver}88` }} />
-                  <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Traces</span>
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Traces</span>
                 </div>
-                <p className="text-nier-bg/75 text-sm leading-relaxed">
+                <p className="text-nier-bg/75 text-base leading-relaxed">
                   Leave text, embeds, or shapes anywhere on the infinite canvas. Each trace persists for you to see or others to find.
                 </p>
               </div>
@@ -923,9 +911,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.emerald, boxShadow: `0 0 8px ${ACCENT.emerald}88` }} />
-                  <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Atriums</span>
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Atriums</span>
                 </div>
-                <p className="text-nier-bg/75 text-sm leading-relaxed">
+                <p className="text-nier-bg/75 text-base leading-relaxed">
                   Private or public spaces with their own infinite canvas. Invite friends or open 
                   to the world.
                 </p>
@@ -934,9 +922,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: ACCENT.sky, boxShadow: `0 0 8px ${ACCENT.sky}88` }} />
-                  <span className="text-sm tracking-[0.1em] uppercase text-nier-bg">Presence</span>
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Presence</span>
                 </div>
-                <p className="text-nier-bg/75 text-sm leading-relaxed">
+                <p className="text-nier-bg/75 text-base leading-relaxed">
                   See others exploring the same space in real-time. A shared experience, even when apart.
                 </p>
               </div>
@@ -954,7 +942,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               How It Works
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -963,7 +951,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="space-y-10">
             {/* Controls */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
+              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">01</span>
                 Navigation
               </h3>
@@ -977,8 +965,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   { key: 'T Key', desc: 'Quick-place a trace' },
                 ].map((control, i) => (
                   <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
-                    <div className="text-nier-strong text-sm font-mono mb-2">{control.key}</div>
-                    <div className="text-nier-bg/75 text-xs">{control.desc}</div>
+                    <div className="text-nier-strong text-base font-mono mb-2">{control.key}</div>
+                    <div className="text-nier-bg/75 text-sm">{control.desc}</div>
                   </div>
                 ))}
               </div>
@@ -986,16 +974,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* Creating traces */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
+              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">02</span>
                 Leaving Traces
               </h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30 sm:flex sm:items-center sm:gap-6">
                 <div className="flex-1">
-                <p className="text-nier-bg/80 text-sm leading-relaxed mb-3">
+                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">
                   Click the Leave trace button (or T key shortcut) to leave a trace. Choose between:
                 </p>
-                <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
+                <div className="flex flex-wrap gap-4 sm:gap-6 text-base">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
                     <span className="text-nier-bg/80"><span className="text-nier-bg">Text</span> — Notes, thoughts, poetry</span>
@@ -1019,16 +1007,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* Storage recommendation */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
+              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">03</span>
                 Adding Your Content
               </h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
-                <p className="text-nier-bg/80 text-sm leading-relaxed mb-3">
+                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">
                   The atrium connects to your content through embedded links. We recommend using free 
                   third-party platforms for hosting your media:
                 </p>
-                <div className="flex flex-wrap gap-4 text-sm">
+                <div className="flex flex-wrap gap-4 text-base">
                   {[
                     { name: 'YouTube', desc: 'Videos' },
                     { name: 'Pinterest', desc: 'Image boards' },
@@ -1042,7 +1030,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     </div>
                   ))}
                 </div>
-                <p className="text-nier-bg/70 text-xs mt-4 italic">
+                <p className="text-nier-bg/70 text-sm mt-4 italic">
                   Simply copy the embed link or image URL from these platforms and paste it into your trace.
                 </p>
               </div>
@@ -1050,37 +1038,37 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             {/* The ecosystem */}
             <div>
-              <h3 className="text-base tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
+              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">04</span>
                 The Ecosystem
               </h3>
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-lg">1</span>
+                    <span className="text-nier-bg -rotate-45 text-xl">1</span>
                   </div>
-                  <h4 className="text-nier-bg text-sm tracking-wider uppercase mb-2">Create</h4>
-                  <p className="text-nier-bg/75 text-xs leading-relaxed">
+                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">Create</h4>
+                  <p className="text-nier-bg/75 text-sm leading-relaxed">
                     Set up your atrium. Define its purpose and who can access it.
                   </p>
                   <CreateTraceDemo />
                 </div>
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-lg">2</span>
+                    <span className="text-nier-bg -rotate-45 text-xl">2</span>
                   </div>
-                  <h4 className="text-nier-bg text-sm tracking-wider uppercase mb-2">Populate</h4>
-                  <p className="text-nier-bg/75 text-xs leading-relaxed">
+                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">Populate</h4>
+                  <p className="text-nier-bg/75 text-sm leading-relaxed">
                     Invite others or leave traces yourself. Build a collection of ideas.
                   </p>
                   <PopulateDemo />
                 </div>
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-lg">3</span>
+                    <span className="text-nier-bg -rotate-45 text-xl">3</span>
                   </div>
-                  <h4 className="text-nier-bg text-sm tracking-wider uppercase mb-2">Explore</h4>
-                  <p className="text-nier-bg/75 text-xs leading-relaxed">
+                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">Explore</h4>
+                  <p className="text-nier-bg/75 text-sm leading-relaxed">
                     Navigate the infinite canvas. Discover traces left by others.
                   </p>
                   <ExploreDemo />
@@ -1113,25 +1101,25 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               But How?
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
           </div>
 
-          <p className="text-nier-bg/80 text-base md:text-lg font-light tracking-wide mb-8 italic">
+          <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">
             "How is this even possible while being free?"
           </p>
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
-            <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
               The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
-            <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
               The entire platform runs on free-tier services, which means there are a couple of limits for now:
             </p>
 
@@ -1139,11 +1127,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="border border-nier-border/20 p-5 bg-nier-black/40">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-sm font-mono">3</span>
+                    <span className="text-nier-bg -rotate-45 text-base font-mono">3</span>
                   </div>
-                  <span className="text-nier-strong text-sm tracking-wider uppercase">Atriums per user</span>
+                  <span className="text-nier-strong text-base tracking-wider uppercase">Atriums per user</span>
                 </div>
-                <p className="text-nier-bg/70 text-xs leading-relaxed">
+                <p className="text-nier-bg/70 text-sm leading-relaxed">
                   Each account can create up to three atriums — more than enough to get started.
                 </p>
               </div>
@@ -1151,17 +1139,17 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="border border-nier-border/20 p-5 bg-nier-black/40">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-xs font-mono">10<span className="text-[8px]">MB</span></span>
+                    <span className="text-nier-bg -rotate-45 text-sm font-mono">10<span className="text-[11px]">MB</span></span>
                   </div>
-                  <span className="text-nier-strong text-sm tracking-wider uppercase">Per atrium</span>
+                  <span className="text-nier-strong text-base tracking-wider uppercase">Per atrium</span>
                 </div>
-                <p className="text-nier-bg/70 text-xs leading-relaxed">
+                <p className="text-nier-bg/70 text-sm leading-relaxed">
                   Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
                 </p>
               </div>
             </div>
 
-            <p className="text-nier-bg/75 text-sm leading-relaxed text-center italic">
+            <p className="text-nier-bg/75 text-base leading-relaxed text-center italic">
               As you'll soon realize, it's plenty.
             </p>
           </div>
@@ -1178,7 +1166,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center justify-center gap-3 mb-10">
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
-            <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
+            <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
               Who and Why?
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `${ACCENT.silver}AA`, boxShadow: `0 0 10px ${ACCENT.silver}44` }} />
@@ -1187,14 +1175,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           {/* Placeholder for personal content */}
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
-            <p className="text-nier-bg/75 text-sm leading-relaxed mb-6 italic">
+            <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">
               My name is Eduardo Paranhos (aka Mindeformer or Red Puer).
               I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
-            <p className="text-nier-bg/75 text-sm leading-relaxed italic">
+            <p className="text-nier-bg/75 text-base leading-relaxed italic">
               I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
               What came out feels like a mix of Pinterest, PureRef, Canva and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
             </p>
@@ -1209,16 +1197,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="max-w-3xl mx-auto w-full mb-14">
             <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-10" />
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-              <p className="text-nier-bg/75 text-sm leading-relaxed tracking-wide max-w-sm">
+              <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
                 Free to enter, and kept standing by the people who use it.
               </p>
-              <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-[11px]" />
+              <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
             </div>
           </div>
 
           {/* Social links placeholder */}
           <div className="flex items-center justify-center gap-6">
-            <span className="text-nier-bg/70 text-xs tracking-[0.1em] uppercase">Connect with me:</span>
+            <span className="text-nier-bg/70 text-sm tracking-[0.1em] uppercase">Connect with me:</span>
             {[
               { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
               { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
@@ -1234,7 +1222,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   e.preventDefault()
                   import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
                 } : undefined}
-                className="text-nier-bg/75 hover:text-nier-bg text-xs tracking-wider uppercase transition-colors cursor-pointer"
+                className="text-nier-bg/75 hover:text-nier-bg text-sm tracking-wider uppercase transition-colors cursor-pointer"
               >
                 ◇ {social.name}
               </a>
@@ -1247,16 +1235,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 href="/privacy.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-[10px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
               >
                 Privacy Policy
               </a>
-              <span className="text-nier-bg/50 text-[10px]">◇</span>
+              <span className="text-nier-bg/50 text-xs">◇</span>
               <a
                 href="/terms.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-[10px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
               >
                 Terms of Service
               </a>
@@ -1266,7 +1254,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Shown on desktop too -- the copyright applies to the app itself,
               not just the website. */}
           <div className="flex items-center justify-center mt-3">
-            <span className="text-nier-bg/50 text-[10px] tracking-wider">
+            <span className="text-nier-bg/50 text-xs tracking-wider">
               © 2026 Eduardo Paranhos. All rights reserved.
             </span>
           </div>
@@ -1288,7 +1276,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
               
-              <span className="text-sm tracking-[0.2em] uppercase text-nier-bg/80 group-hover:text-nier-bg transition-colors">
+              <span className="text-base tracking-[0.2em] uppercase text-nier-bg/80 group-hover:text-nier-bg transition-colors">
                 {isAuthenticated ? '◇ Continue to Atrium' : '◇ Begin Your Journey'}
               </span>
             </button>
@@ -1299,10 +1287,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* Footer */}
       <footer className="py-8 border-t border-nier-border/20">
         <div className="max-w-4xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="text-nier-bg/70 text-xs tracking-wider">
+          <div className="text-nier-bg/70 text-sm tracking-wider">
             The Digital Atrium • {new Date().getFullYear()}
           </div>
-          <div className="flex items-center gap-6 text-nier-bg/70 text-xs tracking-wider">
+          <div className="flex items-center gap-6 text-nier-bg/70 text-sm tracking-wider">
             <span>Free to use</span>
             <span>•</span>
             <span>Open source</span>

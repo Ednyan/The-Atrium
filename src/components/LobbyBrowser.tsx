@@ -9,6 +9,8 @@ import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import ContributePanel from './ContributePanel'
 import DonateButton from './DonateButton'
+import { SOFT_SEPIA, WHITE_ROOM } from '../lib/atriumThemePresets'
+import { resolveThemeNow } from '../lib/useLandingTheme'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
@@ -427,22 +429,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         }
       }
 
-      const softSepiaTheme = {
-        gridColor: '#9c9681',
-        gridOpacity: 0.24,
-        backgroundColor: '#1a1a18',
-        particlesEnabled: true,
-        particleColor: '#dad4bb',
-        particleOpacity: 0.45,
-        particleDensity: 0.8,
-        groundParticlesEnabled: false,
-        groundParticleOpacity: 0.82,
-        groundPatternMode: 'grid',
-        gridSpacing: 125,
-        groundElementScale: 0.06,
-        groundElementScaleRange: 0.02,
-        groundElementDensity: 0.55,
-      }
+      // A bright room for somebody working in a bright interface, and a dark
+      // one otherwise. Only the starting point -- the theme is editable from
+      // inside the atrium, and this decides nothing that cannot be changed.
+      const startingTheme = resolveThemeNow() === 'light' ? WHITE_ROOM : SOFT_SEPIA
 
       const { data, error } = await (supabase!
         .from('lobbies') as any)
@@ -452,7 +442,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           password_hash: newLobbyPassword || null,
           is_public: newLobbyIsPublic,
           max_players: 50,
-          theme_settings: softSepiaTheme,
+          theme_settings: startingTheme,
         })
         .select()
         .single()
@@ -789,7 +779,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex items-center gap-2">
               {/* First in the row, before the window controls: those are things
                   you do to the browser, and this is not one of them. */}
-              <DonateButton onClick={() => setShowContribute(true)} variant="quiet" className="mr-1" />
+              <DonateButton onClick={() => setShowContribute(true)} className="mr-1" />
               <button
                 onClick={toggleFullscreen}
                 className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"

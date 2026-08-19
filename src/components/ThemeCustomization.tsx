@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby } from '../types/database'
+import { WHITE_ROOM } from '../lib/atriumThemePresets'
 
 interface ThemeSettings {
   gridColor?: string
@@ -75,21 +76,7 @@ const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSet
     // they read against the light ground.
     name: 'White Room',
     description: 'A bright, empty gallery',
-    values: {
-      gridColor: '#9a9a9a',
-      gridOpacity: 0.3,
-      backgroundColor: '#F2F2EF',
-      particlesEnabled: true,
-      particleColor: '#5a5a5a',
-      particleOpacity: 0.65,
-      particleDensity: 1,
-      groundParticlesEnabled: false,
-      groundParticleOpacity: 0.68,
-      groundPatternMode: 'random',
-      groundElementScale: 0.07,
-      groundElementScaleRange: 0.05,
-      groundElementDensity: 0.45,
-    },
+    values: WHITE_ROOM as ThemeSettings,
   },
 ]
 

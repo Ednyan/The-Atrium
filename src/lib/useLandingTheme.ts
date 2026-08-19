@@ -38,6 +38,13 @@ function systemTheme(): ResolvedTheme {
   }
 }
 
+// The same answer, for code that needs it once rather than continuously --
+// an event handler deciding what a new atrium should look like, for instance.
+export function resolveThemeNow(): ResolvedTheme {
+  const preference = readPreference()
+  return preference === 'system' ? systemTheme() : preference
+}
+
 export function useLandingTheme() {
   const [preference, setPreferenceState] = useState<ThemePreference>(readPreference)
   const [system, setSystem] = useState<ResolvedTheme>(systemTheme)

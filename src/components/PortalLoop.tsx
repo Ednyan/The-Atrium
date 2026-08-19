@@ -4,6 +4,8 @@ interface PortalLoopProps {
   // 1 = the clip's natural speed. The giant hero emblem runs slower -- at
   // backdrop scale the natural pace reads as busy rather than ambient.
   playbackRate?: number
+  // Draw it as ink rather than light, for a page with a pale background.
+  ink?: boolean
 }
 
 // The looping portal from the atrium-entry animation, reused as page ornament.
@@ -25,7 +27,16 @@ interface PortalLoopProps {
 // backing plate.
 const LUMA_TO_ALPHA_FILTER_ID = 'portal-luma-alpha'
 
-export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 1 }: PortalLoopProps) {
+// The same trick with the colour thrown away.
+//
+// The source is white line-art, which is correct on a dark page and invisible
+// on a light one. Rather than a second video, the RGB rows are replaced with
+// constants -- the drawing keeps the alpha it derives from its own luminance
+// and comes out as ink instead of light. Not pure black: the page it lands on
+// is warm paper, and #000 on it reads as a hole.
+const LUMA_TO_INK_FILTER_ID = 'portal-luma-ink'
+
+export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 1, ink = false }: PortalLoopProps) {
   return (
     <div className="mx-auto w-fit leading-none" aria-hidden="true">
       {/* Rec. 709 luma coefficients in the alpha row; RGB passes through
@@ -38,6 +49,16 @@ export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 
               values="1 0 0 0 0
                       0 1 0 0 0
                       0 0 1 0 0
+                      0.2126 0.7152 0.0722 0 0"
+            />
+          </filter>
+
+          <filter id={LUMA_TO_INK_FILTER_ID} colorInterpolationFilters="sRGB">
+            <feColorMatrix
+              type="matrix"
+              values="0 0 0 0 0.11
+                      0 0 0 0 0.10
+                      0 0 0 0 0.09
                       0.2126 0.7152 0.0722 0 0"
             />
           </filter>
@@ -54,7 +75,7 @@ export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 
         muted
         playsInline
         className={`${className} w-auto pointer-events-none select-none block`}
-        style={{ filter: `url(#${LUMA_TO_ALPHA_FILTER_ID})` }}
+        style={{ filter: `url(#${ink ? LUMA_TO_INK_FILTER_ID : LUMA_TO_ALPHA_FILTER_ID})` }}
       />
     </div>
   )
