@@ -687,13 +687,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center z-50 font-mono px-4">
+      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50 font-mono px-4">
         <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
-          <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
+          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-nier-bg/40" />
+          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-bg/40" />
+          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-bg/40" />
+          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-bg/40" />
+          <p className="text-nier-strong text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
           <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
             <div className="h-full bg-white/80 animate-nier-slide" />
           </div>
@@ -772,7 +772,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div>
               <div className="flex items-center gap-3 mb-1">
                 <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                <h2 className="text-lg text-white tracking-[0.15em] uppercase">Atrium Browser</h2>
+                <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase">Atrium Browser</h2>
               </div>
               <p className="text-nier-bg/75 text-[10px] tracking-[0.1em] uppercase ml-5">Select destination</p>
             </div>
@@ -1360,7 +1360,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex gap-3">
               <button
                 onClick={() => deleteLobby(deleteConfirmId)}
-                className="flex-1 py-2 bg-red-500/80 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
+                className="flex-1 py-2 bg-red-500/80 text-nier-strong text-[10px] tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
               >
                 Delete
               </button>

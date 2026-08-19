@@ -96,8 +96,10 @@ body {
   font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Liberation Mono', monospace;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--nier-black);
-  color: var(--nier-bg);
+  /* The tokens, so the page ground follows the choice too. The hex variables
+     below are kept for older rules that still reference them. */
+  background-color: rgb(var(--c-ground));
+  color: rgb(var(--c-fg));
   overflow: hidden;
   letter-spacing: 0.02em;
 }

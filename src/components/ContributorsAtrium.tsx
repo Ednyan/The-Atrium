@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createWheelGestures } from '../lib/canvasGestures'
+import { useLandingTheme } from '../lib/useLandingTheme'
 import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
 import {
@@ -46,12 +47,19 @@ const HINT_DELAY_MS = 1800
 
 // What a contribution is drawn in. Bands rather than a gradient, so the legend
 // can name them and someone can find their own.
+// Each rank in two inks.
+//
+// The dark set is built to glow on near-black. On paper every one of them
+// lands between 1.4 and 2.3 against the background -- readable in the sense
+// that a watermark is readable. The light set keeps each hue and its
+// saturation and drops the lightness until it clears 4.8:1, which is the
+// difference between a wall of names and a wall of suggestions.
 const TIERS = [
-  { min: 50, label: '€50 and above', color: '#FF8A3D', glow: 'rgba(255,138,61,0.30)' },
-  { min: 25, label: '€25 – €49', color: '#E8C15A', glow: 'rgba(232,193,90,0.26)' },
-  { min: 10, label: '€10 – €24', color: '#9AD4C4', glow: 'rgba(154,212,196,0.22)' },
-  { min: 5, label: '€5 – €9', color: '#A8B6D9', glow: 'rgba(168,182,217,0.20)' },
-  { min: 0, label: '€1 – €4', color: '#CBCBCB', glow: 'rgba(203,203,203,0.16)' },
+  { min: 50, label: '€50 and above', color: '#FF8A3D', light: '#B24700', glow: 'rgba(255,138,61,0.30)' },
+  { min: 25, label: '€25 – €49', color: '#E8C15A', light: '#826312', glow: 'rgba(232,193,90,0.26)' },
+  { min: 10, label: '€10 – €24', color: '#9AD4C4', light: '#317462', glow: 'rgba(154,212,196,0.22)' },
+  { min: 5, label: '€5 – €9', color: '#A8B6D9', light: '#4A66AA', glow: 'rgba(168,182,217,0.20)' },
+  { min: 0, label: '€1 – €4', color: '#CBCBCB', light: '#676767', glow: 'rgba(203,203,203,0.16)' },
 ]
 
 // Monthly support has its own colour rather than a place in the amount scale.
@@ -62,8 +70,14 @@ const MONTHLY_TIER = {
   min: 0,
   label: 'Monthly',
   color: '#C77DFF',
+  light: '#7B2CD6',
   glow: 'rgba(199,125,255,0.28)',
 }
+
+// Which of the two a tier is drawn in. Read from the resolved theme rather
+// than from a media query, so the manual switch works as well as the machine's.
+type Tier = { color: string; light: string; glow: string }
+const inkOf = (tier: Tier, light: boolean) => (light ? tier.light : tier.color)
 
 // #RRGGBB at an opacity, for the unlit border.
 const withAlpha = (hex: string, alpha: number) => {
@@ -143,25 +157,27 @@ const rankFor = (person: { amountEur: number }) =>
 // Rank is decided by everything given, monthly and one-off alike. There is no
 // reason 3 euros a month for two years should count for less than 72 euros
 // given at once, and separating the two was making the page argue that it did.
-function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive: boolean }) {
-  const rank = rankFor(person)
+function drawFor(person: { amountEur: number; isMonthly: boolean; monthlyActive: boolean }, light: boolean) {
+  const rankTier = rankFor(person)
+  const rank = { ...rankTier, color: inkOf(rankTier, light) }
+  const monthly = { ...MONTHLY_TIER, color: inkOf(MONTHLY_TIER, light) }
 
   if (person.isMonthly) {
     return {
       nameColor: rank.color,
-      metaColor: MONTHLY_TIER.color,
+      metaColor: monthly.color,
       glow: MONTHLY_TIER.glow,
       // A gradient border needs border-image; border-color takes one colour and
       // that is the whole problem here. Drawn faint when a light runs over it,
       // and at full strength when nothing will.
       borderImage: person.monthlyActive
-        ? `linear-gradient(135deg, ${withAlpha(rank.color, UNLIT)} 0%, ${withAlpha(rank.color, UNLIT)} 35%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%) 1`
-        : `linear-gradient(135deg, ${rank.color} 0%, ${rank.color} 35%, ${MONTHLY_TIER.color} 100%) 1`,
+        ? `linear-gradient(135deg, ${withAlpha(rank.color, UNLIT)} 0%, ${withAlpha(rank.color, UNLIT)} 35%, ${withAlpha(monthly.color, UNLIT)} 100%) 1`
+        : `linear-gradient(135deg, ${rank.color} 0%, ${rank.color} 35%, ${monthly.color} 100%) 1`,
       borderColor: undefined as string | undefined,
       // The light is the border, at full strength: the same gradient, defined
       // once per rank in the page's <defs> and referenced by every trace at
       // that rank.
-      runnerStroke: person.monthlyActive ? `url(#contributor-run-${TIERS.indexOf(rank)})` : undefined,
+      runnerStroke: person.monthlyActive ? `url(#contributor-run-${TIERS.indexOf(rankTier)})` : undefined,
       // The gradient's own colours can't light a drop-shadow, which takes one
       // colour. The rank's is the half that would otherwise be hardest to read
       // against the purple glow already around the box.
@@ -205,6 +221,11 @@ const normalise = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 export default function ContributorsAtrium({ onClose, onContribute, thanks = false }: ContributorsAtriumProps) {
+  // The wall follows the same light or dark choice the website does. It is a
+  // page people are sent to from a browser, not a surface inside the app.
+  const theme = useLandingTheme()
+  const isLight = theme.resolved === 'light'
+
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
 
@@ -553,7 +574,11 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   }, [data.month, seeded, seededCents])
 
   return (
-    <div className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none" data-ui-element>
+    <div
+      className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none"
+      data-landing-theme={theme.resolved}
+      data-ui-element
+    >
       {/* One gradient per rank, for the light that runs around a contributor
           who both subscribes and has given one-off. Defined once here rather
           than inside every trace: a url(#id) stroke resolves against the whole
@@ -562,9 +587,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <defs>
           {TIERS.map((tier, index) => (
             <linearGradient key={tier.label} id={`contributor-run-${index}`} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor={tier.color} />
-              <stop offset="35%" stopColor={tier.color} />
-              <stop offset="100%" stopColor={MONTHLY_TIER.color} />
+              <stop offset="0%" stopColor={inkOf(tier, isLight)} />
+              <stop offset="35%" stopColor={inkOf(tier, isLight)} />
+              <stop offset="100%" stopColor={inkOf(MONTHLY_TIER, isLight)} />
             </linearGradient>
           ))}
         </defs>
@@ -575,14 +600,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         className="absolute inset-0 pointer-events-none opacity-[0.04]"
         style={{
           backgroundImage:
-            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203,203,203,0.14) 2px, rgba(203,203,203,0.14) 4px)',
+            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.14) 2px, rgb(var(--c-fg) / 0.14) 4px)',
         }}
       />
       <div
         className="absolute inset-0 pointer-events-none opacity-[0.05]"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(203,203,203,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(203,203,203,0.5) 1px, transparent 1px)',
+            'linear-gradient(rgb(var(--c-fg) / 0.5) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.5) 1px, transparent 1px)',
           backgroundSize: `${80 * zoom}px ${80 * zoom}px`,
           backgroundPosition: `${offset.x}px ${offset.y}px`,
         }}
@@ -601,7 +626,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
           {visible.map(({ person, x, y, order, folded }) => {
-            const draw = drawFor(person)
+            const draw = drawFor(person, isLight)
             const dimmed = query.trim().length > 0 && !matchedNames.has(folded)
             return (
               <div
@@ -625,7 +650,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   borderColor: draw.borderColor,
                   borderImage: draw.borderImage,
                   boxShadow: `0 0 24px ${draw.glow}`,
-                  background: 'rgba(25,25,25,0.72)',
+                  background: 'rgb(var(--c-surface) / 0.86)',
                   // The monthly animation lives on the border now (below),
                   // not on the box's opacity.
                 }}
@@ -808,8 +833,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           <div className="mt-2 space-y-1">
             {TIERS.map(tier => (
               <div key={tier.label} className="flex items-center gap-2">
-                <span className="w-3 h-[1px]" style={{ background: tier.color }} />
-                <span className="text-[9px] tracking-wider" style={{ color: tier.color }}>{tier.label}</span>
+                <span className="w-3 h-[1px]" style={{ background: inkOf(tier, isLight) }} />
+                <span className="text-[9px] tracking-wider" style={{ color: inkOf(tier, isLight) }}>{tier.label}</span>
               </div>
             ))}
             {/* Not a rank. Every contributor is placed by what they have
@@ -819,21 +844,21 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               <span
                 className="w-3 h-[2px]"
                 style={{
-                  background: `linear-gradient(90deg, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 0%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 40%, ${MONTHLY_TIER.color} 50%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 60%, ${withAlpha(MONTHLY_TIER.color, UNLIT)} 100%)`,
+                  background: `linear-gradient(90deg, ${withAlpha(inkOf(MONTHLY_TIER, isLight), UNLIT)} 0%, ${withAlpha(inkOf(MONTHLY_TIER, isLight), UNLIT)} 40%, ${inkOf(MONTHLY_TIER, isLight)} 50%, ${withAlpha(inkOf(MONTHLY_TIER, isLight), UNLIT)} 60%, ${withAlpha(inkOf(MONTHLY_TIER, isLight), UNLIT)} 100%)`,
                   backgroundSize: '300% 100%',
                   animation: `contributor-run-line ${RHYTHM_MS}ms linear infinite`,
                 }}
               />
-              <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
+              <span className="text-[9px] tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
                 Monthly, running
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span
                 className="w-3 h-[2px]"
-                style={{ background: `linear-gradient(90deg, ${TIERS[TIERS.length - 1].color}, ${MONTHLY_TIER.color})` }}
+                style={{ background: `linear-gradient(90deg, ${inkOf(TIERS[TIERS.length - 1], isLight)}, ${inkOf(MONTHLY_TIER, isLight)})` }}
               />
-              <span className="text-[9px] tracking-wider" style={{ color: MONTHLY_TIER.color }}>
+              <span className="text-[9px] tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
                 Monthly, ended
               </span>
             </div>
@@ -875,7 +900,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         type="button"
         onClick={isOperator ? () => setShowNameApproval(true) : onContribute}
         className="absolute bottom-6 right-6 px-7 py-4 bg-nier-bg text-nier-black text-[11px] tracking-[0.2em] uppercase transition-transform hover:scale-[1.04] active:scale-[0.99]"
-        style={{ boxShadow: '0 0 28px rgba(203,203,203,0.22), 0 0 64px rgba(203,203,203,0.12)' }}
+        style={{ boxShadow: '0 0 28px rgb(var(--c-fg) / 0.22), 0 0 64px rgb(var(--c-fg) / 0.12)' }}
       >
         <span className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-black/40" />
         <span className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-black/40" />
@@ -899,7 +924,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           style={{
             opacity: thanksVisible ? 1 : 0,
             transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
-            background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(25,25,25,0.92), rgba(25,25,25,0.55) 70%, transparent)',
+            background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgb(var(--c-ground) / 0.92), rgb(var(--c-ground) / 0.55) 70%, transparent)',
           }}
         >
           <div className="text-center px-6 max-w-lg">

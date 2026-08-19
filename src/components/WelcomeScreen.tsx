@@ -271,7 +271,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
             <h1
-              className="text-white tracking-[0.3em] uppercase font-light leading-tight"
+              className="text-nier-strong tracking-[0.3em] uppercase font-light leading-tight"
               style={{ fontSize: 'clamp(1.6rem, 5vh, 3rem)' }}
             >
               DIGITAL ATRIUM

@@ -18,6 +18,7 @@ import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
 import { noteAppStarted, recordAppealResponse } from './lib/supportAppeal'
+import { useLandingTheme } from './lib/useLandingTheme'
 import {
   hasCompletedContribution,
   takeCompletedContribution,
@@ -539,6 +540,17 @@ function navigate(path: string) {
 
 function AppInner() {
   const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
+
+  // Light or dark, published once at the root so every screen inherits it.
+  //
+  // The colour tokens are already variables, so this is the whole of it: the
+  // attribute selects a set and everything built from nier-bg, nier-black and
+  // nier-border follows. The atrium itself opts back out, because its chrome
+  // sits over a background each atrium sets for itself.
+  const appTheme = useLandingTheme()
+  useEffect(() => {
+    document.documentElement.dataset.landingTheme = appTheme.resolved
+  }, [appTheme.resolved])
 
   // URL-based routing state
   const [route, setRoute] = useState(parseRoute)

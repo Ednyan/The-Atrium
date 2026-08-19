@@ -3657,6 +3657,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   return (
     <div
       className="fixed inset-0 bg-nier-black lobby-scene"
+      // Opted out of the interface's light/dark choice on purpose. What is
+      // behind this chrome is the atrium's own theme, set per atrium, and a
+      // light interface says nothing about whether somebody's canvas is dark.
+      data-landing-theme="dark"
       style={{ touchAction: 'none' }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
