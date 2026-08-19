@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { openExternalUrl } from '../lib/openExternal'
 import { checkDisplayName, startContribution } from '../lib/donate'
+import { rememberPendingContribution } from '../lib/pendingContribution'
 
 interface ContributePanelProps {
   onClose: () => void
@@ -53,6 +54,12 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
       setBusy(false)
       return
     }
+
+    // Written down before the browser opens, so the app can find out how this
+    // went. Checkout happens somewhere it cannot see -- another tab on web, a
+    // whole other application on desktop -- and without this the app would
+    // never learn that anyone donated at all.
+    rememberPendingContribution(result.sessionId)
 
     openExternalUrl(result.url)
     onStarted?.()

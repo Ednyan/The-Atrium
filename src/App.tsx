@@ -8,7 +8,7 @@ import AppVersionBadge from './components/AppVersionBadge'
 import DesktopIntro from './components/DesktopIntro'
 import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
-import { contributorsReturnPath } from './lib/contributorsRoute'
+import { contributorsReturnPath, rememberContributorsReturn } from './lib/contributorsRoute'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -17,7 +17,12 @@ import { useTraces } from './hooks/useTraces'
 import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
-import { noteAppStarted } from './lib/supportAppeal'
+import { noteAppStarted, recordAppealResponse } from './lib/supportAppeal'
+import {
+  hasCompletedContribution,
+  takeCompletedContribution,
+  watchPendingContribution,
+} from './lib/pendingContribution'
 
 noteAppStarted()
 
@@ -585,6 +590,44 @@ function AppInner() {
   const [atriumDataReady, setAtriumDataReady] = useState(false)
   // The contribute form, opened from the contributors page's own button.
   const [showContributeFromContributors, setShowContributeFromContributors] = useState(false)
+
+  // A donation that finished somewhere the app could not see.
+  //
+  // Checkout runs in the system browser -- it must on desktop, and it opens in
+  // a second tab on web -- so Stripe's thank-you page lands over there and this
+  // window is left none the wiser. The watcher asks Stripe directly instead,
+  // and this is where the answer arrives.
+  const [contributionConfirmed, setContributionConfirmed] = useState(hasCompletedContribution)
+  useEffect(() => watchPendingContribution(() => setContributionConfirmed(true)), [])
+
+  // Confirmed is not the same as ready to show. Trace edits are deferred until
+  // a save, so navigating out of an open atrium would throw away work someone
+  // has queued -- to say thank you, of all things. The confirmation keeps until
+  // they are somewhere it costs nothing, which is usually within seconds.
+  useEffect(() => {
+    if (!contributionConfirmed) return
+    if (route.page === 'atrium') return
+
+    setContributionConfirmed(false)
+    // Claimed here, and only here: taking it clears the record, so the thanks
+    // is shown exactly once no matter how many times this runs.
+    if (!takeCompletedContribution()) return
+
+    // Confirmed money, so the appeal goes quiet for three months whichever
+    // button this started from. It was only recorded for people who donated
+    // from the appeal itself before, which meant giving from the browser or
+    // the wall left the app still asking.
+    recordAppealResponse('donated')
+
+    // Already on it. This is the web tab Stripe redirected itself -- the thanks
+    // is on screen, and the only thing left to do is clear the record so that
+    // leaving the wall doesn't bounce them straight back onto it.
+    if (route.page === 'contributed') return
+
+    // Back from the wall should return where they were when they donated.
+    rememberContributorsReturn(window.location.hash.replace(/^#/, '') || '/welcome')
+    navigate('/contributed')
+  }, [contributionConfirmed, route.page])
   const [transitionLobbyId, setTransitionLobbyId] = useState<string | null>(null)
   const [enteringVideoReady, setEnteringVideoReady] = useState(false)
 

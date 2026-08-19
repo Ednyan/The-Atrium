@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
@@ -17,10 +17,12 @@ interface ContributorsAtriumProps {
   thanks?: boolean
 }
 
-// Long enough to be read and felt, short enough not to be in the way of the
-// page it is covering.
+// Slow enough to feel like an arrival rather than a notification.
 const THANKS_FADE_MS = 900
-const THANKS_HOLD_MS = 2600
+
+// The hint to dismiss comes in a moment after the thanks has settled. Offering
+// someone the exit in the same breath as the thank-you rather undercuts it.
+const HINT_DELAY_MS = 1800
 
 // The people who paid for this, drawn as an atrium of their own.
 //
@@ -75,22 +77,38 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
 
-  // Fades up over the wall, holds, fades away, and leaves the smaller note
-  // behind -- the part that answers "so where is my name?".
+  // Fades up over the wall and stays there. It used to time itself out, which
+  // meant reading speed decided whether a contributor got the message -- and
+  // the one sentence that actually answers "so where is my name?" could be gone
+  // before it was looked at. It leaves when the person is done with it.
   const [thanksVisible, setThanksVisible] = useState(false)
-  const [thanksDone, setThanksDone] = useState(!thanks)
+  const [thanksGone, setThanksGone] = useState(!thanks)
+  const [hintVisible, setHintVisible] = useState(false)
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     if (!thanks) return
     // Next frame, so the element paints at zero before it starts moving.
     const up = requestAnimationFrame(() => setThanksVisible(true))
-    const down = setTimeout(() => setThanksVisible(false), THANKS_FADE_MS + THANKS_HOLD_MS)
-    const finish = setTimeout(() => setThanksDone(true), THANKS_FADE_MS * 2 + THANKS_HOLD_MS)
+    const hint = setTimeout(() => setHintVisible(true), THANKS_FADE_MS + HINT_DELAY_MS)
     return () => {
       cancelAnimationFrame(up)
-      clearTimeout(down)
-      clearTimeout(finish)
+      clearTimeout(hint)
+      if (dismissTimer.current) clearTimeout(dismissTimer.current)
     }
   }, [thanks])
+
+  // Anywhere at all: the whole overlay is the target, so there is nothing to
+  // aim at and no close button competing with the words.
+  const dismissThanks = useCallback(() => {
+    if (!thanks || thanksGone) return
+    setThanksVisible(false)
+    setHintVisible(false)
+    if (dismissTimer.current) clearTimeout(dismissTimer.current)
+    // Unmounted only once it has finished fading, so the wall underneath
+    // becomes draggable at the moment the message stops being visible.
+    dismissTimer.current = setTimeout(() => setThanksGone(true), THANKS_FADE_MS)
+  }, [thanks, thanksGone])
 
   // The operator moderates this page, so their action here is approving the
   // names on it -- not donating to themselves. One button in one place, and
@@ -180,12 +198,15 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         setZoom(1)
         setOffset({ x: 0, y: 0 })
       } else if (event.key === 'Escape') {
-        onClose()
+        // While the thanks is up, Escape means "clear this", not "leave the
+        // page I have just been sent to".
+        if (!thanksGone) dismissThanks()
+        else onClose()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, dismissThanks, thanksGone])
 
   // Placed on a phyllotaxis spiral, sorted by what each person has given.
   //
@@ -446,19 +467,25 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         {isOperator ? '◇ Contributor Names' : '◇ Donate'}
       </button>
 
-      {/* The thanks itself: large, centred, over everything, and gone on its
-          own. Nothing to dismiss -- a contributor should not have to close a
-          message thanking them. */}
-      {thanks && !thanksDone && (
+      {/* The thanks: large, centred, over everything, and staying until it is
+          dismissed. It holds both halves of the message together -- the thank
+          you, and the answer to "so where is my name?" -- because they are one
+          thought, and splitting them across a timer meant the second half
+          arrived only after the first had gone.
+
+          The whole overlay takes the click. Nothing to aim at, and no close
+          button standing beside the words competing with them. */}
+      {thanks && !thanksGone && (
         <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          className="absolute inset-0 flex items-center justify-center cursor-pointer"
+          onPointerDown={dismissThanks}
           style={{
             opacity: thanksVisible ? 1 : 0,
             transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
             background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(25,25,25,0.92), rgba(25,25,25,0.55) 70%, transparent)',
           }}
         >
-          <div className="text-center px-6">
+          <div className="text-center px-6 max-w-lg">
             <div className="flex items-center justify-center gap-5 mb-5">
               <div className="w-16 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
               <div className="w-2 h-2 rotate-45 border border-nier-border/70" />
@@ -467,24 +494,20 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             <h2 className="text-nier-bg text-[clamp(2rem,7vw,4.5rem)] font-extralight tracking-[0.3em] uppercase">
               Thank you
             </h2>
+            <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mt-8">
+              If you chose a name, it appears here beside the others once it has been
+              checked. Stripe has emailed you a receipt.
+            </p>
+            <p
+              className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase mt-12"
+              style={{
+                opacity: hintVisible ? 1 : 0,
+                transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
+              }}
+            >
+              Click anywhere to hide the message
+            </p>
           </div>
-        </div>
-      )}
-
-      {/* Stays after the thanks has gone, because it answers a question the
-          contributor is about to have: their name is not on the wall yet. */}
-      {thanks && (
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-[3.5rem] max-w-md px-6 text-center pointer-events-none"
-          style={{
-            opacity: thanksDone ? 1 : 0,
-            transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
-          }}
-        >
-          <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed">
-            If you chose a name, it appears here beside the others once it has been
-            checked. Stripe has emailed you a receipt.
-          </p>
         </div>
       )}
 

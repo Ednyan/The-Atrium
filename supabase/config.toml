@@ -28,3 +28,8 @@ verify_jwt = true
 # someone, and the handler decides whether that someone is the operator.
 [functions.moderate-contributors]
 verify_jwt = true
+
+# Same reasoning as create-contribution: open to anyone, but not to a request
+# with no project token at all. It reveals one bit about one unguessable id.
+[functions.contribution-status]
+verify_jwt = true

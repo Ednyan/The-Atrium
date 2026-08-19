@@ -11,12 +11,16 @@
 const RETURN_KEY = 'atrium_contributors_return'
 const DEFAULT_RETURN = '/welcome'
 
-export function openContributors(from: string) {
+export function rememberContributorsReturn(from: string) {
   try {
     sessionStorage.setItem(RETURN_KEY, from)
   } catch {
     // Private browsing, or storage disabled. The default is still sensible.
   }
+}
+
+export function openContributors(from: string) {
+  rememberContributorsReturn(from)
   window.location.hash = '/contributors'
 }
 

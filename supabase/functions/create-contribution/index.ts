@@ -119,7 +119,10 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Could not start the contribution. Please try again.' }, 502)
     }
 
-    return json({ url: session.url })
+    // The id goes back with the URL so the app can ask later whether this
+    // session was paid. Checkout happens in a browser the app cannot see into
+    // -- this is the thread that leads back (see contribution-status).
+    return json({ url: session.url, sessionId: session.id })
   } catch (error) {
     console.error('[create-contribution]', error)
     return json({ error: 'Something went wrong.' }, 500)
