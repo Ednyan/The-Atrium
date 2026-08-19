@@ -2,7 +2,7 @@
 --
 -- Supersedes contributors_searchable.sql: run this instead, it creates both
 -- views. contributors_public is now that view with an order and a limit on it,
--- so the two can't drift apart.
+-- so the aggregation behind them is written once.
 --
 -- The problem it fixes: is_monthly was bool_or(kind = 'monthly'), which means
 -- "has ever paid monthly" and never stops being true. Someone who cancelled in
