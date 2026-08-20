@@ -6,11 +6,11 @@
 // anybody who reached the panel from the welcome screen or from inside an
 // atrium never saw it at all. It travels with the ask now.
 //
-// Deliberately not a second pitch. It says who, what it costs, and where the
-// people who already paid are listed, and then gets out of the way of the form
-// beside it.
+// Deliberately not a second pitch. It says who, what it costs and where else
+// to find him, then gets out of the way of the form beside it. What you get
+// for paying -- a name on the wall -- lives on the other card, under the
+// button that does the paying.
 
-import { openContributors } from '../lib/contributorsRoute'
 import { isDesktop } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import { DONATE_CUT } from './DonateButton'
@@ -22,11 +22,7 @@ const LINKS = [
   { key: 'email', url: 'mailto:thedigitalatrium@gmail.com' },
 ] as const
 
-export default function SupportCreatorCard({ onLeave }: {
-  // Called before navigating away, so the panel that owns this card can close
-  // itself rather than being left open behind another screen.
-  onLeave?: () => void
-}) {
+export default function SupportCreatorCard() {
   const { t } = useTranslation()
 
   return (
@@ -51,25 +47,6 @@ export default function SupportCreatorCard({ onLeave }: {
       <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-5">
         {t('support.ask')}
       </p>
-
-      {/* The wall, and a way to it. Somebody deciding whether to give is
-          usually asking who else did. */}
-      <div className="support-well border p-4 mb-5">
-        <p className="text-nier-bg/75 text-xs tracking-wide leading-relaxed mb-3">
-          {t('support.wall')}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            onLeave?.()
-            openContributors(window.location.hash.replace(/^#/, '') || '/welcome')
-          }}
-          className="support-action w-full py-2.5 border text-[11px] tracking-[0.15em] uppercase"
-          style={{ clipPath: DONATE_CUT }}
-        >
-          ◇ {t('support.seeWall')}
-        </button>
-      </div>
 
       <div className="flex items-center gap-3 mb-3">
         <span className="support-orange text-[11px] tracking-[0.22em] uppercase whitespace-nowrap">

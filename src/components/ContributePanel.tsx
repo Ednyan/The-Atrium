@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { openExternalUrl } from '../lib/openExternal'
 import SupportCreatorCard from './SupportCreatorCard'
+import { openContributors } from '../lib/contributorsRoute'
 import { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
 import { checkDisplayName, startContribution } from '../lib/donate'
@@ -146,7 +147,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           className="flex flex-col lg:flex-row lg:items-stretch justify-center gap-5 w-full"
           onClick={event => event.stopPropagation()}
         >
-        <SupportCreatorCard onLeave={onClose} />
+        <SupportCreatorCard />
 
         <div className="donate-card-right donate-card bg-nier-blackLight border p-6 w-full lg:max-w-md relative max-h-[85vh] overflow-y-auto">
         <div className="corner absolute top-0 left-0 w-4 h-4 border-l border-t" />
@@ -325,6 +326,29 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         <p className="text-nier-bg/70 text-xs tracking-wide mt-3 leading-relaxed">
           Paid securely through Stripe. Cancel monthly any time.
         </p>
+
+        {/* What paying gets you, under the button that does the paying.
+
+            It used to sit in the middle of the card beside this one, between
+            the argument and the social links, where it read as another part of
+            the story. It is not part of the story -- it is the outcome, and
+            the place for that is next to the action. */}
+        <div className="support-well border p-4 mt-5">
+          <p className="text-nier-bg/75 text-xs tracking-wide leading-relaxed mb-3">
+            {t('support.wall')}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              onClose()
+              openContributors(window.location.hash.replace(/^#/, '') || '/welcome')
+            }}
+            className="support-action w-full py-2.5 border text-[11px] tracking-[0.15em] uppercase"
+            style={{ clipPath: DONATE_CUT }}
+          >
+            ◇ {t('support.seeWall')}
+          </button>
+        </div>
 
         </div>
         </div>
