@@ -325,7 +325,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Your cursor</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
-            <div className="grid grid-cols-5 gap-2 mb-2">
+            <div className="grid grid-cols-6 gap-2 mb-2">
               {PRESET_COLORS.map((color) => (
                 <button
                   key={color}
@@ -342,16 +342,17 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                   }}
                 />
               ))}
+              <input
+                type="color"
+                value={selectedColor}
+                onChange={(e) => setSelectedColor(e.target.value)}
+                title="Any other colour"
+                className="w-full h-10 border-2 border-nier-border/30 hover:border-nier-border/60 bg-nier-black cursor-pointer"
+              />
             </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mb-2">
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
               How other people see you pointing, in every atrium.
             </p>
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => setSelectedColor(e.target.value)}
-              className="w-full h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
-            />
           </div>
 
           {/* Moving around */}

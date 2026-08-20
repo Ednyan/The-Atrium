@@ -315,13 +315,20 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+      {/* Capped and scrolling, like every other panel in the app. The brackets
+          sit on this outer, non-scrolling wrapper so they stay pinned to the
+          visible edges rather than to the bottom of the scrollable content. */}
+      <div className="bg-nier-blackLight border border-nier-border/40 max-w-md w-full mx-4 max-h-[90vh] relative flex flex-col">
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
         <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
 
+        <div
+          className="p-6 overflow-y-auto flex-1 min-h-0"
+          style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+        >
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
@@ -406,7 +413,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Your cursor</label>
-            <div className="grid grid-cols-5 gap-2 mb-2">
+            <div className="grid grid-cols-6 gap-2 mb-2">
               {PRESET_COLORS.map((color) => (
                 <button
                   key={color}
@@ -423,13 +430,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   }}
                 />
               ))}
+              <input
+                type="color"
+                value={selectedColor}
+                onChange={(e) => handleColorChange(e.target.value)}
+                title="Any other colour"
+                className="w-full h-10 border-2 border-nier-border/30 hover:border-nier-border/60 bg-nier-black cursor-pointer"
+              />
             </div>
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => handleColorChange(e.target.value)}
-              className="atrium-swatch w-full h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
-            />
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
               How other people see you pointing, in every atrium.
               {colorSaved && <span className="text-nier-bg/80"> Saved.</span>}
@@ -693,6 +701,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               )}
             </>
           )}
+        </div>
         </div>
       </div>
     </div>
