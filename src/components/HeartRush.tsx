@@ -1,5 +1,8 @@
 // Hearts filling the screen, as physics rather than as timing.
 //
+// They fall from above the frame, land, and pack upward as more come down on
+// top of them -- a tank filling with something light poured into it.
+//
 // The CSS version was three hundred and sixty independent tweens that knew
 // nothing about each other: they passed through one another, never packed, and
 // the moment the screen was "full" had to be guessed at with a timer. What the
@@ -22,11 +25,24 @@ interface HeartRushProps {
   onFilled: () => void
 }
 
-const COUNT = 620
+// How many it takes to close a screen, rather than a number picked by eye.
+//
+// Random packing of mixed circles fills about 58% of the area it spans, and
+// the heart glyph fills about 70% of its own circle -- so covering a screen
+// needs roughly two and a half times the screen in circle area. Six hundred
+// and twenty came to 1.01x, which is why it never closed however long it ran:
+// there was not enough heart in the room.
+//
+// Counted from the actual viewport, so a wide monitor gets what it needs and a
+// laptop is not made to simulate two thousand of them for nothing.
+const COVERAGE = 2.5
+const MEAN_CIRCLE_AREA = 2400
+const countFor = (width: number, height: number) =>
+  Math.max(420, Math.min(1500, Math.round((width * height * COVERAGE) / MEAN_CIRCLE_AREA)))
 
-// Upward, because they are buoyant. Everything else follows from that: they
-// rise, meet the ceiling, and pack downward as more arrive underneath.
-const BUOYANCY = -2600 // px/s²
+// Down, because they fall. Everything else follows: they drop, meet the floor,
+// and pack upward as more land on top of them -- which is the tank filling.
+const GRAVITY = 2600 // px/s²
 const MAX_SPEED = 2200
 const DAMPING = 0.86
 // Two passes of pushing overlaps apart is enough at this density. More looks
@@ -37,7 +53,7 @@ const RELAX_PASSES = 2
 // notice gaps a person would see, coarse enough to be free.
 const FILL_COLS = 26
 const FILL_ROWS = 15
-const FILL_THRESHOLD = 0.93
+const FILL_THRESHOLD = 0.9
 
 interface Heart {
   x: number
@@ -119,27 +135,28 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
 
     // Built from an index rather than at random so a replay looks the same as
     // the run it is replaying.
-    const hearts: Heart[] = Array.from({ length: COUNT }, (_, i) => {
-      const t = i / COUNT
+    const count = countFor(width, height)
+    const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
+      const t = i / count
       return {
-        // Entering from below the screen, spread across and beyond its width so
+        // Entering from above the screen, spread across and beyond its width so
         // the edges fill as readily as the middle.
         x: ((i * 61.803) % 100) / 100 * (width * 1.1) - width * 0.05,
-        // Deep. They were queued within four hundred pixels of each other, so
-        // four hundred and twenty of them were touching before they had moved
-        // -- which is not a rush, it is a jam being pushed from behind.
-        y: height + 120 + ((i * 137) % 2800),
+        // Deep. Queued within a few hundred pixels of each other they would be
+        // touching before they had moved -- which is not a fall, it is a jam
+        // being shoved from behind.
+        y: -120 - ((i * 137) % 2800),
         vx: (((i % 11) - 5) / 5) * 70,
-        // Fast enough to clear the queue behind them rather than being
-        // shouldered up by it.
-        vy: -900 - (i % 9) * 70,
-        // Half what they were, and there are half again as many. The gaps
-        // between hearts were the size of hearts, which is what a pile of
-        // large things looks like -- smaller ones nest.
-        r: 11 + Math.round(t * 25) + (i % 5) * 4,
+        // Fast enough to clear the queue above them rather than being
+        // shouldered down by it.
+        vy: 900 + (i % 9) * 70,
+        // Skewed small. A wide range packs far tighter than a uniform one:
+        // the small ones take the gaps the large ones leave, which is the
+        // difference between a pile and a lattice with holes in it.
+        r: 9 + Math.round(Math.pow(t, 1.8) * 42) + (i % 5) * 3,
         rot: (((i * 29) % 100) / 100 - 0.5) * 0.8,
         spin: (((i % 7) - 3) / 3) * 0.9,
-        spawnAt: t * 2100 + (i % 6) * 25,
+        spawnAt: t * 2400 + (i % 6) * 18,
         live: false,
       }
     })
@@ -169,21 +186,38 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         if (!heart.live && elapsed >= heart.spawnAt) heart.live = true
       }
 
+      // Gravity fades as the pile forms.
+      //
+      // Held constant, it goes on crushing everything into the floor long
+      // after there is anywhere to go, and the solver spends every frame
+      // undoing overlaps that gravity puts straight back -- which is the
+      // shivering. Once the room is full there is nothing left to pull on.
+      const pull = GRAVITY * Math.max(0, 1 - elapsed / 3400)
+
       // Integrate.
       for (const heart of hearts) {
         if (!heart.live) continue
-        heart.vy += BUOYANCY * dt
-        if (heart.vy < -MAX_SPEED) heart.vy = -MAX_SPEED
+        heart.vy += pull * dt
+        if (heart.vy > MAX_SPEED) heart.vy = MAX_SPEED
         heart.vx *= 1 - (1 - DAMPING) * dt * 6
         heart.vy *= 1 - (1 - DAMPING) * dt * 2
+        // Anything barely moving is put to sleep. A heart trembling half a
+        // pixel a frame inside a pile is not settling, it is vibrating, and
+        // hundreds of them doing it at once is what reads as a glitch.
+        if (Math.abs(heart.vx) < 9 && Math.abs(heart.vy) < 9) {
+          heart.vx = 0
+          heart.vy = 0
+          heart.spin *= 0.9
+        }
+
         heart.x += heart.vx * dt
         heart.y += heart.vy * dt
         heart.rot += heart.spin * dt
 
         if (heart.x < heart.r) { heart.x = heart.r; heart.vx = Math.abs(heart.vx) * 0.4 }
         if (heart.x > width - heart.r) { heart.x = width - heart.r; heart.vx = -Math.abs(heart.vx) * 0.4 }
-        // The ceiling they pack against.
-        if (heart.y < heart.r * 0.8) { heart.y = heart.r * 0.8; heart.vy = 0 }
+        // The floor they pack against.
+        if (heart.y > height - heart.r * 0.8) { heart.y = height - heart.r * 0.8; heart.vy = 0 }
       }
 
       // Separate.
@@ -277,7 +311,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
 
       // Settled. The packed frame is what the colour fades in over, so it is
       // held rather than kept in motion behind it.
-      if (filledRef.current && elapsed > 5200) {
+      if (filledRef.current && elapsed > 4600) {
         return
       }
 
