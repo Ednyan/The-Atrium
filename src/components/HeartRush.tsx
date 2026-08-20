@@ -63,6 +63,14 @@ const FILL_COLS = 34
 const FILL_ROWS = 20
 const FILL_THRESHOLD = 0.985
 
+// Held full before the colour resolves.
+//
+// The moment the screen closes is not the moment to leave it: the hearts are
+// still coming, and a beat of nothing but them is what the whole fall was
+// building to. Without it the colour arrives the instant the last gap shuts,
+// which reads as the animation being cut off at its own peak.
+const HOLD_AFTER_FULL_MS = 1500
+
 // The ordinary heart: the twenty-four unit outline, drawn once as a path and
 // stamped from there. No file to fetch, nothing third-party in the bundle, and
 // it takes the interface's colour like everything else here.
@@ -154,7 +162,10 @@ function buildSprites(color: string, dpr: number, outline: string | null): Sprit
           // In path units, so it stays the same weight on every size rather
           // than growing with the heart.
           c.strokeStyle = outline
-          c.lineWidth = 1.5
+          // In path units, so it is the same weight on every size. A line and
+          // a half read as an outline drawn around a heart; this reads as the
+          // edge of one.
+          c.lineWidth = 0.9
           c.lineJoin = 'round'
           c.stroke(HEART)
         } else {
@@ -254,6 +265,8 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
     // heart is edged against the page, and as the screen closes the edges go.
     let covered = 0
     let edgeStrength = 1
+    // When the screen first closed, so the hold can be measured from it.
+    let fullAt = 0
     // A rolling frame time, and how many are allowed to be falling at once.
     //
     // The count is chosen from the size of the screen, not from what the
@@ -356,14 +369,17 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
         edgeStrength = Math.pow(Math.max(0, 1 - covered), 1.7)
 
         if (covered >= FILL_THRESHOLD) {
-          filledRef.current = true
-          onFilledRef.current()
+          if (!fullAt) fullAt = elapsed
+          if (elapsed - fullAt >= HOLD_AFTER_FULL_MS) {
+            filledRef.current = true
+            onFilledRef.current()
+          }
         }
       }
 
       // A backstop. On a very wide window or a slow machine the screen might
       // not close, and the thanks has to arrive either way.
-      if (!filledRef.current && elapsed > RAMP_MS + 3500) {
+      if (!filledRef.current && elapsed > RAMP_MS + 3500 + HOLD_AFTER_FULL_MS) {
         filledRef.current = true
         onFilledRef.current()
       }
