@@ -262,6 +262,14 @@ const givenIn = (person: Contributor, range: RangeId): number | null => {
   return person.amount365d
 }
 
+// Canvas cannot read a CSS variable, so a token is resolved to a real colour
+// before it is handed over.
+const readToken = (name: string, fallback: string) => {
+  if (typeof window === 'undefined') return fallback
+  const channels = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return channels ? `rgb(${channels})` : fallback
+}
+
 // Case and accents folded, so searching is about the name rather than about
 // reproducing it exactly.
 const normalise = (value: string) =>
@@ -325,11 +333,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
   // Canvas cannot read a CSS variable, so the value is taken from the document
   // once, when the sequence starts, in whichever theme is current.
-  const rushColor = useMemo(() => {
-    if (typeof window === 'undefined') return '#CBCBCB'
-    const channels = getComputedStyle(document.documentElement).getPropertyValue('--c-fg').trim()
-    return channels ? `rgb(${channels})` : '#CBCBCB'
-  }, [showingThanks, theme.resolved])
+  const rushColor = useMemo(() => readToken('--c-fg', '#CBCBCB'), [showingThanks, theme.resolved])
+  // What the page behind them is, so a falling heart can be outlined against
+  // the others in it.
+  const groundColor = useMemo(() => readToken('--c-ground', '#191919'), [showingThanks, theme.resolved])
 
   // Anywhere at all: the whole overlay is the target, so there is nothing to
   // aim at and no close button competing with the words.
@@ -1113,7 +1120,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               resolves. Before, both ran on timers and the colour arrived on
               its own schedule, which made the hearts look like decoration laid
               over it rather than the cause of it. */}
-          <HeartRush color={rushColor} onFilled={markFilled} />
+          <HeartRush color={rushColor} edgeColor={groundColor} onFilled={markFilled} />
 
           <div
             className="absolute inset-0 transition-opacity duration-[900ms] ease-out"

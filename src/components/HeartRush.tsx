@@ -16,8 +16,11 @@
 import { useEffect, useRef } from 'react'
 
 interface HeartRushProps {
-  // Resolved to a real colour by the caller: canvas cannot read a CSS variable.
+  // Resolved to real colours by the caller: canvas cannot read a CSS variable.
   color: string
+  // The page behind them. Each heart is outlined in it while they are sparse,
+  // which is what keeps a falling one legible as a shape against the others.
+  edgeColor: string
   // Fired once, when the falling hearts cover the screen.
   onFilled: () => void
 }
@@ -45,7 +48,7 @@ const MAX_FALL = 1500
 
 // How long the fall takes to reach full rate. The ramp is what makes it read
 // as arriving rather than as being switched on.
-const RAMP_MS = 4200
+const RAMP_MS = 5800
 
 const SPRITE_SIZES = 14
 const SPRITE_ANGLES = 12
@@ -85,7 +88,14 @@ interface Sprite {
 // Filling a bezier path is what put a ceiling on the count, and the count is
 // the whole effect. Each size and angle is rendered up front and the frame
 // loop only blits, which is about an order of magnitude cheaper.
-function buildSprites(color: string, dpr: number): Sprite[][] {
+// Two sheets are built from the same path: one solid, one outline only.
+//
+// The border has to fade out as the screen closes, and baking a dozen
+// opacities into sprites would mean a dozen sheets. Drawing the outline as its
+// own sheet on top of the solid one costs a second blit and fades with a
+// single globalAlpha -- which is also the only way the outline can vanish
+// without the heart under it changing at all.
+function buildSprites(color: string, dpr: number, outline: string | null): Sprite[][] {
   const sheets: Sprite[][] = []
   for (let si = 0; si < SPRITE_SIZES; si++) {
     const r = MIN_R + ((MAX_R - MIN_R) * si) / (SPRITE_SIZES - 1)
@@ -110,7 +120,16 @@ function buildSprites(color: string, dpr: number): Sprite[][] {
         const scale = r / 9
         c.scale(scale, scale)
         c.translate(-12, -12.4)
-        c.fill(HEART)
+        if (outline) {
+          // In path units, so it stays the same weight on every size rather
+          // than growing with the heart.
+          c.strokeStyle = outline
+          c.lineWidth = 1.5
+          c.lineJoin = 'round'
+          c.stroke(HEART)
+        } else {
+          c.fill(HEART)
+        }
       }
       row.push({ canvas, half: box / 2 })
     }
@@ -130,7 +149,7 @@ interface Heart {
   liveAt: number
 }
 
-export default function HeartRush({ color, onFilled }: HeartRushProps) {
+export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const filledRef = useRef(false)
 
@@ -170,7 +189,8 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     size()
     window.addEventListener('resize', size)
 
-    const sprites = buildSprites(color, dpr)
+    const sprites = buildSprites(color, dpr, null)
+    const edges = buildSprites(color, dpr, edgeColor)
     const count = countFor(width, height)
 
     const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
@@ -199,6 +219,11 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     let last = 0
     let frame = 0
     let raf = 0
+    // How much of the screen is covered, and how strongly the outlines are
+    // still drawn. The second follows the first: while they are sparse each
+    // heart is edged against the page, and as the screen closes the edges go.
+    let covered = 0
+    let edgeStrength = 1
 
     const step = (now: number) => {
       if (!start) { start = now; last = now }
@@ -227,6 +252,19 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
           sprite.half * 2,
           sprite.half * 2,
         )
+
+        if (edgeStrength > 0.02) {
+          const edge = edges[heart.sizeIndex][heart.angle]
+          ctx.globalAlpha = edgeStrength
+          ctx.drawImage(
+            edge.canvas,
+            x - edge.half,
+            heart.y - edge.half,
+            edge.half * 2,
+            edge.half * 2,
+          )
+          ctx.globalAlpha = 1
+        }
       }
 
       // How much of the screen they cover, asked a few times a second rather
@@ -247,9 +285,17 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
             for (let rr = r0; rr <= r1; rr++) fill[rr * FILL_COLS + c] = 1
           }
         }
-        let covered = 0
-        for (let i = 0; i < fill.length; i++) covered += fill[i]
-        if (covered / fill.length >= FILL_THRESHOLD) {
+        let cells = 0
+        for (let i = 0; i < fill.length; i++) cells += fill[i]
+        covered = cells / fill.length
+
+        // The outline goes faster the more crowded it gets: at a third covered
+        // it is still most of the way there, at four fifths it is nearly gone.
+        // A linear fade would have them all still outlined at the moment the
+        // screen is supposed to be one colour.
+        edgeStrength = Math.pow(Math.max(0, 1 - covered), 1.7)
+
+        if (covered >= FILL_THRESHOLD) {
           filledRef.current = true
           onFilledRef.current()
         }
@@ -257,7 +303,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
 
       // A backstop. On a very wide window or a slow machine the screen might
       // not close, and the thanks has to arrive either way.
-      if (!filledRef.current && elapsed > RAMP_MS + 3200) {
+      if (!filledRef.current && elapsed > RAMP_MS + 3500) {
         filledRef.current = true
         onFilledRef.current()
       }
@@ -270,7 +316,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', size)
     }
-  }, [color])
+  }, [color, edgeColor])
 
   return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" aria-hidden="true" />
 }
