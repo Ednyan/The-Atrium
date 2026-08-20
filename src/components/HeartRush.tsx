@@ -49,8 +49,8 @@ const countFor = (width: number, height: number) =>
 // Gentle. It was two and a half thousand with a nine-hundred kick on top, so
 // the first hearts arrived like they had been thrown rather than poured, and
 // the whole thing was over before it read as anything.
-const GRAVITY = 1150 // px/s²
-const MAX_SPEED = 1250
+const GRAVITY = 1900 // px/s²
+const MAX_SPEED = 1500
 const DAMPING = 0.86
 // Two passes of pushing overlaps apart is enough at this density. More looks
 // no better and costs a frame budget that a one-shot animation does not have.
@@ -73,8 +73,11 @@ interface Heart {
   vy: number
   r: number
   // Which pre-drawn sprite this one is: a size row and an angle within it.
+  // Which pre-drawn sprite this one is: a size row, and an angle taken from
+  // how far it has turned.
   sizeIndex: number
-  angle: number
+  rot: number
+  spin: number
   spawnAt: number
   live: boolean
 }
@@ -125,8 +128,12 @@ function buildSprites(color: string, dpr: number, minR: number, maxR: number): S
   for (let si = 0; si < SPRITE_SIZES; si++) {
     const r = minR + ((maxR - minR) * si) / (SPRITE_SIZES - 1)
     const row: Sprite[] = []
-    // Room for the shape at any angle, plus a pixel so nothing clips.
-    const box = Math.ceil(r * 2.2) + 2
+    // Room for the shape at any angle.
+    //
+    // It was 2.2r, and the heart is 2.22r across before it is turned at all --
+    // so the widest part of every sprite was being clipped by its own canvas.
+    // Rotated, the corners need the diagonal of that, which is what 3.2 buys.
+    const box = Math.ceil(r * 3.2) + 4
     for (let ai = 0; ai < SPRITE_ANGLES; ai++) {
       const canvas = document.createElement('canvas')
       canvas.width = Math.ceil(box * dpr)
@@ -235,7 +242,11 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         // moment what is falling is a handful of each.
         r: MIN_R + (sizeIndex / (SPRITE_SIZES - 1)) * (MAX_R - MIN_R),
         sizeIndex,
-        angle: (i * 5) % SPRITE_ANGLES,
+        // Upright, all of them. They only turn once something turns them,
+        // which is what falling things actually do -- a sky full of hearts at
+        // twelve different angles reads as confetti rather than as a pour.
+        rot: 0,
+        spin: 0,
         spawnAt: t * 5200 + (i % 6) * 22,
         live: false,
       }
@@ -287,7 +298,13 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         if (Math.abs(heart.vx) < 9 && Math.abs(heart.vy) < 9) {
           heart.vx = 0
           heart.vy = 0
+          heart.spin = 0
         }
+
+        heart.rot += heart.spin * dt
+        // Turning bleeds off far faster than falling does, so a knocked heart
+        // rolls a little and settles rather than spinning where it lies.
+        heart.spin *= 1 - Math.min(1, dt * 3.2)
 
         heart.x += heart.vx * dt
         heart.y += heart.vy * dt
@@ -347,6 +364,14 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
                 if (closing < 0) {
                   a.vy *= 0.97
                   b.vy *= 0.97
+                  // A knock sets them turning. How much depends on how much of
+                  // the impact was sideways -- a heart landing squarely on
+                  // another stays upright, one clipping its shoulder spins off
+                  // it. That is the only thing that ever rotates one.
+                  const glance = (b.vx - a.vx) * ny - (b.vy - a.vy) * nx
+                  const kick = Math.max(-3.4, Math.min(3.4, glance * 0.006))
+                  a.spin -= kick
+                  b.spin += kick
                 }
               }
             }
@@ -358,7 +383,11 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       ctx.clearRect(0, 0, width, height)
       for (const heart of hearts) {
         if (!heart.live) continue
-        const sprite = sprites[heart.sizeIndex][heart.angle]
+        // The nearest pre-drawn angle to however far it has turned. Twelve
+        // steps is indistinguishable from a continuum on something this size
+        // and costs a blit rather than a transform.
+        const angle = ((Math.round((heart.rot / (Math.PI * 2)) * SPRITE_ANGLES) % SPRITE_ANGLES) + SPRITE_ANGLES) % SPRITE_ANGLES
+        const sprite = sprites[heart.sizeIndex][angle]
         ctx.drawImage(
           sprite.canvas,
           heart.x - sprite.half,
