@@ -41,6 +41,7 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
+  --c-byline: 232 197 92;
   --c-coral: 232 122 109;
   /* Leaving, deleting, refusing. red-300 sits at 1.65:1 on paper, which is a
    * warning nobody can read; each theme gets the red that works against it. */
@@ -88,6 +89,7 @@
   --c-emerald: 42 118 78;
   --c-sky: 45 110 151;
   --c-amber: 168 132 24;
+  --c-byline: 122 93 30;
   --c-coral: 227 94 79;
   --c-danger: 180 35 26;
   --c-shadow: 122 112 96;
@@ -106,6 +108,7 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
+  --c-byline: 232 197 92;
   --c-coral: 232 122 109;
   --c-danger: 255 97 97;
   --c-shadow: 0 0 0;
@@ -800,3 +803,17 @@ input[type='color']::-moz-color-swatch { border: none; }
   .modal-backdrop, .modal-backdrop > * { animation: none; }
 }
 
+
+/* The byline in the hero's top corner.
+   Written here rather than as Tailwind arbitrary values: a class holding
+   rgb(var(--x)) with its own parentheses does not survive the scanner, and a
+   colour that silently fails to compile is worse than one that is merely
+   wrong. */
+.byline { color: rgb(var(--c-byline)); }
+.byline-mark {
+  background-color: rgb(var(--c-byline));
+  box-shadow: 0 0 10px rgb(var(--c-byline) / 0.5);
+}
+.byline-rule { background-image: linear-gradient(to left, rgb(var(--c-byline) / 0.85), transparent); }
+.byline-link { transition: color 200ms ease; }
+.group:hover .byline-link { color: rgb(var(--c-byline)); }

@@ -888,25 +888,22 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <button
               type="button"
               onClick={() => scrollToSection(sectionIndex('creator'))}
-              className="group ml-auto mb-5 flex flex-col items-end text-right"
+              className="group ml-auto mb-8 lg:mb-12 lg:-mt-10 flex flex-col items-end text-right"
             >
-              <span className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors">
-                <span
-                  className="w-1.5 h-1.5 rotate-45 border transition-colors"
-                  style={{ borderColor: 'rgb(var(--c-accent) / 0.6)' }}
-                />
+              <span className="byline flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase">
+                <span className="byline-mark w-1.5 h-1.5 rotate-45" />
                 Made by
               </span>
-              <span className="mt-1.5 text-base sm:text-lg tracking-[0.12em] uppercase text-nier-strong leading-none">
+              <span className="mt-2 text-lg sm:text-xl tracking-[0.12em] uppercase text-nier-strong leading-none">
                 Eduardo Paranhos
               </span>
-              <span className="mt-2 flex items-center gap-2 text-[11px] tracking-[0.18em] uppercase text-nier-bg/70 group-hover:text-nier-strong transition-colors">
+              <span className="byline-link mt-2.5 flex items-center gap-2 text-[11px] tracking-[0.18em] uppercase text-nier-bg/70">
                 About the creator
                 <span className="transition-transform duration-300 group-hover:translate-y-0.5">↓</span>
               </span>
               {/* The rule draws itself in under the whole thing on hover, the
                   way the name rule on the contributors wall does. */}
-              <span className="mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500 bg-gradient-to-l from-nier-border/60 to-transparent" />
+              <span className="byline-rule mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
             </button>
             <ShowcaseFrame />
           </div>
@@ -1338,7 +1335,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             </span>
           </button>
 
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
+          {/* Two different asks, and they should not read as one block of
+              buttons. A hairline with a diamond on it separates them the way
+              the rest of the page separates anything from anything. */}
+          <div className="mt-14 mb-12 flex items-center justify-center gap-4" aria-hidden="true">
+            <div className="h-px w-16 sm:w-24 bg-gradient-to-l from-nier-border/35 to-transparent" />
+            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/50" />
+            <div className="h-px w-16 sm:w-24 bg-gradient-to-r from-nier-border/35 to-transparent" />
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
             <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
               Free to enter, and kept standing by the people who use it.
             </p>
@@ -1348,31 +1354,54 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       </section>
 
       {/* Footer */}
-      <footer className="py-10 border-t border-nier-border/20">
-        <div className="max-w-4xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-5 text-center md:text-left">
-          <div className="text-nier-bg/70 text-sm tracking-wider">
-            The Digital Atrium • {new Date().getFullYear()}
+      {/* The footer, in the page's own language rather than a grey line of
+          text: the mark, the name under a rule, and the small print beneath
+          it. Centred, because there is not enough here to justify a row of
+          columns pretending to be a site map. */}
+      <footer className="border-t border-nier-border/20 py-14">
+        <div className="max-w-4xl mx-auto px-6 flex flex-col items-center gap-7 text-center">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="w-7 h-7 shrink-0 bg-nier-strong opacity-80"
+              style={{
+                WebkitMaskImage: 'url(/atrium-mark.png)',
+                maskImage: 'url(/atrium-mark.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center',
+              }}
+            />
+            <span className="text-nier-strong text-sm tracking-[0.28em] uppercase">
+              The Digital Atrium
+            </span>
           </div>
 
-          {/* Where these belong. They were in the middle of The Creator,
-              between a story and a set of social links, which is not where
-              anybody goes looking for a privacy policy. */}
+          <div className="flex items-center gap-4 w-full max-w-sm" aria-hidden="true">
+            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/30 to-transparent" />
+            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/50" />
+            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/30 to-transparent" />
+          </div>
+
           {!isDesktop && (
             <div className="flex items-center gap-4">
               <a
                 href="/privacy.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
               >
                 Privacy Policy
               </a>
-              <span className="text-nier-bg/50 text-xs">◇</span>
+              <span className="text-nier-bg/40 text-xs">◇</span>
               <a
                 href="/terms.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
               >
                 Terms of Service
               </a>
@@ -1381,8 +1410,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           {/* Shown on desktop too -- the copyright covers the app itself, not
               just the website. */}
-          <div className="text-nier-bg/50 text-xs tracking-wider">
-            © 2026 Eduardo Paranhos. All rights reserved.
+          <div className="text-nier-bg/50 text-[0.7rem] tracking-[0.12em] uppercase">
+            © 2026 Eduardo Paranhos · All rights reserved
           </div>
         </div>
       </footer>
