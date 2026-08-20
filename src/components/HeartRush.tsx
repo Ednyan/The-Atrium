@@ -54,6 +54,9 @@ const FILL_COLS = 34
 const FILL_ROWS = 20
 const FILL_THRESHOLD = 0.985
 
+// The ordinary heart: the twenty-four unit outline, drawn once as a path and
+// stamped from there. No file to fetch, nothing third-party in the bundle, and
+// it takes the interface's colour like everything else here.
 const HEART = new Path2D(
   'M12 21.35 L10.55 20.03 C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3' +
   ' c1.74 0 3.41 0.81 4.5 2.09 C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5' +
