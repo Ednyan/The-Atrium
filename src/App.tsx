@@ -620,6 +620,9 @@ function AppInner() {
   // window is left none the wiser. The watcher asks Stripe directly instead,
   // and this is where the answer arrives.
   const [contributionConfirmed, setContributionConfirmed] = useState(hasCompletedContribution)
+  // The name they chose, held from the moment the donation is claimed until
+  // the wall has said thank you with it.
+  const [thanksName, setThanksName] = useState('')
   useEffect(() => watchPendingContribution(() => setContributionConfirmed(true)), [])
 
   // Confirmed is not the same as ready to show. Trace edits are deferred until
@@ -633,7 +636,9 @@ function AppInner() {
     setContributionConfirmed(false)
     // Claimed here, and only here: taking it clears the record, so the thanks
     // is shown exactly once no matter how many times this runs.
-    if (!takeCompletedContribution()) return
+    const claimed = takeCompletedContribution()
+    if (!claimed) return
+    setThanksName(claimed.displayName)
 
     // Confirmed money, so the appeal goes quiet for three months whichever
     // button this started from. It was only recorded for people who donated
@@ -1400,6 +1405,7 @@ function AppInner() {
       <>
         <ContributorsAtrium
           thanks={currentPage === 'contributed'}
+          thanksName={thanksName}
           onClose={() => navigate(contributorsReturnPath())}
           onContribute={() => setShowContributeFromContributors(true)}
         />

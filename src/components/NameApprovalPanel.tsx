@@ -12,6 +12,9 @@ interface NameApprovalPanelProps {
   // and how to tell it that the number changed.
   seededCount: number
   onSeedChanged: () => void
+  // Plays the thank-you over the wall. The operator is the one person who
+  // should be able to see it without paying for it.
+  onPlayThanks: () => void
 }
 
 interface Entry {
@@ -51,7 +54,7 @@ const toDateInput = (iso: string) => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
 }
 
-export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged }: NameApprovalPanelProps) {
+export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged, onPlayThanks }: NameApprovalPanelProps) {
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -286,6 +289,14 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged 
                 {count}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={onPlayThanks}
+              className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+              title="Watch the thank-you a contributor sees"
+            >
+              ♥ Thanks
+            </button>
             <button
               type="button"
               onClick={() => { clearSeededContributors(); onSeedChanged() }}

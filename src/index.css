@@ -768,3 +768,30 @@ input[type='color'].atrium-swatch::-moz-color-swatch { border: none; }
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop, .modal-backdrop > * { animation: none; }
 }
+
+/* The thank-you.
+
+   The wash fills the screen with the room's own colour rather than dimming
+   what is behind it: covered, the wall stops being a wall with something over
+   it and becomes one held moment. */
+@keyframes thanks-wash {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.thanks-wash { animation: thanks-wash 900ms cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+/* Hearts rising through it, in the wall's own colours. They fade in low,
+   travel past the top of the screen and are gone before the message settles --
+   a rush that arrives and passes rather than a loop that keeps going. */
+@keyframes thanks-rush {
+  0%   { transform: translate3d(0, 0, 0) scale(0.7) rotate(-6deg); opacity: 0; }
+  14%  { opacity: var(--rush-opacity, 0.7); }
+  70%  { opacity: var(--rush-opacity, 0.7); }
+  100% { transform: translate3d(var(--rush-drift, 0px), -118vh, 0) scale(1.05) rotate(6deg); opacity: 0; }
+}
+.thanks-heart { will-change: transform, opacity; }
+
+@media (prefers-reduced-motion: reduce) {
+  .thanks-wash { animation: none; opacity: 1; }
+  .thanks-heart { animation: none !important; opacity: 0 !important; }
+}

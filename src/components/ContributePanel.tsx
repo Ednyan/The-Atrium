@@ -104,7 +104,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
     // went. Checkout happens somewhere it cannot see -- another tab on web, a
     // whole other application on desktop -- and without this the app would
     // never learn that anyone donated at all.
-    rememberPendingContribution(result.sessionId)
+    rememberPendingContribution(result.sessionId, displayName.trim())
 
     openExternalUrl(result.url)
     onStarted?.()

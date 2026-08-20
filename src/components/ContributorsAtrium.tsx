@@ -25,14 +25,41 @@ interface ContributorsAtriumProps {
   // page of its own, so the first thing a new contributor sees is the thing
   // they have just joined.
   thanks?: boolean
+  // The name they asked to be listed under. Empty for an anonymous gift, in
+  // which case the thanks simply does not use one.
+  thanksName?: string
 }
 
 // Slow enough to feel like an arrival rather than a notification.
 const THANKS_FADE_MS = 900
 
-// The hint to dismiss comes in a moment after the thanks has settled. Offering
-// someone the exit in the same breath as the thank-you rather undercuts it.
-const HINT_DELAY_MS = 1800
+// The rush.
+//
+// Hearts in the wall's own colours -- the five ranks and the monthly purple --
+// rather than white or black, because the thing rising is meant to read as the
+// contributors themselves arriving. Fixed positions and timings: a rush that
+// reshuffled itself on every render would flicker rather than flow.
+const RUSH_COLORS = ['#FF8A3D', '#E8C15A', '#9AD4C4', '#A8B6D9', '#C77DFF', '#CBCBCB']
+const RUSH = Array.from({ length: 34 }, (_, index) => {
+  // Spread across the width by a golden-ratio walk rather than at random, so
+  // no two neighbours land on top of each other and none of it repeats.
+  const left = ((index * 61.803) % 100)
+  return {
+    left,
+    delay: (index % 12) * 70 + (index % 5) * 40,
+    duration: 1700 + (index % 7) * 190,
+    size: 14 + (index % 6) * 9,
+    color: RUSH_COLORS[index % RUSH_COLORS.length],
+    drift: ((index % 9) - 4) * 14,
+    opacity: 0.55 + (index % 4) * 0.12,
+  }
+})
+
+// The order things arrive in. The wash and the rush run together; the name
+// lands once the screen is its own colour, and the rest follows it.
+const THANKS_NAME_MS = 1150
+const THANKS_NOTE_MS = 2000
+const THANKS_HINT_MS = 3300
 
 // The people who paid for this, drawn as an atrium of their own.
 //
@@ -260,7 +287,7 @@ const givenIn = (person: Contributor, range: RangeId): number | null => {
 const normalise = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
-export default function ContributorsAtrium({ onClose, onContribute, thanks = false }: ContributorsAtriumProps) {
+export default function ContributorsAtrium({ onClose, onContribute, thanks = false, thanksName = '' }: ContributorsAtriumProps) {
   // The wall follows the same light or dark choice the website does. It is a
   // page people are sent to from a browser, not a surface inside the app.
   const theme = useLandingTheme()
@@ -273,34 +300,47 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // meant reading speed decided whether a contributor got the message -- and
   // the one sentence that actually answers "so where is my name?" could be gone
   // before it was looked at. It leaves when the person is done with it.
+  // Replayable, so the operator can watch it without paying for it again.
+  const [replay, setReplay] = useState(0)
+  const showingThanks = thanks || replay > 0
+
   const [thanksVisible, setThanksVisible] = useState(false)
   const [thanksGone, setThanksGone] = useState(!thanks)
-  const [hintVisible, setHintVisible] = useState(false)
+  const [stage, setStage] = useState<0 | 1 | 2 | 3>(0)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!thanks) return
+    if (!showingThanks) return
+    setThanksGone(false)
+    setStage(0)
     // Next frame, so the element paints at zero before it starts moving.
     const up = requestAnimationFrame(() => setThanksVisible(true))
-    const hint = setTimeout(() => setHintVisible(true), THANKS_FADE_MS + HINT_DELAY_MS)
+    const name = setTimeout(() => setStage(1), THANKS_NAME_MS)
+    const note = setTimeout(() => setStage(2), THANKS_NOTE_MS)
+    const hint = setTimeout(() => setStage(3), THANKS_HINT_MS)
     return () => {
       cancelAnimationFrame(up)
+      clearTimeout(name)
+      clearTimeout(note)
       clearTimeout(hint)
       if (dismissTimer.current) clearTimeout(dismissTimer.current)
     }
-  }, [thanks])
+  }, [showingThanks, replay])
 
   // Anywhere at all: the whole overlay is the target, so there is nothing to
   // aim at and no close button competing with the words.
   const dismissThanks = useCallback(() => {
-    if (!thanks || thanksGone) return
+    if (!showingThanks || thanksGone) return
     setThanksVisible(false)
-    setHintVisible(false)
+    setStage(0)
     if (dismissTimer.current) clearTimeout(dismissTimer.current)
     // Unmounted only once it has finished fading, so the wall underneath
     // becomes draggable at the moment the message stops being visible.
-    dismissTimer.current = setTimeout(() => setThanksGone(true), THANKS_FADE_MS)
-  }, [thanks, thanksGone])
+    dismissTimer.current = setTimeout(() => {
+      setThanksGone(true)
+      setReplay(0)
+    }, THANKS_FADE_MS)
+  }, [showingThanks, thanksGone])
 
   // The operator moderates this page, so their action here is approving the
   // names on it -- not donating to themselves. One button in one place, and
@@ -1053,38 +1093,96 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
           The whole overlay takes the click. Nothing to aim at, and no close
           button standing beside the words competing with them. */}
-      {thanks && !thanksGone && (
+      {showingThanks && !thanksGone && (
         <div
-          className="absolute inset-0 flex items-center justify-center cursor-pointer"
+          className="absolute inset-0 overflow-hidden cursor-pointer"
           onPointerDown={dismissThanks}
           style={{
             opacity: thanksVisible ? 1 : 0,
             transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
-            background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgb(var(--c-ground) / 0.92), rgb(var(--c-ground) / 0.55) 70%, transparent)',
           }}
         >
-          <div className="text-center px-6 max-w-lg">
-            <div className="flex items-center justify-center gap-5 mb-5">
-              <div className="w-16 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
-              <div className="w-2 h-2 rotate-45 border border-nier-border/70" />
-              <div className="w-16 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
-            </div>
-            <h2 className="text-nier-bg text-[clamp(2rem,7vw,4.5rem)] font-extralight tracking-[0.3em] uppercase">
-              Thank you
-            </h2>
-            <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mt-8">
-              If you chose a name, it appears here beside the others once it has been
-              checked. Stripe has emailed you a receipt.
-            </p>
-            <p
-              className="text-nier-bg/70 text-xs tracking-[0.2em] uppercase mt-12"
+          {/* The wash. The wall does not dim behind the message, it is covered
+              by the room's own colour -- so what you are looking at stops being
+              a wall with something over it and becomes a single held moment. */}
+          <div
+            className="absolute inset-0 thanks-wash"
+            style={{ background: 'rgb(var(--c-ground))' }}
+          />
+
+          {/* The rush, over the wash rather than under it: hearts arriving into
+              an empty room read as coming to you, where hearts behind a screen
+              of colour read as something happening elsewhere. */}
+          {RUSH.map((heart, index) => (
+            <span
+              key={index}
+              className="absolute thanks-heart select-none"
               style={{
-                opacity: hintVisible ? 1 : 0,
-                transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
+                left: `${heart.left}%`,
+                bottom: '-12vh',
+                fontSize: heart.size,
+                lineHeight: 1,
+                color: heart.color,
+                opacity: 0,
+                ['--rush-drift' as string]: `${heart.drift}px`,
+                ['--rush-opacity' as string]: heart.opacity,
+                animation: `thanks-rush ${heart.duration}ms cubic-bezier(0.32, 0, 0.6, 1) ${heart.delay}ms both`,
               }}
             >
-              Click anywhere to hide the message
-            </p>
+              ♥
+            </span>
+          ))}
+
+          <div className="relative h-full flex items-center justify-center">
+            <div className="text-center px-6 max-w-xl">
+              <div
+                className="flex items-center justify-center gap-5 mb-6"
+                style={{ opacity: stage >= 1 ? 1 : 0, transition: 'opacity 700ms ease-out' }}
+              >
+                <div className="w-16 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
+                <div className="w-2 h-2 rotate-45 border border-nier-border/70" />
+                <div className="w-16 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
+              </div>
+
+              {/* Named, when they gave one. "Thank you" is a sentiment; "Thank
+                  you, Ana" is addressed to somebody -- and the name they chose
+                  is the one thing about this they picked themselves. */}
+              <h2
+                className="text-nier-strong text-[clamp(2rem,7vw,4.5rem)] font-extralight tracking-[0.3em] uppercase leading-[1.05]"
+                style={{
+                  opacity: stage >= 1 ? 1 : 0,
+                  transform: stage >= 1 ? 'translateY(0)' : 'translateY(14px)',
+                  transition: 'opacity 900ms ease-out, transform 900ms cubic-bezier(0.22, 1, 0.36, 1)',
+                }}
+              >
+                Thank you
+                {thanksName && (
+                  <span className="block name-sheen text-[clamp(1.4rem,4.5vw,2.8rem)] tracking-[0.16em] mt-3">
+                    {thanksName}
+                  </span>
+                )}
+              </h2>
+
+              <p
+                className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mt-9"
+                style={{
+                  opacity: stage >= 2 ? 1 : 0,
+                  transform: stage >= 2 ? 'translateY(0)' : 'translateY(8px)',
+                  transition: 'opacity 800ms ease-out, transform 800ms cubic-bezier(0.22, 1, 0.36, 1)',
+                }}
+              >
+                {thanksName
+                  ? 'Your name appears here beside the others once it has been checked. Stripe has emailed you a receipt.'
+                  : 'Your contribution is counted. Stripe has emailed you a receipt.'}
+              </p>
+
+              <p
+                className="text-nier-bg/70 text-xs tracking-[0.2em] uppercase mt-12"
+                style={{ opacity: stage >= 3 ? 1 : 0, transition: 'opacity 700ms ease-out' }}
+              >
+                Click anywhere to hide the message
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -1094,6 +1192,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           onClose={() => setShowNameApproval(false)}
           seededCount={seededCount()}
           onSeedChanged={refreshSeeded}
+          onPlayThanks={() => { setShowNameApproval(false); setReplay(count => count + 1) }}
         />
       )}
     </div>

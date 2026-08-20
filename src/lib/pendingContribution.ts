@@ -34,6 +34,10 @@ const PATIENT_INTERVAL_MS = 15000
 
 interface Pending {
   sessionId: string
+  // The name they asked to be listed under, kept so the thanks can use it.
+  // It exists nowhere else the client can reach -- it travels to Stripe as
+  // session metadata and comes back only in the webhook.
+  displayName: string
   startedAt: number
   // Set when Stripe confirmed. Kept until the app has actually shown the
   // thanks, so it can wait for the right moment without losing it.
@@ -48,6 +52,7 @@ function read(): Pending | null {
     if (typeof parsed?.sessionId !== 'string' || !parsed.sessionId) return null
     return {
       sessionId: parsed.sessionId,
+      displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
       startedAt: typeof parsed.startedAt === 'number' ? parsed.startedAt : 0,
       completed: parsed.completed === true,
     }
@@ -68,9 +73,9 @@ function write(pending: Pending | null) {
 
 // Called the moment checkout is handed to the browser, before anything can go
 // wrong with the window it was opened from.
-export function rememberPendingContribution(sessionId: string) {
+export function rememberPendingContribution(sessionId: string, displayName = '') {
   if (!sessionId) return
-  write({ sessionId, startedAt: Date.now(), completed: false })
+  write({ sessionId, displayName, startedAt: Date.now(), completed: false })
   // The watcher lives at the top of the app and the panel that starts a
   // donation is four components away from it. An event is the shortest honest
   // line between them, and means the watcher can sleep until this fires
@@ -86,11 +91,15 @@ export function hasCompletedContribution(): boolean {
 
 // Claims the thanks: returns true once, and never again for the same donation.
 // Called at the point the app is actually about to show it.
-export function takeCompletedContribution(): boolean {
+// Returns the name they chose, or an empty string for an anonymous gift --
+// and null when there is nothing to claim. Distinguishing "no name" from "no
+// donation" is the whole reason this returns what it does rather than a
+// boolean.
+export function takeCompletedContribution(): { displayName: string } | null {
   const pending = read()
-  if (!pending?.completed) return false
+  if (!pending?.completed) return null
   write(null)
-  return true
+  return { displayName: pending.displayName }
 }
 
 // Polls until there is an answer, then calls back. Returns a teardown.
