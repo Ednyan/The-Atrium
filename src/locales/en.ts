@@ -71,6 +71,9 @@ export const en = {
   // ------------------------------------------------------------- donating
   'donate.tooltip': 'Support the creator',
   'donate.heading': 'Donate',
+  'donate.nameLabel': 'Name on the wall',
+  'donate.nameOptional': 'optional',
+  'donate.nameHelp': 'The name that goes on the contributors wall, beside everyone else who has paid for this place. Leave it empty and the donation still counts, it simply goes up without a name. Every name is read by a person before it appears.',
   'support.title': 'Support the creator',
   'support.who': 'The Digital Atrium is made and kept running by *one person*: *Eduardo Paranhos*, a 3D artist who got tired of hoarding reference images across scattered folders and built the thing he wanted instead.',
   'support.costs': "It stands on things that are paid for every month -- the database your atriums live in, the domain above it and more. *Left unpaid it stops.*",

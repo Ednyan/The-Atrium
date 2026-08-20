@@ -957,3 +957,79 @@ input[type='color']::-moz-color-swatch { border: none; }
   .donate-card-left, .donate-card-right { animation: none; }
   .donate-bubble { transition: none; }
 }
+
+/* The question mark beside "optional", and what it says.
+   Square rather than a circle: there is not a rounded corner anywhere else in
+   this app, and a round badge reads as borrowed from somewhere warmer. */
+.name-hint-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 2px;
+  border: 1px solid rgb(var(--c-orange) / 0.55);
+  color: rgb(var(--c-orange));
+  font-size: 9px;
+  line-height: 1;
+  cursor: help;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.name-field:hover .name-hint-mark {
+  background-color: rgb(var(--c-orange));
+  color: rgb(var(--c-ground));
+}
+
+.name-bubble {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 0;
+  width: min(20rem, 100%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 40;
+  transform: translateY(4px);
+  transition: opacity 170ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.name-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 22px;
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  background: rgb(var(--c-surface));
+  border-right: 1px solid rgb(var(--c-orange) / 0.4);
+  border-bottom: 1px solid rgb(var(--c-orange) / 0.4);
+}
+.name-bubble > span {
+  display: block;
+  position: relative;
+  background: rgb(var(--c-surface));
+  border: 1px solid rgb(var(--c-orange) / 0.4);
+  color: rgb(var(--c-fg) / 0.85);
+  font-size: 0.7rem;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+  padding: 10px 13px;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  box-shadow: 0 12px 30px rgb(var(--c-shadow) / 0.4);
+}
+
+/* Hover only, and never while the field is being typed in: an explanation
+   floating over the thing you are already doing is in the way, not helpful. */
+@media (hover: hover) {
+  .name-field:hover .name-bubble {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.name-field[data-typing='true'] .name-bubble {
+  opacity: 0 !important;
+  transform: translateY(4px) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .name-bubble { transition: none; }
+}

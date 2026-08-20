@@ -32,6 +32,9 @@ const PRESETS_MONTHLY = [1, 3, 5, 10]
 // Function that builds the session.
 export default function ContributePanel({ onClose, onStarted }: ContributePanelProps) {
   const { t } = useTranslation()
+  // Whether the name field is being typed in, which is when the explanation
+  // beside it should get out of the way.
+  const [nameFocused, setNameFocused] = useState(false)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -273,17 +276,35 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           </p>
         )}
 
-        <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mt-4 mb-2">
-          Name on the wall — optional
-        </label>
-        <input
-          type="text"
-          value={displayName}
-          onChange={e => { setDisplayName(e.target.value); setCollisionAccepted(false) }}
-          placeholder="Leave empty to stay anonymous"
-          maxLength={60}
-          className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-        />
+        {/* "Optional" answers whether you have to fill it in, not what
+            happens if you do. The question mark carries the rest, on hover
+            over either the label or the field -- and gets out of the way the
+            moment somebody starts typing, because an explanation floating
+            over the thing you are doing is in the way rather than helpful. */}
+        <div className="name-field relative mt-4" data-typing={nameFocused ? 'true' : 'false'}>
+          <label
+            htmlFor="donate-display-name"
+            className="flex items-center gap-1.5 text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2 w-fit"
+          >
+            {t('donate.nameLabel')} — {t('donate.nameOptional')}
+            <span className="name-hint-mark" aria-hidden="true">?</span>
+          </label>
+          <input
+            id="donate-display-name"
+            type="text"
+            value={displayName}
+            onChange={e => { setDisplayName(e.target.value); setCollisionAccepted(false) }}
+            onFocus={() => setNameFocused(true)}
+            onBlur={() => setNameFocused(false)}
+            placeholder="Leave empty to stay anonymous"
+            maxLength={60}
+            aria-describedby="donate-display-name-help"
+            className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+          />
+          <span className="name-bubble" id="donate-display-name-help" role="tooltip">
+            <span>{t('donate.nameHelp')}</span>
+          </span>
+        </div>
         {nameProblem ? (
           <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
         ) : taken ? (
