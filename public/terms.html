@@ -220,8 +220,52 @@
     letter-spacing: 0.08em;
   }
 
+  /* Arriving and leaving, the same two moves the app's own screens make
+     (screen-rise / screen-recede in src/index.css). These pages open in a tab
+     of their own, so there is no crossfade to inherit -- they play their own. */
+  @keyframes screen-rise {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes screen-recede {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.965); }
+  }
+  .page { animation: screen-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .page.leaving { animation: screen-recede 260ms cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+  /* The switch, matching the one in the app's chrome: same height, same cut,
+     same three states. */
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 2.125rem;
+    padding: 0 16px;
+    font: inherit;
+    font-size: 0.69rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    line-height: 1;
+    color: rgb(var(--c-fg) / 0.8);
+    background: rgb(var(--c-ground) / 0.94);
+    border: 1px solid rgb(var(--c-line) / 0.4);
+    cursor: pointer;
+    transition: color 140ms ease, border-color 140ms ease;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  }
+  .toggle:hover {
+    color: rgb(var(--c-strong));
+    border-color: rgb(var(--c-line) / 0.7);
+  }
+  @media (max-width: 640px) {
+    .toggle-label { display: none; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
+    .page, .page.leaving { animation: none; }
   }
 </style>
 </head>
@@ -234,12 +278,16 @@
       The Digital Atrium
     </a>
     <div class="bar-actions">
-      <button class="btn" type="button" id="theme-toggle" title="Light or dark">Theme</button>
+      <button class="toggle" type="button" id="theme-toggle">
+        <span id="theme-glyph">◐</span>
+        <span class="toggle-label" id="theme-label">Auto</span>
+      </button>
       <a class="btn" href="/">Back to the app</a>
     </div>
   </div>
 </div>
 
+<div class="page">
 <main>
 <h1>Terms of Service — The Atrium</h1>
 <p class="meta">Last updated: 2026-07-28. Contact: <a href="mailto:thedigitalatrium@gmail.com">thedigitalatrium@gmail.com</a></p>
@@ -364,31 +412,79 @@
 </footer>
 
 <script>
-  // Writes the same key the app reads, so a choice made here is the choice
-  // there.
+  // The same control the app's chrome carries, with the same three states and
+  // the same stored value (src/lib/useLandingTheme.ts and ThemeToggle.tsx):
+  // Auto follows the machine, and a chosen light or dark overrides it. Two
+  // states would not be the same switch -- somebody whose laptop turns dark at
+  // sunset should turn with it, and that only works if "no choice" is itself
+  // a state.
   (function () {
     var root = document.documentElement;
     var state = window.__atriumTheme || { key: 'atrium_landing_theme', choice: null };
     var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
+    var glyph = document.getElementById('theme-glyph');
+    var label = document.getElementById('theme-label');
+    var button = document.getElementById('theme-toggle');
+
     function system() { return media && media.matches ? 'dark' : 'light'; }
-    function apply() { root.setAttribute('data-theme', state.choice || system()); }
+    function resolved() { return state.choice || system(); }
+
+    function render() {
+      root.setAttribute('data-theme', resolved());
+      var text = state.choice ? (state.choice === 'dark' ? 'Dark' : 'Light') : 'Auto \u00b7 ' + system();
+      if (glyph) glyph.textContent = state.choice ? (resolved() === 'dark' ? '\u263e' : '\u2600') : '\u25d0';
+      if (label) label.textContent = text;
+      if (button) {
+        button.title = 'Theme: ' + text;
+        button.setAttribute('aria-label', 'Theme: ' + text + '. Click to change.');
+      }
+    }
 
     if (media && media.addEventListener) {
-      media.addEventListener('change', function () { if (!state.choice) apply(); });
+      media.addEventListener('change', render);
     }
 
-    var button = document.getElementById('theme-toggle');
+    // These pages open in a tab of their own, so the app is still sitting in
+    // the one behind. Without this, a choice made here would not reach it
+    // until that tab was reloaded.
+    window.addEventListener('storage', function (event) {
+      if (event.key !== state.key) return;
+      state.choice = event.newValue === 'light' || event.newValue === 'dark' ? event.newValue : null;
+      render();
+    });
+
     if (button) {
       button.addEventListener('click', function () {
-        var showing = state.choice || system();
-        state.choice = showing === 'dark' ? 'light' : 'dark';
-        try { localStorage.setItem(state.key, state.choice); } catch (e) {}
-        apply();
+        // Whatever you are looking at, its opposite, then back to following
+        // the machine -- the same cycle as the app's.
+        state.choice = state.choice ? (state.choice === 'dark' ? 'light' : null) : (system() === 'dark' ? 'light' : 'dark');
+        try {
+          if (state.choice) localStorage.setItem(state.key, state.choice);
+          else localStorage.removeItem(state.key);
+        } catch (e) {}
+        render();
       });
     }
+
+    render();
+
+    // Leaving plays the same recede the app's screens do before the next one
+    // arrives, rather than cutting straight to it.
+    var page = document.querySelector('.page');
+    document.addEventListener('click', function (event) {
+      var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (!link || !page) return;
+      var href = link.getAttribute('href') || '';
+      if (link.target === '_blank' || href.charAt(0) === '#' || href.indexOf('mailto:') === 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      page.classList.add('leaving');
+      setTimeout(function () { window.location.href = href; }, 240);
+    });
   })();
 </script>
 
+</div>
 </body>
 </html>

@@ -66,6 +66,21 @@ function setStored(next: ThemePreference) {
   listeners.forEach(listener => listener())
 }
 
+// The same value, changed in another tab.
+//
+// The privacy and terms pages are static HTML that open in a tab of their own
+// and carry the same switch, writing this same key. Without this the app tab
+// behind them kept whatever it had read at startup, so a choice made over
+// there only arrived on the next reload -- which looks like a switch that does
+// not work.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', event => {
+    if (event.key !== KEY) return
+    current = event.newValue === 'light' || event.newValue === 'dark' ? event.newValue : 'system'
+    listeners.forEach(listener => listener())
+  })
+}
+
 export function useLandingTheme() {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => current ?? readPreference())
   const [system, setSystem] = useState<ResolvedTheme>(systemTheme)
