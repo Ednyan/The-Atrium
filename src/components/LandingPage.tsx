@@ -626,10 +626,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             >
               {/* Section label (shows on hover or when active) */}
               <span 
-                className={`text-xs tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline ${
-                  isActive 
-                    ? 'text-nier-bg opacity-100' 
-                    : 'text-nier-bg/75 opacity-0 group-hover:opacity-100'
+                className={`text-xs tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline opacity-0 group-hover:opacity-100 ${
+                  isActive ? 'text-nier-strong' : 'text-nier-bg/75'
                 }`}
               >
                 {section.title}
@@ -958,100 +956,58 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             </p>
           </div>
 
-          {/* The ask, again, at the end of the creator's story.
-
-              Support Us higher up makes the case while somebody has just
-              watched what they would be paying for. By the time they have read
-              to here they have the argument twice over and need no third
-              telling, only somewhere to act on it -- so this is a button and
-              one line. */}
-          <div className="max-w-3xl mx-auto w-full mb-14">
-            <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-10" />
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-              <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
-                Free to enter, and kept standing by the people who use it.
-              </p>
-              <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
-            </div>
-          </div>
-
-          {/* Social links placeholder */}
-          <div className="flex items-center justify-center gap-6">
-            <span className="text-nier-bg/70 text-sm tracking-[0.1em] uppercase">Connect with me:</span>
-            {[
-              { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
-              { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
-              { name: 'Youtube', url: 'https://www.youtube.com/@mindeformer' },
-              { name: 'Email', url: 'mailto:thedigitalatrium@gmail.com' },
-            ].map((social, i) => (
-              <a
-                key={i}
-                href={isDesktop ? '#' : social.url}
-                target={isDesktop ? undefined : '_blank'}
-                rel={isDesktop ? undefined : 'noopener noreferrer'}
-                onClick={isDesktop ? (e) => {
-                  e.preventDefault()
-                  import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
-                } : undefined}
-                className="text-nier-bg/75 hover:text-nier-bg text-sm tracking-wider uppercase transition-colors cursor-pointer"
-              >
-                ◇ {social.name}
-              </a>
-            ))}
-          </div>
-
-          {!isDesktop && (
-            <div className="flex items-center justify-center gap-4 mt-4">
-              <a
-                href="/privacy.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
-              >
-                Privacy Policy
-              </a>
-              <span className="text-nier-bg/50 text-xs">◇</span>
-              <a
-                href="/terms.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
-              >
-                Terms of Service
-              </a>
-            </div>
-          )}
-
-          {/* Shown on desktop too -- the copyright applies to the app itself,
-              not just the website. */}
-          <div className="flex items-center justify-center mt-3">
-            <span className="text-nier-bg/50 text-xs tracking-wider">
-              © 2026 Eduardo Paranhos. All rights reserved.
-            </span>
-          </div>
-
-          {/* Final CTA */}
-          <div className="mt-12">
-            <div className="flex items-center justify-center gap-3 mb-8">
-              <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
-              <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
-              <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
-            </div>
-            
-            <button
-              onClick={onGetStarted}
-              className="group relative px-12 py-4 bg-transparent border border-nier-border/50 hover:border-nier-bg hover:bg-nier-bg/5 transition-all duration-300"
-            >
-              <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+          {/* Where else to find him.
               
-              <span className="text-base tracking-[0.2em] uppercase text-nier-bg/80 group-hover:text-nier-bg transition-colors">
-                {isAuthenticated ? '◇ Continue to Atrium' : '◇ Begin Your Journey'}
+              This was four dim words on one line, at the bottom of a long
+              page, reading as a footnote to a footnote. It is the end of the
+              creator's story and the only place on the site that points
+              anywhere else, so it is built like the rest of the page: a header
+              with rules, and tiles with the cut corner every other reachable
+              thing here wears. */}
+          <div className="max-w-3xl mx-auto w-full">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent" />
+              <span className="text-nier-strong text-xs sm:text-sm tracking-[0.3em] uppercase whitespace-nowrap">
+                Connect with me
               </span>
-            </button>
+              <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { name: 'Website', note: 'Portfolio and work', url: 'https://mindeformer.wixstudio.com/mindeformer' },
+                { name: 'Instagram', note: 'Pictures of things', url: 'https://www.instagram.com/red.puer/' },
+                { name: 'Youtube', note: 'Videos', url: 'https://www.youtube.com/@mindeformer' },
+                { name: 'Email', note: 'Say something', url: 'mailto:thedigitalatrium@gmail.com' },
+              ].map((social) => (
+                <a
+                  key={social.name}
+                  href={isDesktop ? '#' : social.url}
+                  target={isDesktop ? undefined : '_blank'}
+                  rel={isDesktop ? undefined : 'noopener noreferrer'}
+                  onClick={isDesktop ? (e) => {
+                    e.preventDefault()
+                    import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
+                  } : undefined}
+                  className="group border border-nier-border/30 hover:border-nier-bg/60 bg-nier-blackLight/40 hover:bg-nier-blackLight/70 px-4 py-3.5 text-left transition-colors cursor-pointer"
+                  style={{ clipPath: DONATE_CUT }}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-nier-strong text-xs tracking-[0.18em] uppercase">
+                      {social.name}
+                    </span>
+                    <span className="text-nier-bg/40 text-xs transition-all duration-300 group-hover:text-nier-bg/80 group-hover:-translate-y-0.5 group-hover:translate-x-0.5">
+                      ↗
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-nier-bg/60 text-[0.7rem] tracking-wide">
+                    {social.note}
+                  </span>
+                </a>
+              ))}
+            </div>
           </div>
+
         </div>
       </section>
       {/* SECTION 5: About */}
@@ -1349,11 +1305,84 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       </section>
 
 
+
+      {/* The end of the page, and the two things somebody might want when
+          they get there: the door in, and the way to keep it open.
+
+          These used to sit in the middle of The Creator, so a reader who kept
+          going scrolled past the closing handshake and carried on through
+          three more sections. Whatever is last on a page is what it leaves
+          people with, and this is what it should be. */}
+      <section className="px-5 sm:px-12 pt-10 pb-24 relative">
+        <div className="max-w-3xl mx-auto w-full text-center" data-reveal>
+          <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-12" />
+
+          <div className="flex items-center justify-center gap-3 mb-9">
+            <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
+            <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
+            <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
+          </div>
+
+          {/* Filled rather than outlined. It was a transparent box with dim
+              type -- the quietest thing on the page, at the moment the page is
+              asking for the only decision it wants. The fill is the foreground
+              ink and the label is the page, so it inverts with the theme, the
+              way Enter does on every atrium in the browser. */}
+          <button
+            onClick={onGetStarted}
+            className="group relative px-12 py-4 bg-nier-bg text-nier-black hover:bg-nier-strong transition-colors duration-300"
+            style={{ clipPath: DONATE_CUT }}
+          >
+            <span className="text-base tracking-[0.2em] uppercase font-medium">
+              {isAuthenticated ? 'Continue to Atrium' : 'Begin Your Journey'}
+            </span>
+          </button>
+
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
+            <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
+              Free to enter, and kept standing by the people who use it.
+            </p>
+            <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="py-8 border-t border-nier-border/20">
-        <div className="max-w-4xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <footer className="py-10 border-t border-nier-border/20">
+        <div className="max-w-4xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-5 text-center md:text-left">
           <div className="text-nier-bg/70 text-sm tracking-wider">
             The Digital Atrium • {new Date().getFullYear()}
+          </div>
+
+          {/* Where these belong. They were in the middle of The Creator,
+              between a story and a set of social links, which is not where
+              anybody goes looking for a privacy policy. */}
+          {!isDesktop && (
+            <div className="flex items-center gap-4">
+              <a
+                href="/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-wider uppercase transition-colors"
+              >
+                Privacy Policy
+              </a>
+              <span className="text-nier-bg/50 text-xs">◇</span>
+              <a
+                href="/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-wider uppercase transition-colors"
+              >
+                Terms of Service
+              </a>
+            </div>
+          )}
+
+          {/* Shown on desktop too -- the copyright covers the app itself, not
+              just the website. */}
+          <div className="text-nier-bg/50 text-xs tracking-wider">
+            © 2026 Eduardo Paranhos. All rights reserved.
           </div>
         </div>
       </footer>
