@@ -236,7 +236,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             <p className="text-nier-bg/75 text-[10px] tracking-wider mb-6">
               Note: Local files (images/audio stored on this PC) were not uploaded. Their frames appear as empty placeholders online.
             </p>
-            <button onClick={onClose} className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-bgDark transition-colors">
+            <button onClick={onClose} className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-strong transition-colors">
               Close
             </button>
           </div>
@@ -305,7 +305,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
               </button>
               <button
                 onClick={handleUpload}
-                className="flex-1 px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-strong transition-colors disabled:opacity-50"
                 disabled={status === 'uploading' || status === 'auth'}
               >
                 {status === 'uploading' || status === 'auth' ? 'Uploading...' : 'Upload'}

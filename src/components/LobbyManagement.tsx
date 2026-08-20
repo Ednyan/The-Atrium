@@ -600,7 +600,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   />
                   <button
                     onClick={searchUsers}
-                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                   >
                     Search
                   </button>
@@ -685,7 +685,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   />
                   <button
                     onClick={searchUsers}
-                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                   >
                     Search
                   </button>
@@ -762,7 +762,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
         <div className="p-4 border-t border-nier-border/20">
           <button
             onClick={updateLobbySettings}
-            className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+            className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
           >
             Save Settings
           </button>
@@ -796,7 +796,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   const saved = await updateLobbySettings()
                   if (saved) onClose()
                 }}
-                className="w-full bg-nier-bg hover:bg-nier-bgDark text-nier-black text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+                className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
                 Save and Close
               </button>

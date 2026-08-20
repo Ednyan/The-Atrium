@@ -558,7 +558,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bgDark disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? '◇ Processing...' : mode === 'login' ? 'Log In' : mode === 'signup' ? 'Sign Up' : 'Send Reset Link'}
           </button>

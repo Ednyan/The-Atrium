@@ -216,7 +216,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
               <div className="flex gap-2 justify-center pt-2">
                 <button
                   onClick={handleImport}
-                  className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                  className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                 >
                   Import {pins.length} Pins
                 </button>
@@ -248,7 +248,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
               <p className="text-nier-bg text-sm tracking-wider">✓ Imported {importDone} pins</p>
               <button
                 onClick={onClose}
-                className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
               >
                 Done
               </button>

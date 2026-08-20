@@ -394,7 +394,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             <button
               type="submit"
               disabled={loading || (!isDesktop && !canChange) || displayName === username}
-              className="w-full mt-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-full mt-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {loading ? 'Updating...' : isDesktop ? 'Update Username' : 'Update Display Name'}
             </button>
@@ -564,7 +564,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <button
                       type="submit"
                       disabled={passwordLoading || !currentPassword || !newPassword || !confirmPassword}
-                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {passwordLoading ? 'Updating...' : 'Update Password'}
                     </button>
@@ -604,7 +604,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <button
                       onClick={initiatePinterestConnect}
                       disabled={!isPinterestConfigured()}
-                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       Connect Pinterest
                     </button>

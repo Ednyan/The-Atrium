@@ -151,7 +151,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             <button
               type="button"
               onClick={() => { setCollisionAccepted(true); setConfirmingCollision(false) }}
-              className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+              className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
               Yes, that was me
             </button>
@@ -277,7 +277,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           type="button"
           onClick={contribute}
           disabled={busy || !amountValid || !!nameProblem || !supabase}
-          className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {busy ? 'Opening…' : monthly ? `Donate €${chosenAmount || 0} monthly` : `Donate €${chosenAmount || 0}`}
         </button>

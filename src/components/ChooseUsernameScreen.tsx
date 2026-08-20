@@ -137,7 +137,7 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
           <button
             type="submit"
             disabled={loading || !username.trim()}
-            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bgDark disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {loading ? '◇ Saving...' : 'Continue'}
           </button>

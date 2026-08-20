@@ -7495,7 +7495,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                   }
                   setEditingTrace(null);
                 }}
-                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-bgDark transition-all border border-nier-bg mt-4"
+                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-4"
               >
                 Done
               </button>
@@ -7798,7 +7798,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                   batchIds.forEach(id => markTraceChanged(id))
                   setShowBatchEditPanel(false)
                 }}
-                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-bgDark transition-all border border-nier-bg mt-4"
+                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-4"
               >
                 Done
               </button>

@@ -496,7 +496,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     />
                     <button
                       onClick={addGroundUrl}
-                      className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                      className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                     >
                       Add
                     </button>
@@ -722,7 +722,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           <button
             onClick={saveThemeSettings}
             disabled={isSaving}
-            className="px-6 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? 'Saving...' : 'Save Theme'}
           </button>

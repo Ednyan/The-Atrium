@@ -554,7 +554,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           {status === 'preview' && (
             <button
               onClick={handleImport}
-              className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+              className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
               ◇ Import
             </button>
@@ -562,7 +562,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           {status === 'error' && (
             <button
               onClick={() => { setStatus('select'); setError(''); setProgress(''); setNotice(''); setParsed(null); }}
-              className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+              className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
               ◇ Try Again
             </button>

@@ -1092,7 +1092,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 (traceType === 'embed' && batchMode && (batchValidUrls.length === 0 || batchInvalidEntries.length > 0 || batchOverCap)) ||
                 (traceType === 'embed' && !batchMode && !mediaUrl)
               }
-              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : (traceType === 'shape' && shapeType === 'path') ? 'Start Path' : (traceType === 'embed' && batchMode) ? `Place ${batchValidUrls.length} Embed${batchValidUrls.length === 1 ? '' : 's'}` : 'Leave Trace'}
             </button>

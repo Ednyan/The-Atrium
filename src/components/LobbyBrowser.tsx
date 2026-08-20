@@ -921,12 +921,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 </div>
               </div>
             ) : (
-              // Outlined rather than filled: it opens a form, it does not
-              // commit anything. The filled one is inside that form.
+              // Filled, like the Enter button on every atrium below it: the
+              // fill is the foreground ink and the label is the page, so it
+              // inverts with the theme rather than sitting in it. Outlined,
+              // it was the quietest thing on a screen whose whole purpose is
+              // getting you into an atrium -- including a new one.
               <button
                 onClick={() => setShowCreateLobby(true)}
                 disabled={!canCreateMore}
-                className="w-full py-3 border-2 border-nier-border/30 text-nier-bg/85 text-xs tracking-[0.18em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 style={{ clipPath: DONATE_CUT }}
               >
                 ◇ Create New Atrium
@@ -1006,7 +1009,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => onJoinLobby(lobby.id)}
-                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
+                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors"
                         >
                           Enter
                         </button>
@@ -1062,7 +1065,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleJoinClick(lobby)}
-                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors"
+                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors"
                         >
                           Enter
                         </button>
@@ -1261,7 +1264,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex gap-3">
               <button
                 onClick={handlePasswordSubmit}
-                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
               >
                 Enter
               </button>
@@ -1314,7 +1317,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <button
                 onClick={handleJoinById}
                 disabled={!lobbyIdInput || joinByIdLoading}
-                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 {joinByIdLoading ? 'Checking...' : 'Enter'}
               </button>

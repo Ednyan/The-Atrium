@@ -423,7 +423,7 @@ function Action({ label, onClick, disabled, primary, danger }: {
 }) {
   const base = 'px-3 py-2 text-[10px] tracking-[0.1em] uppercase transition-colors disabled:opacity-30'
   const style = primary
-    ? 'bg-nier-bg text-nier-black hover:bg-nier-bgDark'
+    ? 'bg-nier-bg text-nier-black hover:bg-nier-strong'
     : danger
       ? 'border border-red-500/40 text-red-400 hover:border-red-500/70'
       : 'border border-nier-border/40 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60'
@@ -498,7 +498,7 @@ function MessageDialog({ entry, onCancel, onSend }: {
           type="button"
           onClick={() => onSend(message.trim())}
           disabled={message.trim().length === 0}
-          className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Send
         </button>
@@ -548,7 +548,7 @@ function RejectDialog({ entry, onCancel, onSend }: {
         <button
           type="button"
           onClick={() => onSend(reason.trim(), false)}
-          className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+          className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
         >
           Send
         </button>
@@ -607,7 +607,7 @@ function EditDialog({ entry, onCancel, onSave }: {
       <button
         type="button"
         onClick={() => onSave({ displayName, amountEur: Number(amount.replace(',', '.')), createdAt: date })}
-        className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+        className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
       >
         Save
       </button>

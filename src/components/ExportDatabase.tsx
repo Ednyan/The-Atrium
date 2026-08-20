@@ -253,7 +253,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
               type="button"
               onClick={handleExport}
               disabled={!selectedLobbyId}
-              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               ◇ Export {selectedLobby ? `"${selectedLobby.name}"` : ''}
             </button>
@@ -262,7 +262,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
             <button
               type="button"
               onClick={() => { setStatus('select'); setError(''); setProgress(''); }}
-              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+              className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
               ◇ Try Again
             </button>
