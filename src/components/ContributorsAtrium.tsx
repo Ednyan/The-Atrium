@@ -47,21 +47,29 @@ const THANKS_FADE_MS = 900
 //
 // Fixed positions and timings: a rush that reshuffled itself on every render
 // would flicker rather than flow.
-const RUSH_COUNT = 110
+const RUSH_COUNT = 360
 const RUSH = Array.from({ length: RUSH_COUNT }, (_, index) => {
   // A golden-ratio walk across the width, so no two neighbours land on each
-  // other and the pattern never repeats.
+  // other and the pattern never repeats at any count.
   const left = (index * 61.803) % 100
-  // Later ones are larger and closer together: the crowd thickens as it comes
-  // rather than arriving all at once.
   const lateness = index / RUSH_COUNT
+
   return {
     left,
-    delay: Math.round(lateness * 950 + (index % 7) * 45),
-    duration: 1500 + (index % 9) * 130,
-    size: 16 + Math.round(lateness * 54) + (index % 5) * 7,
-    drift: ((index % 11) - 5) * 12,
-    opacity: 0.5 + lateness * 0.5,
+    delay: Math.round(lateness * 1150 + (index % 9) * 35),
+    // The late ones are slower as well as bigger, which is what stops the
+    // whole thing reading as a single sheet moving up the screen.
+    duration: 1500 + Math.round(lateness * 900) + (index % 7) * 90,
+    // Thirty pixels to nearly two hundred and forty. The ones that arrive last
+    // are the size of a hand, and they are what actually closes the screen --
+    // a rush of small hearts is a shower, and a shower does not fill anything.
+    size: 30 + Math.round(lateness * 170) + (index % 6) * 12,
+    drift: ((index % 13) - 6) * 11,
+    // How far up it goes. Early ones leave the screen; late ones stop inside
+    // it and stay, which is the difference between passing through and
+    // filling up -- the tank has to hold what falls into it.
+    rise: 128 - Math.round(lateness * 78),
+    opacity: 0.45 + lateness * 0.55,
   }
 })
 
@@ -1138,6 +1146,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 color: 'rgb(var(--c-fg))',
                 opacity: 0,
                 ['--rush-drift' as string]: `${heart.drift}px`,
+                ['--rush-rise' as string]: `${heart.rise}vh`,
                 ['--rush-opacity' as string]: heart.opacity,
                 animation: `thanks-rush ${heart.duration}ms cubic-bezier(0.32, 0, 0.6, 1) ${heart.delay}ms both`,
               }}
