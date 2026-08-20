@@ -17,6 +17,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
+import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { toEmbedUrl } from '../lib/embedUrl'
@@ -6259,18 +6260,28 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {([
-                        { label: 'Soft Sepia', border: '#9c9068', fill: '#1e1c15' },
-                        { label: 'Technical', border: '#6b8a6b', fill: '#111a11' },
-                        { label: 'Archive', border: '#7a7a6a', fill: '#141414' },
-                      ] as const).map(preset => (
+                      {TRACE_PRESETS.map(preset => (
                         <button
-                          key={preset.label}
+                          key={preset.id}
                           type="button"
                           onClick={() => {
-                            const updated = { ...editingTrace, borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true })
+                            // The font comes with the preset. A trace in the
+                            // house style should be set in the house face, and
+                            // three presets that each left the type to whatever
+                            // it happened to be were three half-presets.
+                            const patch = {
+                              borderColor: preset.border,
+                              fillColor: preset.fill,
+                              showBorder: true,
+                              showBackground: true,
+                              fontFamily: 'mono',
+                              ...(preset.text ? { textColor: preset.text } : {}),
+                            }
+                            setEditingTrace({ ...editingTrace, ...patch })
+                            updateTraceCustomization(editingTrace.id, patch)
+                            // Chosen once, in force from then on: the next
+                            // trace made in this atrium starts here.
+                            if (lobbyId) rememberTracePreset(lobbyId, preset.id)
                           }}
                           className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}

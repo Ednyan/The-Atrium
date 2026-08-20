@@ -4,6 +4,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace } from '../lib/layerZIndex'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
+import { currentTracePreset } from '../lib/tracePresets'
 import { scaleToDisplayBox } from '../lib/binPack'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import type { Trace } from '../types/database'
@@ -420,8 +421,20 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         }
       }
 
+      // Born in the house style. Whatever preset was last chosen in this
+      // atrium, or -- if nobody has chosen yet -- the one that suits the room
+      // the interface is in: a bright board in a bright interface, a dark one
+      // in a dark one.
+      const preset = currentTracePreset(lobbyId)
+
       const newTrace: Trace = {
         id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        borderColor: preset.border,
+        fillColor: preset.fill,
+        showBorder: true,
+        showBackground: true,
+        fontFamily: 'mono',
+        ...(preset.text ? { textColor: preset.text } : {}),
         userId,
         username,
         type: traceType,

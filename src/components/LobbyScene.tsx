@@ -3837,7 +3837,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {/* HUD + presentation quick-toggle, in one top-left row so the toggle
           always sits just to the right of the HUD regardless of its width. */}
       <div data-hud="true" className="fixed top-4 left-4 z-[9999] flex items-start gap-2 pointer-events-none">
-      <div ref={hudRef} data-ui-element="true" className="relative bg-nier-black px-3 py-2 border-2 border-nier-bg font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '160px' }}>
+      {/* Closed, this is a button among buttons, so it is the height of one:
+          a 22px header inside 6px of padding and a 1px rule. It was two-pixel
+          borders and 8px padding, which made it eight pixels taller than
+          everything standing beside it. */}
+      <div ref={hudRef} data-ui-element="true" className="relative px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '190px' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-nier-bg"></div>
         <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-nier-bg"></div>
@@ -3848,7 +3852,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {/* The whole header opens it. A chevron the width of a character is a
             target you have to aim at; the row you are already reading is not. */}
         <div
-          className="flex items-center justify-between gap-2 cursor-pointer select-none h-[1.375rem]"
+          className="flex items-center justify-between gap-2 cursor-pointer select-none h-[1.375rem] leading-none"
           onClick={() => setHudMinimized(!hudMinimized)}
           title={hudMinimized ? 'Open' : 'Close'}
         >
@@ -4038,11 +4042,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       {workingLocations.length > 0 && (
         <button
           onClick={togglePresentationMode}
-          className={`group pointer-events-auto h-9 w-9 hover:w-auto hover:px-3 border-2 font-mono text-xs tracking-[0.15em] uppercase transition-colors shadow-lg flex items-center justify-center ${
-            presentationMode
-              ? 'bg-emerald-500 border-emerald-400 text-black'
-              : 'bg-nier-black/90 border-nier-bg text-nier-strong hover:bg-nier-blackLight'
-          }`}
+          className="atrium-btn group pointer-events-auto font-mono w-[2.125rem] hover:w-auto px-0 hover:px-4"
+          data-active={presentationMode}
           title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
         >
           <span className="text-[12px] leading-none">▶</span>
@@ -4232,7 +4233,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       value={drawingColor}
                       onChange={(e) => setDrawingColor(e.target.value)}
                       title="Any colour"
-                      className="flex-1 h-7 cursor-pointer border border-nier-border/40"
+                      className="atrium-swatch flex-1 h-7 cursor-pointer border border-nier-border/40"
                     />
                   </div>
                 )}
@@ -4865,7 +4866,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       )}
 
       {/* Instructions */}
-      <div data-hud="true" className="fixed bottom-4 left-4 px-4 py-3 border-2 border-nier-bg z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
+      <div data-hud="true" className="fixed bottom-4 left-4 px-4 py-[0.3125rem] border border-nier-border/40 z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
         <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>
@@ -4873,7 +4874,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
 
         <div
-          className="flex items-center justify-between gap-3 cursor-pointer select-none h-[1.375rem]"
+          className="flex items-center justify-between gap-3 cursor-pointer select-none h-[1.375rem] leading-none"
           onClick={() => setControlsMinimized(!controlsMinimized)}
           title={controlsMinimized ? 'Open' : 'Close'}
         >

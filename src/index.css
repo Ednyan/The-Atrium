@@ -633,3 +633,17 @@ body.dragging * {
 @media (prefers-reduced-motion: reduce) {
   .panel-in, .panel-in-right { animation: none; }
 }
+
+/* A colour input that actually shows its colour.
+   Tailwind's reset makes every input transparent, which on a native colour
+   control leaves a bordered rectangle with nothing in it -- the swatch is a
+   shadow part, and the reset had painted over the only thing it had to say. */
+input[type='color'].atrium-swatch {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: transparent;
+  padding: 0;
+}
+input[type='color'].atrium-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
+input[type='color'].atrium-swatch::-webkit-color-swatch { border: none; }
+input[type='color'].atrium-swatch::-moz-color-swatch { border: none; }
