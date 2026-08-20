@@ -297,13 +297,13 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 onChange={(e) => setSettings({ ...settings, gridEnabled: e.target.checked })}
                 className="hidden"
               />
-              <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+              <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
                 Show grid
               </span>
             </label>
 
             <div className="space-y-2">
-              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Colour</label>
+              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Colour</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
@@ -322,7 +322,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </div>
 
             <div className="space-y-2">
-              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                 Grid Opacity: {((settings.gridOpacity ?? 0.2) * 100).toFixed(0)}%
               </label>
               <input
@@ -346,7 +346,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </div>
             
             <div className="space-y-2">
-              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Colour</label>
+              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Colour</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
@@ -368,7 +368,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           {/* Drifting particles */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Drifting particles</span>
+              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Drifting particles</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             
@@ -385,7 +385,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 onChange={(e) => setSettings({ ...settings, particlesEnabled: e.target.checked })}
                 className="hidden"
               />
-              <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+              <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
                 Enable floating particles
               </span>
             </label>
@@ -393,7 +393,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             {settings.particlesEnabled && (
               <div className="space-y-3 ml-1">
                 <div className="space-y-2">
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Colour</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Colour</label>
                   <div className="flex gap-2 items-center">
                     <input
                       type="color"
@@ -412,7 +412,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 </div>
                 
                 <div className="space-y-2">
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                     Particle Opacity: {((settings.particleOpacity ?? 0.6) * 100).toFixed(0)}%
                   </label>
                   <input
@@ -427,7 +427,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 </div>
                 
                 <div className="space-y-2">
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                     Particle Density: {(settings.particleDensity ?? 1.0).toFixed(1)}x
                   </label>
                   <input
@@ -439,7 +439,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     onChange={(e) => setSettings({ ...settings, particleDensity: parseFloat(e.target.value) })}
                     className="w-full accent-nier-bg"
                   />
-                  <p className="text-xs text-nier-bg/70 tracking-wider">Number of floating particles (0.1 = very few, 3.0 = many)</p>
+                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Number of floating particles (0.1 = very few, 3.0 = many)</p>
                 </div>
               </div>
             )}
@@ -466,7 +466,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 onChange={(e) => setSettings({ ...settings, groundParticlesEnabled: e.target.checked })}
                 className="hidden"
               />
-              <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+              <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
                 Enable ground elements
               </span>
             </label>
@@ -474,14 +474,14 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             {settings.groundParticlesEnabled && (
               <div className="space-y-3 ml-1">
                 <div className="space-y-2">
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                     Ground Element URLs
                   </label>
                   <div className="border border-nier-border/20 bg-nier-black/50 p-2 mb-2">
                     <p className="text-nier-bg/75 text-xs tracking-wider">
                       ◇ Most image URLs work, including Pinterest, Google Images, and Reddit.
                     </p>
-                    <p className="text-nier-bg/70 text-xs tracking-wider mt-1">
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1">
                       ◦ Failed images are automatically retried through a proxy.
                     </p>
                   </div>
@@ -521,7 +521,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
                 {(settings.groundParticleUrls && settings.groundParticleUrls.length > 0) && (
                   <div className="space-y-2">
-                    <p className="text-xs text-nier-bg/70 tracking-wider uppercase">
+                    <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">
                       {settings.groundParticleUrls.length} element{settings.groundParticleUrls.length !== 1 ? 's' : ''} configured
                     </p>
                     <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -542,19 +542,19 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   </div>
                 )}
 
-                <p className="text-xs text-nier-bg/70 tracking-wider">
+                <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
                   ◇ Upload to <a href="https://imgur.com" target="_blank" rel="noopener noreferrer" className="text-nier-bg/75 hover:text-nier-bg transition-colors">imgur.com</a> for free hosting, or use /public/themes/ground/
                 </p>
-                <p className="text-xs text-nier-bg/70 tracking-wider">
+                <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
                   ◦ PNG with transparency works best. JPG also supported.
                 </p>
 
                 {/* Scale Controls */}
                 <div className="space-y-3 mt-4 pt-4 border-t border-nier-border/20">
-                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Appearance</span>
+                  <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Appearance</span>
                   
                   <div className="space-y-2">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                       Opacity: {((settings.groundParticleOpacity ?? 1.0) * 100).toFixed(0)}%
                     </label>
                     <input
@@ -569,7 +569,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Arrangement</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Arrangement</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2 cursor-pointer group">
                         <div className={`w-3 h-3 border transition-colors ${
@@ -582,7 +582,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                           onChange={() => setSettings({ ...settings, groundPatternMode: 'grid' })}
                           className="hidden"
                         />
-                        <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">Grid</span>
+                        <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">Grid</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer group">
                         <div className={`w-3 h-3 border transition-colors ${
@@ -595,16 +595,16 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                           onChange={() => setSettings({ ...settings, groundPatternMode: 'random' })}
                           className="hidden"
                         />
-                        <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">Random</span>
+                        <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">Random</span>
                       </label>
                     </div>
-                    <p className="text-xs text-nier-bg/70 tracking-wider">Grid = uniform spacing, Random = organic placement</p>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Grid = uniform spacing, Random = organic placement</p>
                   </div>
                   
                   {/* Grid Spacing Control (only show in grid mode) */}
                   {(settings.groundPatternMode === 'grid' || !settings.groundPatternMode) && (
                     <div className="space-y-2">
-                      <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                      <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                         Grid Spacing: {settings.gridSpacing || 100}px
                       </label>
                       <input
@@ -616,7 +616,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                         onChange={(e) => setSettings({ ...settings, gridSpacing: parseInt(e.target.value) })}
                         className="w-full accent-nier-bg"
                       />
-                      <p className="text-xs text-nier-bg/70 tracking-wider">Distance between grid elements (smaller = denser)</p>
+                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Distance between grid elements (smaller = denser)</p>
                     </div>
                   )}
 
@@ -634,18 +634,18 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                         onChange={(e) => setSettings({ ...settings, groundCoverFullView: e.target.checked })}
                         className="hidden"
                       />
-                      <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                      <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
                         Cover entire view
                       </span>
                     </label>
-                    <p className="text-xs text-nier-bg/70 tracking-wider">
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
                       On = elements fill the whole visible canvas. Off = they only appear around your cursor and traces, leaving the rest bare.
                     </p>
                   </div>
 
 
                   <div className="space-y-2">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                       Base Scale: {(settings.groundElementScale ?? 0.0625).toFixed(4)} ({Math.round((settings.groundElementScale ?? 0.0625) * 100)}%)
                     </label>
                     <input
@@ -657,11 +657,11 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onChange={(e) => setSettings({ ...settings, groundElementScale: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-xs text-nier-bg/70 tracking-wider">Controls the average size of ground elements</p>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Controls the average size of ground elements</p>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                       Scale Variation: +{(settings.groundElementScaleRange ?? 0.025).toFixed(4)} ({Math.round((settings.groundElementScaleRange ?? 0.025) * 100)}%)
                     </label>
                     <input
@@ -673,11 +673,11 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onChange={(e) => setSettings({ ...settings, groundElementScaleRange: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-xs text-nier-bg/70 tracking-wider">Random size variation added to base scale (0 = all same size)</p>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Random size variation added to base scale (0 = all same size)</p>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
                       Density: {(settings.groundElementDensity ?? 0.5).toFixed(2)}
                     </label>
                     <input
@@ -689,7 +689,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onChange={(e) => setSettings({ ...settings, groundElementDensity: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-xs text-nier-bg/70 tracking-wider">
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
                       {settings.groundPatternMode === 'random'
                         ? 'How many ground elements appear (0 = off, 3.0 = dense)'
                         : 'In Grid mode this only toggles elements on/off (0 = off) — use Grid Spacing above to control how many appear, so the checker pattern stays even.'}

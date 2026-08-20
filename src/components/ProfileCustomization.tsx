@@ -8,14 +8,19 @@ import {
   ZOOM_SENSITIVITY_STORAGE_KEY,
   clampZoomSensitivity,
 } from '../lib/zoomSensitivity'
+import {
+  DEFAULT_UNDO_DEPTH,
+  MAX_UNDO_DEPTH,
+  readUndoDepth,
+  writeUndoDepth,
+  readPackingShape,
+  writePackingShape,
+} from '../lib/atriumPreferences'
 
 interface ProfileCustomizationProps {
   onClose: () => void
   lobbyId?: string
 }
-
-const DEFAULT_UNDO_DEPTH = 25
-const MAX_UNDO_DEPTH = 100
 
 // Five, from the palette the rest of the app is drawn in.
 //
@@ -59,22 +64,8 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     } catch {
       // Ignore localStorage access failures
     }
-    if (!lobbyId) return
-    try {
-      const raw = localStorage.getItem(`lobby_${lobbyId}_undoDepth`)
-      const parsed = raw ? parseInt(raw, 10) : NaN
-      if (Number.isFinite(parsed)) {
-        setUndoDepth(Math.max(1, Math.min(MAX_UNDO_DEPTH, parsed)))
-      }
-    } catch {
-      // Ignore localStorage access failures
-    }
-    try {
-      const rawShape = localStorage.getItem(`lobby_${lobbyId}_packingShape`)
-      if (rawShape === 'circle' || rawShape === 'square') setPackingShapeState(rawShape)
-    } catch {
-      // Ignore localStorage access failures
-    }
+    setUndoDepth(readUndoDepth(lobbyId))
+    setPackingShapeState(readPackingShape(lobbyId))
   }, [lobbyId])
 
   const handleZoomSensitivityChange = (value: number) => {
@@ -89,25 +80,17 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
   }
 
   const handleUndoDepthChange = (value: number) => {
-    if (!lobbyId) return
     const clamped = Math.max(1, Math.min(MAX_UNDO_DEPTH, value))
     setUndoDepth(clamped)
-    try {
-      localStorage.setItem(`lobby_${lobbyId}_undoDepth`, clamped.toString())
-    } catch {
-      // Ignore localStorage access failures
-    }
+    writeUndoDepth(clamped)
     window.dispatchEvent(new CustomEvent('lobby-undo-depth-changed', { detail: clamped }))
   }
 
   const handlePackingShapeChange = (shape: 'square' | 'circle') => {
-    if (!lobbyId) return
     setPackingShapeState(shape)
-    try {
-      localStorage.setItem(`lobby_${lobbyId}_packingShape`, shape)
-    } catch {
-      // Ignore localStorage access failures
-    }
+    writePackingShape(shape)
+    // The atrium open behind the panel is the one that needs to know now; any
+    // other picks the new shape up from storage when it opens.
     window.dispatchEvent(new CustomEvent('lobby-packing-shape-changed', { detail: { lobbyId, shape } }))
   }
 
@@ -261,7 +244,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Display Name */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">
                 {isDesktop ? 'Username' : 'Display Name'}
               </span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
@@ -277,73 +260,69 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             />
             
             {!isDesktop && !canChangeName && (
-              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
+              <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
                 ◇ Can change in {daysUntilChange} days
               </p>
             )}
           </div>
 
-          {/* This atrium */}
+          {/* How you work */}
           <div className="flex items-baseline gap-3 pt-2">
             <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">This atrium</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">How you work</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
-          {/* Undo History Depth (per-atrium) */}
-          {lobbyId && (
-            <div>
-              <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-                Steps you can undo: {undoDepth}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max={MAX_UNDO_DEPTH}
-                step="1"
-                value={undoDepth}
-                onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
-                className="w-full accent-nier-bg"
-              />
-              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
-                How many Ctrl+Z steps to remember in this atrium. Kept only in this browser/session — never saved online.
-              </p>
-            </div>
-          )}
+          {/* Undo History Depth */}
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+              Steps you can undo: {undoDepth}
+            </label>
+            <input
+              type="range"
+              min="1"
+              max={MAX_UNDO_DEPTH}
+              step="1"
+              value={undoDepth}
+              onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
+              className="w-full accent-nier-bg"
+            />
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              How many Ctrl+Z steps to remember, in every atrium. Kept in this browser only, never saved online.
+            </p>
+          </div>
 
-          {/* Shape for batch placement Shape (per-atrium) */}
-          {lobbyId && (
-            <div>
-              <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-                Shape for batch placement
-              </label>
-              <div className="flex gap-2">
-                {(['square', 'circle'] as const).map(shape => (
-                  <button
-                    key={shape}
-                    type="button"
-                    onClick={() => handlePackingShapeChange(shape)}
-                    className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
-                      packingShape === shape
-                        ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
-                        : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
-                    }`}
-                  >
-                    {shape}
-                  </button>
-                ))}
-              </div>
-              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
-                How dropping or pasting multiple files at once gets arranged in this atrium.
-                Reorganize Selected asks for a shape each time and ignores this.
-              </p>
+          {/* Shape for batch placement */}
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+              Shape for batch placement
+            </label>
+            <div className="flex gap-2">
+              {(['square', 'circle'] as const).map(shape => (
+                <button
+                  key={shape}
+                  type="button"
+                  onClick={() => handlePackingShapeChange(shape)}
+                  className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
+                    packingShape === shape
+                      ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
+                      : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
+                  }`}
+                >
+                  {shape}
+                </button>
+              ))}
             </div>
-          )}
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              How dropping or pasting several files at once gets arranged, in every atrium.
+              Reorganize Selected asks for a shape each time and ignores this.
+            </p>
+          </div>
 
           {/* Color Picker */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Your cursor</span>
+              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Your cursor</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             <div className="grid grid-cols-5 gap-2 mb-2">
@@ -364,8 +343,8 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                 />
               ))}
             </div>
-            <p className="text-nier-bg/70 text-xs tracking-wider mb-2">
-              How other people see you pointing. Used in every atrium, not only this one.
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mb-2">
+              How other people see you pointing, in every atrium.
             </p>
             <input
               type="color"
@@ -384,7 +363,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
 
           {/* Zoom Sensitivity */}
           <div>
-            <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
               Zoom speed: {zoomSensitivity.toFixed(2)}
             </label>
             <input
@@ -396,7 +375,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               onChange={(e) => handleZoomSensitivityChange(parseFloat(e.target.value))}
               className="w-full accent-nier-bg"
             />
-            <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
               How far a notch of the wheel, or a pinch, moves you.
             </p>
           </div>
@@ -409,50 +388,79 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           </div>
 
           {/* Trace Point to off-screen traces Toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Point to off-screen traces
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                showTraceIndicators ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {showTraceIndicators && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                checked={showTraceIndicators}
-                onChange={() => setShowTraceIndicators(!showTraceIndicators)}
-                className="hidden"
-              />
-            </label>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
+                Point to off-screen traces
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  showTraceIndicators ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {showTraceIndicators && <span className="text-nier-bg text-xs">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showTraceIndicators}
+                  onChange={() => setShowTraceIndicators(!showTraceIndicators)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              Arrows at the edge, with how far away it is
+            </p>
           </div>
-          <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Arrows at the edge, with how far away it is
-          </p>
 
           {/* Label each trace's type Toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Label each trace's type
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                showTraceTypeLabels ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {showTraceTypeLabels && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                checked={showTraceTypeLabels}
-                onChange={() => setShowTraceTypeLabels(!showTraceTypeLabels)}
-                className="hidden"
-              />
-            </label>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
+                Label each trace's type
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  showTraceTypeLabels ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {showTraceTypeLabels && <span className="text-nier-bg text-xs">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showTraceTypeLabels}
+                  onChange={() => setShowTraceTypeLabels(!showTraceTypeLabels)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              Always show each trace's type without needing to select it
+            </p>
           </div>
-          <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Always show each trace's type without needing to select it
-          </p>
+
+          {/* Fade traces near the edge Toggle */}
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
+                Fade traces near the edge
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  traceFadeEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {traceFadeEnabled && <span className="text-nier-bg text-xs">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={traceFadeEnabled}
+                  onChange={() => setTraceFadeEnabled(!traceFadeEnabled)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              Softly fade traces out as they leave the edge of your view
+            </p>
+          </div>
 
           {/* People in the room */}
           <div className="flex items-baseline gap-3 pt-2">
@@ -462,96 +470,79 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           </div>
 
           {/* Hide my name Toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Hide My Name Tag
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                hideOwnNameTag ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {hideOwnNameTag && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                checked={hideOwnNameTag}
-                onChange={() => setHideOwnNameTag(!hideOwnNameTag)}
-                className="hidden"
-              />
-            </label>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
+                Hide My Name Tag
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  hideOwnNameTag ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {hideOwnNameTag && <span className="text-nier-bg text-xs">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={hideOwnNameTag}
+                  onChange={() => setHideOwnNameTag(!hideOwnNameTag)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              Hide your own username label above your cursor
+            </p>
           </div>
-          <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Hide your own username label above your cursor
-          </p>
 
           {/* Hide other names Toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Hide Others' Name Tags
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                hideOtherNameTags ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {hideOtherNameTags && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                checked={hideOtherNameTags}
-                onChange={() => setHideOtherNameTags(!hideOtherNameTags)}
-                className="hidden"
-              />
-            </label>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
+                Hide Others' Name Tags
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  hideOtherNameTags ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {hideOtherNameTags && <span className="text-nier-bg text-xs">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={hideOtherNameTags}
+                  onChange={() => setHideOtherNameTags(!hideOtherNameTags)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              Hide username labels above other users' cursors
+            </p>
           </div>
-          <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Hide username labels above other users' cursors
-          </p>
 
           {/* Hide other cursors Toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Hide Others' Cursors
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                hideOtherCursors ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {hideOtherCursors && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                checked={hideOtherCursors}
-                onChange={() => setHideOtherCursors(!hideOtherCursors)}
-                className="hidden"
-              />
-            </label>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
+                Hide Others' Cursors
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
+                  hideOtherCursors ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
+                }`}>
+                  {hideOtherCursors && <span className="text-nier-bg text-xs">✓</span>}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={hideOtherCursors}
+                  onChange={() => setHideOtherCursors(!hideOtherCursors)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              Completely hide other users' cursor indicators
+            </p>
           </div>
-          <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Completely hide other users' cursor indicators
-          </p>
-
-          {/* Fade traces near the edge Toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Fade traces near the edge
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                traceFadeEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {traceFadeEnabled && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                checked={traceFadeEnabled}
-                onChange={() => setTraceFadeEnabled(!traceFadeEnabled)}
-                className="hidden"
-              />
-            </label>
-          </div>
-          <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Softly fade traces out as they leave the edge of your view
-          </p>
 
           {/* Error/Success Messages */}
           {error && (

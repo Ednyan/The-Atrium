@@ -1099,13 +1099,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
             <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
+              The secret is in the design. TheAtrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
             <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The entire platform runs on free-tier services, which means there are a couple of limits for now:
+              The entire platform runs on free-tier services for now, which means there are a couple of limits:
             </p>
 
             <div className="grid sm:grid-cols-2 gap-4 mb-6">
@@ -1161,7 +1161,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           {/* Placeholder for personal content */}
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
             <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">
-              My name is Eduardo Paranhos (aka Mindeformer or Red Puer).
+              My name is Eduardo Paranhos.
               I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
             </p>
 
@@ -1169,7 +1169,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
             <p className="text-nier-bg/75 text-base leading-relaxed italic">
               I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
-              What came out feels like a mix of Pinterest, PureRef, Canva and Miro, but with no paywalls, nothing filling up your hard drive, and the flexibility most platforms don’t give you.
+              Like a mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.
             </p>
           </div>
 
@@ -1274,11 +1274,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         <div className="max-w-4xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="text-nier-bg/70 text-sm tracking-wider">
             The Digital Atrium • {new Date().getFullYear()}
-          </div>
-          <div className="flex items-center gap-6 text-nier-bg/70 text-sm tracking-wider">
-            <span>Free to use</span>
-            <span>•</span>
-            <span>Open source</span>
           </div>
         </div>
       </footer>

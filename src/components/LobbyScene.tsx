@@ -5,6 +5,7 @@ import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
 import { DONATE_CUT } from './DonateButton'
 import { currentTracePreset } from '../lib/tracePresets'
+import { readPackingShape } from '../lib/atriumPreferences'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
@@ -1103,8 +1104,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   useEffect(() => {
     if (!lobbyId) return
     try {
-      const raw = localStorage.getItem(`lobby_${lobbyId}_packingShape`)
-      if (raw === 'circle' || raw === 'square') packingShapeRef.current = raw
+      packingShapeRef.current = readPackingShape(lobbyId)
     } catch {
       // Ignore localStorage access failures
     }

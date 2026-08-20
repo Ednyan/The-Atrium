@@ -18,6 +18,7 @@ import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVE
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
+import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { toEmbedUrl } from '../lib/embedUrl'
@@ -1251,23 +1252,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
   // Client-side only: this stack is never persisted or sent to Supabase, on
   // either desktop or web. It resets whenever this component (re)mounts, i.e.
   // on every atrium switch and on every page reload. History depth is a
-  // per-atrium preference (see ProfileCustomization.tsx), kept intentionally
+  // profile-wide preference (see ProfileCustomization.tsx), kept intentionally
   // small/bounded to avoid unbounded memory growth in a browser tab.
   const UNDO_COALESCE_WINDOW_MS = 800
-  const DEFAULT_UNDO_DEPTH = 25
   const MAX_UNDO_DEPTH = 100
 
-  const getStoredUndoDepth = useCallback(() => {
-    if (!lobbyId) return DEFAULT_UNDO_DEPTH
-    try {
-      const raw = localStorage.getItem(`lobby_${lobbyId}_undoDepth`)
-      const parsed = raw ? parseInt(raw, 10) : NaN
-      if (!Number.isFinite(parsed)) return DEFAULT_UNDO_DEPTH
-      return Math.max(1, Math.min(MAX_UNDO_DEPTH, parsed))
-    } catch {
-      return DEFAULT_UNDO_DEPTH
-    }
-  }, [lobbyId])
+  // Read from the profile rather than from this atrium. It used to be keyed by
+  // lobby, so every new atrium quietly reset it to twenty.
+  const getStoredUndoDepth = useCallback(() => readUndoDepth(lobbyId), [lobbyId])
 
   type UndoOp =
     | { kind: 'add'; traceId: string; trace: Trace }
