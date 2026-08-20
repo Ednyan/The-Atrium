@@ -291,6 +291,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               className="tracking-[0.16em] uppercase font-normal leading-[0.95]"
               style={{
                 fontSize: 'clamp(1.9rem, 5.6vh, 3.4rem)',
+                // Letter-spacing is added after every character including the
+                // last, so a centred line carries an invisible space on its
+                // right and sits half a space left of centre. Pulling that
+                // trailing space back is what actually centres it.
+                textIndent: '0.16em',
                 backgroundImage: 'var(--metal-title)',
                 WebkitBackgroundClip: 'text',
                 backgroundClip: 'text',
@@ -331,8 +336,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               // read "User: name" in the same small type as the position
               // readout -- a field label and its value, which is how you write
               // a record, not how you greet somebody.
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-nier-bg/60 text-[11px] tracking-[0.25em] uppercase">Signed in as</span>
+              <div className="flex flex-col items-center gap-2">
                 {editingName ? (
                   <input
                     autoFocus
@@ -350,18 +354,43 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                   <button
                     type="button"
                     onClick={() => { setNameDraft(username); setEditingName(true) }}
-                    className="group text-nier-bg border-b border-nier-border/40 hover:border-nier-bg transition-colors"
+                    className="group flex items-center gap-3"
                     title="Click to rename"
                   >
-                    {username}
-                    <span className="text-nier-bg/70 group-hover:text-nier-bg text-xs ml-2 transition-colors">✎</span>
+                    <span className="text-nier-bg/40 group-hover:text-nier-bg/70 text-[0.7em] transition-colors">◇</span>
+                    <span className="name-sheen text-[clamp(1.3rem,3.4vh,2rem)] tracking-[0.14em] uppercase leading-none">
+                      {username}
+                    </span>
+                    <span className="text-nier-bg/40 group-hover:text-nier-bg/70 text-[0.7em] transition-colors">✎</span>
                   </button>
                 )}
+                <div
+                  className="name-rule h-[1px] w-32"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgb(var(--c-line) / 0.7), transparent)' }}
+                />
               </div>
             ) : (
-              <p className="text-nier-bg/80 text-sm tracking-wide">
-                User: <span className="text-nier-bg border-b border-nier-border/40 pb-0.5">{username}</span>
-              </p>
+              // The name, not a field called User with a value after it.
+              //
+              // A colon is what you put between a label and its data; nobody
+              // writes their own name that way. It is the largest thing in
+              // this block after the title, a light passes across it once as
+              // the screen arrives, and a rule draws itself out from the
+              // middle underneath. A name that is simply there is a record --
+              // a name that is written is a greeting.
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-nier-bg/40 text-[0.7em]">◇</span>
+                  <span className="name-sheen text-[clamp(1.3rem,3.4vh,2rem)] tracking-[0.14em] uppercase leading-none">
+                    {username}
+                  </span>
+                  <span className="text-nier-bg/40 text-[0.7em]">◇</span>
+                </div>
+                <div
+                  className="name-rule h-[1px] w-32"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgb(var(--c-line) / 0.7), transparent)' }}
+                />
+              </div>
             )}
 
             {/* Enter Button */}

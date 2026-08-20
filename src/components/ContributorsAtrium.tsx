@@ -879,8 +879,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             <button
               type="button"
               onClick={() => setRangeOpen(open => !open)}
-              className="flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
-              style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+              className="cut-corner flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
             >
               <span
                 className="inline-block transition-transform duration-200"
@@ -916,8 +916,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
-          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
+          style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
         >
           ← Back
         </button>

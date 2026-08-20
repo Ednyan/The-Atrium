@@ -10,7 +10,6 @@
 // laptop turns dark at sunset should turn with it.
 
 import { useLandingTheme } from '../lib/useLandingTheme'
-import { DONATE_CUT } from './DonateButton'
 
 export default function ThemeToggle({ className = '', variant = 'panel' }: {
   className?: string
@@ -33,11 +32,11 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
       aria-label={`Theme: ${label}. Click to change.`}
       className={variant === 'atrium'
         ? `atrium-btn ${className}`
-        : `inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors ${className}`}
+        : `cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors ${className}`}
       // Its own ground and the same cut as its neighbours. Without a
       // background it was transparent, which is fine on a page and wrong over
       // an atrium, where whatever is on the canvas showed through it.
-      style={variant === 'atrium' ? undefined : { clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+      style={variant === 'atrium' ? undefined : { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
     >
       {preference === 'system' ? '◐' : resolved === 'dark' ? '☾' : '☀'}
       <span className="hidden sm:inline ml-2">{label}</span>

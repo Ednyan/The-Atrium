@@ -20,7 +20,7 @@ export interface TracePreset {
 }
 
 export const TRACE_PRESETS: TracePreset[] = [
-  { id: 'sepia', label: 'Soft Sepia', border: '#9c9374', fill: '#b9b39d' },
+  { id: 'sepia', label: 'Soft Sepia', border: '#9c9374', fill: '#b9b39d', text: '#000000' },
   { id: 'abyss', label: 'Abyss', border: '#5f7485', fill: '#141414', text: '#ffffff' },
   { id: 'markerboard', label: 'Markerboard', border: '#000000', fill: '#eae8e1', text: '#000000' },
 ]
