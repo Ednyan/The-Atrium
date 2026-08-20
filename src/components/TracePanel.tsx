@@ -649,7 +649,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {/* Text Content */}
           {traceType === 'text' && (
             <div>
-              <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                 Your message
               </label>
               <textarea
@@ -661,7 +661,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
                 autoFocus
               />
-              <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
+              <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mt-1.5">
                 {content.length}/256 characters
               </p>
             </div>
@@ -671,7 +671,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {traceType === 'document' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                   Choose a PDF
                 </label>
                 {/* The native input is hidden and driven by the button below.
@@ -690,12 +690,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 <button
                   type="button"
                   onClick={() => pdfInputRef.current?.click()}
-                  className="w-full py-3 border border-dashed border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  className="w-full py-3 border border-dashed border-nier-border/40 text-nier-strong text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
                   ◇ {file ? 'Choose a different PDF' : 'Choose a PDF'}
                 </button>
                 {pdfBusy && (
-                  <p className="text-nier-bg/75 text-[9px] tracking-wider mt-2 uppercase">{pdfBusy}</p>
+                  <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mt-1.5">{pdfBusy}</p>
                 )}
                 {/* The file name is shown here rather than left to the input.
                     A file input's value can't be set programmatically, so a
@@ -717,7 +717,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {pdfPageCount > 0 && (
                 <>
                   <div>
-                    <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                       Place as
                     </label>
                     <div className="grid grid-cols-2 gap-2">
@@ -739,7 +739,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                         </button>
                       ))}
                     </div>
-                    <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2">
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                       {pdfMode === 'pages'
                         ? 'Every page becomes its own image trace, so pages can be rearranged and annotated separately.'
                         : 'One trace showing a page at a time, with arrows to move through it.'}
@@ -748,12 +748,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
                   {pdfMode === 'pages' && (
                     <div>
-                      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                         Grid — {pdfColumns} × {pdfRows}
                       </label>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-nier-bg/75 text-[9px] tracking-wider uppercase mb-1">Columns</label>
+                          <label className="block text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mb-1">Columns</label>
                           <input
                             type="number"
                             min={1}
@@ -764,7 +764,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                           />
                         </div>
                         <div>
-                          <label className="block text-nier-bg/75 text-[9px] tracking-wider uppercase mb-1">Rows</label>
+                          <label className="block text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mb-1">Rows</label>
                           <input
                             type="number"
                             min={1}
@@ -775,7 +775,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                           />
                         </div>
                       </div>
-                      <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2">
+                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                         Pages run left to right, in order.
                         {pdfColumns * pdfRows < pdfPageCount && (
                           <> That fits {pdfColumns * pdfRows} of {pdfPageCount} — the rest continue in further rows.</>
@@ -791,7 +791,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {/* File Upload for Image/Audio/Video */}
           {(traceType === 'image' || traceType === 'audio' || traceType === 'video') && (
             <div className="space-y-3">
-              <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+              <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                 Upload {traceType}
               </label>
               {/* Multiple selection allowed: picking a folder of images one at
@@ -815,11 +815,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm file:mr-4 file:py-2 file:px-4 file:border-0 file:bg-nier-bg file:text-nier-black file:text-[10px] file:tracking-wider file:uppercase file:cursor-pointer hover:file:bg-nier-bgDark"
               />
               {pickedFiles.length > 1 && (
-                <p className="text-nier-bg/80 text-[9px] tracking-wider uppercase">
+                <p className="text-nier-strong text-xs tracking-[0.1em] uppercase">
                   {pickedFiles.length} files — placed together as a group
                 </p>
               )}
-              <p className="text-nier-bg/80 text-[9px] tracking-wider uppercase">Or paste a URL:</p>
+              <p className="text-nier-strong text-xs tracking-[0.1em] uppercase">Or paste a URL:</p>
               <input
                 type="url"
                 value={mediaUrl}
@@ -911,7 +911,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     rows={5}
                     autoFocus
                   />
-                  <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
+                  <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mt-1.5">
                     ◇ Direct URL or ◇ Paste full embed code
                   </p>
                   <input
@@ -932,7 +932,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <div className="space-y-4">
               {/* Shape Type */}
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Shape Type</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                     <button
@@ -957,7 +957,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
               {/* Color Picker */}
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Color</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Color</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="color"
@@ -977,7 +977,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
               {/* Opacity Slider */}
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                   Opacity: {shapeOpacity.toFixed(2)}
                 </label>
                 <input
@@ -996,7 +996,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {shapeType !== 'path' && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Width (px)</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Width (px)</label>
                   <input
                     type="number"
                     min="20"
@@ -1007,7 +1007,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   />
                 </div>
                 <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Height (px)</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Height (px)</label>
                   <input
                     type="number"
                     min="20"
@@ -1028,7 +1028,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {/* Corner Radius (Rectangle and Triangle only) */}
               {(shapeType === 'rectangle' || shapeType === 'triangle') && (
                 <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                     Corner Radius: {cornerRadius}px
                   </label>
                   <input
@@ -1045,7 +1045,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
               {/* Optional Label */}
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Label (optional)</label>
                 <input
                   type="text"
                   value={content}
@@ -1079,7 +1079,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+              className="flex-1 py-3 border border-nier-border/30 text-nier-strong text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
             >
               Cancel
             </button>

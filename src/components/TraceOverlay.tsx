@@ -6051,6 +6051,123 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             </div>
             
             <div className="space-y-5">
+              <div className="flex items-baseline gap-3 pt-1">
+                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Content</span>
+                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              </div>
+
+              {editingTrace.type === 'text' && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Content</label>
+                  <textarea
+                    value={editingTrace.content ?? ''}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, content: e.target.value }
+                      setEditingTrace(updated)
+                    }}
+                    onBlur={(e) => {
+                      const effectiveFontSize = typeof editingTrace.fontSize === 'number'
+                        ? editingTrace.fontSize
+                        : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
+                      const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
+                      const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
+                      const textSize = computeAutoFitTextSize(e.target.value, effectiveFontSize, { fontFamily: effectiveFontFamily })
+                      updateTraceCustomization(editingTrace.id, { content: e.target.value, width: textSize.width, height: textSize.height })
+                    }}
+                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                    placeholder="Your message..."
+                    rows={4}
+                    maxLength={256}
+                  />
+                </div>
+              )}
+
+              {/* Embed Content Editor */}
+              {editingTrace.type === 'embed' && (
+                <>
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Embed URL or HTML</label>
+                    <textarea
+                      value={editingTrace.mediaUrl ?? ''}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, mediaUrl: e.target.value }
+                        setEditingTrace(updated)
+                      }}
+                      onBlur={(e) => {
+                        updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
+                      }}
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      placeholder="URL or <iframe src='...'></iframe>"
+                      rows={4}
+                    />
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      Direct URL or full embed code
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Description / Title</label>
+                    <textarea
+                      value={editingTrace.content ?? ''}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, content: e.target.value }
+                        setEditingTrace(updated)
+                      }}
+                      onBlur={(e) => {
+                        updateTraceCustomization(editingTrace.id, { content: e.target.value })
+                      }}
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      placeholder="Optional description..."
+                      rows={3}
+                      maxLength={256}
+                    />
+                  </div>
+
+                </>
+              )}
+
+              {/* Description/Caption for Media Traces */}
+              {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Description / Caption</label>
+                  <textarea
+                    value={editingTrace.content ?? ''}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, content: e.target.value }
+                      setEditingTrace(updated)
+                    }}
+                    onBlur={(e) => {
+                      updateTraceCustomization(editingTrace.id, { content: e.target.value })
+                    }}
+                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                    placeholder="Optional description..."
+                    rows={3}
+                    maxLength={256}
+                  />
+                </div>
+              )}
+
+              {/* Shape Label */}
+              {editingTrace.type === 'shape' && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Label (optional)</label>
+                  <input
+                    type="text"
+                    value={editingTrace.content || ''}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, content: e.target.value }
+                      setEditingTrace(updated)
+                    }}
+                    onBlur={(e) => {
+                      updateTraceCustomization(editingTrace.id, { content: e.target.value })
+                    }}
+                    placeholder="Shape label..."
+                    maxLength={50}
+                    className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
+                  />
+                </div>
+              )}
+
               {/* Clickable -- text, embed and shape only. Image, audio and
                   video already do something of their own on click (open the
                   viewer, play), and a second competing action there would be
@@ -6075,7 +6192,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       }}
                       className="hidden"
                     />
-                    <span className="tracking-wider uppercase text-[10px]" title="Left-clicking this trace opens the link below">Clickable</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title="Left-clicking this trace opens the link below">Clickable</span>
                   </label>
 
                   {/* The destination, shown only once Clickable is on so the
@@ -6103,338 +6220,39 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 </div>
               )}
 
-              {/* Toggle Options -- shapes have their own dedicated Show
-                  Outline/No Fill controls further down (and are created with
-                  these generic wrapper toggles off by default), so showing
-                  both here read as duplicated "no fill" controls */}
-              {editingTrace.type !== 'shape' && (
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showBorder ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showBorder: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showBorder: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">Show Border</span>
-                </label>
-
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showBackground ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showBackground: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showBackground: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">Show Background</span>
-                </label>
-
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showFilename ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showFilename: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showFilename: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">Show Username</span>
-                </label>
-
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showDescription ?? false}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showDescription: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showDescription: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]">Show Description</span>
-                </label>
-
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showShadow ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showShadow: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showShadow: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-[10px]" title="Soft drop shadow under the trace. Needs Show Background on to be visible.">Soft Shadow</span>
-                </label>
-
-                {/* Embed-only, but grouped with the other toggles rather than
-                    left further down in the embed section. */}
-                {editingTrace.type === 'embed' && (
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editingTrace.enableInteraction ?? false}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, enableInteraction: e.target.checked }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
-                      }}
-                      className="hidden"
-                    />
-                    <span className="tracking-wider uppercase text-[10px]">Enable Interaction</span>
-                  </label>
-                )}
-
-              </div>
-              )}
-
-              {/* Border thickness. Its own block above the colour controls so
-                  it also reaches PDF traces, where a frame is what separates a
-                  white page from a light background. */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (editingTrace.showBorder ?? true) && (
-                <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
-                    Border Thickness: {editingTrace.borderWidth ?? 2}px
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="20"
-                    step="1"
-                    value={editingTrace.borderWidth ?? 2}
-                    onChange={(e) => {
-                      const borderWidth = parseInt(e.target.value)
-                      setEditingTrace({ ...editingTrace, borderWidth })
-                      updateTraceCustomization(editingTrace.id, { borderWidth })
-                    }}
-                    className="w-full accent-nier-bg"
-                  />
-                </div>
-              )}
-
-              {/* Border & Fill Color Controls (for text and embed traces) */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (
-                <>
-                  {/* NieR Presets */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase">Quick Presets</span>
-                      <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {TRACE_PRESETS.map(preset => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => {
-                            // The font comes with the preset. A trace in the
-                            // house style should be set in the house face, and
-                            // three presets that each left the type to whatever
-                            // it happened to be were three half-presets.
-                            const patch = {
-                              borderColor: preset.border,
-                              fillColor: preset.fill,
-                              showBorder: true,
-                              showBackground: true,
-                              fontFamily: 'mono',
-                              ...(preset.text ? { textColor: preset.text } : {}),
-                            }
-                            setEditingTrace({ ...editingTrace, ...patch })
-                            updateTraceCustomization(editingTrace.id, patch)
-                            // Chosen once, in force from then on: the next
-                            // trace made in this atrium starts here.
-                            if (lobbyId) rememberTracePreset(lobbyId, preset.id)
-                          }}
-                          className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* Border Color & Opacity */}
-                  {(editingTrace.showBorder ?? true) && (
-                    <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
-                      <div className="flex gap-2 items-center mb-2">
-                        <input
-                          type="color"
-                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, borderColor: e.target.value };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
-                          }}
-                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                        />
-                        <input
-                          type="text"
-                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, borderColor: e.target.value };
-                            setEditingTrace(updated);
-                          }}
-                          onBlur={(e) => {
-                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
-                          }}
-                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                          placeholder="#ffffff"
-                        />
-                        <button
-                          onClick={() => {
-                            const updated = { ...editingTrace, borderColor: undefined };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { borderColor: undefined });
-                          }}
-                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title="Reset to default"
-                        >
-                          ↺
-                        </button>
-                      </div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
-                        Border Opacity: {Math.round((editingTrace.borderOpacity ?? 1) * 100)}%
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={Math.round((editingTrace.borderOpacity ?? 1) * 100)}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value) / 100;
-                          const updated = { ...editingTrace, borderOpacity: value };
-                          setEditingTrace(updated);
-                          updateTraceCustomization(editingTrace.id, { borderOpacity: value });
-                        }}
-                        className="w-full accent-nier-bg"
-                      />
-                    </div>
-                  )}
-
-                  {/* Fill Color & Opacity */}
-                  {(editingTrace.showBackground ?? true) && (
-                    <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
-                      <div className="flex gap-2 items-center mb-2">
-                        <input
-                          type="color"
-                          value={editingTrace.fillColor || '#1a1a2e'}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, fillColor: e.target.value };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
-                          }}
-                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                        />
-                        <input
-                          type="text"
-                          value={editingTrace.fillColor || '#1a1a2e'}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, fillColor: e.target.value };
-                            setEditingTrace(updated);
-                          }}
-                          onBlur={(e) => {
-                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
-                          }}
-                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                          placeholder="#1a1a2e"
-                        />
-                        <button
-                          onClick={() => {
-                            const updated = { ...editingTrace, fillColor: undefined };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { fillColor: undefined });
-                          }}
-                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title="Reset to default"
-                        >
-                          ↺
-                        </button>
-                      </div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
-                        Fill Opacity: {Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}%
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value) / 100;
-                          const updated = { ...editingTrace, fillOpacity: value };
-                          setEditingTrace(updated);
-                          updateTraceCustomization(editingTrace.id, { fillOpacity: value });
-                        }}
-                        className="w-full accent-nier-bg"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-
-
               {/* Font Settings for Text Traces */}
               {editingTrace.type === 'text' && (
                 <>
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Content</label>
-                    <textarea
-                      value={editingTrace.content ?? ''}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, content: e.target.value }
-                        setEditingTrace(updated)
-                      }}
-                      onBlur={(e) => {
-                        const effectiveFontSize = typeof editingTrace.fontSize === 'number'
-                          ? editingTrace.fontSize
-                          : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
-                        const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
-                        const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
-                        const textSize = computeAutoFitTextSize(e.target.value, effectiveFontSize, { fontFamily: effectiveFontFamily })
-                        updateTraceCustomization(editingTrace.id, { content: e.target.value, width: textSize.width, height: textSize.height })
-                      }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder="Your message..."
-                      rows={4}
-                      maxLength={256}
-                    />
+
+                  <div className="flex items-baseline gap-3 pt-1">
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Text</span>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                   </div>
 
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Font Size (px)</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Font Family</label>
+                    <select
+                      value={editingTrace.fontFamily ?? 'sans'}
+                      onChange={e => {
+                        const effectiveFontSize = typeof editingTrace.fontSize === 'number'
+                          ? editingTrace.fontSize
+                          : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
+                        const effectiveFontFamily = resolveFontFamilyCss(e.target.value)
+                        const textSize = computeAutoFitTextSize(editingTrace.content ?? '', effectiveFontSize, { fontFamily: effectiveFontFamily })
+                        const updated = { ...editingTrace, fontFamily: e.target.value, width: textSize.width, height: textSize.height };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value, width: textSize.width, height: textSize.height })
+                      }}
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                    >
+                      {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Font Size (px)</label>
                     <input
                       type="number"
                       min={8}
@@ -6459,31 +6277,41 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     />
                   </div>
 
+                  {/* Text Sizing -- whether the font follows the trace's own
+                      scale, or stays fixed and lets the box only control
+                      how much room the text has to reflow in. */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Font Family</label>
-                    <select
-                      value={editingTrace.fontFamily ?? 'sans'}
-                      onChange={e => {
-                        const effectiveFontSize = typeof editingTrace.fontSize === 'number'
-                          ? editingTrace.fontSize
-                          : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
-                        const effectiveFontFamily = resolveFontFamilyCss(e.target.value)
-                        const textSize = computeAutoFitTextSize(editingTrace.content ?? '', effectiveFontSize, { fontFamily: effectiveFontFamily })
-                        const updated = { ...editingTrace, fontFamily: e.target.value, width: textSize.width, height: textSize.height };
-                        setEditingTrace(updated);
-                        updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value, width: textSize.width, height: textSize.height })
-                      }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    >
-                      {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
-                        <option key={value} value={value}>{label}</option>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Sizing</label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: true, label: 'Scales With Box' },
+                        { value: false, label: 'Fixed Size' },
+                      ] as const).map(({ value, label }) => (
+                        <button
+                          key={String(value)}
+                          onClick={() => {
+                            const updated = { ...editingTrace, textScaleWithBox: value };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { textScaleWithBox: value });
+                          }}
+                          className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                            (editingTrace.textScaleWithBox ?? true) === value
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                          }`}
+                        >
+                          {label}
+                        </button>
                       ))}
-                    </select>
+                    </div>
+                    <p className="text-[0.7rem] text-nier-bg/55 leading-relaxed tracking-wide mt-1.5">
+                      Fixed keeps the font size when you resize the trace — the text just reflows.
+                    </p>
                   </div>
 
                   {/* Text Formatting */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Style</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Style</label>
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
@@ -6530,41 +6358,9 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
                   </div>
 
-                  {/* Text Sizing -- whether the font follows the trace's own
-                      scale, or stays fixed and lets the box only control
-                      how much room the text has to reflow in. */}
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
-                    <div className="flex gap-2">
-                      {([
-                        { value: true, label: 'Scales With Box' },
-                        { value: false, label: 'Fixed Size' },
-                      ] as const).map(({ value, label }) => (
-                        <button
-                          key={String(value)}
-                          onClick={() => {
-                            const updated = { ...editingTrace, textScaleWithBox: value };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { textScaleWithBox: value });
-                          }}
-                          className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
-                            (editingTrace.textScaleWithBox ?? true) === value
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-nier-bg/70 tracking-wider mt-1">
-                      Fixed keeps the font size when you resize the trace — the text just reflows.
-                    </p>
-                  </div>
-
                   {/* Text Alignment */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Alignment</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Alignment</label>
                     <div className="flex gap-2">
                       {(['left', 'center', 'right', 'justify'] as const).map((align) => (
                         <button
@@ -6591,7 +6387,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                   {/* Text Color */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Color</label>
                     <div className="flex gap-2 items-center">
                       <input
                         type="color"
@@ -6629,106 +6425,21 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       </button>
                     </div>
                   </div>
-                </>
-              )}
-
-              {/* Border Radius Customization (for non-shape traces) */}
-              {editingTrace.type !== 'shape' && (
-                <div>
-                  <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                    Border Radius: {editingTrace.borderRadius ?? 0}px
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    step="1"
-                    value={editingTrace.borderRadius ?? 0}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value)
-                      const updated = { ...editingTrace, borderRadius: value }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { borderRadius: value })
-                    }}
-                    className="w-full accent-nier-bg"
-                  />
-                  <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
-                    Adjust the roundness of trace borders (0 = sharp corners)
-                  </p>
-                </div>
-              )}
-
-              {/* Description/Caption for Media Traces */}
-              {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
-                <div>
-                  <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Description / Caption</label>
-                  <textarea
-                    value={editingTrace.content ?? ''}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, content: e.target.value }
-                      setEditingTrace(updated)
-                    }}
-                    onBlur={(e) => {
-                      updateTraceCustomization(editingTrace.id, { content: e.target.value })
-                    }}
-                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    placeholder="Optional description..."
-                    rows={3}
-                    maxLength={256}
-                  />
-                </div>
-              )}
-
-              {/* Embed Content Editor */}
-              {editingTrace.type === 'embed' && (
-                <>
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Embed URL or HTML</label>
-                    <textarea
-                      value={editingTrace.mediaUrl ?? ''}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, mediaUrl: e.target.value }
-                        setEditingTrace(updated)
-                      }}
-                      onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
-                      }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder="URL or <iframe src='...'></iframe>"
-                      rows={4}
-                    />
-                    <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
-                      Direct URL or full embed code
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Description / Title</label>
-                    <textarea
-                      value={editingTrace.content ?? ''}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, content: e.target.value }
-                        setEditingTrace(updated)
-                      }}
-                      onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { content: e.target.value })
-                      }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder="Optional description..."
-                      rows={3}
-                      maxLength={256}
-                    />
-                  </div>
 
                 </>
               )}
-
               {/* Shape Customization */}
               {editingTrace.type === 'shape' && (
                 <div className="space-y-4">
+
+                  <div className="flex items-baseline gap-3 pt-1">
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Shape</span>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                  </div>
+
                   {/* Shape Type */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Shape Type</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Shape Type</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                         <button
@@ -6755,9 +6466,191 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
                   </div>
 
+                  {/* Corner Radius (Rectangle and Triangle only -- circles have no corners, paths use point editing) */}
+                  {((editingTrace.shapeType || 'rectangle') === 'rectangle' || editingTrace.shapeType === 'triangle') && (
+                    <div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                        Corner Radius: {editingTrace.cornerRadius || 0}px
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={editingTrace.cornerRadius || 0}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value)
+                          const updated = { ...editingTrace, cornerRadius: value }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { cornerRadius: value })
+                        }}
+                        className="w-full accent-nier-bg"
+                      />
+                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                        Rounds the corners of the shape
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Path Thickness Control */}
+                  {editingTrace.shapeType === 'path' && (
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                      Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="20"
+                      step="1"
+                      value={editingTrace.shapeOutlineWidth ?? 2}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value)
+                        const updated = { ...editingTrace, shapeOutlineWidth: value }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
+                      }}
+                      className="w-full accent-nier-bg"
+                    />
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      Adjust the thickness of the path
+                    </p>
+                  </div>
+                  )}
+
+                  {/* Path Point Editing */}
+                  {editingTrace.shapeType === 'path' && (
+                  <>
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Path Style</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['straight', 'bezier'] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, pathCurveType: type }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { pathCurveType: type })
+                          }}
+                          className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
+                            (editingTrace.pathCurveType || 'straight') === type
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                          }`}
+                        >
+                          {type === 'straight' && '━ Straight'}
+                          {type === 'bezier' && '〰 Curved'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Arrow Start */}
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Arrow Start</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['none', 'triangle', 'diamond'] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, pathArrowStart: type }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { pathArrowStart: type })
+                          }}
+                          className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
+                            (editingTrace.pathArrowStart || 'none') === type
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                          }`}
+                        >
+                          {type === 'none' && '— None'}
+                          {type === 'triangle' && '◄ Arrow'}
+                          {type === 'diamond' && '◆ Diamond'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Arrow End */}
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Arrow End</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['none', 'triangle', 'diamond'] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...editingTrace, pathArrowEnd: type }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { pathArrowEnd: type })
+                          }}
+                          className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
+                            (editingTrace.pathArrowEnd || 'none') === type
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                          }`}
+                        >
+                          {type === 'none' && '— None'}
+                          {type === 'triangle' && '► Arrow'}
+                          {type === 'diamond' && '◆ Diamond'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                      Path Points ({(editingTrace.shapePoints || []).length})
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPathCreationMode(!pathCreationMode)
+                        }}
+                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
+                          pathCreationMode
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
+                            : 'bg-transparent text-white border-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        {pathCreationMode ? '✓ Done Adding' : '+ Add Points'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentPoints = editingTrace.shapePoints || []
+                          if (currentPoints.length > 2) {
+                            const newPoints = currentPoints.slice(0, -1)
+                            const updated = { ...editingTrace, shapePoints: newPoints }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      {pathCreationMode 
+                        ? 'Click anywhere on the canvas to add points to your path' 
+                        : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
+                    </p>
+                  </div>
+                  </>
+                  )}
+
+                  <div className="flex items-baseline gap-3 pt-1">
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Colour</span>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                  </div>
+
                   {/* Color Picker */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Fill Color</label>
                     
                     {/* Color preset palette */}
                     <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -6838,7 +6731,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   {/* Fill Opacity Slider -- outline has its own opacity, see
                       the Outline Opacity slider further down */}
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                       Fill Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
                     </label>
                     <input
@@ -6876,14 +6769,79 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         }}
                         className="hidden"
                       />
-                      <span className="tracking-wider uppercase text-[10px]">No Fill</span>
+                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">No Fill</span>
                     </label>
                   </div>
+
+                  {/* Outline Mode (hidden for path as it's always outline) */}
+                  {editingTrace.shapeType !== 'path' && (
+                  <div>
+                    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-2 group">
+                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={editingTrace.shapeOutlineOnly ?? false}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, shapeOutlineOnly: e.target.checked }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
+                        }}
+                        className="hidden"
+                      />
+                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Outline</span>
+                    </label>
+                    
+                    {editingTrace.shapeOutlineOnly && (
+                      <div className="ml-6">
+                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                          Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
+                        </label>
+                        <input
+                          type="range"
+                          min="1"
+                          max="20"
+                          step="1"
+                          value={editingTrace.shapeOutlineWidth ?? 2}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value)
+                            const updated = { ...editingTrace, shapeOutlineWidth: value }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
+                          }}
+                          className="w-full"
+                        />
+                        <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                          Adjust the thickness of the outline
+                        </p>
+
+                        <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
+                          Outline Opacity: {((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0)}%
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={editingTrace.shapeOutlineOpacity ?? 1.0}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value)
+                            const updated = { ...editingTrace, shapeOutlineOpacity: value }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapeOutlineOpacity: value })
+                          }}
+                          className="w-full accent-nier-bg"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  )}
 
                   {/* Outline Color (only show if outline is enabled) */}
                   {editingTrace.shapeOutlineOnly && (
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Outline Color</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Outline Color</label>
                       
                       {/* Color preset palette */}
                       <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -6962,266 +6920,345 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
                   )}
 
-                  {/* Corner Radius (Rectangle and Triangle only -- circles have no corners, paths use point editing) */}
-                  {((editingTrace.shapeType || 'rectangle') === 'rectangle' || editingTrace.shapeType === 'triangle') && (
+                </div>
+              )}
+              {/* Border & Fill Color Controls (for text and embed traces) */}
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (
+                <>
+
+                  <div className="flex items-baseline gap-3 pt-1">
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Colour</span>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                  </div>
+
+                  {/* NieR Presets */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">Quick Presets</span>
+                      <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {TRACE_PRESETS.map(preset => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            // The font comes with the preset. A trace in the
+                            // house style should be set in the house face, and
+                            // three presets that each left the type to whatever
+                            // it happened to be were three half-presets.
+                            const patch = {
+                              borderColor: preset.border,
+                              fillColor: preset.fill,
+                              showBorder: true,
+                              showBackground: true,
+                              fontFamily: 'mono',
+                              ...(preset.text ? { textColor: preset.text } : {}),
+                            }
+                            setEditingTrace({ ...editingTrace, ...patch })
+                            updateTraceCustomization(editingTrace.id, patch)
+                            // Chosen once, in force from then on: the next
+                            // trace made in this atrium starts here.
+                            if (lobbyId) rememberTracePreset(lobbyId, preset.id)
+                          }}
+                          className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Border Color & Opacity */}
+                  {(editingTrace.showBorder ?? true) && (
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                        Corner Radius: {editingTrace.cornerRadius || 0}px
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Border Color</label>
+                      <div className="flex gap-2 items-center mb-2">
+                        <input
+                          type="color"
+                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, borderColor: e.target.value };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
+                          }}
+                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                        />
+                        <input
+                          type="text"
+                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, borderColor: e.target.value };
+                            setEditingTrace(updated);
+                          }}
+                          onBlur={(e) => {
+                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
+                          }}
+                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                          placeholder="#ffffff"
+                        />
+                        <button
+                          onClick={() => {
+                            const updated = { ...editingTrace, borderColor: undefined };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { borderColor: undefined });
+                          }}
+                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                          title="Reset to default"
+                        >
+                          ↺
+                        </button>
+                      </div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
+                        Border Opacity: {Math.round((editingTrace.borderOpacity ?? 1) * 100)}%
                       </label>
                       <input
                         type="range"
                         min="0"
                         max="100"
                         step="1"
-                        value={editingTrace.cornerRadius || 0}
+                        value={Math.round((editingTrace.borderOpacity ?? 1) * 100)}
                         onChange={(e) => {
-                          const value = parseInt(e.target.value)
-                          const updated = { ...editingTrace, cornerRadius: value }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { cornerRadius: value })
+                          const value = parseInt(e.target.value) / 100;
+                          const updated = { ...editingTrace, borderOpacity: value };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { borderOpacity: value });
                         }}
                         className="w-full accent-nier-bg"
                       />
-                      <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
-                        Rounds the corners of the shape
-                      </p>
                     </div>
                   )}
 
-                  {/* Outline Mode (hidden for path as it's always outline) */}
-                  {editingTrace.shapeType !== 'path' && (
-                  <div>
-                    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-2 group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  {/* Fill Color & Opacity */}
+                  {(editingTrace.showBackground ?? true) && (
+                    <div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Fill Color</label>
+                      <div className="flex gap-2 items-center mb-2">
+                        <input
+                          type="color"
+                          value={editingTrace.fillColor || '#1a1a2e'}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, fillColor: e.target.value };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
+                          }}
+                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                        />
+                        <input
+                          type="text"
+                          value={editingTrace.fillColor || '#1a1a2e'}
+                          onChange={(e) => {
+                            const updated = { ...editingTrace, fillColor: e.target.value };
+                            setEditingTrace(updated);
+                          }}
+                          onBlur={(e) => {
+                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
+                          }}
+                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                          placeholder="#1a1a2e"
+                        />
+                        <button
+                          onClick={() => {
+                            const updated = { ...editingTrace, fillColor: undefined };
+                            setEditingTrace(updated);
+                            updateTraceCustomization(editingTrace.id, { fillColor: undefined });
+                          }}
+                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                          title="Reset to default"
+                        >
+                          ↺
+                        </button>
                       </div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
+                        Fill Opacity: {Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}%
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={editingTrace.shapeOutlineOnly ?? false}
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}
                         onChange={(e) => {
-                          const updated = { ...editingTrace, shapeOutlineOnly: e.target.checked }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
+                          const value = parseInt(e.target.value) / 100;
+                          const updated = { ...editingTrace, fillOpacity: value };
+                          setEditingTrace(updated);
+                          updateTraceCustomization(editingTrace.id, { fillOpacity: value });
                         }}
-                        className="hidden"
+                        className="w-full accent-nier-bg"
                       />
-                      <span className="tracking-wider uppercase text-[10px]">Show Outline</span>
-                    </label>
-                    
-                    {editingTrace.shapeOutlineOnly && (
-                      <div className="ml-6">
-                        <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                          Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
-                        </label>
-                        <input
-                          type="range"
-                          min="1"
-                          max="20"
-                          step="1"
-                          value={editingTrace.shapeOutlineWidth ?? 2}
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value)
-                            const updated = { ...editingTrace, shapeOutlineWidth: value }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
-                          }}
-                          className="w-full"
-                        />
-                        <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
-                          Adjust the thickness of the outline
-                        </p>
-
-                        <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
-                          Outline Opacity: {((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0)}%
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={editingTrace.shapeOutlineOpacity ?? 1.0}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value)
-                            const updated = { ...editingTrace, shapeOutlineOpacity: value }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeOutlineOpacity: value })
-                          }}
-                          className="w-full accent-nier-bg"
-                        />
-                      </div>
-                    )}
-                  </div>
+                    </div>
                   )}
+                </>
+              )}
+              {editingTrace.type !== 'shape' && (
+                <div className="flex items-baseline gap-3 pt-1">
+                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Frame</span>
+                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+                </div>
+              )}
 
-                  {/* Path Thickness Control */}
-                  {editingTrace.shapeType === 'path' && (
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                      Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
-                    </label>
+              {/* Toggle Options -- shapes have their own dedicated Show
+                  Outline/No Fill controls further down (and are created with
+                  these generic wrapper toggles off by default), so showing
+                  both here read as duplicated "no fill" controls */}
+              {editingTrace.type !== 'shape' && (
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showBorder ?? true}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showBorder: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showBorder: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Border</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showBackground ?? true}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showBackground: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showBackground: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Background</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showFilename ?? true}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showFilename: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showFilename: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Username</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showDescription ?? false}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showDescription: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showDescription: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Description</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                    {(editingTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTrace.showShadow ?? true}
+                    onChange={(e) => {
+                      const updated = { ...editingTrace, showShadow: e.target.checked }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { showShadow: e.target.checked })
+                    }}
+                    className="hidden"
+                  />
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title="Soft drop shadow under the trace. Needs Show Background on to be visible.">Soft Shadow</span>
+                </label>
+
+                {/* Embed-only, but grouped with the other toggles rather than
+                    left further down in the embed section. */}
+                {editingTrace.type === 'embed' && (
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
                     <input
-                      type="range"
-                      min="1"
-                      max="20"
-                      step="1"
-                      value={editingTrace.shapeOutlineWidth ?? 2}
+                      type="checkbox"
+                      checked={editingTrace.enableInteraction ?? false}
                       onChange={(e) => {
-                        const value = parseInt(e.target.value)
-                        const updated = { ...editingTrace, shapeOutlineWidth: value }
+                        const updated = { ...editingTrace, enableInteraction: e.target.checked }
                         setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
+                        updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
                       }}
-                      className="w-full accent-nier-bg"
+                      className="hidden"
                     />
-                    <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
-                      Adjust the thickness of the path
-                    </p>
-                  </div>
-                  )}
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Enable Interaction</span>
+                  </label>
+                )}
 
-                  {/* Path Point Editing */}
-                  {editingTrace.shapeType === 'path' && (
-                  <>
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Path Style</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['straight', 'bezier'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, pathCurveType: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { pathCurveType: type })
-                          }}
-                          className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.pathCurveType || 'straight') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'straight' && '━ Straight'}
-                          {type === 'bezier' && '〰 Curved'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              </div>
+              )}
 
-                  {/* Arrow Start */}
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Arrow Start</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['none', 'triangle', 'diamond'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, pathArrowStart: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { pathArrowStart: type })
-                          }}
-                          className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.pathArrowStart || 'none') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'none' && '— None'}
-                          {type === 'triangle' && '◄ Arrow'}
-                          {type === 'diamond' && '◆ Diamond'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              {/* Border thickness. Its own block above the colour controls so
+                  it also reaches PDF traces, where a frame is what separates a
+                  white page from a light background. */}
+              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (editingTrace.showBorder ?? true) && (
+                <div>
+                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                    Border Thickness: {editingTrace.borderWidth ?? 2}px
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="1"
+                    value={editingTrace.borderWidth ?? 2}
+                    onChange={(e) => {
+                      const borderWidth = parseInt(e.target.value)
+                      setEditingTrace({ ...editingTrace, borderWidth })
+                      updateTraceCustomization(editingTrace.id, { borderWidth })
+                    }}
+                    className="w-full accent-nier-bg"
+                  />
+                </div>
+              )}
 
-                  {/* Arrow End */}
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Arrow End</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['none', 'triangle', 'diamond'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, pathArrowEnd: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { pathArrowEnd: type })
-                          }}
-                          className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.pathArrowEnd || 'none') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'none' && '— None'}
-                          {type === 'triangle' && '► Arrow'}
-                          {type === 'diamond' && '◆ Diamond'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                      Path Points ({(editingTrace.shapePoints || []).length})
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPathCreationMode(!pathCreationMode)
-                        }}
-                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
-                          pathCreationMode
-                            ? 'bg-nier-bg text-nier-black border-nier-bg'
-                            : 'bg-transparent text-white border-gray-600 hover:border-gray-400'
-                        }`}
-                      >
-                        {pathCreationMode ? '✓ Done Adding' : '+ Add Points'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentPoints = editingTrace.shapePoints || []
-                          if (currentPoints.length > 2) {
-                            const newPoints = currentPoints.slice(0, -1)
-                            const updated = { ...editingTrace, shapePoints: newPoints }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
-                          }
-                        }}
-                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <p className="text-nier-bg/75 text-[9px] mt-2 tracking-wider">
-                      {pathCreationMode 
-                        ? 'Click anywhere on the canvas to add points to your path' 
-                        : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
-                    </p>
-                  </div>
-                  </>
-                  )}
-
-                  {/* Shape Label */}
-                  <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Label (optional)</label>
-                    <input
-                      type="text"
-                      value={editingTrace.content || ''}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, content: e.target.value }
-                        setEditingTrace(updated)
-                      }}
-                      onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { content: e.target.value })
-                      }}
-                      placeholder="Shape label..."
-                      maxLength={50}
-                      className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
-                    />
-                  </div>
+              {/* Border Radius Customization (for non-shape traces) */}
+              {editingTrace.type !== 'shape' && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                    Border Radius: {editingTrace.borderRadius ?? 0}px
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    step="1"
+                    value={editingTrace.borderRadius ?? 0}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value)
+                      const updated = { ...editingTrace, borderRadius: value }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { borderRadius: value })
+                    }}
+                    className="w-full accent-nier-bg"
+                  />
+                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                    Adjust the roundness of trace borders (0 = sharp corners)
+                  </p>
                 </div>
               )}
 
@@ -7234,10 +7271,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               {(() => {
                 const isPathTrace = editingTrace.shapeType === 'path'
                 return (
-              <div className="border-t border-nier-border/20 pt-4 mt-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                  <h3 className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">{isPathTrace ? 'Glow' : 'Lighting'}</h3>
+              <div>
+                <div className="flex items-baseline gap-3 pt-1 mb-4">
+                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{isPathTrace ? 'Glow' : 'Light'}</span>
+                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
 
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-3 group">
@@ -7254,13 +7291,13 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-wider uppercase text-[10px]">{isPathTrace ? 'Enable Glow' : 'Enable Light Emission'}</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{isPathTrace ? 'Enable Glow' : 'Enable Light Emission'}</span>
                 </label>
 
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">{isPathTrace ? 'Glow Color' : 'Light Color'}</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{isPathTrace ? 'Glow Color' : 'Light Color'}</label>
                       <div className="flex gap-2 items-center">
                         <input
                           type="color"
@@ -7289,7 +7326,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     </div>
 
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                         Intensity: {(editingTrace.lightIntensity ?? 1.0).toFixed(1)}x
                       </label>
                       <input
@@ -7310,7 +7347,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                     {!isPathTrace && (
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                         Radius: {editingTrace.lightRadius ?? 200}px
                       </label>
                       <input
@@ -7332,10 +7369,10 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
 
                     {!isPathTrace && (
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Light Position Offset</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Light Position Offset</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-nier-bg/75 text-[9px] tracking-wider mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
+                          <label className="block text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -7352,7 +7389,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           />
                         </div>
                         <div>
-                          <label className="block text-nier-bg/75 text-[9px] tracking-wider mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
+                          <label className="block text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mb-1">Y: {editingTrace.lightOffsetY ?? 0}px</label>
                           <input
                             type="range"
                             min="-200"
@@ -7369,7 +7406,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           />
                         </div>
                       </div>
-                      <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
+                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                         Adjust light source position relative to trace center
                       </p>
                     </div>
@@ -7391,12 +7428,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                           }}
                           className="hidden"
                         />
-                        <span className="tracking-wider uppercase text-[10px]">Enable Pulsing/Flickering</span>
+                        <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Enable Pulsing/Flickering</span>
                       </label>
 
                       {editingTrace.lightPulse && (
                         <div className="ml-6">
-                          <label className="block text-nier-bg/75 text-[9px] tracking-wider mb-1">
+                          <label className="block text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mb-1">
                             Pulse Speed: {editingTrace.lightPulseSpeed ?? 2.0}s per cycle
                           </label>
                           <input
@@ -7413,7 +7450,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                             }}
                             className="w-full accent-nier-bg"
                           />
-                          <p className="text-nier-bg/75 text-[9px] mt-1 tracking-wider">
+                          <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                             Lower = faster pulse, Higher = slower pulse
                           </p>
                         </div>
@@ -7532,7 +7569,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBorder: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-wider uppercase text-[10px]">Show Border</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Border</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -7545,7 +7582,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBackground: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-wider uppercase text-[10px]">Show Background</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Background</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -7558,7 +7595,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showFilename: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-wider uppercase text-[10px]">Show Username</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Username</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -7571,7 +7608,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showDescription: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-wider uppercase text-[10px]">Show Description</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Description</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -7584,7 +7621,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showShadow: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-wider uppercase text-[10px]">Soft Shadow</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Soft Shadow</span>
                   </label>
                 </div>
 
@@ -7597,7 +7634,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   if (!textSeed) return null
                   return (
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Text Sizing</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Sizing</label>
                       <div className="flex gap-2">
                         {([
                           { value: true, label: 'Scales With Box' },
@@ -7623,7 +7660,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {/* Border Color & Opacity */}
                 {(seedTrace.showBorder ?? true) && (
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Border Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Border Color</label>
                     <div className="flex gap-2 items-center mb-2">
                       <input
                         type="color"
@@ -7646,7 +7683,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ↺
                       </button>
                     </div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
                       Border Opacity: {Math.round((seedTrace.borderOpacity ?? 1) * 100)}%
                     </label>
                     <input
@@ -7664,7 +7701,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 {/* Fill Color & Opacity */}
                 {(seedTrace.showBackground ?? true) && (
                   <div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Fill Color</label>
                     <div className="flex gap-2 items-center mb-2">
                       <input
                         type="color"
@@ -7687,7 +7724,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         ↺
                       </button>
                     </div>
-                    <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-1">
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
                       Fill Opacity: {Math.round((seedTrace.fillOpacity ?? 0.95) * 100)}%
                     </label>
                     <input
@@ -7715,7 +7752,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   if (!nonShapeSeed) return null
                   return (
                     <div>
-                      <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                         Border Radius: {nonShapeSeed.borderRadius ?? 0}px
                       </label>
                       <input
@@ -8110,7 +8147,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   }}
                 />
               </div>
-              <span className="tracking-wider uppercase text-[10px]">Don't ask again</span>
+              <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Don't ask again</span>
             </label>
 
             <div className="flex gap-3">
