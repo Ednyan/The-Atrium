@@ -46,8 +46,11 @@ const countFor = (width: number, height: number) =>
 
 // Down, because they fall. Everything else follows: they drop, meet the floor,
 // and pack upward as more land on top of them -- which is the tank filling.
-const GRAVITY = 2600 // px/s²
-const MAX_SPEED = 2200
+// Gentle. It was two and a half thousand with a nine-hundred kick on top, so
+// the first hearts arrived like they had been thrown rather than poured, and
+// the whole thing was over before it read as anything.
+const GRAVITY = 1150 // px/s²
+const MAX_SPEED = 1250
 const DAMPING = 0.86
 // Two passes of pushing overlaps apart is enough at this density. More looks
 // no better and costs a frame budget that a one-shot animation does not have.
@@ -55,9 +58,13 @@ const RELAX_PASSES = 2
 
 // Coarse cells for asking how much of the screen is covered. Fine enough to
 // notice gaps a person would see, coarse enough to be free.
-const FILL_COLS = 26
-const FILL_ROWS = 15
-const FILL_THRESHOLD = 0.9
+const FILL_COLS = 34
+const FILL_ROWS = 20
+// Nearly all of it, and measured strictly. It used to call the screen full at
+// nine tenths of a coarse grid, with each heart marking a square the width of
+// itself -- so it over-reported twice over and faded while there were still
+// visible gaps. Finer cells, a smaller mark, and a threshold that means it.
+const FILL_THRESHOLD = 0.985
 
 interface Heart {
   x: number
@@ -97,6 +104,16 @@ const HEART = new Path2D(
 // when the things are tumbling into a pile.
 const SPRITE_SIZES = 14
 const SPRITE_ANGLES = 12
+
+// Deterministic, so a replay is the same rush -- and unrelated to any of the
+// walks that place things, which is the point of using one.
+function hash(n: number) {
+  let x = (n * 2654435761) >>> 0
+  x ^= x >>> 15
+  x = (x * 2246822519) >>> 0
+  x ^= x >>> 13
+  return (x >>> 0) / 4294967296
+}
 
 interface Sprite {
   canvas: HTMLCanvasElement
@@ -185,10 +202,18 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     const sprites = buildSprites(color, dpr, MIN_R, MAX_R)
     const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
       const t = i / count
-      // A golden-ratio walk again, skewed so small ones outnumber large --
-      // small hearts take the gaps large ones leave, and a mixed pile is
-      // denser than a uniform one.
-      const spread = ((i * 61.803) % 100) / 100
+      // Independent of where it lands.
+      //
+      // Size and position were both (i * 61.803) % 100 -- the same number --
+      // so the largest hearts could only appear where that walk runs high,
+      // which is one side of the screen. Switching to 38.197 made it worse,
+      // not better: that is a hundred minus 61.803, so the two became exactly
+      // anti-correlated and every large one moved to the other side. A hash
+      // has no relationship to the walk at all, which is the property wanted.
+      //
+      // Skewed so small ones outnumber large: small hearts take the gaps large
+      // ones leave, and a mixed pile is denser than a uniform one.
+      const spread = hash(i)
       const sizeIndex = Math.round(Math.pow(spread, 1.7) * (SPRITE_SIZES - 1))
       return {
         // Entering from above the screen, spread across and beyond its width so
@@ -198,10 +223,10 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         // touching before they had moved -- which is not a fall, it is a jam
         // being shoved from behind.
         y: -120 - ((i * 137) % 2800),
-        vx: (((i % 11) - 5) / 5) * 70,
-        // Fast enough to clear the queue above them rather than being
-        // shouldered down by it.
-        vy: 900 + (i % 9) * 70,
+        vx: (((i % 11) - 5) / 5) * 45,
+        // Barely a push. What separates them is where they start, not how hard
+        // they are thrown.
+        vy: 120 + (i % 9) * 26,
         // Size from its own sequence, not from its place in the queue.
         //
         // It was derived from the same t that sets the spawn time, so every
@@ -211,7 +236,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         r: MIN_R + (sizeIndex / (SPRITE_SIZES - 1)) * (MAX_R - MIN_R),
         sizeIndex,
         angle: (i * 5) % SPRITE_ANGLES,
-        spawnAt: t * 2400 + (i % 6) * 18,
+        spawnAt: t * 5200 + (i % 6) * 22,
         live: false,
       }
     })
@@ -247,7 +272,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       // after there is anywhere to go, and the solver spends every frame
       // undoing overlaps that gravity puts straight back -- which is the
       // shivering. Once the room is full there is nothing left to pull on.
-      const pull = GRAVITY * Math.max(0, 1 - elapsed / 3400)
+      const pull = GRAVITY * Math.max(0, 1 - elapsed / 7600)
 
       // Integrate.
       for (const heart of hearts) {
@@ -351,7 +376,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         const ch = height / FILL_ROWS
         for (const heart of hearts) {
           if (!heart.live) continue
-          const r = heart.r * 0.8
+          const r = heart.r * 0.55
           const c0 = Math.max(0, ((heart.x - r) / cw) | 0)
           const c1 = Math.min(FILL_COLS - 1, ((heart.x + r) / cw) | 0)
           const r0 = Math.max(0, ((heart.y - r) / ch) | 0)
@@ -370,13 +395,13 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
 
       // Settled. The packed frame is what the colour fades in over, so it is
       // held rather than kept in motion behind it.
-      if (filledRef.current && elapsed > 4600) {
+      if (filledRef.current && elapsed > 10200) {
         return
       }
 
       // A backstop. If the pack somehow never closes -- a very wide window, a
       // very slow machine -- the message must still arrive.
-      if (!filledRef.current && elapsed > 4200) {
+      if (!filledRef.current && elapsed > 9500) {
         filledRef.current = true
         onFilledRef.current()
       }
