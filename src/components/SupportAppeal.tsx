@@ -55,23 +55,24 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
         <button
           type="button"
           onClick={() => answer('donated')}
-          className="w-full py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+          className="cut-corner w-full inline-flex items-center justify-center h-[2.375rem] text-[11px] tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
+          style={{ background: '#FF8A3D', color: 'rgb(var(--c-ground))', boxShadow: '0 0 22px rgba(255,138,61,0.30)' }}
         >
-          Donate
+          ◇ Donate
         </button>
 
         <div className="flex gap-2 mt-2">
           <button
             type="button"
             onClick={() => answer('remind_later')}
-            className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+            className="cut-corner flex-1 inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase leading-none hover:border-nier-border/70 hover:text-nier-strong transition-colors"
           >
             Remind me later
           </button>
           <button
             type="button"
             onClick={() => answer('not_now')}
-            className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+            className="cut-corner flex-1 inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase leading-none hover:border-nier-border/70 hover:text-nier-strong transition-colors"
           >
             Not now
           </button>

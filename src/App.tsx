@@ -323,7 +323,7 @@ function AtriumTransitionOverlay({
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center font-mono px-4 overflow-hidden"
+      className="screen-rise fixed inset-0 flex items-center justify-center font-mono px-4 overflow-hidden"
       // Paper, like every other light surface. Inverting the animation gives
       // it a pure white ground, which would sit on that paper as a visible
       // rectangle -- so the frames are multiplied over it instead: white
@@ -1512,47 +1512,57 @@ function AppInner() {
     if (lobbyAccessError) {
       const isPasswordError = lobbyAccessError === 'password_required'
       return (
-        <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4 overflow-y-auto">
-          <div className="flex flex-col items-center my-auto py-8">
-            <div className="relative px-[5vw] sm:px-10 lg:px-14 py-[4vw] sm:py-8 lg:py-12 w-[90vw] sm:w-auto sm:min-w-[420px] lg:min-w-[520px] max-w-2xl">
-              {/* Corner brackets */}
-              <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-              <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-              <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-              <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
+        // A locked door, said plainly.
+        //
+        // This used to be an anime character with a GIF, in her voice, telling
+        // you off. It was third-party artwork shipped inside the app and it
+        // read like a different product had been spliced into this one. What
+        // someone standing at a locked door needs is what the lock is and
+        // where the key goes.
+        <div className="screen-rise fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4 overflow-y-auto">
+          <div className="relative w-full max-w-md border border-nier-border/40 p-8" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
+            <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-nier-border/60" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-nier-border/60" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-nier-border/60" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-nier-border/60" />
 
-              {isPasswordError ? (
-                <div className="flex flex-col items-center gap-[2vw] sm:gap-4 lg:gap-5">
-                  <p className="text-pink-300 text-[clamp(10px,2.8vw,18px)] tracking-[0.2em] uppercase text-center">Tuturu~! ♪</p>
-                  <p className="text-white text-[clamp(9px,2.5vw,16px)] tracking-wide text-center leading-relaxed">
-                    Mayushii doesn't remember seeing your name on the list~! This atrium is password-protected, you know?
-                  </p>
-                  <p className="text-gray-400 text-[clamp(8px,2.2vw,14px)] tracking-wide text-center leading-relaxed italic">
-                    If you try to sneak in again... Mayushii might have to do something she'd really rather not~ ✦
-                  </p>
-                  <img
-                    src="/assets/images/mayuri_knives.gif"
-                    alt="Mayushii says no~"
-                    className="w-[55vw] sm:w-72 lg:w-96 max-w-lg rounded border border-white/10 mt-2"
-                  />
-                  <p className="text-gray-500 text-[clamp(7px,1.8vw,12px)] tracking-[0.2em] uppercase mt-1 text-center">◇ Please use the atrium browser to enter properly~</p>
+            {isPasswordError ? (
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
+                  <h2 className="text-nier-strong text-lg tracking-[0.12em] uppercase leading-none">Password needed</h2>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-4">
-                  <p className="text-red-400 text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase text-center">{lobbyAccessError}</p>
+                <p className="text-nier-bg/80 text-sm leading-relaxed mb-3">
+                  This atrium is password-protected, and the last time you entered
+                  it was long enough ago that the door has closed again.
+                </p>
+                <p className="text-nier-bg/70 text-xs leading-relaxed">
+                  Open it from the atrium browser — find it in the list, or use its
+                  ID, and you will be asked for the password there.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-2 h-2 rotate-45 border" style={{ borderColor: 'rgb(var(--c-danger) / 0.6)' }} />
+                  <h2 className="text-lg tracking-[0.12em] uppercase leading-none" style={{ color: 'rgb(var(--c-danger))' }}>
+                    Can't open this atrium
+                  </h2>
                 </div>
-              )}
+                <p className="text-nier-bg/80 text-sm leading-relaxed">{lobbyAccessError}</p>
+              </>
+            )}
 
-              <button
-                onClick={() => {
-                  setLobbyAccessError(null)
-                  navigate('/browse')
-                }}
-                className="w-full mt-5 bg-white/5 hover:bg-white/15 text-white px-[3vw] sm:px-6 py-2 lg:py-3 text-[clamp(8px,2.2vw,14px)] tracking-[0.2em] uppercase transition-all border border-white/20 hover:border-white/40"
-              >
-                Go to Atrium Browser
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setLobbyAccessError(null)
+                navigate('/browse')
+              }}
+              className="cut-corner w-full mt-7 inline-flex items-center justify-center h-[2.375rem] text-[11px] tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
+              style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))' }}
+            >
+              {isPasswordError ? '◇ Enter the password' : '◇ Atrium browser'}
+            </button>
           </div>
         </div>
       )

@@ -256,7 +256,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           // with four corner ticks -- a control from a different era of this
           // screen.
           <button
-            onClick={onBackToLanding}
+            onClick={() => {
+              if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onBackToLanding(); return }
+              setLeaving(true)
+              setTimeout(onBackToLanding, 210)
+            }}
             className="cut-corner absolute top-6 left-6 z-20 group inline-flex items-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors"
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
           >

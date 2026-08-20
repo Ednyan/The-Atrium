@@ -344,6 +344,15 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [range, setRange] = useState<RangeId>('all')
   const [rangeOpen, setRangeOpen] = useState(false)
 
+  // Leaving is a move, like arriving was. Without it the wall arrived softly
+  // and vanished instantly, which reads as two different doors.
+  const [leaving, setLeaving] = useState(false)
+  const closeWithTransition = () => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onClose(); return }
+    setLeaving(true)
+    setTimeout(onClose, 210)
+  }
+
   // Finding yourself, on a wall that can hold two thousand people.
   //
   // Scrolling until your own name happens to pass under the cursor is not
@@ -642,7 +651,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
   return (
     <div
-      className="screen-rise fixed inset-0 bg-nier-black overflow-hidden font-mono select-none"
+      className={`fixed inset-0 bg-nier-black overflow-hidden font-mono select-none ${leaving ? 'screen-recede' : 'screen-rise'}`}
       data-landing-theme={theme.resolved}
       data-ui-element
     >
@@ -915,7 +924,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <ThemeToggle />
         <button
           type="button"
-          onClick={onClose}
+          onClick={closeWithTransition}
           className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
           style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
         >

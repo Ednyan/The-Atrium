@@ -689,7 +689,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50 font-mono px-4">
+      <div className="screen-rise fixed inset-0 bg-nier-black flex items-center justify-center z-50 font-mono px-4">
         <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
           <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-nier-bg/40" />
           <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-bg/40" />
