@@ -110,7 +110,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            Support the project
+            Support Us
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -182,18 +182,18 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
   )
 }
 
-// right-rail nav: it's a short interlude, not a stop, and keeping it out of
-// `sections` means its presence can't shift every nav index below it.
-function VideoShowcaseSection() {
+// It is the second stop on the page, and the first thing anybody should see:
+// a page describing a place is weaker than the place moving.
+function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | null) => void }) {
   const [available, setAvailable] = useState(true)
 
   return (
-    <section className="flex items-center justify-center px-5 sm:px-12 pt-24 pb-10 relative">
+    <section ref={sectionRef} className="flex items-center justify-center px-5 sm:px-12 pt-24 pb-10 relative">
       <div className="max-w-4xl w-full mx-auto" data-reveal>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            Learn about the Digital Atrium
+            About
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -239,15 +239,27 @@ function VideoShowcaseSection() {
   )
 }
 
+// The running order, and the order the page is written in. Index is identity
+// here: it ties an entry to its ref in sectionRefs, so these two must move
+// together. Anything jumping to a section by name should go through
+// sectionIndex() rather than counting.
+//
+// Seeing the place comes before reading about it, which is why the reel is
+// second and the explanations are further down. The ask sits third, while
+// somebody has just watched what they would be paying for, rather than at the
+// bottom where only the already-convinced arrive.
 const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
-  { id: 'contributions', title: 'The Foundations', subtitle: 'What holds the atrium up' },
-  { id: 'what', title: 'What Is This', subtitle: 'The concept behind the atrium' },
-  { id: 'how', title: 'How It Works', subtitle: 'Navigate, create, collaborate' },
+  { id: 'about', title: 'About', subtitle: 'A tour of the place' },
+  { id: 'support', title: 'Support Us', subtitle: 'What holds the atrium up' },
+  { id: 'creator', title: 'The Creator', subtitle: 'How this came to be' },
+  { id: 'basics', title: 'The Basics', subtitle: 'What an atrium actually is' },
+  { id: 'limitations', title: 'Limitations', subtitle: 'Where the free tier stops' },
   { id: 'desktop', title: 'Desktop App', subtitle: 'Your atriums, stored locally' },
-  { id: 'free', title: 'But How', subtitle: 'How this stays free' },
-  { id: 'who', title: 'Who Am I', subtitle: 'The creator behind the project' },
+  { id: 'navigation', title: 'Navigation', subtitle: 'Move, create, collaborate' },
 ]
+
+const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
 
 // The bar across the top.
 //
@@ -256,8 +268,12 @@ const sections: Section[] = [
 // what it contains along its top edge; this one does that, and keeps the rail
 // on screens wide enough to carry both.
 //
-function TopNav({ sections, activeSection, onJump, onDonate }: {
-  sections: { id: string; title: string }[]
+function TopNav({ items, activeSection, onJump, onDonate }: {
+  // Each item carries the index it has in `sections`, because the bar does not
+  // show all of them: the title section is reached by the mark on the left, and
+  // Desktop App is dropped inside the desktop build. Counting the rendered
+  // items instead would send every entry after a hidden one to the wrong place.
+  items: { id: string; title: string; index: number }[]
   activeSection: number
   onJump: (index: number) => void
   onDonate: () => void
@@ -270,14 +286,32 @@ function TopNav({ sections, activeSection, onJump, onDonate }: {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
 
+          {/* The mark and the name, which together are the way back to the
+              top -- so the title section needs no entry of its own in the bar.
+
+              The mark is the app's own icon, which is white line-work on an
+              opaque black square: as an image it would be a black tile on the
+              light theme. It is painted as a mask instead, so it takes the
+              foreground ink and is the right colour in both. */}
           <button
             type="button"
             onClick={() => onJump(0)}
             className="flex items-center gap-2.5 shrink-0 group"
+            title="Back to the top"
           >
             <span
-              className="w-2 h-2 rotate-45 border transition-colors"
-              style={{ borderColor: '#FF8A3D' }}
+              aria-hidden="true"
+              className="w-6 h-6 shrink-0 bg-nier-strong transition-opacity opacity-90 group-hover:opacity-100"
+              style={{
+                WebkitMaskImage: 'url(/atrium-mark.png)',
+                maskImage: 'url(/atrium-mark.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center',
+              }}
             />
             <span className="text-nier-strong text-sm sm:text-sm tracking-[0.22em] uppercase whitespace-nowrap">
               The Digital Atrium
@@ -287,18 +321,18 @@ function TopNav({ sections, activeSection, onJump, onDonate }: {
           {/* The sections. Hidden where they would wrap into two rows and stop
               being a bar at all -- the rail and the scroll still work there. */}
           <nav className="hidden lg:flex items-center gap-1 mx-auto">
-            {sections.map((section, index) => {
+            {items.map(({ id, title, index }) => {
               const isActive = activeSection === index
               return (
                 <button
-                  key={section.id}
+                  key={id}
                   type="button"
                   onClick={() => onJump(index)}
                   className={`relative px-3 py-2 text-xs tracking-[0.18em] uppercase transition-colors ${
                     isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
                   }`}
                 >
-                  {section.title}
+                  {title}
                   {isActive && (
                     <span
                       className="absolute left-3 right-3 -bottom-px h-[2px]"
@@ -436,10 +470,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
     return () => container?.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Indices stay tied to sectionRefs, so the Desktop entry is filtered out
-  // after indexing rather than removed -- dropping it would shift every
-  // section below it out of sync with its ref.
-  const visibleSections = sections.filter(section => !(isDesktop && section.id === 'desktop'))
+  // Indices stay tied to sectionRefs, so entries are filtered out AFTER
+  // indexing rather than removed -- dropping one would shift every section
+  // below it out of sync with its ref. (The old version filtered first and
+  // then let the bar count its own rows, which sent everything after Desktop
+  // App to the wrong section inside the desktop build.)
+  const navItems = sections
+    .map((section, index) => ({ ...section, index }))
+    .filter(({ id }) => id !== 'hero' && !(isDesktop && id === 'desktop'))
 
   const scrollToSection = (index: number) => {
     sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth' })
@@ -452,7 +490,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       className="h-screen bg-nier-black text-nier-bg overflow-y-auto overflow-x-hidden scroll-smooth"
     >
       <TopNav
-        sections={visibleSections}
+        items={navItems}
         activeSection={activeSection}
         onJump={scrollToSection}
         onDonate={() => setShowDonate(true)}
@@ -625,7 +663,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         </div>
       </div>
 
-      {/* SECTION 1: Hero */}
+      {/* SECTION 1: The Digital Atrium -- the title */}
       <section
         ref={el => sectionRefs.current[0] = el}
         className="min-h-[calc(100vh-3.5rem)] flex items-center px-5 sm:px-10 lg:px-16 pt-10 pb-24 relative overflow-hidden"
@@ -770,7 +808,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <>
                   <span className="text-nier-bg/50 text-sm tracking-[0.2em] uppercase">or</span>
                   <button
-                    onClick={() => scrollToSection(3)}
+                    onClick={() => scrollToSection(sectionIndex('desktop'))}
                     className="group px-6 py-4 border-2 text-base tracking-[0.18em] uppercase transition-all duration-300"
                     style={{ clipPath: DONATE_CUT, borderColor: 'rgb(var(--c-accent) / 0.33)', color: 'rgb(var(--c-accent) / 0.87)' }}
                     onMouseEnter={(e) => {
@@ -792,10 +830,25 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 two actions inline, a third inline item made the row read as
                 three peers. */}
             {!isAuthenticated && (
-              <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">
+              <p className="text-nier-bg/70 text-sm tracking-wider mb-6 -mt-6">
                 Free to use • Free to share • Free to explore
               </p>
             )}
+
+            {/* Who made it, said once and early. A person's name on the front
+                of a thing is the difference between a product and somebody's
+                work -- and anybody who wants the rest of that story has a door
+                to it here rather than having to scroll for it. */}
+            <p className={`text-nier-bg/70 text-sm tracking-wider ${isAuthenticated ? '-mt-2 mb-10' : 'mb-10'}`}>
+              Made by Eduardo Paranhos.{' '}
+              <button
+                type="button"
+                onClick={() => scrollToSection(sectionIndex('creator'))}
+                className="underline decoration-nier-border/40 underline-offset-4 hover:text-nier-strong hover:decoration-nier-border transition-colors"
+              >
+                More about the creator
+              </button>
+            </p>
 
             {/* Three pillars as a rule-separated row rather than floating chips,
                 so they read as one grounded line under the actions. */}
@@ -829,13 +882,142 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         </div>
       </section>
 
-      {/* The demo reel, once it exists (renders nothing until then) */}
-      <VideoShowcaseSection />
-      <ContributionsSection sectionRef={el => sectionRefs.current[1] = el} />
-
-      {/* SECTION 2: What Is This */}
+      {/* SECTION 2: About -- the reel. First, because a page about a
+          place is weaker than seeing the place. */}
+      <VideoShowcaseSection sectionRef={el => sectionRefs.current[1] = el} />
+      {/* SECTION 3: Support Us */}
+      <ContributionsSection sectionRef={el => sectionRefs.current[2] = el} />
+      {/* SECTION 4: The Creator */}
       <section 
-        ref={el => sectionRefs.current[2] = el}
+        ref={el => sectionRefs.current[3] = el}
+        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
+      >
+        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
+          {/* Section header */}
+          <div className="flex items-center justify-center gap-3 mb-10">
+            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
+            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
+              The Creator
+            </h2>
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
+            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
+          </div>
+
+          {/* Placeholder for personal content */}
+          <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
+            <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">
+              My name is Eduardo Paranhos.
+              I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
+            </p>
+
+            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
+
+            <p className="text-nier-bg/75 text-base leading-relaxed italic">
+              I wanted something simple to use and fast to iterate in, like pinning ideas in a whiteboard.
+              A mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.
+            </p>
+          </div>
+
+          {/* The ask, again, at the end of the creator's story.
+
+              Support Us higher up makes the case while somebody has just
+              watched what they would be paying for. By the time they have read
+              to here they have the argument twice over and need no third
+              telling, only somewhere to act on it -- so this is a button and
+              one line. */}
+          <div className="max-w-3xl mx-auto w-full mb-14">
+            <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-10" />
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
+              <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
+                Free to enter, and kept standing by the people who use it.
+              </p>
+              <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
+            </div>
+          </div>
+
+          {/* Social links placeholder */}
+          <div className="flex items-center justify-center gap-6">
+            <span className="text-nier-bg/70 text-sm tracking-[0.1em] uppercase">Connect with me:</span>
+            {[
+              { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
+              { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
+              { name: 'Youtube', url: 'https://www.youtube.com/@mindeformer' },
+              { name: 'Email', url: 'mailto:thedigitalatrium@gmail.com' },
+            ].map((social, i) => (
+              <a
+                key={i}
+                href={isDesktop ? '#' : social.url}
+                target={isDesktop ? undefined : '_blank'}
+                rel={isDesktop ? undefined : 'noopener noreferrer'}
+                onClick={isDesktop ? (e) => {
+                  e.preventDefault()
+                  import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
+                } : undefined}
+                className="text-nier-bg/75 hover:text-nier-bg text-sm tracking-wider uppercase transition-colors cursor-pointer"
+              >
+                ◇ {social.name}
+              </a>
+            ))}
+          </div>
+
+          {!isDesktop && (
+            <div className="flex items-center justify-center gap-4 mt-4">
+              <a
+                href="/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
+              >
+                Privacy Policy
+              </a>
+              <span className="text-nier-bg/50 text-xs">◇</span>
+              <a
+                href="/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
+              >
+                Terms of Service
+              </a>
+            </div>
+          )}
+
+          {/* Shown on desktop too -- the copyright applies to the app itself,
+              not just the website. */}
+          <div className="flex items-center justify-center mt-3">
+            <span className="text-nier-bg/50 text-xs tracking-wider">
+              © 2026 Eduardo Paranhos. All rights reserved.
+            </span>
+          </div>
+
+          {/* Final CTA */}
+          <div className="mt-12">
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
+              <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
+              <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
+            </div>
+            
+            <button
+              onClick={onGetStarted}
+              className="group relative px-12 py-4 bg-transparent border border-nier-border/50 hover:border-nier-bg hover:bg-nier-bg/5 transition-all duration-300"
+            >
+              <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+              <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
+              
+              <span className="text-base tracking-[0.2em] uppercase text-nier-bg/80 group-hover:text-nier-bg transition-colors">
+                {isAuthenticated ? '◇ Continue to Atrium' : '◇ Begin Your Journey'}
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
+      {/* SECTION 5: The Basics */}
+      <section 
+        ref={el => sectionRefs.current[4] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-3xl w-full mx-auto" data-reveal>
@@ -843,7 +1025,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              What Is This
+              The Basics
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
@@ -906,10 +1088,84 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
         </div>
       </section>
+      {/* SECTION 6: Limitations */}
+      <section
+        ref={el => sectionRefs.current[5] = el}
+        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
+      >
+        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
+          {/* Section header */}
+          <div className="flex items-center justify-center gap-3 mb-10">
+            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
+            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
+              Limitations
+            </h2>
+            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
+            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
+          </div>
 
-      {/* SECTION 3: How It Works */}
+          <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">
+            "How is this even possible while being free?"
+          </p>
+
+          <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
+              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
+            </p>
+
+            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
+
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
+              The entire platform runs on free-tier services for now, which means there are a couple of limits:
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-6">
+              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
+                    <span className="text-nier-bg -rotate-45 text-base font-mono">3</span>
+                  </div>
+                  <span className="text-nier-strong text-base tracking-wider uppercase">Atriums per user</span>
+                </div>
+                <p className="text-nier-bg/70 text-sm leading-relaxed">
+                  Each account can create up to three atriums — more than enough to get started.
+                </p>
+              </div>
+
+              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
+                    <span className="text-nier-bg -rotate-45 text-sm font-mono">10<span className="text-[11px]">MB</span></span>
+                  </div>
+                  <span className="text-nier-strong text-base tracking-wider uppercase">Per atrium</span>
+                </div>
+                <p className="text-nier-bg/70 text-sm leading-relaxed">
+                  Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-nier-bg/75 text-base leading-relaxed text-center italic">
+              As you'll soon realize, it's plenty.
+            </p>
+          </div>
+        </div>
+      </section>
+      {/* SECTION 7: Desktop App -- web only. Inside the desktop build this is
+          an advert for the thing you're already running, and its download
+          links would be nonsense there. */}
+      {!isDesktop && (
+        <section
+          ref={el => sectionRefs.current[6] = el}
+          className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
+        >
+          <DesktopAppSection />
+        </section>
+      )}
+      {/* SECTION 8: Navigation */}
       <section 
-        ref={el => sectionRefs.current[3] = el}
+        ref={el => sectionRefs.current[7] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
         <div className="max-w-3xl w-full mx-auto" data-reveal>
@@ -917,7 +1173,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              How It Works
+              Navigation
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
@@ -1053,210 +1309,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         </div>
       </section>
 
-      {/* SECTION 4: Desktop App -- web only. Inside the desktop build this is
-          an advert for the thing you're already running, and its download
-          links would be nonsense there. */}
-      {!isDesktop && (
-        <section
-          ref={el => sectionRefs.current[4] = el}
-          className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-        >
-          <DesktopAppSection />
-        </section>
-      )}
-
-      {/* SECTION 5: But How Is This Free? */}
-      <section
-        ref={el => sectionRefs.current[5] = el}
-        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-      >
-        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
-          {/* Section header */}
-          <div className="flex items-center justify-center gap-3 mb-10">
-            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              But How?
-            </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
-          </div>
-
-          <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">
-            "How is this even possible while being free?"
-          </p>
-
-          <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
-            </p>
-
-            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
-
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The entire platform runs on free-tier services for now, which means there are a couple of limits:
-            </p>
-
-            <div className="grid sm:grid-cols-2 gap-4 mb-6">
-              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-base font-mono">3</span>
-                  </div>
-                  <span className="text-nier-strong text-base tracking-wider uppercase">Atriums per user</span>
-                </div>
-                <p className="text-nier-bg/70 text-sm leading-relaxed">
-                  Each account can create up to three atriums — more than enough to get started.
-                </p>
-              </div>
-
-              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-sm font-mono">10<span className="text-[11px]">MB</span></span>
-                  </div>
-                  <span className="text-nier-strong text-base tracking-wider uppercase">Per atrium</span>
-                </div>
-                <p className="text-nier-bg/70 text-sm leading-relaxed">
-                  Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
-                </p>
-              </div>
-            </div>
-
-            <p className="text-nier-bg/75 text-base leading-relaxed text-center italic">
-              As you'll soon realize, it's plenty.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION 5: Who Am I */}
-      <section 
-        ref={el => sectionRefs.current[6] = el}
-        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-      >
-        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
-          {/* Section header */}
-          <div className="flex items-center justify-center gap-3 mb-10">
-            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              Who and Why?
-            </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
-          </div>
-
-          {/* Placeholder for personal content */}
-          <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
-            <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">
-              My name is Eduardo Paranhos.
-              I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
-            </p>
-
-            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
-
-            <p className="text-nier-bg/75 text-base leading-relaxed italic">
-              I wanted something simple to use and fast to iterate in, like pinning ideas in a whiteboard.
-              A mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.
-            </p>
-          </div>
-
-          {/* The ask, at the end.
-              
-              The Foundations section higher up explains why the place costs
-              money; by the time somebody has read to the bottom they have the
-              argument and no longer need it repeated, only somewhere to act on
-              it. So this is a button and one line, not a second case. */}
-          <div className="max-w-3xl mx-auto w-full mb-14">
-            <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-10" />
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-              <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
-                Free to enter, and kept standing by the people who use it.
-              </p>
-              <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
-            </div>
-          </div>
-
-          {/* Social links placeholder */}
-          <div className="flex items-center justify-center gap-6">
-            <span className="text-nier-bg/70 text-sm tracking-[0.1em] uppercase">Connect with me:</span>
-            {[
-              { name: 'Website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
-              { name: 'Instagram', url: 'https://www.instagram.com/red.puer/' },
-              { name: 'Youtube', url: 'https://www.youtube.com/@mindeformer' },
-              { name: 'Email', url: 'mailto:thedigitalatrium@gmail.com' },
-            ].map((social, i) => (
-              <a
-                key={i}
-                href={isDesktop ? '#' : social.url}
-                target={isDesktop ? undefined : '_blank'}
-                rel={isDesktop ? undefined : 'noopener noreferrer'}
-                onClick={isDesktop ? (e) => {
-                  e.preventDefault()
-                  import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
-                } : undefined}
-                className="text-nier-bg/75 hover:text-nier-bg text-sm tracking-wider uppercase transition-colors cursor-pointer"
-              >
-                ◇ {social.name}
-              </a>
-            ))}
-          </div>
-
-          {!isDesktop && (
-            <div className="flex items-center justify-center gap-4 mt-4">
-              <a
-                href="/privacy.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
-              >
-                Privacy Policy
-              </a>
-              <span className="text-nier-bg/50 text-xs">◇</span>
-              <a
-                href="/terms.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs tracking-wider uppercase transition-colors"
-              >
-                Terms of Service
-              </a>
-            </div>
-          )}
-
-          {/* Shown on desktop too -- the copyright applies to the app itself,
-              not just the website. */}
-          <div className="flex items-center justify-center mt-3">
-            <span className="text-nier-bg/50 text-xs tracking-wider">
-              © 2026 Eduardo Paranhos. All rights reserved.
-            </span>
-          </div>
-
-          {/* Final CTA */}
-          <div className="mt-12">
-            <div className="flex items-center justify-center gap-3 mb-8">
-              <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
-              <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
-              <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
-            </div>
-            
-            <button
-              onClick={onGetStarted}
-              className="group relative px-12 py-4 bg-transparent border border-nier-border/50 hover:border-nier-bg hover:bg-nier-bg/5 transition-all duration-300"
-            >
-              <div className="absolute -top-1 -left-1 w-3 h-3 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              
-              <span className="text-base tracking-[0.2em] uppercase text-nier-bg/80 group-hover:text-nier-bg transition-colors">
-                {isAuthenticated ? '◇ Continue to Atrium' : '◇ Begin Your Journey'}
-              </span>
-            </button>
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="py-8 border-t border-nier-border/20">
