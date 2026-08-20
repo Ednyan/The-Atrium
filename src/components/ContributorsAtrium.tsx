@@ -75,9 +75,12 @@ const RUSH = Array.from({ length: RUSH_COUNT }, (_, index) => {
 
 // The order things arrive in. The wash and the rush run together; the name
 // lands once the screen is its own colour, and the rest follows it.
-const THANKS_NAME_MS = 1500
-const THANKS_NOTE_MS = 2350
-const THANKS_HINT_MS = 3600
+// The message waits for the screen to finish turning. It used to land while
+// the fill was still arriving, so the words faded up through a colour that was
+// itself still fading -- two things resolving at once, neither finished.
+const THANKS_NAME_MS = 2300
+const THANKS_NOTE_MS = 3150
+const THANKS_HINT_MS = 4400
 
 // The people who paid for this, drawn as an atrium of their own.
 //
