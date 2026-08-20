@@ -726,6 +726,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // quiet until somebody reaches for it.
   const [uiHidden, setUiHidden] = useState(false)
 
+  // Set while the atrium steps back, just before it hands over. Going in was
+  // already a move; coming out was a cut, which made the way back feel like a
+  // different kind of action from the way in.
+  const [leaving, setLeaving] = useState(false)
+
+  const leaveWithTransition = useCallback(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onLeaveLobby(); return }
+    setLeaving(true)
+    setTimeout(onLeaveLobby, 210)
+  }, [onLeaveLobby])
+
   // Held for a moment after a save finishes, so the button can confirm rather
   // than simply vanishing. A control that disappears on success leaves you
   // wondering whether it worked.
@@ -3714,7 +3725,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
   return (
     <div
-      className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''}`}
+      className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
       style={{ touchAction: 'none' }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -3839,7 +3850,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClick={() => {
             if (uiHidden) { setUiHidden(false); return }
             if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
-            else onLeaveLobby()
+            else leaveWithTransition()
           }}
           className={`atrium-btn ${uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}`}
           style={{
@@ -5060,7 +5071,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     }
                   }
                   setShowLeaveDialog(false)
-                  onLeaveLobby()
+                  leaveWithTransition()
                 }}
                 className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
@@ -5070,7 +5081,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 onClick={() => {
                   useGameStore.getState().clearPendingChanges()
                   setShowLeaveDialog(false)
-                  onLeaveLobby()
+                  leaveWithTransition()
                 }}
                 className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
               >
@@ -5131,7 +5142,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             )}
 
             <button
-              onClick={() => { setKickedNotice(null); onLeaveLobby() }}
+              onClick={() => { setKickedNotice(null); leaveWithTransition() }}
               autoFocus
               className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
             >

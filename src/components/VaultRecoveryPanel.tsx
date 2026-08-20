@@ -68,7 +68,7 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
   }
 
   return (
-    <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto">
+    <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto">
       <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-lg w-full mx-4 relative max-h-[85vh] overflow-y-auto">
         <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />

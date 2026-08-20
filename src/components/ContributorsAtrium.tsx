@@ -642,7 +642,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
   return (
     <div
-      className="fixed inset-0 bg-nier-black overflow-hidden font-mono select-none"
+      className="screen-rise fixed inset-0 bg-nier-black overflow-hidden font-mono select-none"
       data-landing-theme={theme.resolved}
       data-ui-element
     >

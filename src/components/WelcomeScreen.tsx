@@ -166,7 +166,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
 
   return (
     <>
-      <div className={`w-full h-full bg-nier-black flex items-center justify-center relative overflow-hidden ${leaving ? 'screen-recede' : ''}`}>
+      <div className={`w-full h-full bg-nier-black flex items-center justify-center relative overflow-hidden ${leaving ? 'screen-recede' : 'screen-rise'}`}>
         {/* Scanline effect */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
           style={{

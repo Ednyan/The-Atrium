@@ -154,7 +154,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged 
   }
 
   return (
-    <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto" data-ui-element>
+    <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000200] pointer-events-auto" data-ui-element>
       <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-xl w-full mx-4 relative max-h-[85vh] overflow-y-auto">
         <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
@@ -650,7 +650,7 @@ function Dialog({ title, children, onCancel }: {
   onCancel: () => void
 }) {
   return (
-    <div className="fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000400]" data-ui-element>
+    <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000400]" data-ui-element>
       <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative max-h-[85vh] overflow-y-auto">
         <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />

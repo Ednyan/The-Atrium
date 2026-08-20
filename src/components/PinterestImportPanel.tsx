@@ -138,7 +138,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
   return (
     <div
       data-ui-element="true"
-      className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] p-4"
+      className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] p-4"
       onClick={step !== 'importing' ? onClose : undefined}
     >
       <div

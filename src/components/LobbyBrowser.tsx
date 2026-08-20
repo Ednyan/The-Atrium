@@ -1240,7 +1240,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Password Modal */}
       {selectedLobbyId && (
-        <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
+        <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
           <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
             <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
             <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
@@ -1281,7 +1281,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Join by ID Modal */}
       {showJoinById && (
-        <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
+        <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
           <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
             <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
             <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
@@ -1335,7 +1335,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
+        <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
           <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
             <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
             <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />

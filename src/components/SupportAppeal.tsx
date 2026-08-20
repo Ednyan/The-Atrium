@@ -24,7 +24,7 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
   }
 
   return (
-    <div className="fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] pointer-events-auto" data-ui-element>
+    <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] pointer-events-auto" data-ui-element>
       <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
         <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
