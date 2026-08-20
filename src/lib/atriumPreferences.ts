@@ -20,7 +20,12 @@ function read(key: string, legacy: string | null): string | null {
   try {
     const value = localStorage.getItem(key)
     if (value !== null) return value
-    return legacy ? localStorage.getItem(legacy) : null
+    if (!legacy) return null
+    const carried = localStorage.getItem(legacy)
+    // Promote it, so it applies in the next atrium too and not only in the
+    // one it happened to be set in.
+    if (carried !== null) localStorage.setItem(key, carried)
+    return carried
   } catch {
     return null
   }

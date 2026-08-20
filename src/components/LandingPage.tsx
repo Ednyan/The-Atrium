@@ -1099,7 +1099,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
             <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The secret is in the design. TheAtrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
+              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
