@@ -68,6 +68,25 @@ export const en = {
   'atrium.customize': 'Customize',
   'atrium.batchEdit': 'Batch Edit ({count})',
 
+  // ------------------------------------------------------------- donating
+  'donate.tooltip': 'Support the creator',
+  'donate.heading': 'Donate',
+  'support.title': 'Support the creator',
+  'support.who': 'The Digital Atrium is made and kept running by one person: Eduardo Paranhos, a 3D artist who got tired of hoarding reference images across scattered folders and built the thing he wanted instead.',
+  'support.costs': "It stands on things that are paid for every month -- the database your atriums live in, the mail that lets new people through the door, the domain above it. Left unpaid none of that degrades quietly. It stops.",
+  'support.ask': 'Donating keeps the lights on and the work going. Even €1 helps, and it is what decides whether the next thing gets built. Nothing here is behind a paywall, and nothing is going to be.',
+  'support.wall': 'Every contribution puts a name on the contributors wall — a room of its own, built out of the people holding this place up.',
+  'support.seeWall': 'See the wall',
+  'support.connect': 'Connect with me',
+  'support.website': 'Website',
+  'support.websiteNote': 'Portfolio and work',
+  'support.instagram': 'Instagram',
+  'support.instagramNote': 'Pictures of things',
+  'support.youtube': 'Youtube',
+  'support.youtubeNote': 'Videos',
+  'support.email': 'Email',
+  'support.emailNote': 'Say something',
+
   // --------------------------------------------------------- the front page
   'landing.nav.preview': 'Preview',
   'landing.nav.support': 'Support Me',

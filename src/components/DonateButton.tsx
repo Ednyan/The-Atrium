@@ -9,6 +9,8 @@
 // label and are clipped to the button, so they read as texture rather than as
 // decoration parked next to the text.
 
+import { useTranslation } from '../lib/i18n'
+
 interface DonateButtonProps {
   onClick: () => void
   // 'accent' is the orange one that asks; 'quiet' is the outlined one for
@@ -16,6 +18,11 @@ interface DonateButtonProps {
   variant?: 'accent' | 'quiet'
   label?: string
   className?: string
+  // Layout classes for the wrapper rather than the button. The wrapper is a
+  // real box now (the bubble is positioned against it), so a caller that needs
+  // the button to stretch has to say so here -- flex-1 on the button inside an
+  // inline-flex wrapper stretches nothing.
+  wrapperClassName?: string
 }
 
 // Fixed rather than random. A button that rearranges itself on every render is
@@ -66,10 +73,17 @@ export default function DonateButton({
   variant = 'accent',
   label = 'Donate',
   className = '',
+  wrapperClassName = '',
 }: DonateButtonProps) {
   const accent = variant === 'accent'
+  const { t } = useTranslation()
 
+  // Wrapped, because the button carries a clip-path for its cut corner and a
+  // clip-path cuts its children too -- a bubble sitting below the button would
+  // have been sliced off at the button's edge. The wrapper is what the hover
+  // is read from, and what the bubble is positioned against.
   return (
+    <span className={`donate-btn-wrap ${wrapperClassName}`}>
     <button
       type="button"
       onClick={onClick}
@@ -106,5 +120,11 @@ export default function DonateButton({
         {label}
       </span>
     </button>
+
+      {/* What it is asking for, said only when somebody points at it. */}
+      <span className="donate-bubble" aria-hidden="true">
+        <span>{t('donate.tooltip')}</span>
+      </span>
+    </span>
   )
 }

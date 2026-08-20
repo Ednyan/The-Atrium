@@ -164,7 +164,11 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                     on a page people scroll past; the contributors page has
                     nothing to compete with and shouldn't outshout the names
                     it exists to show. */}
-                <DonateButton onClick={() => setShowContribute(true)} className="flex-1 py-3" />
+                <DonateButton
+                  onClick={() => setShowContribute(true)}
+                  wrapperClassName="flex-1"
+                  className="w-full py-3"
+                />
                 <button
                   type="button"
                   onClick={() => openContributors('/')}

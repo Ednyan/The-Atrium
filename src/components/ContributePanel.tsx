@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { openExternalUrl } from '../lib/openExternal'
+import SupportCreatorCard from './SupportCreatorCard'
+import { useTranslation } from '../lib/i18n'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
 import { getCachedContributions, refreshContributions } from '../lib/contributions'
@@ -27,6 +29,7 @@ const PRESETS_MONTHLY = [1, 3, 5, 10]
 // attacking. All it does is ask for three things and hand them to the Edge
 // Function that builds the session.
 export default function ContributePanel({ onClose, onStarted }: ContributePanelProps) {
+  const { t } = useTranslation()
   const [monthly, setMonthly] = useState(false)
   const [amount, setAmount] = useState(5)
   const [customAmount, setCustomAmount] = useState('')
@@ -112,12 +115,23 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   }
 
   return (
-    <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] pointer-events-auto" data-ui-element>
-      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative max-h-[85vh] overflow-y-auto">
-        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+    <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] p-4 overflow-y-auto pointer-events-auto" data-ui-element>
+      {/* Two cards, dealt from one.
+
+          They arrive stacked in the middle with Support on top, hold for a
+          beat so it can be read as the thing being offered, then part -- which
+          is what says there was a second card there all along rather than two
+          panels appearing at once. Side by side only where there is room; on a
+          narrow screen they stack, Support first, and the deal is dropped
+          because there is nowhere to deal to. */}
+      <div className="flex flex-col lg:flex-row items-start justify-center gap-5 w-full max-w-md lg:max-w-[58rem]">
+        <SupportCreatorCard onLeave={onClose} />
+
+        <div className="donate-card-right donate-card bg-nier-blackLight border p-6 w-full lg:max-w-md relative max-h-[85vh] overflow-y-auto">
+        <div className="corner absolute top-0 left-0 w-4 h-4 border-l border-t" />
+        <div className="corner absolute top-0 right-0 w-4 h-4 border-r border-t" />
+        <div className="corner absolute bottom-0 left-0 w-4 h-4 border-l border-b" />
+        <div className="corner absolute bottom-0 right-0 w-4 h-4 border-r border-b" />
 
         {/* The question, asked before any money moves.
 
@@ -174,8 +188,9 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         )}
 
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">Donate</h3>
+          <div className="byline-mark w-2 h-2 rotate-45" />
+          <h3 className="support-orange tracking-[0.15em] uppercase">{t('donate.heading')}</h3>
+          <div className="support-rule flex-1 h-px" />
         </div>
 
         {/* One-off or monthly */}
@@ -187,7 +202,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               onClick={() => { setMonthly(isMonthly); setCustomAmount('') }}
               className={`flex-1 py-2 text-xs tracking-[0.15em] uppercase border transition-colors ${
                 monthly === isMonthly
-                  ? 'bg-nier-bg text-nier-black border-nier-bg'
+                  ? 'donate-chosen'
                   : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
               }`}
             >
@@ -205,7 +220,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               onClick={() => { setAmount(preset); setCustomAmount('') }}
               className={`flex-1 py-2 text-sm tracking-wider border transition-colors ${
                 !customAmount.trim() && amount === preset
-                  ? 'bg-nier-bg text-nier-black border-nier-bg'
+                  ? 'donate-chosen'
                   : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
               }`}
             >
@@ -277,7 +292,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           type="button"
           onClick={contribute}
           disabled={busy || !amountValid || !!nameProblem || !supabase}
-          className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="donate-commit w-full mt-5 py-3 text-xs tracking-[0.15em] uppercase disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {busy ? 'Opening…' : monthly ? `Donate €${chosenAmount || 0} monthly` : `Donate €${chosenAmount || 0}`}
         </button>
@@ -295,8 +310,9 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           onClick={onClose}
           className="w-full mt-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
-          Close
+          {t('common.close')}
         </button>
+        </div>
       </div>
     </div>
   )

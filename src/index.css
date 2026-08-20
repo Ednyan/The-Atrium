@@ -41,7 +41,7 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
-  --c-byline: 255 138 61;
+  --c-orange: 255 138 61;
   --c-coral: 232 122 109;
   /* Leaving, deleting, refusing. red-300 sits at 1.65:1 on paper, which is a
    * warning nobody can read; each theme gets the red that works against it. */
@@ -89,7 +89,7 @@
   --c-emerald: 42 118 78;
   --c-sky: 45 110 151;
   --c-amber: 168 132 24;
-  --c-byline: 184 73 0;
+  --c-orange: 184 73 0;
   --c-coral: 227 94 79;
   --c-danger: 180 35 26;
   --c-shadow: 122 112 96;
@@ -108,7 +108,7 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
-  --c-byline: 255 138 61;
+  --c-orange: 255 138 61;
   --c-coral: 232 122 109;
   --c-danger: 255 97 97;
   --c-shadow: 0 0 0;
@@ -804,16 +804,156 @@ input[type='color']::-moz-color-swatch { border: none; }
 }
 
 
-/* The byline in the hero's top corner.
-   Written here rather than as Tailwind arbitrary values: a class holding
-   rgb(var(--x)) with its own parentheses does not survive the scanner, and a
-   colour that silently fails to compile is worse than one that is merely
-   wrong. */
-.byline { color: rgb(var(--c-byline)); }
+/* The app's orange, as text.
+   #FF8A3D is a fill everywhere else -- the Donate button, with dark type on
+   top of it -- and as text on paper it measures 2.04:1. So the light theme
+   keeps the hue and the saturation and takes the lightness down to where it
+   can be read. Written as CSS rather than Tailwind arbitrary values: a class
+   holding rgb(var(--x)) with its own parentheses does not survive the
+   scanner, and a colour that silently fails to compile is worse than one that
+   is merely wrong. */
+.byline { color: rgb(var(--c-orange)); }
 .byline-mark {
-  background-color: rgb(var(--c-byline));
-  box-shadow: 0 0 10px rgb(var(--c-byline) / 0.5);
+  background-color: rgb(var(--c-orange));
+  box-shadow: 0 0 10px rgb(var(--c-orange) / 0.5);
 }
-.byline-rule { background-image: linear-gradient(to left, rgb(var(--c-byline) / 0.85), transparent); }
+.byline-rule { background-image: linear-gradient(to left, rgb(var(--c-orange) / 0.85), transparent); }
 .byline-link { transition: color 200ms ease; }
-.group:hover .byline-link { color: rgb(var(--c-byline)); }
+.group:hover .byline-link { color: rgb(var(--c-orange)); }
+
+/* The Support card, which stands beside Donate and should look like it belongs
+   to it. Orange runs through the edge, the corner marks and the glow rather
+   than through the body text, which still has to be read. */
+.support-card {
+  border-color: rgb(var(--c-orange) / 0.4) !important;
+  box-shadow: 0 0 34px rgb(var(--c-orange) / 0.10), 0 18px 50px rgb(var(--c-shadow) / 0.35);
+}
+.support-card .corner { border-color: rgb(var(--c-orange) / 0.75); }
+.support-orange { color: rgb(var(--c-orange)); }
+.support-rule { background-image: linear-gradient(to right, rgb(var(--c-orange) / 0.5), transparent); }
+.support-well {
+  border-color: rgb(var(--c-orange) / 0.3);
+  background-color: rgb(var(--c-orange) / 0.06);
+}
+.support-action {
+  border-color: rgb(var(--c-orange) / 0.55);
+  color: rgb(var(--c-orange));
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.support-action:hover {
+  background-color: rgb(var(--c-orange));
+  color: rgb(var(--c-ground));
+  border-color: rgb(var(--c-orange));
+}
+.support-tile:hover { border-color: rgb(var(--c-orange) / 0.6); }
+
+/* Both cards, as one object.
+   The pair should lift off the backdrop together -- same edge, same glow --
+   because they are one offer split in two, not two panels that happened to
+   open. What differs between them is where the orange lands: on the left card
+   it is the voice (heading, rules, the button to the wall); on the right it is
+   only what you chose and what commits, so the colour still means "this is the
+   money" rather than decorating a form. */
+.donate-card {
+  border-color: rgb(var(--c-orange) / 0.4);
+  box-shadow: 0 0 34px rgb(var(--c-orange) / 0.10), 0 18px 50px rgb(var(--c-shadow) / 0.35);
+}
+.donate-card .corner { border-color: rgb(var(--c-orange) / 0.75); }
+
+.donate-chosen {
+  background-color: rgb(var(--c-orange));
+  color: rgb(var(--c-ground));
+  border-color: rgb(var(--c-orange));
+}
+.donate-commit {
+  background-color: rgb(var(--c-orange));
+  color: rgb(var(--c-ground));
+  font-weight: 500;
+  transition: filter 160ms ease;
+}
+.donate-commit:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Dealt, not opened.
+   Both start stacked where a single card would be, Support in front. They hold
+   there long enough to be read as one thing, then part. The hold is inside the
+   keyframes rather than a delay, so the fade-in and the deal are one animation
+   and nothing can arrive out of order. */
+@keyframes donate-deal-left {
+  0%   { transform: translateX(calc(50% + 0.625rem)) scale(0.96); opacity: 0; }
+  18%  { transform: translateX(calc(50% + 0.625rem)) scale(1); opacity: 1; }
+  36%  { transform: translateX(calc(50% + 0.625rem)) scale(1); opacity: 1; }
+  100% { transform: translateX(0) scale(1); opacity: 1; }
+}
+@keyframes donate-deal-right {
+  0%, 36% { transform: translateX(calc(-50% - 0.625rem)) scale(0.94); opacity: 0; }
+  55%     { opacity: 1; }
+  100%    { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+@media (min-width: 1024px) {
+  .donate-card-left  { position: relative; z-index: 2; animation: donate-deal-left 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .donate-card-right { position: relative; z-index: 1; animation: donate-deal-right 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+
+/* Stacked instead of dealt, where there is nowhere to deal to. */
+@media (max-width: 1023px) {
+  .donate-card-left  { animation: modal-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .donate-card-right { animation: modal-in 300ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both; }
+}
+
+/* What the Donate button says when you point at it.
+   Orange with the page's own colour as the type, which is the button's own
+   treatment -- so it reads as the button speaking rather than as a tooltip
+   the operating system put there. The tail is a separate square because the
+   cut corner is a clip-path, and a clip-path would have cut the tail off. */
+.donate-btn-wrap { position: relative; display: inline-flex; }
+
+.donate-bubble {
+  position: absolute;
+  top: calc(100% + 11px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 60;
+  transition: opacity 170ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.donate-bubble::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  transform: translateX(-50%) rotate(45deg);
+  background: #FF8A3D;
+}
+.donate-bubble > span {
+  display: block;
+  position: relative;
+  background: #FF8A3D;
+  color: rgb(var(--c-ground));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 7px 13px;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  box-shadow: 0 0 18px rgba(255, 138, 61, 0.35);
+}
+
+/* Pointer only. On a touchscreen the first tap would show the bubble and the
+   second would press the button, which is a worse button. */
+@media (hover: hover) {
+  .donate-btn-wrap:hover .donate-bubble,
+  .donate-btn-wrap:focus-within .donate-bubble {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donate-card-left, .donate-card-right { animation: none; }
+  .donate-bubble { transition: none; }
+}
