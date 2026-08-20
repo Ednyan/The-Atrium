@@ -34,7 +34,7 @@ interface HeartRushProps {
 const COVERAGE = 4.2
 const MEAN_HEART_AREA = 2100
 const countFor = (width: number, height: number) =>
-  Math.max(900, Math.min(6000, Math.round((width * height * COVERAGE) / MEAN_HEART_AREA)))
+  Math.max(900, Math.min(4600, Math.round((width * height * COVERAGE) / MEAN_HEART_AREA)))
 
 const MIN_R = 20
 const MAX_R = 66
@@ -51,7 +51,12 @@ const MAX_FALL = 1500
 const RAMP_MS = 5800
 
 const SPRITE_SIZES = 14
-const SPRITE_ANGLES = 12
+// Seven rather than twelve, and a tighter box. Building the sheets was thirty
+// million pixels of canvas drawn in one go before the first frame -- which is
+// the hitch at the start of a replay. The lean is only a quarter radian either
+// way, so a box of 2.8r holds it where 3.2r was guessing, and seven leans are
+// as indistinguishable as twelve on something falling this fast.
+const SPRITE_ANGLES = 7
 
 const FILL_COLS = 34
 const FILL_ROWS = 20
@@ -95,6 +100,26 @@ interface Sprite {
 // own sheet on top of the solid one costs a second blit and fades with a
 // single globalAlpha -- which is also the only way the outline can vanish
 // without the heart under it changing at all.
+// Built once per colour and kept.
+//
+// This is the reason a replay was fine and the one after it was not: every run
+// allocated a fresh set of sheets -- a hundred and ninety-six canvases with
+// their own backing stores -- and dropped the last set on the floor. Nothing
+// was leaking exactly, but the browser was holding several sets at once until
+// it got round to collecting them, and a collection in the middle of a fall is
+// a stutter. There are only ever two colour pairs in this app, so they are
+// built the first time and reused for good.
+const spriteCache = new Map<string, Sprite[][]>()
+
+function getSprites(color: string, dpr: number, outline: string | null): Sprite[][] {
+  const key = `${color}|${outline ?? ''}|${dpr}`
+  const cached = spriteCache.get(key)
+  if (cached) return cached
+  const built = buildSprites(color, dpr, outline)
+  spriteCache.set(key, built)
+  return built
+}
+
 function buildSprites(color: string, dpr: number, outline: string | null): Sprite[][] {
   const sheets: Sprite[][] = []
   for (let si = 0; si < SPRITE_SIZES; si++) {
@@ -103,14 +128,18 @@ function buildSprites(color: string, dpr: number, outline: string | null): Sprit
     // The heart is 2.22r across before it is turned at all, and turned it
     // needs the diagonal of that -- at 2.2 every sprite clipped its own
     // shoulders flat.
-    const box = Math.ceil(r * 3.2) + 4
+    const box = Math.ceil(r * 2.8) + 4
     for (let ai = 0; ai < SPRITE_ANGLES; ai++) {
       const canvas = document.createElement('canvas')
-      canvas.width = Math.ceil(box * dpr)
-      canvas.height = Math.ceil(box * dpr)
+      // Sprites at a lower ratio than the page. These are soft shapes with no
+      // edges to keep crisp, and the sheet is four times cheaper at 1.5 than
+      // at 2 for a difference nobody can see at this speed.
+      const sdpr = Math.min(dpr, 1.5)
+      canvas.width = Math.ceil(box * sdpr)
+      canvas.height = Math.ceil(box * sdpr)
       const c = canvas.getContext('2d')
       if (c) {
-        c.setTransform(dpr, 0, 0, dpr, 0, 0)
+        c.setTransform(sdpr, 0, 0, sdpr, 0, 0)
         c.fillStyle = color
         c.translate(box / 2, box / 2)
         // A lean rather than a tumble. Nothing knocks them any more, so a full
@@ -189,8 +218,8 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
     size()
     window.addEventListener('resize', size)
 
-    const sprites = buildSprites(color, dpr, null)
-    const edges = buildSprites(color, dpr, edgeColor)
+    const sprites = getSprites(color, dpr, null)
+    const edges = getSprites(color, dpr, edgeColor)
     const count = countFor(width, height)
 
     const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
@@ -224,18 +253,35 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
     // heart is edged against the page, and as the screen closes the edges go.
     let covered = 0
     let edgeStrength = 1
+    // A rolling frame time, and how many are allowed to be falling at once.
+    //
+    // The count is chosen from the size of the screen, not from what the
+    // machine can carry -- so on a slow one it asks for more than it can draw
+    // and the whole thing stutters. When frames run long the pour stops
+    // admitting new hearts and holds at what it has, which degrades the
+    // density rather than the motion. Density is the effect; stutter is not.
+    let smoothedFrame = 16
+    let admitted = 0
 
     const step = (now: number) => {
       if (!start) { start = now; last = now }
       const elapsed = now - start
-      const dt = Math.min((now - last) / 1000, 1 / 30)
+      const rawFrame = now - last
+      const dt = Math.min(rawFrame / 1000, 1 / 30)
       last = now
+      smoothedFrame += (rawFrame - smoothedFrame) * 0.12
+
+      // Twenty-two milliseconds is a frame and a bit at sixty hertz: enough
+      // headroom that an occasional long frame does not throttle it, tight
+      // enough to catch a machine that is genuinely behind.
+      if (smoothedFrame < 22) admitted = Math.min(hearts.length, admitted + 1)
+      else admitted = Math.max(0, admitted - 2)
 
       ctx.clearRect(0, 0, width, height)
 
       for (let i = 0; i < hearts.length; i++) {
         const heart = hearts[i]
-        if (elapsed < heart.liveAt) continue
+        if (elapsed < heart.liveAt || i > admitted) continue
 
         heart.y += heart.fall * dt
         // Back in above the top rather than lost. The screen fills because
@@ -244,6 +290,11 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
         if (heart.y - 140 > height) heart.y = -140 - hash(i * 17 + 11) * 260
 
         const sprite = sprites[heart.sizeIndex][heart.angle]
+        // Most of them start well above the frame and were being blitted every
+        // frame while they were nowhere near it. Four thousand draws a frame
+        // for something nobody can see is most of the cost of this.
+        if (heart.y + sprite.half < 0 || heart.y - sprite.half > height) continue
+
         const x = heart.x + Math.sin(elapsed / 900 + heart.phase) * heart.sway
         ctx.drawImage(
           sprite.canvas,
@@ -315,6 +366,11 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', size)
+      // Hand the drawing surface back rather than waiting to be collected. A
+      // full-screen canvas at two times the pixel ratio is eight megabytes,
+      // and this component mounts again every time somebody replays.
+      canvas.width = 0
+      canvas.height = 0
     }
   }, [color, edgeColor])
 
