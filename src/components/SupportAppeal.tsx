@@ -48,7 +48,7 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
             to keeping those paid for and the work going.
           </p>
           <p className="text-nier-bg/70">
-            From €1, once or monthly. Nothing here is locked, and nothing will be.
+            Even €1 helps. Nothing here is locked, and nothing will be.
           </p>
         </div>
 

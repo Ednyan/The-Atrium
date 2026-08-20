@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { openExternalUrl } from '../lib/openExternal'
 import SupportCreatorCard from './SupportCreatorCard'
+import { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
@@ -30,6 +31,14 @@ const PRESETS_MONTHLY = [1, 3, 5, 10]
 // Function that builds the session.
 export default function ContributePanel({ onClose, onStarted }: ContributePanelProps) {
   const { t } = useTranslation()
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
   const [monthly, setMonthly] = useState(false)
   const [amount, setAmount] = useState(5)
   const [customAmount, setCustomAmount] = useState('')
@@ -115,7 +124,11 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   }
 
   return (
-    <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] p-4 overflow-y-auto pointer-events-auto" data-ui-element>
+    <div
+      className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] p-4 overflow-y-auto pointer-events-auto"
+      data-ui-element
+      onClick={onClose}
+    >
       {/* Two cards, dealt from one.
 
           They arrive stacked in the middle with Support on top, hold for a
@@ -124,7 +137,15 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           panels appearing at once. Side by side only where there is room; on a
           narrow screen they stack, Support first, and the deal is dropped
           because there is nowhere to deal to. */}
-      <div className="flex flex-col lg:flex-row items-start justify-center gap-5 w-full max-w-md lg:max-w-[58rem]">
+      <div className="flex flex-col items-center gap-5 w-full max-w-md lg:max-w-[58rem]">
+        {/* Equal heights: the pair is one object, and one card ending two
+            inches above the other made it look like two panels that happened
+            to be next to each other. Each still scrolls inside itself once the
+            row hits 85vh. */}
+        <div
+          className="flex flex-col lg:flex-row lg:items-stretch justify-center gap-5 w-full"
+          onClick={event => event.stopPropagation()}
+        >
         <SupportCreatorCard onLeave={onClose} />
 
         <div className="donate-card-right donate-card bg-nier-blackLight border p-6 w-full lg:max-w-md relative max-h-[85vh] overflow-y-auto">
@@ -305,14 +326,20 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           Paid securely through Stripe. Cancel monthly any time.
         </p>
 
+        </div>
+        </div>
+
+        {/* Under both cards rather than inside one of them. It closes the
+            whole thing, so belonging to either card was a small lie about
+            what it does. */}
         <button
           type="button"
           onClick={onClose}
-          className="w-full mt-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+          className="px-10 py-2.5 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.18em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
+          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.6)' }}
         >
           {t('common.close')}
         </button>
-        </div>
       </div>
     </div>
   )
