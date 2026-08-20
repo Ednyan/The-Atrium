@@ -3,70 +3,244 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Terms of Service — The Atrium</title>
+<title>Terms of Service — The Digital Atrium</title>
+<link rel="icon" type="image/png" href="/glass_dome_small_icon.png" />
+<script>
+  // The theme, read before the page paints so nothing flashes the wrong
+  // colour. Same key and same three states as the app itself
+  // (src/lib/useLandingTheme.ts): a stored 'light' or 'dark' is a choice, and
+  // nothing stored means follow the machine -- which is not the same as having
+  // picked whichever mode the machine happens to be in today.
+  (function () {
+    var KEY = 'atrium_landing_theme';
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    var choice = stored === 'light' || stored === 'dark' ? stored : null;
+    var system = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', choice || system);
+    window.__atriumTheme = { key: KEY, choice: choice };
+  })();
+</script>
 <style>
+  /* The same tokens the app is built out of, as channel triplets so opacity
+     can be written into any of them. Light is the base set and dark is the
+     override, which is the order these values were designed in. */
   :root {
+    --c-fg: 48 44 39;
+    --c-strong: 22 20 18;
+    --c-line: 154 146 134;
+    --c-ground: 242 239 232;
+    --c-surface: 252 250 246;
+    --c-accent: 46 40 34;
+    --c-danger: 180 35 26;
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    --c-fg: 203 203 203;
+    --c-strong: 255 255 255;
+    --c-line: 143 143 143;
+    --c-ground: 25 25 25;
+    --c-surface: 40 40 40;
+    --c-accent: 217 217 217;
+    --c-danger: 255 97 97;
     color-scheme: dark;
   }
+
+  * { box-sizing: border-box; }
+
   body {
-    background: #191919;
-    color: #cbcbcb;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.65;
-    max-width: 760px;
+    margin: 0;
+    background: rgb(var(--c-ground));
+    color: rgb(var(--c-fg));
+    font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Liberation Mono', monospace;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0.02em;
+    line-height: 1.75;
+  }
+
+  /* The bar, sticky and translucent, like the one on the front page. */
+  .bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgb(var(--c-ground) / 0.82);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgb(var(--c-line) / 0.25);
+  }
+  .bar-inner {
+    max-width: 900px;
     margin: 0 auto;
-    padding: 48px 24px 96px;
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgb(var(--c-strong));
+    text-decoration: none;
+    font-size: 0.8rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  /* The app's icon is white line-work on an opaque black square, so it is
+     painted as a mask and takes the foreground ink rather than bringing its
+     own background to a page that might be paper. */
+  .mark {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    background: rgb(var(--c-strong));
+    -webkit-mask: url(/atrium-mark.png) center / contain no-repeat;
+    mask: url(/atrium-mark.png) center / contain no-repeat;
+  }
+  .bar-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn {
+    font: inherit;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgb(var(--c-fg) / 0.85);
+    background: transparent;
+    border: 1px solid rgb(var(--c-line) / 0.4);
+    padding: 7px 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: border-color 140ms ease, color 140ms ease;
+    /* The cut corner every committing thing in this app wears. */
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  }
+  .btn:hover {
+    border-color: rgb(var(--c-line) / 0.7);
+    color: rgb(var(--c-strong));
+  }
+
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+    position: relative;
+  }
+
   h1 {
-    color: #ffffff;
-    font-size: 1.6rem;
+    color: rgb(var(--c-strong));
+    font-size: clamp(1.5rem, 4vw, 2.1rem);
+    font-weight: 400;
     letter-spacing: 0.05em;
-    margin-bottom: 0.25em;
+    text-transform: uppercase;
+    line-height: 1.25;
+    margin: 0 0 0.4em;
   }
+
+  /* A diamond and a rule running out to the edge: the section header this app
+     uses everywhere else. */
   h2 {
-    color: #ffffff;
-    font-size: 1.15rem;
-    margin-top: 2.2em;
-    border-bottom: 1px solid #3a3a3a;
-    padding-bottom: 0.4em;
+    color: rgb(var(--c-strong));
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 3em 0 1em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
-  p, li {
-    color: #b5b5b5;
+  h2::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    flex: none;
+    transform: rotate(45deg);
+    border: 1px solid rgb(var(--c-accent) / 0.67);
   }
-  ul {
-    padding-left: 1.3em;
+  h2::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, rgb(var(--c-line) / 0.4), transparent);
   }
+
+  p, li { color: rgb(var(--c-fg) / 0.85); }
+  ul { padding-left: 1.4em; }
+  li { margin-bottom: 0.4em; }
+  li::marker { color: rgb(var(--c-accent) / 0.6); }
+
   a {
-    color: #e0e0e0;
+    color: rgb(var(--c-strong));
+    text-decoration: underline;
+    text-decoration-color: rgb(var(--c-line) / 0.45);
+    text-underline-offset: 4px;
+    transition: text-decoration-color 140ms ease;
   }
+  a:hover { text-decoration-color: rgb(var(--c-line)); }
+
   .meta {
-    color: #848484;
-    font-size: 0.85rem;
-    margin-bottom: 2em;
+    color: rgb(var(--c-fg) / 0.6);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    margin: 0 0 3em;
+    padding-bottom: 1.5em;
+    border-bottom: 1px solid rgb(var(--c-line) / 0.2);
   }
+
   code {
-    background: #282828;
+    background: rgb(var(--c-surface));
+    border: 1px solid rgb(var(--c-line) / 0.25);
     padding: 0.1em 0.4em;
-    border-radius: 3px;
     font-size: 0.9em;
   }
+
+  /* The one place colour is allowed to mean something. */
   .note {
-    border-left: 3px solid #8B0000;
-    padding: 0.6em 1em;
-    background: rgba(139, 0, 0, 0.08);
-    margin: 1.5em 0;
+    border: 1px solid rgb(var(--c-danger) / 0.4);
+    border-left-width: 3px;
+    background: rgb(var(--c-danger) / 0.07);
+    padding: 1em 1.2em;
+    margin: 2em 0;
   }
+
   footer {
-    margin-top: 4em;
-    padding-top: 1.5em;
-    border-top: 1px solid #3a3a3a;
-    color: #6f6f6f;
-    font-size: 0.8rem;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2em 24px 4em;
+    border-top: 1px solid rgb(var(--c-line) / 0.2);
+    color: rgb(var(--c-fg) / 0.6);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
   }
 </style>
 </head>
 <body>
 
+<div class="bar">
+  <div class="bar-inner">
+    <a class="brand" href="/">
+      <span class="mark" aria-hidden="true"></span>
+      The Digital Atrium
+    </a>
+    <div class="bar-actions">
+      <button class="btn" type="button" id="theme-toggle" title="Light or dark">Theme</button>
+      <a class="btn" href="/">Back to the app</a>
+    </div>
+  </div>
+</div>
+
+<main>
 <h1>Terms of Service — The Atrium</h1>
 <p class="meta">Last updated: 2026-07-28. Contact: <a href="mailto:thedigitalatrium@gmail.com">thedigitalatrium@gmail.com</a></p>
 
@@ -183,9 +357,38 @@
   </p>
 </div>
 
+</main>
+
 <footer>
   © 2026 Eduardo Paranhos. All rights reserved. The Atrium and its source code, design, and branding are the property of the operator.
 </footer>
+
+<script>
+  // Writes the same key the app reads, so a choice made here is the choice
+  // there.
+  (function () {
+    var root = document.documentElement;
+    var state = window.__atriumTheme || { key: 'atrium_landing_theme', choice: null };
+    var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+    function system() { return media && media.matches ? 'dark' : 'light'; }
+    function apply() { root.setAttribute('data-theme', state.choice || system()); }
+
+    if (media && media.addEventListener) {
+      media.addEventListener('change', function () { if (!state.choice) apply(); });
+    }
+
+    var button = document.getElementById('theme-toggle');
+    if (button) {
+      button.addEventListener('click', function () {
+        var showing = state.choice || system();
+        state.choice = showing === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem(state.key, state.choice); } catch (e) {}
+        apply();
+      });
+    }
+  })();
+</script>
 
 </body>
 </html>
