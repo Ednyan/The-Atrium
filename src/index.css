@@ -676,16 +676,19 @@ body.dragging * {
 /* A colour input that actually shows its colour.
    Tailwind's reset makes every input transparent, which on a native colour
    control leaves a bordered rectangle with nothing in it -- the swatch is a
-   shadow part, and the reset had painted over the only thing it had to say. */
-input[type='color'].atrium-swatch {
+   shadow part, and the reset had painted over the only thing it had to say.
+   This was once opt-in via .atrium-swatch, which meant the six pickers that
+   never got the class stayed blank. There is no colour input in this app that
+   wants to hide its colour, so it applies to all of them. */
+input[type='color'] {
   -webkit-appearance: none;
   appearance: none;
   background-color: transparent;
   padding: 0;
 }
-input[type='color'].atrium-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
-input[type='color'].atrium-swatch::-webkit-color-swatch { border: none; }
-input[type='color'].atrium-swatch::-moz-color-swatch { border: none; }
+input[type='color']::-webkit-color-swatch-wrapper { padding: 2px; }
+input[type='color']::-webkit-color-swatch { border: none; }
+input[type='color']::-moz-color-swatch { border: none; }
 
 
 /* The rule under the name on the welcome screen, drawn out from the middle
