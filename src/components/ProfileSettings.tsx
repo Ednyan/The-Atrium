@@ -3,13 +3,24 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
 import { deleteMyAccount } from '../lib/account'
+import {
+  MAX_UNDO_DEPTH,
+  readUndoDepth,
+  writeUndoDepth,
+  readPackingShape,
+  writePackingShape,
+} from '../lib/atriumPreferences'
+
+// The same five the in-atrium panel offers, from the palette the rest of the
+// app is drawn in. The picker under them still takes anything.
+const PRESET_COLORS = ['#FF8A3D', '#E8C15A', '#9AD4C4', '#A8B6D9', '#C77DFF']
 
 interface ProfileSettingsProps {
   onClose: () => void
 }
 
 export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
-  const { userId, username, setUsername } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [actualUsername, setActualUsername] = useState('')
   const [canChange, setCanChange] = useState(isDesktop) // Desktop: always allowed
@@ -20,6 +31,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
@@ -39,6 +51,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+
+  // The three settings that follow the person rather than the atrium. They
+  // live in localStorage, so they are readable before the profile row is.
+  const [selectedColor, setSelectedColor] = useState(playerColor)
+  const [colorSaved, setColorSaved] = useState(false)
+  const [undoDepth, setUndoDepth] = useState(() => readUndoDepth())
+  const [packingShape, setPackingShape] = useState(() => readPackingShape())
 
   useEffect(() => {
     loadProfile()
@@ -69,13 +88,17 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
     const { data } = await (supabase
       .from('profiles') as any)
-      .select('username, display_name, display_name_last_changed')
+      .select('username, display_name, display_name_last_changed, player_color')
       .eq('id', userId)
       .single()
 
     if (data) {
       setActualUsername(data.username)
       setDisplayName(data.display_name || data.username)
+      if (data.player_color) {
+        setSelectedColor(data.player_color)
+        setPlayerColor(data.player_color)
+      }
       
       // Desktop: no name change restrictions
       if (!isDesktop) {
@@ -90,6 +113,40 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         }
       }
     }
+  }
+
+  // Saved on click rather than with the name form: that form's button is
+  // disabled while the name is unchanged, so a colour picked on its own could
+  // never be submitted through it.
+  const handleColorChange = async (color: string) => {
+    setSelectedColor(color)
+    setPlayerColor(color)
+    setColorSaved(false)
+    if (!supabase || !userId) return
+    const { error: updateError } = await (supabase
+      .from('profiles') as any)
+      .update({ player_color: color, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+    if (updateError) {
+      setError(updateError.message || 'Failed to save your cursor colour')
+      return
+    }
+    setColorSaved(true)
+    setTimeout(() => setColorSaved(false), 1600)
+  }
+
+  const handleUndoDepthChange = (value: number) => {
+    const clamped = Math.max(1, Math.min(MAX_UNDO_DEPTH, value))
+    setUndoDepth(clamped)
+    writeUndoDepth(clamped)
+    // An atrium open behind this screen picks it up without a reload.
+    window.dispatchEvent(new CustomEvent('lobby-undo-depth-changed', { detail: clamped }))
+  }
+
+  const handlePackingShapeChange = (shape: 'square' | 'circle') => {
+    setPackingShape(shape)
+    writePackingShape(shape)
+    window.dispatchEvent(new CustomEvent('lobby-packing-shape-changed', { detail: { lobbyId: null, shape } }))
   }
 
   const handleUpdateDisplayName = async (e: React.FormEvent) => {
@@ -175,7 +232,39 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       return
     }
 
+    if (!currentPassword) {
+      setPasswordError('Enter your current password')
+      setPasswordLoading(false)
+      return
+    }
+
     try {
+      // Prove it is the account holder at the keyboard before changing the
+      // password. A session left open on a shared machine is enough to change
+      // it otherwise, which locks the real owner out of their own account.
+      // Supabase has no verify-password call, so the check is a sign-in with
+      // the same credentials: it fails harmlessly on a wrong password and
+      // leaves the existing session alone.
+      const { data: userData } = await supabase.auth.getUser()
+      const email = userData?.user?.email
+      if (!email) throw new Error('Could not confirm which account this is')
+
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      })
+      if (reauthError) {
+        setPasswordError('That is not your current password')
+        setPasswordLoading(false)
+        return
+      }
+
+      if (currentPassword === newPassword) {
+        setPasswordError('The new password is the same as the current one')
+        setPasswordLoading(false)
+        return
+      }
+
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       })
@@ -183,6 +272,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       if (updateError) throw updateError
 
       setPasswordSuccess(true)
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
       
@@ -249,7 +339,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           {/* Username (permanent) - only show on web */}
           {!isDesktop && (
             <div>
-              <label className="block text-nier-bg/70 text-[9px] tracking-[0.15em] uppercase mb-2">Username (permanent)</label>
+              <label className="block text-nier-bg/70 text-xs tracking-[0.1em] uppercase mb-2">Username (permanent)</label>
               <div className="bg-nier-black border border-nier-border/20 px-3 py-2 text-nier-bg/75 text-sm tracking-wide">
                 {actualUsername}
               </div>
@@ -257,7 +347,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           )}
 
           <form onSubmit={handleUpdateDisplayName}>
-            <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
               {isDesktop ? 'Username' : 'Display Name'}
             </label>
             <input
@@ -271,25 +361,25 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             />
             
             {!isDesktop && !canChange && (
-              <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
+              <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
                 ◇ You can change your display name in {daysUntilChange} days
               </p>
             )}
 
             {!isDesktop && canChange && (
-              <p className="text-nier-bg/60 text-[10px] tracking-wider mt-2">
+              <p className="text-nier-bg/60 text-[0.7rem] leading-relaxed tracking-wide mt-2">
                 ✓ You can change your display name now
               </p>
             )}
 
             {error && (
-              <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider mt-2">
+              <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.7rem] leading-relaxed tracking-wide mt-2">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider mt-2">
+              <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide mt-2">
                 ✓ {isDesktop ? 'Username' : 'Display name'} updated
               </div>
             )}
@@ -297,11 +387,98 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             <button
               type="submit"
               disabled={loading || (!isDesktop && !canChange) || displayName === username}
-              className="w-full mt-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-full mt-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {loading ? 'Updating...' : isDesktop ? 'Update Username' : 'Update Display Name'}
             </button>
           </form>
+
+
+          <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
+
+          {/* The settings that follow the person into every atrium. They are
+              the same three the in-atrium profile panel offers, reading and
+              writing the same keys -- changed here, they apply there. */}
+          <div className="flex items-baseline gap-3">
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">How you work</span>
+            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+          </div>
+
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Your cursor</label>
+            <div className="grid grid-cols-5 gap-2 mb-2">
+              {PRESET_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => handleColorChange(color)}
+                  className={`w-full h-10 border-2 transition-all ${
+                    selectedColor === color
+                      ? 'border-nier-bg scale-105'
+                      : 'border-nier-border/30 hover:border-nier-border/60'
+                  }`}
+                  style={{
+                    backgroundColor: color,
+                    boxShadow: selectedColor === color ? `0 0 12px ${color}40` : 'none',
+                  }}
+                />
+              ))}
+            </div>
+            <input
+              type="color"
+              value={selectedColor}
+              onChange={(e) => handleColorChange(e.target.value)}
+              className="atrium-swatch w-full h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
+            />
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+              How other people see you pointing, in every atrium.
+              {colorSaved && <span className="text-nier-bg/80"> Saved.</span>}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+              Steps you can undo: {undoDepth}
+            </label>
+            <input
+              type="range"
+              min="1"
+              max={MAX_UNDO_DEPTH}
+              step="1"
+              value={undoDepth}
+              onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
+              className="w-full accent-nier-bg"
+            />
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+              How many Ctrl+Z steps to remember, in every atrium. Kept in this browser only, never saved online.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+              Shape for batch placement
+            </label>
+            <div className="flex gap-2">
+              {(['square', 'circle'] as const).map(shape => (
+                <button
+                  key={shape}
+                  type="button"
+                  onClick={() => handlePackingShapeChange(shape)}
+                  className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
+                    packingShape === shape
+                      ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
+                      : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
+                  }`}
+                >
+                  {shape}
+                </button>
+              ))}
+            </div>
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+              How dropping or pasting several files at once gets arranged, in every atrium.
+              Reorganize Selected asks for a shape each time and ignores this.
+            </p>
+          </div>
 
           <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
 
@@ -310,8 +487,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             <>
               <div>
                 <button
-                  onClick={() => setShowPasswordChange(!showPasswordChange)}
-                  className="w-full text-left text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase flex items-center justify-between hover:text-nier-bg transition-colors"
+                  onClick={() => {
+                    setShowPasswordChange(!showPasswordChange)
+                    setCurrentPassword('')
+                    setNewPassword('')
+                    setConfirmPassword('')
+                    setPasswordError('')
+                  }}
+                  className="w-full text-left text-nier-bg/80 text-xs tracking-[0.1em] uppercase flex items-center justify-between hover:text-nier-bg transition-colors"
                 >
                   <span>Change Password</span>
                   <span className="text-nier-bg/70">{showPasswordChange ? '▼' : '▶'}</span>
@@ -320,7 +503,20 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 {showPasswordChange && (
                   <form onSubmit={handlePasswordChange} className="space-y-3 mt-3">
                     <div>
-                      <label className="block text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase mb-1">New Password</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">Current Password</label>
+                      <input
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">New Password</label>
                       <input
                         type="password"
                         value={newPassword}
@@ -333,7 +529,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </div>
                     
                     <div>
-                      <label className="block text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase mb-1">Confirm New Password</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">Confirm New Password</label>
                       <input
                         type="password"
                         value={confirmPassword}
@@ -346,21 +542,21 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </div>
 
                     {passwordError && (
-                      <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider">
+                      <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.7rem] leading-relaxed tracking-wide">
                         {passwordError}
                       </div>
                     )}
 
                     {passwordSuccess && (
-                      <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+                      <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
                         ✓ Password updated
                       </div>
                     )}
 
                     <button
                       type="submit"
-                      disabled={passwordLoading || !newPassword || !confirmPassword}
-                      className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      disabled={passwordLoading || !currentPassword || !newPassword || !confirmPassword}
+                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {passwordLoading ? 'Updating...' : 'Update Password'}
                     </button>
@@ -377,20 +573,20 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           {!isDesktop && (
             <>
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                   Pinterest
                 </label>
                 {pinterestStatusLoading ? (
-                  <p className="text-nier-bg/70 text-[10px] tracking-wider">Checking connection...</p>
+                  <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide">Checking connection...</p>
                 ) : pinterestConnected ? (
                   <div className="space-y-2">
-                    <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+                    <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
                       ✓ Connected{pinterestUsername ? ` as @${pinterestUsername}` : ''}
                     </div>
                     <button
                       onClick={handleDisconnectPinterest}
                       disabled={pinterestDisconnecting}
-                      className="w-full py-2 border border-nier-red/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="w-full py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {pinterestDisconnecting ? 'Disconnecting...' : 'Disconnect Pinterest'}
                     </button>
@@ -400,18 +596,18 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <button
                       onClick={initiatePinterestConnect}
                       disabled={!isPinterestConfigured()}
-                      className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       Connect Pinterest
                     </button>
                     {!isPinterestConfigured() && (
-                      <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
+                      <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
                         Pinterest integration isn't configured yet.
                       </p>
                     )}
                   </>
                 )}
-                <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
+                <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
                   Lets you import a board's pins as traces from inside an atrium.
                 </p>
               </div>
@@ -426,16 +622,16 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 href="/privacy.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-[0.7rem] tracking-[0.1em] uppercase transition-colors"
               >
                 Privacy Policy
               </a>
-              <span className="text-nier-bg/50 text-[9px]">◇</span>
+              <span className="text-nier-bg/50 text-[0.7rem]">◇</span>
               <a
                 href="/terms.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
+                className="text-nier-bg/70 hover:text-nier-bg/80 text-[0.7rem] tracking-[0.1em] uppercase transition-colors"
               >
                 Terms of Service
               </a>
@@ -450,16 +646,16 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               {!showDeleteConfirm ? (
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full py-2 border border-nier-red/60 text-nier-red text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red/20 transition-colors"
+                  className="w-full py-2 border border-nier-red/60 text-nier-red text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 transition-colors"
                 >
                   Delete Account
                 </button>
               ) : (
                 <div className="border border-nier-red/60 bg-nier-red/10 p-3 space-y-3">
-                  <p className="text-nier-bg text-[10px] tracking-wider">
+                  <p className="text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
                     This permanently deletes your account, profile, and every atrium you own. Content you placed in atriums owned by other people stays, but is anonymized to "Deleted User" instead of your name. This cannot be undone.
                   </p>
-                  <p className="text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase">
+                  <p className="text-nier-bg/75 text-xs tracking-[0.1em] uppercase">
                     Type <span className="text-nier-bg normal-case">{actualUsername}</span> to confirm
                   </p>
                   <input
@@ -472,7 +668,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   />
 
                   {deleteError && (
-                    <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[10px] tracking-wider">
+                    <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.7rem] leading-relaxed tracking-wide">
                       {deleteError}
                     </div>
                   )}
@@ -481,14 +677,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <button
                       onClick={handleDeleteAccount}
                       disabled={deleteLoading || deleteConfirmText !== actualUsername}
-                      className="flex-1 py-2 bg-nier-red/80 text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="flex-1 py-2 bg-nier-red/80 text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {deleteLoading ? 'Deleting...' : 'Delete Permanently'}
                     </button>
                     <button
                       onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteError('') }}
                       disabled={deleteLoading}
-                      className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
+                      className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
                     >
                       Cancel
                     </button>

@@ -1110,8 +1110,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
 
     const handlePackingShapeChanged = (event: Event) => {
-      const customEvent = event as CustomEvent<{ lobbyId: string; shape: 'square' | 'circle' }>
-      if (customEvent.detail?.lobbyId !== lobbyId) return
+      const customEvent = event as CustomEvent<{ lobbyId: string | null; shape: 'square' | 'circle' }>
+      // A null lobbyId means the setting was changed from outside an atrium
+      // (the welcome screen's profile settings), so it applies here too.
+      if (customEvent.detail?.lobbyId && customEvent.detail.lobbyId !== lobbyId) return
       packingShapeRef.current = customEvent.detail.shape
     }
 
