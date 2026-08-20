@@ -237,9 +237,15 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         phase: hash(i * 5 + 3) * Math.PI * 2,
         sizeIndex,
         angle: Math.floor(hash(i * 11 + 7) * SPRITE_ANGLES),
-        // They join in order, so the fall thickens rather than starting at
-        // full rate.
-        liveAt: (i / count) * RAMP_MS,
+        // They join in order, but not at an even rate.
+        //
+        // Spacing the joins evenly makes the crowd grow evenly, so the middle
+        // of the fall is already half full and there is never a stretch where
+        // you can watch a single heart cross the screen. Taking the root of
+        // the position instead pushes most of the arrivals into the last part
+        // of the ramp: a fifth of them are falling at the halfway point, and
+        // the rest come in a rush behind. Sparse for longer, then steep.
+        liveAt: Math.pow(i / count, 0.45) * RAMP_MS,
       }
     })
 
