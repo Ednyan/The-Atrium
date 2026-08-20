@@ -23,6 +23,11 @@ interface WelcomeScreenProps {
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const theme = useLandingTheme()
+
+  // Set while the screen is stepping back, just before the browser is asked
+  // for. Two screens on the same ground, one receding as the other rises,
+  // reads as going a layer deeper rather than as a page being replaced.
+  const [leaving, setLeaving] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
   // Evaluated once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
@@ -161,7 +166,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
 
   return (
     <>
-      <div className="w-full h-full bg-nier-black flex items-center justify-center relative overflow-hidden">
+      <div className={`w-full h-full bg-nier-black flex items-center justify-center relative overflow-hidden ${leaving ? 'screen-recede' : ''}`}>
         {/* Scanline effect */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
           style={{
@@ -246,22 +251,17 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             landing page, so this was a second control for the same
             destination. */}
         {onBackToLanding && !isDesktop && (
+          // Top left at the same height as the pair opposite it. It was twelve
+          // from the edge against their six, wrapped in its own bordered box
+          // with four corner ticks -- a control from a different era of this
+          // screen.
           <button
             onClick={onBackToLanding}
-            className="absolute top-12 left-12 group z-20"
+            className="cut-corner absolute top-6 left-6 z-20 group inline-flex items-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
           >
-            <div className="relative px-4 py-2 border border-nier-border/40 bg-nier-black/80 hover:border-nier-border/80 hover:bg-nier-blackLight transition-all duration-300">
-              {/* Corner accents */}
-              <div className="absolute -top-0.5 -left-0.5 w-2 h-2 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -top-0.5 -right-0.5 w-2 h-2 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -bottom-0.5 -left-0.5 w-2 h-2 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-              
-              <div className="flex items-center gap-3">
-                <span className="text-nier-bg/75 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
-                <span className="text-xs tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">Back</span>
-              </div>
-            </div>
+            <span className="transition-transform duration-300 group-hover:-translate-x-1">◁</span>
+            Back
           </button>
         )}
 
@@ -403,7 +403,13 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 The cut corner is the shape Donate wears, and now the shape
                 every committing action wears. */}
             <button
-              onClick={onEnter}
+              onClick={() => {
+                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onEnter(); return }
+                setLeaving(true)
+                // Long enough for the recede to be seen, short enough that
+                // nobody waits for it. The browser's own rise covers the rest.
+                setTimeout(onEnter, 210)
+              }}
               onMouseEnter={() => setIsHovered('enter')}
               onMouseLeave={() => setIsHovered(null)}
               className="relative w-full py-4 text-sm tracking-[0.22em] uppercase font-medium transition-transform duration-300 hover:scale-[1.015] active:scale-[0.995] group"

@@ -745,3 +745,24 @@ input[type='color'].atrium-swatch::-moz-color-swatch { border: none; }
   .name-rule, .name-sheen { animation: none; }
   .name-sheen { color: rgb(var(--c-strong)); background-image: none; }
 }
+
+/* Going one layer in.
+   The welcome screen settles back and dims as the browser rises over it, so
+   the two read as one place at two depths rather than as two pages swapped.
+   The browser is a panel on a dark ground and so is the screen behind it,
+   which is what lets a cross-fade carry the illusion. */
+@keyframes screen-recede {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.965); }
+}
+.screen-recede { animation: screen-recede 260ms cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+@keyframes screen-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.screen-rise { animation: screen-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-recede, .screen-rise { animation: none; }
+}

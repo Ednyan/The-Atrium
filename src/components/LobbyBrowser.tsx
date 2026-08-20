@@ -706,7 +706,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50 p-4">
+    <div className="screen-rise fixed inset-0 bg-nier-black flex items-center justify-center z-50 p-4">
       {/* In the margin beside the panel rather than inside it, where it was
           competing for width with the list of atriums. */}
       <MonthlyGoalColumn
