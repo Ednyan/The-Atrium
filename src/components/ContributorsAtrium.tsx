@@ -4,6 +4,7 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
 import ThemeToggle from './ThemeToggle'
+import HeartRush from './HeartRush'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import {
   getCachedContributions,
@@ -33,54 +34,12 @@ interface ContributorsAtriumProps {
 // Slow enough to feel like an arrival rather than a notification.
 const THANKS_FADE_MS = 900
 
-// The rush.
-//
-// All of one colour, and that colour is the interface's own foreground -- bone
-// on a dark screen, ink on a light one. Not pure white or pure black, and not
-// the rank colours either: they have to become the background, and a
-// background made of six colours is a mess rather than a moment.
-//
-// The screen turning is the hearts arriving, so the wash underneath is the
-// same colour and ramps as they mass. A hundred and ten glyphs cannot
-// literally tile a screen; a hundred and ten glyphs over a colour that is
-// filling in behind them reads as though they did, which is the effect.
-//
-// Fixed positions and timings: a rush that reshuffled itself on every render
-// would flicker rather than flow.
-const RUSH_COUNT = 360
-const RUSH = Array.from({ length: RUSH_COUNT }, (_, index) => {
-  // A golden-ratio walk across the width, so no two neighbours land on each
-  // other and the pattern never repeats at any count.
-  const left = (index * 61.803) % 100
-  const lateness = index / RUSH_COUNT
-
-  return {
-    left,
-    delay: Math.round(lateness * 1150 + (index % 9) * 35),
-    // The late ones are slower as well as bigger, which is what stops the
-    // whole thing reading as a single sheet moving up the screen.
-    duration: 1500 + Math.round(lateness * 900) + (index % 7) * 90,
-    // Thirty pixels to nearly two hundred and forty. The ones that arrive last
-    // are the size of a hand, and they are what actually closes the screen --
-    // a rush of small hearts is a shower, and a shower does not fill anything.
-    size: 30 + Math.round(lateness * 170) + (index % 6) * 12,
-    drift: ((index % 13) - 6) * 11,
-    // How far up it goes. Early ones leave the screen; late ones stop inside
-    // it and stay, which is the difference between passing through and
-    // filling up -- the tank has to hold what falls into it.
-    rise: 128 - Math.round(lateness * 78),
-    opacity: 0.45 + lateness * 0.55,
-  }
-})
-
-// The order things arrive in. The wash and the rush run together; the name
-// lands once the screen is its own colour, and the rest follows it.
-// The message waits for the screen to finish turning. It used to land while
-// the fill was still arriving, so the words faded up through a colour that was
-// itself still fading -- two things resolving at once, neither finished.
-const THANKS_NAME_MS = 2300
-const THANKS_NOTE_MS = 3150
-const THANKS_HINT_MS = 4400
+// What follows the fill, once the hearts have reported covering the screen.
+// Nothing here is a guess about when that happens any more -- the simulation
+// says so, and these are only the beats after it.
+const THANKS_NAME_MS = 350
+const THANKS_NOTE_MS = 1200
+const THANKS_HINT_MS = 2450
 
 // The people who paid for this, drawn as an atrium of their own.
 //
@@ -331,25 +290,44 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [thanksVisible, setThanksVisible] = useState(false)
   const [thanksGone, setThanksGone] = useState(!thanks)
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0)
+  // Set by the simulation when the packed hearts actually cover the screen.
+  // Everything after it -- the colour resolving, the name, the note -- hangs
+  // off this rather than off a duration somebody tuned by eye.
+  const [filled, setFilled] = useState(false)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!showingThanks) return
     setThanksGone(false)
     setStage(0)
+    setFilled(false)
     // Next frame, so the element paints at zero before it starts moving.
     const up = requestAnimationFrame(() => setThanksVisible(true))
+    return () => {
+      cancelAnimationFrame(up)
+      if (dismissTimer.current) clearTimeout(dismissTimer.current)
+    }
+  }, [showingThanks, replay])
+
+  useEffect(() => {
+    if (!filled) return
     const name = setTimeout(() => setStage(1), THANKS_NAME_MS)
     const note = setTimeout(() => setStage(2), THANKS_NOTE_MS)
     const hint = setTimeout(() => setStage(3), THANKS_HINT_MS)
     return () => {
-      cancelAnimationFrame(up)
       clearTimeout(name)
       clearTimeout(note)
       clearTimeout(hint)
-      if (dismissTimer.current) clearTimeout(dismissTimer.current)
     }
-  }, [showingThanks, replay])
+  }, [filled])
+
+  // Canvas cannot read a CSS variable, so the value is taken from the document
+  // once, when the sequence starts, in whichever theme is current.
+  const rushColor = useMemo(() => {
+    if (typeof window === 'undefined') return '#CBCBCB'
+    const channels = getComputedStyle(document.documentElement).getPropertyValue('--c-fg').trim()
+    return channels ? `rgb(${channels})` : '#CBCBCB'
+  }, [showingThanks, theme.resolved])
 
   // Anywhere at all: the whole overlay is the target, so there is nothing to
   // aim at and no close button competing with the words.
@@ -1126,37 +1104,19 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             transition: `opacity ${THANKS_FADE_MS}ms ease-in-out`,
           }}
         >
-          {/* The wash. The wall does not dim behind the message, it is covered
-              by the room's own colour -- so what you are looking at stops being
-              a wall with something over it and becomes a single held moment. */}
-          <div
-            className="absolute inset-0 thanks-wash"
-            style={{ background: 'rgb(var(--c-fg))' }}
-          />
+          {/* The hearts arrive first and the colour is what they leave.
 
-          {/* The rush, over the wash rather than under it: hearts arriving into
-              an empty room read as coming to you, where hearts behind a screen
-              of colour read as something happening elsewhere. */}
-          {RUSH.map((heart, index) => (
-            <span
-              key={index}
-              className="absolute thanks-heart select-none"
-              style={{
-                left: `${heart.left}%`,
-                bottom: '-12vh',
-                fontSize: heart.size,
-                lineHeight: 1,
-                color: 'rgb(var(--c-fg))',
-                opacity: 0,
-                ['--rush-drift' as string]: `${heart.drift}px`,
-                ['--rush-rise' as string]: `${heart.rise}vh`,
-                ['--rush-opacity' as string]: heart.opacity,
-                animation: `thanks-rush ${heart.duration}ms cubic-bezier(0.32, 0, 0.6, 1) ${heart.delay}ms both`,
-              }}
-            >
-              ♥
-            </span>
-          ))}
+              The wash carries no animation of its own any more: it is held at
+              nothing until the simulation reports the screen covered, and then
+              resolves. Before, both ran on timers and the colour arrived on
+              its own schedule, which made the hearts look like decoration laid
+              over it rather than the cause of it. */}
+          <HeartRush color={rushColor} onFilled={() => setFilled(true)} />
+
+          <div
+            className="absolute inset-0 transition-opacity duration-[900ms] ease-out"
+            style={{ background: 'rgb(var(--c-fg))', opacity: filled ? 1 : 0 }}
+          />
 
           <div className="relative h-full flex items-center justify-center">
             <div className="text-center px-6 max-w-xl">
