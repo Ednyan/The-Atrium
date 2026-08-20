@@ -294,6 +294,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // Everything after it -- the colour resolving, the name, the note -- hangs
   // off this rather than off a duration somebody tuned by eye.
   const [filled, setFilled] = useState(false)
+  // Stable, so the simulation is never handed a "new" callback and restarted.
+  const markFilled = useCallback(() => setFilled(true), [])
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -1111,7 +1113,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               resolves. Before, both ran on timers and the colour arrived on
               its own schedule, which made the hearts look like decoration laid
               over it rather than the cause of it. */}
-          <HeartRush color={rushColor} onFilled={() => setFilled(true)} />
+          <HeartRush color={rushColor} onFilled={markFilled} />
 
           <div
             className="absolute inset-0 transition-opacity duration-[900ms] ease-out"

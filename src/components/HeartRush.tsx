@@ -22,12 +22,12 @@ interface HeartRushProps {
   onFilled: () => void
 }
 
-const COUNT = 420
+const COUNT = 620
 
 // Upward, because they are buoyant. Everything else follows from that: they
 // rise, meet the ceiling, and pack downward as more arrive underneath.
-const BUOYANCY = -2200 // px/s²
-const MAX_SPEED = 1500
+const BUOYANCY = -2600 // px/s²
+const MAX_SPEED = 2200
 const DAMPING = 0.86
 // Two passes of pushing overlaps apart is enough at this density. More looks
 // no better and costs a frame budget that a one-shot animation does not have.
@@ -51,24 +51,42 @@ interface Heart {
   live: boolean
 }
 
+// The ordinary heart, as a path rather than as four beziers guessed at.
+//
+// Drawn once and reused: Path2D takes the same 24-unit outline every icon set
+// uses, so the shape is the one people recognise instead of an approximation
+// of it. Its box is 24 by 24 with the centre a little below the middle, which
+// is why it is translated by 12 and 12.4 rather than by half of each.
+const HEART = new Path2D(
+  'M12 21.35 L10.55 20.03 C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3' +
+  ' c1.74 0 3.41 0.81 4.5 2.09 C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5' +
+  ' c0 3.78 -3.4 6.86 -8.55 11.54 L12 21.35 Z'
+)
+
 function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number) {
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate(rot)
-  const s = r / 13
+  const s = r / 11
   ctx.scale(s, s)
-  ctx.beginPath()
-  ctx.moveTo(0, 11)
-  ctx.bezierCurveTo(-15, -1, -10, -15, 0, -7)
-  ctx.bezierCurveTo(10, -15, 15, -1, 0, 11)
-  ctx.closePath()
-  ctx.fill()
+  ctx.translate(-12, -12.4)
+  ctx.fill(HEART)
   ctx.restore()
 }
 
 export default function HeartRush({ color, onFilled }: HeartRushProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const filledRef = useRef(false)
+
+  // Held in a ref rather than read from the closure.
+  //
+  // The caller passes an inline arrow, so its identity changes on every
+  // render -- and the moment the fill fired, the parent re-rendered, the
+  // effect saw a "new" callback, tore the whole simulation down and started it
+  // again from nothing. That is the flicker: a screen of packed hearts
+  // vanishing and a fresh rush beginning underneath the colour fading in.
+  const onFilledRef = useRef(onFilled)
+  onFilledRef.current = onFilled
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -77,12 +95,12 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     // A simulation cannot be "turned off" the way a transition can, so anyone
     // who asked for reduced motion gets the end of it immediately.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      onFilled()
+      onFilledRef.current()
       return
     }
 
     const ctx = canvas.getContext('2d')
-    if (!ctx) { onFilled(); return }
+    if (!ctx) { onFilledRef.current(); return }
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     let width = window.innerWidth
@@ -107,20 +125,28 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         // Entering from below the screen, spread across and beyond its width so
         // the edges fill as readily as the middle.
         x: ((i * 61.803) % 100) / 100 * (width * 1.1) - width * 0.05,
-        y: height + 60 + ((i * 37) % 380),
-        vx: (((i % 11) - 5) / 5) * 90,
-        vy: -420 - (i % 9) * 40,
-        r: 20 + Math.round(t * 46) + (i % 5) * 6,
+        // Deep. They were queued within four hundred pixels of each other, so
+        // four hundred and twenty of them were touching before they had moved
+        // -- which is not a rush, it is a jam being pushed from behind.
+        y: height + 120 + ((i * 137) % 2800),
+        vx: (((i % 11) - 5) / 5) * 70,
+        // Fast enough to clear the queue behind them rather than being
+        // shouldered up by it.
+        vy: -900 - (i % 9) * 70,
+        // Half what they were, and there are half again as many. The gaps
+        // between hearts were the size of hearts, which is what a pile of
+        // large things looks like -- smaller ones nest.
+        r: 11 + Math.round(t * 25) + (i % 5) * 4,
         rot: (((i * 29) % 100) / 100 - 0.5) * 0.8,
         spin: (((i % 7) - 3) / 3) * 0.9,
-        spawnAt: t * 1500 + (i % 6) * 30,
+        spawnAt: t * 2100 + (i % 6) * 25,
         live: false,
       }
     })
 
     // A uniform grid, so each heart only asks its neighbours about overlaps
     // rather than asking all four hundred.
-    const cell = 150
+    const cell = 110
     const buckets = new Map<number, number[]>()
     const keyOf = (x: number, y: number) => ((x / cell) | 0) * 100003 + ((y / cell) | 0)
 
@@ -189,7 +215,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
                 // Hearts are wider than they are tall, so they are treated as
                 // slightly flattened circles -- close enough at this scale, and
                 // it keeps them from stacking into columns.
-                const min = (a.r + b.r) * 0.78
+                const min = (a.r + b.r) * 0.7
                 const distSq = dx * dx + dy * dy
                 if (distSq >= min * min || distSq === 0) continue
                 const dist = Math.sqrt(distSq)
@@ -200,9 +226,16 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
                 a.y -= ny * push
                 b.x += nx * push
                 b.y += ny * push
-                // Bleed the speed off as they meet, or the pile never rests.
-                a.vy *= 0.86
-                b.vy *= 0.86
+                // Bleed speed only where they are actually closing on each
+                // other, and gently. Damping every overlapping pair by a
+                // seventh, twice a frame, crushed a heart's velocity to
+                // nothing while it was still below the screen -- so it stopped
+                // dead and everything behind it piled into it.
+                const closing = (b.vy - a.vy) * ny + (b.vx - a.vx) * nx
+                if (closing < 0) {
+                  a.vy *= 0.97
+                  b.vy *= 0.97
+                }
               }
             }
           }
@@ -238,15 +271,21 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         for (let i = 0; i < fill.length; i++) covered += fill[i]
         if (covered / fill.length >= FILL_THRESHOLD) {
           filledRef.current = true
-          onFilled()
+          onFilledRef.current()
         }
+      }
+
+      // Settled. The packed frame is what the colour fades in over, so it is
+      // held rather than kept in motion behind it.
+      if (filledRef.current && elapsed > 5200) {
+        return
       }
 
       // A backstop. If the pack somehow never closes -- a very wide window, a
       // very slow machine -- the message must still arrive.
       if (!filledRef.current && elapsed > 4200) {
         filledRef.current = true
-        onFilled()
+        onFilledRef.current()
       }
 
       raf = requestAnimationFrame(step)
@@ -257,7 +296,7 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', size)
     }
-  }, [color, onFilled])
+  }, [color])
 
   return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" aria-hidden="true" />
 }
