@@ -4,6 +4,7 @@ import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
 import { DONATE_CUT } from './DonateButton'
+import { currentTracePreset } from '../lib/tracePresets'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
@@ -3645,10 +3646,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         ? defaultEmbedBox(mediaUrl || content)
         : null
 
+      // The atrium's house style, applied at birth. This path -- the quick
+      // "leave a trace" flow -- writes straight to the database and never went
+      // through the panel that knew about presets, which is why traces made
+      // this way kept arriving in the old default.
+      const preset = currentTracePreset(lobbyId)
+
       const { data, error } = await supabase.from('traces').insert({
         user_id: userId,
         username,
         type: traceType,
+        border_color: preset.border,
+        fill_color: preset.fill,
+        show_border: true,
+        show_background: true,
+        font_family: 'mono',
+        ...(preset.text ? { text_color: preset.text } : {}),
         content,
         position_x: x,
         position_y: y,
@@ -3673,11 +3686,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         useGameStore.getState().addTrace(mapRowToTrace(data[0]))
       }
     } else {
+      const preset = currentTracePreset(lobbyId)
       const trace: Trace = {
         id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         userId,
         username,
         type: traceType as any,
+        borderColor: preset.border,
+        fillColor: preset.fill,
+        showBorder: true,
+        showBackground: true,
+        fontFamily: 'mono',
+        ...(preset.text ? { textColor: preset.text } : {}),
         content,
         x,
         y,

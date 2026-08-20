@@ -492,6 +492,16 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           user_id: userId,
           username,
           type: traceType,
+          // The same house style the local object above is given. Two paths
+          // create a trace here -- one for the database, one for the store --
+          // and only one of them knowing about presets is how a trace ends up
+          // looking different depending on which branch made it.
+          border_color: preset.border,
+          fill_color: preset.fill,
+          show_border: true,
+          show_background: true,
+          font_family: 'mono',
+          ...(preset.text ? { text_color: preset.text } : {}),
           content: content.trim() || `${traceType} content`,
           position_x: finalPosition.x,
           position_y: finalPosition.y,

@@ -7493,6 +7493,41 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               </div>
 
               <div className="space-y-5">
+                {/* The presets, at the top, because a preset is the fastest
+                    answer to "make these look alike" and that is most of what
+                    anybody selects a dozen traces to do. It also sets the
+                    atrium's house style, exactly as choosing one on a single
+                    trace does -- the point of a preset is that it holds. */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">Quick Presets</span>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {TRACE_PRESETS.map(preset => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          updateTraceCustomizationForMany(batchIds, {
+                            borderColor: preset.border,
+                            fillColor: preset.fill,
+                            showBorder: true,
+                            showBackground: true,
+                            fontFamily: 'mono',
+                            ...(preset.text ? { textColor: preset.text } : {}),
+                          })
+                          if (lobbyId) rememberTracePreset(lobbyId, preset.id)
+                        }}
+                        className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[11px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors"
+                        style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Toggle Options */}
                 <div className="space-y-3">
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
