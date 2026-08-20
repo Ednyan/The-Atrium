@@ -143,32 +143,31 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               Someone is already on the contributors wall as “{displayName.trim()}”.
             </p>
 
-            <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-6">
-              The wall shows one trace per name. If you donate under this one, your
-              amount is added to theirs and you appear as a single contributor — so
-              please only continue if that earlier donation was yours.
+            <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-6">
+              One name is one contributor here, so your amount would be added to
+              theirs and you would appear as one person.
             </p>
 
             <button
               type="button"
               onClick={() => { setCollisionAccepted(true); setConfirmingCollision(false) }}
-              className="w-full py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+              className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
             >
               Yes, that was me
             </button>
-            <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 mb-5 leading-relaxed">
+            <p className="text-nier-bg/70 text-xs tracking-wider mt-2 mb-5 leading-relaxed">
               Your donations are added together under the one name.
             </p>
 
             <button
               type="button"
               onClick={() => { setConfirmingCollision(false); setDisplayName('') }}
-              className="w-full py-3 border text-[10px] tracking-[0.15em] uppercase transition-colors"
+              className="w-full py-3 border text-xs tracking-[0.15em] uppercase transition-colors"
               style={{ borderColor: 'rgba(255,97,97,0.5)', color: '#FF6161' }}
             >
               No — I'll choose another name
             </button>
-            <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
+            <p className="text-nier-bg/70 text-xs tracking-wider mt-2 leading-relaxed">
               Takes you back to pick a name of your own.
             </p>
           </div>
@@ -186,7 +185,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               key={String(isMonthly)}
               type="button"
               onClick={() => { setMonthly(isMonthly); setCustomAmount('') }}
-              className={`flex-1 py-2 text-[10px] tracking-[0.15em] uppercase border transition-colors ${
+              className={`flex-1 py-2 text-xs tracking-[0.15em] uppercase border transition-colors ${
                 monthly === isMonthly
                   ? 'bg-nier-bg text-nier-black border-nier-bg'
                   : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
@@ -197,14 +196,14 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           ))}
         </div>
 
-        <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Amount</label>
+        <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Amount</label>
         <div className="flex gap-2 mb-3">
           {presets.map(preset => (
             <button
               key={preset}
               type="button"
               onClick={() => { setAmount(preset); setCustomAmount('') }}
-              className={`flex-1 py-2 text-[11px] tracking-wider border transition-colors ${
+              className={`flex-1 py-2 text-sm tracking-wider border transition-colors ${
                 !customAmount.trim() && amount === preset
                   ? 'bg-nier-bg text-nier-black border-nier-bg'
                   : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
@@ -232,13 +231,13 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           />
         </div>
         {customAmount.trim() && !amountValid && (
-          <p className="text-[9px] tracking-wider mb-2" style={{ color: '#FF6161' }}>
+          <p className="text-xs tracking-wider mb-2" style={{ color: '#FF6161' }}>
             The minimum is €1.
           </p>
         )}
 
-        <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mt-4 mb-2">
-          Name for the contributors page — optional
+        <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mt-4 mb-2">
+          Name on the wall — optional
         </label>
         <input
           type="text"
@@ -249,24 +248,28 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
         />
         {nameProblem ? (
-          <p className="text-[9px] tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
+          <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
         ) : taken ? (
-          <p className="text-[10px] tracking-wider mt-2 font-bold leading-relaxed" style={{ color: '#FF6161' }}>
-            Someone is already listed as “{displayName.trim()}”. If that was you, carry
-            on — otherwise please choose a different name.
+          <p className="text-xs tracking-wide mt-2 font-bold leading-relaxed" style={{ color: 'rgb(var(--c-danger))' }}>
+            “{displayName.trim()}” is taken. Carry on if that was you.
           </p>
         ) : (
-          <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
-            Shown with the total you've donated and the month you started. Checked by a
-            person before it appears — if it's offensive, or can't be used for some
-            other reason, you'll hear why by email. Leave it empty and your donation
-            stays anonymous.
+          // Four sentences became one line.
+          //
+          // Everything the old copy said was true and none of it was needed
+          // before paying: that a person checks the name matters at the moment
+          // it is refused, not now, and the refusal email says so itself.
+          // "Leave empty to stay anonymous" is the only part that changes what
+          // somebody does next, and the field's own placeholder already says
+          // it -- so this says the one thing the placeholder cannot.
+          <p className="text-nier-bg/70 text-xs tracking-wide mt-2 leading-relaxed">
+            Checked before it appears.
           </p>
         )}
 
         {error && (
           <div className="bg-red-900/20 border border-red-500/40 p-3 mt-4">
-            <p className="text-red-400 text-[10px] tracking-wide">{error}</p>
+            <p className="text-red-400 text-xs tracking-wide">{error}</p>
           </div>
         )}
 
@@ -274,21 +277,23 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           type="button"
           onClick={contribute}
           disabled={busy || !amountValid || !!nameProblem || !supabase}
-          className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {busy ? 'Opening…' : monthly ? `Donate €${chosenAmount || 0} monthly` : `Donate €${chosenAmount || 0}`}
         </button>
 
-        <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
-          Payment is handled by Stripe, in your browser. Cards, PayPal, Apple Pay,
-          Google Pay and local methods where they exist. Monthly can be cancelled
-          any time from the receipt Stripe emails you.
+        {/* Was a paragraph listing every payment method by name, which nobody
+            reads and Stripe's own page shows a second later anyway. What
+            remains answers the real hesitation: who takes the card, and
+            whether monthly can be stopped. */}
+        <p className="text-nier-bg/70 text-xs tracking-wide mt-3 leading-relaxed">
+          Paid securely through Stripe. Cancel monthly any time.
         </p>
 
         <button
           type="button"
           onClick={onClose}
-          className="w-full mt-4 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+          className="w-full mt-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
           Close
         </button>
