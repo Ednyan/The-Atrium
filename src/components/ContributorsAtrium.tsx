@@ -37,9 +37,13 @@ const THANKS_FADE_MS = 900
 // What follows the fill, once the hearts have reported covering the screen.
 // Nothing here is a guess about when that happens any more -- the simulation
 // says so, and these are only the beats after it.
-const THANKS_NAME_MS = 350
-const THANKS_NOTE_MS = 1200
-const THANKS_HINT_MS = 2450
+// Measured from the moment the screen reports itself covered -- and the colour
+// takes nine hundred milliseconds to finish arriving after that, so nothing is
+// said until it has. The name used to fade up through a wash that was still
+// fading, which is two things resolving at once and neither finished.
+const THANKS_NAME_MS = 950
+const THANKS_NOTE_MS = 1900
+const THANKS_HINT_MS = 3200
 
 // The people who paid for this, drawn as an atrium of their own.
 //
@@ -334,9 +338,6 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // Canvas cannot read a CSS variable, so the value is taken from the document
   // once, when the sequence starts, in whichever theme is current.
   const rushColor = useMemo(() => readToken('--c-fg', '#CBCBCB'), [showingThanks, theme.resolved])
-  // What the page behind them is, so a falling heart can be outlined against
-  // the others in it.
-  const groundColor = useMemo(() => readToken('--c-ground', '#191919'), [showingThanks, theme.resolved])
 
   // Anywhere at all: the whole overlay is the target, so there is nothing to
   // aim at and no close button competing with the words.
@@ -1120,7 +1121,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               resolves. Before, both ran on timers and the colour arrived on
               its own schedule, which made the hearts look like decoration laid
               over it rather than the cause of it. */}
-          <HeartRush color={rushColor} edgeColor={groundColor} onFilled={markFilled} />
+          <HeartRush color={rushColor} onFilled={markFilled} />
 
           <div
             className="absolute inset-0 transition-opacity duration-[900ms] ease-out"
