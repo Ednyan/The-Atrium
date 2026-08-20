@@ -68,6 +68,20 @@ const FILL_THRESHOLD = 0.985
 // which reads as the animation being cut off at its own peak.
 const HOLD_AFTER_FULL_MS = 1500
 
+// When the trails start, and how long they get.
+//
+// None at all while the fall is sparse: a lone heart with a tail behind it
+// reads as a smear rather than as something moving, and the whole reason for
+// the first stretch is to see individual hearts clearly. The blur comes in
+// over the last quarter of the ramp, as the crowd does -- by then it is a
+// rush, and a rush is the thing a shutter blurs.
+//
+// The number is how much of the previous frame is erased: all of it is no
+// trail at all, and less than that leaves what a shutter would.
+const BLUR_FROM = 0.75
+const NO_TRAIL = 1
+const MAX_TRAIL = 0.38
+
 const HEART = new Path2D(
   'M12 21.35 L10.55 20.03 C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3' +
   ' c1.74 0 3.41 0.81 4.5 2.09 C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5' +
@@ -301,8 +315,14 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       //
       // It also happens to cost less than clearing: one composite pass either
       // way, and the frames that follow have less to draw.
+      const through = Math.min(1, elapsed / RAMP_MS)
+      const blur = through <= BLUR_FROM
+        ? 0
+        : (through - BLUR_FROM) / (1 - BLUR_FROM)
+      const erase = NO_TRAIL - (NO_TRAIL - MAX_TRAIL) * blur
+
       ctx.globalCompositeOperation = 'destination-out'
-      ctx.fillStyle = 'rgba(0,0,0,0.38)'
+      ctx.fillStyle = `rgba(0,0,0,${erase})`
       ctx.fillRect(0, 0, width, height)
       ctx.globalCompositeOperation = 'source-over'
 
