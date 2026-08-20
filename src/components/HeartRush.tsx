@@ -47,8 +47,9 @@ const MIN_FALL = 700 // px/s
 const MAX_FALL = 1500
 
 // How long the fall takes to reach full rate. The ramp is what makes it read
-// as arriving rather than as being switched on.
-const RAMP_MS = 5800
+// as arriving rather than as being switched on -- but it should be crowded
+// well before it ends, not at the very end of it.
+const RAMP_MS = 3300
 
 const SPRITE_SIZES = 14
 // Seven rather than twelve, and a tighter box. Building the sheets was thirty
@@ -274,8 +275,16 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
       // Twenty-two milliseconds is a frame and a bit at sixty hertz: enough
       // headroom that an occasional long frame does not throttle it, tight
       // enough to catch a machine that is genuinely behind.
-      if (smoothedFrame < 22) admitted = Math.min(hearts.length, admitted + 1)
-      else admitted = Math.max(0, admitted - 2)
+      // A share of the whole, not one at a time.
+      //
+      // Admitting a single heart per frame meant four thousand of them took
+      // sixty-nine seconds to all be falling -- so this, not the ramp, was
+      // what decided how quickly it got crowded, and it was deciding "never".
+      // Two per cent a frame lets the full pour arrive inside a second, which
+      // leaves the ramp to do the pacing it was written to do.
+      const admitStep = Math.max(6, hearts.length * 0.02)
+      if (smoothedFrame < 22) admitted = Math.min(hearts.length, admitted + admitStep)
+      else admitted = Math.max(0, admitted - admitStep * 1.5)
 
       ctx.clearRect(0, 0, width, height)
 
