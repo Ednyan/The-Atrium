@@ -373,7 +373,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
             </button>
           </div>
           {error && (
-            <div className="mt-3 text-nier-bg/80 text-[10px] tracking-wider border border-nier-red/40 bg-nier-red/10 px-3 py-2">
+            <div className="mt-3 text-nier-bg/80 text-xs tracking-wider border border-nier-red/40 bg-nier-red/10 px-3 py-2">
               {error}
             </div>
           )}
@@ -383,7 +383,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
         <div className="flex border-b border-nier-border/20">
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'settings'
                 ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -393,7 +393,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           </button>
           <button
             onClick={() => setActiveTab('whitelist')}
-            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'whitelist'
                 ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -403,7 +403,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           </button>
           <button
             onClick={() => setActiveTab('blacklist')}
-            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'blacklist'
                 ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -413,7 +413,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           </button>
           <button
             onClick={() => setActiveTab('editors')}
-            className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
               activeTab === 'editors'
                 ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -424,7 +424,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           {isOwner && (
             <button
               onClick={() => setActiveTab('admins')}
-              className={`flex-1 px-4 py-3 text-[10px] tracking-[0.15em] uppercase transition-colors ${
+              className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
                 activeTab === 'admins'
                   ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
                   : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
@@ -440,7 +440,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           {activeTab === 'settings' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Atrium Name</label>
                 <input
                   type="text"
                   value={lobbyName}
@@ -451,11 +451,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               </div>
 
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Password</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Password</label>
                 {!showPasswordField ? (
                   <button
                     onClick={() => setShowPasswordField(true)}
-                    className="w-full py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                    className="w-full py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
                     {hasPassword ? 'Change Password' : 'Set Password'}
                   </button>
@@ -474,11 +474,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                         setShowPasswordField(false)
                         setPassword('')
                       }}
-                      className="w-full mt-2 py-1.5 border border-nier-border/20 text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase hover:text-nier-bg hover:border-nier-border/50 transition-colors"
+                      className="w-full mt-2 py-1.5 border border-nier-border/20 text-nier-bg/75 text-xs tracking-[0.15em] uppercase hover:text-nier-bg hover:border-nier-border/50 transition-colors"
                     >
                       Cancel
                     </button>
-                    <p className="text-nier-bg/70 text-[10px] tracking-wider mt-2">
+                    <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
                       {hasPassword
                         ? 'Leave empty and save to remove the password entirely.'
                         : 'Takes effect once you save settings below.'}
@@ -491,7 +491,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
                   isPublic ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
                 }`}>
-                  {isPublic && <span className="text-nier-bg text-[10px]">✓</span>}
+                  {isPublic && <span className="text-nier-bg text-xs">✓</span>}
                 </div>
                 <input
                   type="checkbox"
@@ -499,7 +499,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   onChange={(e) => setIsPublic(e.target.checked)}
                   className="hidden"
                 />
-                <span className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
                   Public (visible in atrium browser)
                 </span>
               </label>
@@ -509,7 +509,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
                     autosaveEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
                   }`}>
-                    {autosaveEnabled && <span className="text-nier-bg text-[10px]">✓</span>}
+                    {autosaveEnabled && <span className="text-nier-bg text-xs">✓</span>}
                   </div>
                   <input
                     type="checkbox"
@@ -517,17 +517,17 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                     onChange={(e) => setAutosaveEnabled(e.target.checked)}
                     className="hidden"
                   />
-                  <span className="text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
+                  <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
                     Autosave
                   </span>
                 </label>
-                <p className="text-nier-bg/70 text-[10px] tracking-wider mt-1">
+                <p className="text-nier-bg/70 text-xs tracking-wider mt-1">
                   Periodically saves everyone's pending changes in this atrium
                 </p>
 
                 {autosaveEnabled && (
                   <div className="mt-3">
-                    <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">
                       Save Every: {Math.floor(autosaveIntervalSeconds / 60)}m {autosaveIntervalSeconds % 60}s
                     </label>
                     <input
@@ -544,7 +544,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               </div>
 
               <div className="pt-2 border-t border-nier-border/20">
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">
                   Editing Permissions
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -557,7 +557,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                       key={option.value}
                       type="button"
                       onClick={() => setEditPermissionMode(option.value)}
-                      className={`py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                      className={`py-2 text-xs tracking-[0.1em] uppercase border transition-colors ${
                         editPermissionMode === option.value
                           ? 'bg-nier-bg text-nier-black border-nier-bg'
                           : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
@@ -567,7 +567,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                     </button>
                   ))}
                 </div>
-                <p className="text-nier-bg/70 text-[10px] tracking-wider mt-1">
+                <p className="text-nier-bg/70 text-xs tracking-wider mt-1">
                   {editPermissionMode === 'all' && 'Anyone who can access this atrium can create/edit/delete traces.'}
                   {editPermissionMode === 'none' && 'Only the owner and admins can create/edit/delete traces.'}
                   {editPermissionMode === 'selected' && 'Only the owner, admins, and users on the Editors list can create/edit/delete traces.'}
@@ -582,13 +582,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
             return (
             <div className="space-y-4">
               {activeTab === 'editors' && (
-                <p className="text-nier-bg/70 text-[10px] tracking-wider">
+                <p className="text-nier-bg/70 text-xs tracking-wider">
                   Only takes effect while Editing Permissions above is set to "Selected". Owner and admins can always edit regardless of this list.
                 </p>
               )}
               {/* Search Users */}
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Add User</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Add User</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -600,7 +600,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   />
                   <button
                     onClick={searchUsers}
-                    className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
                   >
                     Search
                   </button>
@@ -617,7 +617,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                         <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
                         <button
                           onClick={() => addToList(user.id, activeTab === 'editors' ? 'editor' : activeTab)}
-                          className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                          className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
                           Add
                         </button>
@@ -630,14 +630,14 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               {/* Current List */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">
+                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
                     {listLabel}
                   </span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
                 <div className="space-y-2">
                   {currentList.length === 0 ? (
-                    <div className="text-nier-bg/70 text-[10px] tracking-wider uppercase text-center py-4">No users in this list</div>
+                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">No users in this list</div>
                   ) : (
                     currentList.map(entry => (
                       <div
@@ -647,7 +647,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                         <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
                         <button
                           onClick={() => removeFromList(entry.id)}
-                          className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                          className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
                           Remove
                         </button>
@@ -662,9 +662,18 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
           {activeTab === 'admins' && (
             <div className="space-y-4">
+              {/* Said before the controls it governs, the way the editors tab
+                  says it. Explaining what a power does after somebody has
+                  already handed it out is the wrong order. */}
+              <p className="text-nier-bg/75 text-xs leading-relaxed">
+                Admins can change every atrium setting and manage the whitelist and
+                blacklist. Only the owner can add or remove an admin, or hand the
+                atrium over to somebody else.
+              </p>
+
               {/* Search Users */}
               <div>
-                <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Add User</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Add User</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -676,7 +685,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   />
                   <button
                     onClick={searchUsers}
-                    className="px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
                   >
                     Search
                   </button>
@@ -693,7 +702,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                         <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
                         <button
                           onClick={() => promoteToAdmin(user.id)}
-                          className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                          className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
                           Add
                         </button>
@@ -706,14 +715,14 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               {/* Current Admins */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase">
+                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
                     Admins
                   </span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
                 <div className="space-y-2">
                   {admins.length === 0 ? (
-                    <div className="text-nier-bg/70 text-[10px] tracking-wider uppercase text-center py-4">No admins yet</div>
+                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">No admins yet</div>
                   ) : (
                     admins.map(entry => (
                       <div
@@ -727,13 +736,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                               setTransferTargetUserId(entry.userId)
                               setTransferTargetUsername(entry.username || 'this user')
                             }}
-                            className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                            className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                           >
                             Make Owner
                           </button>
                           <button
                             onClick={() => demoteAdmin(entry.userId)}
-                            className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-[10px] tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                            className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                           >
                             Demote
                           </button>
@@ -744,9 +753,6 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 </div>
               </div>
 
-              <p className="text-nier-bg/70 text-[10px] tracking-wider">
-                Admins get full access to atrium settings, whitelist, and blacklist. Only the owner can promote/demote admins or transfer ownership.
-              </p>
             </div>
           )}
         </div>
@@ -756,12 +762,12 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
         <div className="p-4 border-t border-nier-border/20">
           <button
             onClick={updateLobbySettings}
-            className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
+            className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-bgDark transition-colors"
           >
             Save Settings
           </button>
           {settingsSaved && (
-            <div className="mt-2 border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[10px] tracking-wider">
+            <div className="mt-2 border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-xs tracking-wider">
               ✓ Atrium settings updated
             </div>
           )}
@@ -790,7 +796,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   const saved = await updateLobbySettings()
                   if (saved) onClose()
                 }}
-                className="w-full bg-nier-bg hover:bg-nier-bgDark text-nier-black text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+                className="w-full bg-nier-bg hover:bg-nier-bgDark text-nier-black text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
                 Save and Close
               </button>
@@ -799,13 +805,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   setShowCloseConfirm(false)
                   onClose()
                 }}
-                className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60"
+                className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60"
               >
                 Discard Changes
               </button>
               <button
                 onClick={() => setShowCloseConfirm(false)}
-                className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+                className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-bg/80 text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
                 Cancel
               </button>
@@ -834,7 +840,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               <button
                 onClick={transferOwnership}
                 disabled={isTransferring}
-                className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60 disabled:opacity-50"
+                className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60 disabled:opacity-50"
               >
                 {isTransferring ? 'Transferring...' : 'Transfer Ownership'}
               </button>
@@ -844,7 +850,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   setTransferTargetUsername(null)
                 }}
                 disabled={isTransferring}
-                className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
+                className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-bg/80 text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
               >
                 Cancel
               </button>

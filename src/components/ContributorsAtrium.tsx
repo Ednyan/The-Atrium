@@ -927,7 +927,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">Contributors</h1>
         </div>
         <p className="text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
-          Everyone who keeps this running. Drag to move, scroll or pinch to zoom.
+          Everyone who donated for the Digital Atrium. If you contributed, your name is here.
         </p>
       </div>
 
@@ -1174,8 +1174,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 }}
               >
                 {shownName
-                  ? 'Your name joins the wall once a person has checked it — usually within 48 hours. Stripe has emailed you a receipt.'
-                  : 'Your contribution is counted. Stripe has emailed you a receipt.'}
+                  ? 'Your name will join the contributors wall once approved — usually within 48 hours. The receipt has been emailed to you.'
+                  : 'Your contribution is counted. The receipt has been emailed to you.'}
               </p>
 
               <p
