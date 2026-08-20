@@ -602,76 +602,56 @@ body.dragging * {
   color: rgb(var(--c-fg) / 0.8);
   background-color: rgb(var(--c-ground) / 0.94);
   border: 1px solid rgb(var(--c-line) / 0.4);
-  position: relative;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  /* The cut edge, drawn as a background layer rather than a pseudo-element.
+
+     clip-path cuts a border along with everything else, so a bordered button
+     with a cut corner has an outline that stops at the diagonal. The missing
+     edge is painted back inside a 7px square at that corner -- the same 7px
+     the clip removes -- holding a band perpendicular to the gradient's axis,
+     which puts the band exactly along the cut. The outer half is clipped away
+     and about a pixel of it survives on the inside, which is the line.
+
+     As a background it needs no positioning. The first attempt used an
+     absolutely positioned pseudo-element, which meant declaring position:
+     relative here -- and that quietly overrode the fixed positioning on every
+     button in the atrium that floats. */
+  background-image: var(--cut-edge);
+  background-repeat: no-repeat;
+  background-position: right bottom;
+  background-size: 7px 7px;
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
-.atrium-btn::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 12px;
-  height: 12px;
-  pointer-events: none;
-  background: linear-gradient(
-    to top left,
-    transparent calc(50% - 0.5px),
-    rgb(var(--c-line) / 0.4) calc(50% - 0.5px),
-    rgb(var(--c-line) / 0.4) calc(50% + 0.5px),
-    transparent calc(50% + 0.5px)
-  );
+/* One definition of that edge, at three strengths. */
+:root {
+  --cut-edge: linear-gradient(to bottom right,
+    transparent calc(50% - 1px), rgb(var(--c-line) / 0.4) calc(50% - 1px),
+    rgb(var(--c-line) / 0.4) calc(50% + 1px), transparent calc(50% + 1px));
+  --cut-edge-strong: linear-gradient(to bottom right,
+    transparent calc(50% - 1px), rgb(var(--c-line) / 0.7) calc(50% - 1px),
+    rgb(var(--c-line) / 0.7) calc(50% + 1px), transparent calc(50% + 1px));
 }
-.atrium-btn:hover::after {
-  background: linear-gradient(
-    to top left,
-    transparent calc(50% - 0.5px),
-    rgb(var(--c-line) / 0.7) calc(50% - 0.5px),
-    rgb(var(--c-line) / 0.7) calc(50% + 0.5px),
-    transparent calc(50% + 0.5px)
-  );
-}
-/* Filled, so there is no outline for the cut to interrupt. */
-.atrium-btn[data-active='true']::after { background: none; }
-/* The cut corner, with its border intact.
- *
- * clip-path cuts through everything the element draws, borders included, so a
- * bordered button with a cut corner had an outline that simply stopped at the
- * diagonal and picked up again on the other side. It reads as a rendering
- * fault because it looks like one.
- *
- * The missing edge is drawn back: a square at the corner holding a one-pixel
- * diagonal, clipped by the same path, so the line lands exactly along the cut
- * and stops exactly where the shape does. */
+
+/* Anything bordered that wears the cut. */
 .cut-corner {
-  position: relative;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  background-image: var(--cut-edge);
+  background-repeat: no-repeat;
+  background-position: right bottom;
+  background-size: 7px 7px;
 }
-.cut-corner::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 12px;
-  height: 12px;
-  pointer-events: none;
-  background: linear-gradient(
-    to top left,
-    transparent calc(50% - 0.5px),
-    var(--cut-line, rgb(var(--c-line) / 0.4)) calc(50% - 0.5px),
-    var(--cut-line, rgb(var(--c-line) / 0.4)) calc(50% + 0.5px),
-    transparent calc(50% + 0.5px)
-  );
-}
+.cut-corner:hover { background-image: var(--cut-edge-strong); }
 
 .atrium-btn:hover {
   color: rgb(var(--c-strong));
   border-color: rgb(var(--c-line) / 0.7);
+  background-image: var(--cut-edge-strong);
 }
 .atrium-btn[data-active='true'] {
   color: rgb(var(--c-ground));
   background-color: rgb(var(--c-accent));
   border-color: rgb(var(--c-accent));
+  background-image: none;
 }
 
 /* Panels arriving rather than appearing. Short enough not to be in the way of
