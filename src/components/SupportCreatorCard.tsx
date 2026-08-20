@@ -14,6 +14,7 @@
 import { isDesktop } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import { DONATE_CUT } from './DonateButton'
+import RichText from './RichText'
 
 const LINKS = [
   { key: 'website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
@@ -26,7 +27,7 @@ export default function SupportCreatorCard() {
   const { t } = useTranslation()
 
   return (
-    <div className="donate-card-left support-card bg-nier-blackLight border p-6 w-full lg:max-w-md relative max-h-[85vh] overflow-y-auto">
+    <div className="donate-card-left support-card bg-nier-blackLight border p-6 w-full lg:max-w-md relative max-h-[85vh] overflow-y-auto flex flex-col">
       <div className="corner absolute top-0 left-0 w-4 h-4 border-l border-t" />
       <div className="corner absolute top-0 right-0 w-4 h-4 border-r border-t" />
       <div className="corner absolute bottom-0 left-0 w-4 h-4 border-l border-b" />
@@ -38,17 +39,27 @@ export default function SupportCreatorCard() {
         <div className="support-rule flex-1 h-px" />
       </div>
 
-      <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-4">
-        {t('support.who')}
-      </p>
-      <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-4">
-        {t('support.costs')}
-      </p>
-      <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-5">
-        {t('support.ask')}
-      </p>
+      {/* Three paragraphs of even grey is a wall, and a wall gets skimmed.
+          The first line is a size up because it is the one that has to be
+          read, an orange rule runs down the side so the block reads as
+          somebody talking rather than as body copy, and the phrases that
+          carry the point are in the app's orange -- marked inside the strings
+          themselves, so a translator can move the emphasis to whatever their
+          own sentence leans on. */}
+      <div className="flex-1 flex flex-col justify-center border-l-2 pl-5 py-1 space-y-4"
+           style={{ borderColor: 'rgb(var(--c-orange) / 0.45)' }}>
+        <p className="text-nier-bg/85 text-base tracking-wide leading-relaxed">
+          <RichText text={t('support.who')} />
+        </p>
+        <p className="text-nier-bg/75 text-sm tracking-wide leading-relaxed">
+          <RichText text={t('support.costs')} />
+        </p>
+        <p className="text-nier-bg/75 text-sm tracking-wide leading-relaxed">
+          <RichText text={t('support.ask')} />
+        </p>
+      </div>
 
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 mb-3 mt-8">
         <span className="support-orange text-[11px] tracking-[0.22em] uppercase whitespace-nowrap">
           {t('support.connect')}
         </span>
