@@ -5,6 +5,8 @@ import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
+import LanguageToggle from './LanguageToggle'
+import { useTranslation } from '../lib/i18n'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { shouldShowAppeal } from '../lib/supportAppeal'
@@ -39,6 +41,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   const [contributions, setContributions] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setContributions), [])
   const [isHovered, setIsHovered] = useState<string | null>(null)
+  const { t } = useTranslation()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { username, setUsername } = useGameStore()
 
@@ -423,7 +426,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 clipPath: DONATE_CUT,
               }}
             >
-              <span className="relative z-10">Enter the Atrium</span>
+              <span className="relative z-10">{t('welcome.enter')}</span>
               {/* Animated brackets on hover */}
               <span className={`absolute left-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-70 translate-x-0' : 'opacity-0 -translate-x-2'}`}>[</span>
               <span className={`absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-70 translate-x-0' : 'opacity-0 translate-x-2'}`}>]</span>
@@ -436,7 +439,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onMouseLeave={() => setIsHovered(null)}
               className="menu-row"
             >
-              <span className="relative z-10">◇ Profile Settings</span>
+              <span className="relative z-10">◇ {t('welcome.settings')}</span>
             </button>
 
             {/* Contributors, on both platforms -- who paid for this is the same
@@ -447,8 +450,13 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onMouseLeave={() => setIsHovered(null)}
               className="menu-row"
             >
-              <span className="relative z-10">◇ Contributors</span>
+              <span className="relative z-10">◇ {t('welcome.contributors')}</span>
             </button>
+
+            {/* The language picker, a row after Contributors. It renders
+                nothing until there is more than one language to pick, so it
+                can sit here from the day the plumbing lands. */}
+            <LanguageToggle variant="menu" />
 
             {/* About button (desktop only) */}
             {isDesktop && onBackToLanding && (
@@ -458,7 +466,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 onMouseLeave={() => setIsHovered(null)}
                 className="menu-row"
               >
-                <span className="relative z-10">◇ About</span>
+                <span className="relative z-10">◇ {t('welcome.about')}</span>
               </button>
             )}
 
@@ -469,7 +477,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onMouseLeave={() => setIsHovered(null)}
               className="menu-row"
             >
-              <span className="relative z-10">◇ {isFullscreen ? 'Windowed' : 'Fullscreen'}</span>
+              <span className="relative z-10">◇ {isFullscreen ? t('welcome.windowed') : t('welcome.fullscreen')}</span>
             </button>
 
             {/* Web only: desktop signs in automatically against the local
@@ -483,7 +491,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 onMouseLeave={() => setIsHovered(null)}
                 className="menu-row menu-row-danger"
               >
-                <span className="relative z-10">◇ Log Out</span>
+                <span className="relative z-10">◇ {t('welcome.logOut')}</span>
               </button>
             )}
 
@@ -498,7 +506,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 onMouseLeave={() => setIsHovered(null)}
                 className="menu-row menu-row-danger"
               >
-                <span className="relative z-10">◇ Exit Application</span>
+                <span className="relative z-10">◇ {t('welcome.exit')}</span>
               </button>
             )}
           </div>

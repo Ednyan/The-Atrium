@@ -5,6 +5,7 @@ import ContributePanel from './ContributePanel'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
+import LanguageToggle from './LanguageToggle'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
@@ -353,6 +354,8 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
           </nav>
 
           <div className="flex items-center gap-2 ml-auto lg:ml-0 shrink-0">
+            <LanguageToggle />
+
             <ThemeToggle />
 
             <DonateButton onClick={onDonate} />
