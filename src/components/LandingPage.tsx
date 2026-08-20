@@ -905,14 +905,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               onClick={() => scrollToSection(sectionIndex('creator'))}
               className="group ml-auto mb-8 lg:mb-12 lg:-mt-10 flex flex-col items-end text-right"
             >
-              <span className="byline flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase">
-                <span className="byline-mark w-1.5 h-1.5 rotate-45" />
+              <span className="byline flex items-center gap-2.5 text-[11px] sm:text-xs tracking-[0.3em] uppercase">
+                <span className="byline-mark w-2 h-2 rotate-45" />
                 Made by
               </span>
-              <span className="mt-2 text-lg sm:text-xl tracking-[0.12em] uppercase text-nier-strong leading-none">
+              <span className="mt-2.5 text-xl sm:text-2xl tracking-[0.12em] uppercase text-nier-strong leading-none">
                 Eduardo Paranhos
               </span>
-              <span className="byline-link mt-2.5 flex items-center gap-2 text-[11px] tracking-[0.18em] uppercase text-nier-bg/70">
+              <span className="byline-link mt-3 flex items-center gap-2 text-xs sm:text-[13px] tracking-[0.18em] uppercase text-nier-bg/70">
                 About the creator
                 <span className="transition-transform duration-300 group-hover:translate-y-0.5">↓</span>
               </span>

@@ -41,7 +41,7 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
-  --c-byline: 232 197 92;
+  --c-byline: 255 138 61;
   --c-coral: 232 122 109;
   /* Leaving, deleting, refusing. red-300 sits at 1.65:1 on paper, which is a
    * warning nobody can read; each theme gets the red that works against it. */
@@ -89,7 +89,7 @@
   --c-emerald: 42 118 78;
   --c-sky: 45 110 151;
   --c-amber: 168 132 24;
-  --c-byline: 122 93 30;
+  --c-byline: 184 73 0;
   --c-coral: 227 94 79;
   --c-danger: 180 35 26;
   --c-shadow: 122 112 96;
@@ -108,7 +108,7 @@
   --c-emerald: 127 209 166;
   --c-sky: 127 182 217;
   --c-amber: 232 197 92;
-  --c-byline: 232 197 92;
+  --c-byline: 255 138 61;
   --c-coral: 232 122 109;
   --c-danger: 255 97 97;
   --c-shadow: 0 0 0;
