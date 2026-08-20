@@ -96,6 +96,15 @@ export default function DesktopAppSection() {
   // Which download button the pointer (or focus) is on, and so which
   // first-launch note is showing.
   const [hoveredOs, setHoveredOs] = useState<Build['os'] | null>(null)
+  // Which note the block is showing. It follows hoveredOs but never goes back
+  // to null, so the note stays legible while the block collapses under it.
+  const [noteOs, setNoteOs] = useState<Build['os'] | null>(null)
+
+  useEffect(() => {
+    if (hoveredOs) setNoteOs(hoveredOs)
+  }, [hoveredOs])
+
+  const noteOpen = !!hoveredOs && !!assets[hoveredOs]
 
   useEffect(() => {
     let cancelled = false
@@ -178,23 +187,33 @@ export default function DesktopAppSection() {
           like the app is broken. Saying so up front turns a scary dead end
           into a known extra click.
 
-          All three notes are stacked in the same grid cell, so the block is
-          always as tall as the longest of them and nothing below it moves
-          when one appears. Only the hovered one is visible. */}
-      <div className="grid mb-4">
-        {BUILDS.map(build => (
+          Reserving the space for a note nobody is looking at left a hole
+          under the buttons, so the block collapses instead: a grid row
+          animating between 0fr and 1fr, which is the one way to transition to
+          a height you do not know in advance. The margin lives inside the
+          collapsing part, so it goes with it.
+
+          noteOs trails hoveredOs and never returns to null, so the text is
+          still there to be seen on the way down rather than disappearing the
+          instant the pointer leaves. */}
+      <div
+        className="grid"
+        style={{
+          gridTemplateRows: noteOpen ? '1fr' : '0fr',
+          transition: 'grid-template-rows 220ms ease',
+        }}
+        aria-hidden={!noteOpen}
+      >
+        <div className="overflow-hidden min-h-0">
           <div
-            key={build.os}
-            aria-hidden={hoveredOs !== build.os}
-            className={`col-start-1 row-start-1 border border-nier-border/25 bg-nier-black/40 p-3 transition-opacity duration-200 ${
-              hoveredOs === build.os && assets[build.os] ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
+            className="border border-nier-border/25 bg-nier-black/40 p-3 mb-4 transition-opacity duration-200"
+            style={{ opacity: noteOpen ? 1 : 0 }}
           >
             <p className="text-nier-bg/80 text-xs tracking-wider leading-relaxed">
-              {build.firstRun}
+              {BUILDS.find(build => build.os === noteOs)?.firstRun}
             </p>
           </div>
-        ))}
+        </div>
       </div>
 
       <p className="text-nier-bg/70 text-xs tracking-wider mb-10">
