@@ -2788,8 +2788,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             const bracketSize = 18 + staggeredPulse * 4
             
             // Redraw the graphics (clear and redraw is efficient for Graphics)
+            const ink = indicatorColorRef.current.primary
             indicator.clear()
-            indicator.lineStyle(1.5, 0xDADADA, distanceAlpha * breathe)
+            indicator.lineStyle(1.5, ink, distanceAlpha * breathe * 0.85)
             
             // Brackets
             indicator.moveTo(-bracketSize, -bracketSize + 8)
@@ -2807,7 +2808,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             
             // Diamond
             const diamondSize = 6 + staggeredPulse * 2
-            indicator.lineStyle(1.5, 0xFFFFFF, distanceAlpha * 0.9)
+            indicator.lineStyle(1.5, ink, distanceAlpha * 0.9)
             indicator.moveTo(0, -diamondSize)
             indicator.lineTo(diamondSize, 0)
             indicator.lineTo(0, diamondSize)
@@ -2815,13 +2816,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             indicator.lineTo(0, -diamondSize)
             
             // Center dot
-            indicator.beginFill(0xFFFFFF, distanceAlpha)
+            indicator.beginFill(ink, distanceAlpha)
             indicator.drawCircle(0, 0, 2)
             indicator.endFill()
             
             // Direction line
             const lineLength = 25 + staggeredPulse * 5
-            indicator.lineStyle(1, 0xDADADA, distanceAlpha * 0.6)
+            indicator.lineStyle(1, ink, distanceAlpha * 0.6)
             indicator.moveTo(cos * 12, sin * 12)
             indicator.lineTo(cos * lineLength, sin * lineLength)
             
@@ -2830,6 +2831,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             
             // Update text
             distanceText.text = `${Math.round(distance)}`
+            distanceText.style.fill = ink
+            unitText.style.fill = ink
             distanceText.alpha = distanceAlpha * 0.8
             distanceText.y = bracketSize + 12
             unitText.alpha = distanceAlpha * 0.6
@@ -3742,6 +3745,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
           <TraceOverlay
             traces={traces}
+            atriumBackground={currentLobby?.themeSettings?.backgroundColor}
             lobbyWidth={window.innerWidth}
             lobbyHeight={window.innerHeight}
             zoom={zoom}

@@ -144,6 +144,10 @@ function resolveFontFamilyCss(key: string): string {
 
 interface TraceOverlayProps {
   traces: Trace[]
+  // The atrium's own background, so the cursor can be outlined against it.
+  // Without the drop shadow that used to separate them, a pale cursor on a
+  // pale atrium is a pale cursor on a pale atrium.
+  atriumBackground?: string
   lobbyWidth: number
   lobbyHeight: number
   zoom: number
@@ -316,7 +320,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -3683,6 +3687,15 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
               }
               const rgb = hexToRgb(playerColor)
 
+              // The cursor used to be readable because of a drop shadow under
+              // it. With that gone, its outline is what separates it from the
+              // atrium, so the outline follows the atrium: near-black on a
+              // light background, white on a dark one.
+              const groundRgb = hexToRgb(atriumBackground || '#0a0a0f')
+              const groundLuminance =
+                (0.2126 * groundRgb.r + 0.7152 * groundRgb.g + 0.0722 * groundRgb.b) / 255
+              const cursorEdge = groundLuminance > 0.5 ? '#1a1a1a' : '#ffffff'
+
               // Get cursor SVG based on state
               const getCursorSvg = () => {
                 const size = 24 // Fixed size regardless of zoom
@@ -3692,7 +3705,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                   viewBox: "0 0 24 24",
                   style: { 
                     transform: 'translate(-2px, -2px)',
-                    filter: `drop-shadow(0 2px 4px rgba(0,0,0,0.5))`,
                     transition: 'transform 0.1s ease-out',
                   } as React.CSSProperties
                 }
@@ -3709,7 +3721,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         <path
                           d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
                           fill={playerColor}
-                          stroke="white"
+                          stroke={cursorEdge}
                           strokeWidth="1.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -3759,7 +3771,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                         <path
                           d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
                           fill={playerColor}
-                          stroke="white"
+                          stroke={cursorEdge}
                           strokeWidth="1.5"
                         />
                       </svg>
@@ -3776,7 +3788,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                     left: playerScreenX,
                     top: playerScreenY,
                     pointerEvents: 'none',
-                    filter: `drop-shadow(0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6))`,
                     zIndex: item.zIndex,
                   }}
                 >
@@ -5525,6 +5536,11 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             } : { r: 255, g: 255, b: 255 }
           }
           const rgb = hexToRgb(userColor)
+          const otherGround = hexToRgb(atriumBackground || '#0a0a0f')
+          const otherCursorEdge =
+            (0.2126 * otherGround.r + 0.7152 * otherGround.g + 0.0722 * otherGround.b) / 255 > 0.5
+              ? '#1a1a1a'
+              : '#ffffff'
 
           return (
             <div
@@ -5535,7 +5551,6 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 top: userScreenY,
                 pointerEvents: 'none',
                 transition: 'left 0.15s ease-out, top 0.15s ease-out',
-                filter: `drop-shadow(0 0 6px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5))`,
                 zIndex: OTHER_USER_CURSOR_Z_INDEX,
               }}
             >
@@ -5546,13 +5561,12 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 viewBox="0 0 24 24"
                 style={{ 
                   transform: 'translate(-2px, -2px)',
-                  filter: `drop-shadow(0 2px 4px rgba(0,0,0,0.5))`,
                 }}
               >
                 <path
                   d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
                   fill={userColor}
-                  stroke="white"
+                  stroke={otherCursorEdge}
                   strokeWidth="1.5"
                 />
               </svg>
@@ -5633,6 +5647,14 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
         // menu itself has been shifted left, so the flyout decision has to be
         // made against where the menu actually is.
         const contextMenuFlyoutOnLeft = contextMenuPos.x > window.innerWidth - 400
+        // Right-clicking inside a multi-selection is a question about the
+        // selection, not about the one trace under the pointer. Customize
+        // edits that one trace and silently drops the rest, so it is not
+        // offered here -- Batch Edit is the answer to what was asked.
+        // Right-clicking a trace *outside* the selection still means that
+        // trace, and still offers Customize.
+        const editingWholeSelection =
+          multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
         return (
         <>
           {/* Menu */}
@@ -5647,18 +5669,20 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
             <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-gray-400 pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-gray-400 pointer-events-none" />
             
-            <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-              onClick={() => {
-                const trace = traces.find(t => t.id === contextMenu.traceId)
-                if (trace) setEditingTrace(trace)
-                setShowBatchEditPanel(false)
-                setContextMenu(null)
-              }}
-            >
-              <span className="text-gray-400 text-[10px]">◇</span> Customize
-            </button>
-            {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId) && (
+            {!editingWholeSelection && (
+              <button
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                onClick={() => {
+                  const trace = traces.find(t => t.id === contextMenu.traceId)
+                  if (trace) setEditingTrace(trace)
+                  setShowBatchEditPanel(false)
+                  setContextMenu(null)
+                }}
+              >
+                <span className="text-gray-400 text-[10px]">◇</span> Customize
+              </button>
+            )}
+            {editingWholeSelection && (
               <button
                 className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                 onClick={() => {
@@ -5670,7 +5694,7 @@ export default function TraceOverlay({ traces, lobbyWidth, lobbyHeight, zoom, wo
                 <span className="text-gray-400 text-[10px]">◇</span> Batch Edit ({multiSelectedIds.size})
               </button>
             )}
-            {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId) && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
+            {editingWholeSelection && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
               <div
                 className="relative"
                 onMouseEnter={openReorganizeFlyout}
