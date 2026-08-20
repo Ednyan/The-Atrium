@@ -35,31 +35,41 @@ const THANKS_FADE_MS = 900
 
 // The rush.
 //
-// Hearts in the wall's own colours -- the five ranks and the monthly purple --
-// rather than white or black, because the thing rising is meant to read as the
-// contributors themselves arriving. Fixed positions and timings: a rush that
-// reshuffled itself on every render would flicker rather than flow.
-const RUSH_COLORS = ['#FF8A3D', '#E8C15A', '#9AD4C4', '#A8B6D9', '#C77DFF', '#CBCBCB']
-const RUSH = Array.from({ length: 34 }, (_, index) => {
-  // Spread across the width by a golden-ratio walk rather than at random, so
-  // no two neighbours land on top of each other and none of it repeats.
-  const left = ((index * 61.803) % 100)
+// All of one colour, and that colour is the interface's own foreground -- bone
+// on a dark screen, ink on a light one. Not pure white or pure black, and not
+// the rank colours either: they have to become the background, and a
+// background made of six colours is a mess rather than a moment.
+//
+// The screen turning is the hearts arriving, so the wash underneath is the
+// same colour and ramps as they mass. A hundred and ten glyphs cannot
+// literally tile a screen; a hundred and ten glyphs over a colour that is
+// filling in behind them reads as though they did, which is the effect.
+//
+// Fixed positions and timings: a rush that reshuffled itself on every render
+// would flicker rather than flow.
+const RUSH_COUNT = 110
+const RUSH = Array.from({ length: RUSH_COUNT }, (_, index) => {
+  // A golden-ratio walk across the width, so no two neighbours land on each
+  // other and the pattern never repeats.
+  const left = (index * 61.803) % 100
+  // Later ones are larger and closer together: the crowd thickens as it comes
+  // rather than arriving all at once.
+  const lateness = index / RUSH_COUNT
   return {
     left,
-    delay: (index % 12) * 70 + (index % 5) * 40,
-    duration: 1700 + (index % 7) * 190,
-    size: 14 + (index % 6) * 9,
-    color: RUSH_COLORS[index % RUSH_COLORS.length],
-    drift: ((index % 9) - 4) * 14,
-    opacity: 0.55 + (index % 4) * 0.12,
+    delay: Math.round(lateness * 950 + (index % 7) * 45),
+    duration: 1500 + (index % 9) * 130,
+    size: 16 + Math.round(lateness * 54) + (index % 5) * 7,
+    drift: ((index % 11) - 5) * 12,
+    opacity: 0.5 + lateness * 0.5,
   }
 })
 
 // The order things arrive in. The wash and the rush run together; the name
 // lands once the screen is its own colour, and the rest follows it.
-const THANKS_NAME_MS = 1150
-const THANKS_NOTE_MS = 2000
-const THANKS_HINT_MS = 3300
+const THANKS_NAME_MS = 1500
+const THANKS_NOTE_MS = 2350
+const THANKS_HINT_MS = 3600
 
 // The people who paid for this, drawn as an atrium of their own.
 //
@@ -303,6 +313,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // Replayable, so the operator can watch it without paying for it again.
   const [replay, setReplay] = useState(0)
   const showingThanks = thanks || replay > 0
+  // A replay with no name would show the anonymous version, which is not the
+  // one the operator is checking.
+  const shownName = replay > 0 ? 'Test' : thanksName
 
   const [thanksVisible, setThanksVisible] = useState(false)
   const [thanksGone, setThanksGone] = useState(!thanks)
@@ -1107,7 +1120,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               a wall with something over it and becomes a single held moment. */}
           <div
             className="absolute inset-0 thanks-wash"
-            style={{ background: 'rgb(var(--c-ground))' }}
+            style={{ background: 'rgb(var(--c-fg))' }}
           />
 
           {/* The rush, over the wash rather than under it: hearts arriving into
@@ -1122,7 +1135,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 bottom: '-12vh',
                 fontSize: heart.size,
                 lineHeight: 1,
-                color: heart.color,
+                color: 'rgb(var(--c-fg))',
                 opacity: 0,
                 ['--rush-drift' as string]: `${heart.drift}px`,
                 ['--rush-opacity' as string]: heart.opacity,
@@ -1139,46 +1152,57 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 className="flex items-center justify-center gap-5 mb-6"
                 style={{ opacity: stage >= 1 ? 1 : 0, transition: 'opacity 700ms ease-out' }}
               >
-                <div className="w-16 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
-                <div className="w-2 h-2 rotate-45 border border-nier-border/70" />
-                <div className="w-16 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
+                <div className="w-16 h-[1px]" style={{ background: 'linear-gradient(90deg, transparent, rgb(var(--c-ground) / 0.55))' }} />
+                <div className="w-2 h-2 rotate-45 border" style={{ borderColor: 'rgb(var(--c-ground) / 0.7)' }} />
+                <div className="w-16 h-[1px]" style={{ background: 'linear-gradient(90deg, rgb(var(--c-ground) / 0.55), transparent)' }} />
               </div>
 
               {/* Named, when they gave one. "Thank you" is a sentiment; "Thank
                   you, Ana" is addressed to somebody -- and the name they chose
                   is the one thing about this they picked themselves. */}
+              {/* In the ground colour, because by the time it lands the screen
+                  is the foreground one. The whole thing has inverted. */}
               <h2
-                className="text-nier-strong text-[clamp(2rem,7vw,4.5rem)] font-extralight tracking-[0.3em] uppercase leading-[1.05]"
+                className="text-[clamp(2rem,7vw,4.5rem)] font-extralight tracking-[0.3em] uppercase leading-[1.05]"
                 style={{
+                  color: 'rgb(var(--c-ground))',
                   opacity: stage >= 1 ? 1 : 0,
                   transform: stage >= 1 ? 'translateY(0)' : 'translateY(14px)',
                   transition: 'opacity 900ms ease-out, transform 900ms cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
               >
                 Thank you
-                {thanksName && (
-                  <span className="block name-sheen text-[clamp(1.4rem,4.5vw,2.8rem)] tracking-[0.16em] mt-3">
-                    {thanksName}
+                {shownName && (
+                  <span
+                    className="block text-[clamp(1.4rem,4.5vw,2.8rem)] tracking-[0.16em] mt-3 font-normal"
+                    style={{ color: 'rgb(var(--c-ground))' }}
+                  >
+                    {shownName}
                   </span>
                 )}
               </h2>
 
               <p
-                className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mt-9"
+                className="text-sm tracking-wide leading-relaxed mt-9"
                 style={{
+                  color: 'rgb(var(--c-ground) / 0.85)',
                   opacity: stage >= 2 ? 1 : 0,
                   transform: stage >= 2 ? 'translateY(0)' : 'translateY(8px)',
                   transition: 'opacity 800ms ease-out, transform 800ms cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
               >
-                {thanksName
-                  ? 'Your name appears here beside the others once it has been checked. Stripe has emailed you a receipt.'
+                {shownName
+                  ? 'Your name joins the wall once a person has checked it — usually within 48 hours. Stripe has emailed you a receipt.'
                   : 'Your contribution is counted. Stripe has emailed you a receipt.'}
               </p>
 
               <p
-                className="text-nier-bg/70 text-xs tracking-[0.2em] uppercase mt-12"
-                style={{ opacity: stage >= 3 ? 1 : 0, transition: 'opacity 700ms ease-out' }}
+                className="text-xs tracking-[0.2em] uppercase mt-12"
+                style={{
+                  color: 'rgb(var(--c-ground) / 0.7)',
+                  opacity: stage >= 3 ? 1 : 0,
+                  transition: 'opacity 700ms ease-out',
+                }}
               >
                 Click anywhere to hide the message
               </p>
