@@ -73,7 +73,7 @@ export default function DonateButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative px-4 sm:px-5 py-2.5 text-[11px] tracking-[0.18em] uppercase transition-transform hover:scale-[1.03] active:scale-[0.99] ${
+      className={`donate-btn relative px-4 sm:px-5 py-2.5 text-[11px] tracking-[0.18em] uppercase transition-transform hover:scale-[1.03] active:scale-[0.99] ${
         accent ? 'text-nier-black font-semibold' : 'border border-nier-border/40 text-nier-bg/85 hover:text-nier-bg'
       } ${className}`}
       // The glow travels with the button. It is the one thing on any screen
@@ -91,9 +91,10 @@ export default function DonateButton({
           means "an item" everywhere else; on the one button that asks for
           money it should say what it is asking for. Drawn as two arcs and a
           point rather than the emoji, which arrives in a different typeface on
-          every machine and in colour on most of them. */}
+          every machine and in colour on most of them. It beats while the
+          pointer is on the button -- see .donate-heartbeat. */}
       <span className="relative inline-flex items-center gap-2">
-        <svg viewBox="0 0 24 22" width="11" height="10" aria-hidden="true" className="shrink-0">
+        <svg viewBox="0 0 24 22" width="11" height="10" aria-hidden="true" className="shrink-0 donate-heartbeat">
           <path
             d="M12 21S2.5 14.6 2.5 8.2A5.7 5.7 0 0 1 12 4.4a5.7 5.7 0 0 1 9.5 3.8C21.5 14.6 12 21 12 21Z"
             fill="none"

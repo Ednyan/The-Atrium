@@ -110,7 +110,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            Support the foundations
+            Support the project
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -118,23 +118,12 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="grid md:grid-cols-2 gap-10 items-start">
           <div className="space-y-4">
             <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
-              An atrium is a building, and buildings need keeping. This one is free to
-              enter and always will be — nothing here is behind a paywall, and nothing
-              is going to be.
-            </p>
-            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
-              But it stands on things that are paid for monthly: the database your
-              atriums live in, the email that lets new people through the door, the
-              domain above it. Left unpaid, none of that quietly degrades — it simply
-              stops, and everything inside goes with it.
-            </p>
-            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
-              It's made and maintained by one person. Donations keep the lights on and
-              the work going.
+              The Digital Atrium is made and maintained by one person. Donations keep the lights on and
+              the development going.
             </p>
             <p className="text-nier-bg/70 text-base leading-relaxed tracking-wide">
-              From €1, once or monthly. Choose a name when you donate and it joins the
-              others holding the place up.
+              Donate once or monthly. Choose a name when you donate and it joins the
+              others holding the place up. Go see them on the contributors page.
             </p>
           </div>
 
@@ -739,7 +728,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">
               Your wall of references.
               <span className="block text-nier-bg/70 text-base mt-2">
-                Create your atrium. Leave traces. Discover others.
+                Create an atrium and leave your traces.
               </span>
             </p>
 
@@ -866,11 +855,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 where people gather to build their wall of references and ideas.
               </p>
               <p className="text-nier-bg/80 text-base leading-relaxed">
-                Like a whiteboard or pinboard, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
+                Like a whiteboard or pinboard, an atrium serves as a central space where art, ideas, and content from many sources come together in one place.
               </p>
               <p className="text-nier-bg/80 text-base leading-relaxed">
-               Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium wall.
-               It's a living document of collective expression for sharing and brainstorming. Have you heard of mind maps?
+               Create your own private atrium or explore public spaces to see what others have hanged in the their digital wall.
+               It's great for brainstorming! Have you heard of mind maps?
               </p>
 
               {/* An atrium from above: scattered traces, other visitors, and
@@ -1168,8 +1157,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
             <p className="text-nier-bg/75 text-base leading-relaxed italic">
-              I wanted something simple to use and fast to iterate in — like making a collage on a sheet of paper.
-              Like a mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.
+              I wanted something simple to use and fast to iterate in, like pinning ideas in a whiteboard.
+              A mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.
             </p>
           </div>
 

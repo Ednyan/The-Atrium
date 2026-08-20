@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 const REPO = 'Ednyan/The-Atrium'
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
@@ -10,6 +11,11 @@ interface Build {
   // than linking somewhere broken.
   match?: RegExp
   note: string
+  // What the operating system will say the first time, and what to do about
+  // it. Shown only while that platform's button is under the pointer: three
+  // paragraphs of caveats standing permanently under three buttons reads as
+  // a list of reasons not to download anything.
+  firstRun?: ReactNode
 }
 
 // Every platform is matched by asset filename against the latest release, so
@@ -18,9 +24,52 @@ interface Build {
 // separate CI runners (Tauri can't cross-compile), so a release can genuinely
 // arrive with only some platforms present if one job fails.
 const BUILDS: Build[] = [
-  { os: 'Windows', match: /\.exe$/, note: 'Windows 10 or later' },
-  { os: 'macOS', match: /\.dmg$/, note: 'Apple Silicon & Intel' },
-  { os: 'Linux', match: /\.AppImage$/, note: 'AppImage, most distros' },
+  {
+    os: 'Windows',
+    match: /\.exe$/,
+    note: 'Windows 10 or later',
+    // Not Authenticode-signed -- the signing key this project has is the
+    // updater's, which is a different thing entirely -- so SmartScreen shows
+    // its blue screen on a build it has not seen before.
+    firstRun: (
+      <>
+        <span className="text-nier-bg">On Windows,</span> SmartScreen may show a blue
+        "Windows protected your PC" screen the first time. That is what it does with any
+        installer it has not seen many times before, not a verdict on this one. Click{' '}
+        <span className="text-nier-bg">More info</span>, then{' '}
+        <span className="text-nier-bg">Run anyway</span>.
+      </>
+    ),
+  },
+  {
+    os: 'macOS',
+    match: /\.dmg$/,
+    note: 'Apple Silicon & Intel',
+    firstRun: (
+      <>
+        <span className="text-nier-bg">On macOS,</span> the first launch will say the app
+        "cannot be opened because the developer cannot be verified". That's because the
+        build isn't signed with an Apple Developer certificate, not because anything is
+        wrong with it. Right-click the app and choose <span className="text-nier-bg">Open</span>,
+        then confirm — macOS remembers the choice afterwards.
+      </>
+    ),
+  },
+  {
+    os: 'Linux',
+    match: /\.AppImage$/,
+    note: 'AppImage, most distros',
+    firstRun: (
+      <>
+        <span className="text-nier-bg">On Linux,</span> an AppImage arrives without the
+        executable bit set. Either tick{' '}
+        <span className="text-nier-bg">Allow executing file as program</span> in the file
+        manager's properties, or run{' '}
+        <span className="text-nier-bg font-mono">chmod +x</span> on it. Some minimal
+        distributions also need FUSE installed.
+      </>
+    ),
+  },
 ]
 
 // Web vs desktop, drawn from what the code actually enforces rather than
@@ -44,6 +93,9 @@ const COMPARISON: Array<{ feature: string; web: string; desktop: string; favours
 export default function DesktopAppSection() {
   const [version, setVersion] = useState<string | null>(null)
   const [assets, setAssets] = useState<Record<string, string>>({})
+  // Which download button the pointer (or focus) is on, and so which
+  // first-launch note is showing.
+  const [hoveredOs, setHoveredOs] = useState<Build['os'] | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,7 +137,7 @@ export default function DesktopAppSection() {
       </p>
 
       {/* Downloads */}
-      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+      <div className="grid sm:grid-cols-3 gap-3 mb-3">
         {BUILDS.map(build => {
           const url = assets[build.os]
           // Availability follows the actual release contents, not a hardcoded
@@ -97,6 +149,12 @@ export default function DesktopAppSection() {
               href={available ? (url || RELEASES_URL) : undefined}
               target={available ? '_blank' : undefined}
               rel={available ? 'noopener noreferrer' : undefined}
+              onMouseEnter={() => setHoveredOs(build.os)}
+              onMouseLeave={() => setHoveredOs(current => (current === build.os ? null : current))}
+              // Focus as well as hover, so the note is reachable by keyboard
+              // rather than being a mouse-only piece of the page.
+              onFocus={() => setHoveredOs(build.os)}
+              onBlur={() => setHoveredOs(current => (current === build.os ? null : current))}
               className={`border p-4 text-center transition-colors ${
                 available
                   ? 'border-nier-border/40 hover:border-nier-bg hover:bg-nier-bg/5 cursor-pointer'
@@ -114,21 +172,30 @@ export default function DesktopAppSection() {
         })}
       </div>
 
-      {/* macOS builds aren't code-signed (that needs a paid Apple Developer
-          account), so Gatekeeper blocks them on first launch with a message
-          that reads like the app is broken. Saying so up front turns a scary
-          dead end into a known extra click. */}
-      {assets['macOS'] && (
-        <div className="border border-nier-border/25 bg-nier-black/40 p-3 mb-4">
-          <p className="text-nier-bg/80 text-xs tracking-wider leading-relaxed">
-            <span className="text-nier-bg">On macOS,</span> the first launch will say the app
-            "cannot be opened because the developer cannot be verified". That's because the
-            build isn't signed with an Apple Developer certificate, not because anything is
-            wrong with it. Right-click the app and choose <span className="text-nier-bg">Open</span>,
-            then confirm — macOS remembers the choice afterwards.
-          </p>
-        </div>
-      )}
+      {/* None of the three builds is code-signed -- that means a paid Apple
+          Developer account and an Authenticode certificate -- so each
+          operating system greets the first launch with something that reads
+          like the app is broken. Saying so up front turns a scary dead end
+          into a known extra click.
+
+          All three notes are stacked in the same grid cell, so the block is
+          always as tall as the longest of them and nothing below it moves
+          when one appears. Only the hovered one is visible. */}
+      <div className="grid mb-4">
+        {BUILDS.map(build => (
+          <div
+            key={build.os}
+            aria-hidden={hoveredOs !== build.os}
+            className={`col-start-1 row-start-1 border border-nier-border/25 bg-nier-black/40 p-3 transition-opacity duration-200 ${
+              hoveredOs === build.os && assets[build.os] ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
+          >
+            <p className="text-nier-bg/80 text-xs tracking-wider leading-relaxed">
+              {build.firstRun}
+            </p>
+          </div>
+        ))}
+      </div>
 
       <p className="text-nier-bg/70 text-xs tracking-wider mb-10">
         {version ? `Latest release ${version} · ` : ''}

@@ -555,9 +555,37 @@ body.dragging * {
   100% { transform: translate3d(var(--drift, 0px), -280%, 0) scale(1.05); opacity: 0; }
 }
 
+/* The heart on the Donate button, beating while the pointer is on it.
+   Two beats and a rest, not a pulse: a contraction before each expansion is
+   what separates a heartbeat from a throb, and the short gap between the two
+   beats against the long one after them is the whole shape of the sound.
+   Only on hover -- a heart beating unprompted on every screen is a nag. */
+@keyframes donate-heartbeat {
+  0%   { transform: scale(1); }
+  6%   { transform: scale(0.9); }
+  14%  { transform: scale(1.25); }
+  24%  { transform: scale(1); }
+  30%  { transform: scale(1); }
+  36%  { transform: scale(0.9); }
+  44%  { transform: scale(1.25); }
+  54%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+.donate-heartbeat {
+  transform-origin: center;
+}
+
+.donate-btn:hover .donate-heartbeat,
+.donate-btn:focus-visible .donate-heartbeat {
+  animation: donate-heartbeat 1.6s ease-in-out infinite;
+}
+
 /* An animation nobody can turn off is one they have to sit through. */
 @media (prefers-reduced-motion: reduce) {
   .donate-heart { animation: none !important; opacity: 0 !important; }
+  .donate-btn:hover .donate-heartbeat,
+  .donate-btn:focus-visible .donate-heartbeat { animation: none !important; }
 }
 
 /* Bubbles rising through the monthly gauge.
