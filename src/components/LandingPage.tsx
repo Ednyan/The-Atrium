@@ -110,7 +110,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            Support Us
+            Support Me
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -251,7 +251,7 @@ function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
 const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
   { id: 'preview', title: 'Preview', subtitle: 'A tour of the place' },
-  { id: 'support', title: 'Support Us', subtitle: 'What holds the atrium up' },
+  { id: 'support', title: 'Support Me', subtitle: 'What holds the atrium up' },
   { id: 'creator', title: 'The Creator', subtitle: 'How this came to be' },
   { id: 'about', title: 'About', subtitle: 'What an atrium actually is' },
   { id: 'limitations', title: 'Limitations', subtitle: 'Where the free tier stops' },
@@ -464,7 +464,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       //
       // This used to be "the last section whose top is above the middle of the
       // window", which breaks for any section shorter than half a screen:
-      // jumping to Support Us put its top at the bar and The Creator's top at
+      // jumping to Support Me put its top at the bar and The Creator's top at
       // 600px, both above the midpoint, so the bar lit The Creator and the
       // page looked like it had scrolled straight past what you clicked.
       let currentSection = 0
@@ -506,6 +506,21 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
     container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
+  // The bar's Donate opens the panel and moves the page under it.
+  //
+  // Somebody who closes the panel without paying -- or after paying -- is put
+  // down in front of the section that explains what the money is for, rather
+  // than back wherever they happened to be reading. The scroll happens behind
+  // the panel, so it costs them nothing either way.
+  //
+  // Only this one. The Donate at the foot of the page is already at the end of
+  // the argument, and throwing somebody back up the page from there would be
+  // taking them somewhere they had already been.
+  const handleBarDonate = () => {
+    scrollToSection(sectionIndex('support'))
+    setShowDonate(true)
+  }
+
   return (
     <div 
       ref={containerRef}
@@ -516,7 +531,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         items={navItems}
         activeSection={activeSection}
         onJump={scrollToSection}
-        onDonate={() => setShowDonate(true)}
+        onDonate={handleBarDonate}
       />
 
       {showDonate && <ContributePanel onClose={() => setShowDonate(false)} />}
@@ -919,7 +934,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       {/* SECTION 2: Preview -- the reel. Early, because a page about a place
           is weaker than seeing the place. */}
       <VideoShowcaseSection sectionRef={el => sectionRefs.current[1] = el} />
-      {/* SECTION 3: Support Us */}
+      {/* SECTION 3: Support Me */}
       <ContributionsSection sectionRef={el => sectionRefs.current[2] = el} />
       {/* SECTION 4: The Creator */}
       <section 

@@ -927,7 +927,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">Contributors</h1>
         </div>
         <p className="text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
-          Everyone who donated for the Digital Atrium. If you contributed, your name is here.
+          Everyone who donated for the Digital Atrium is here. If you contributed, your name is somewhere below.
         </p>
       </div>
 
