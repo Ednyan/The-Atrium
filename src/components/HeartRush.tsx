@@ -25,20 +25,24 @@ interface HeartRushProps {
   onFilled: () => void
 }
 
-// How many it takes to close a screen, rather than a number picked by eye.
+// How many it takes to close a screen.
 //
-// Random packing of mixed circles fills about 58% of the area it spans, and
-// the heart glyph fills about 70% of its own circle -- so covering a screen
-// needs roughly two and a half times the screen in circle area. Six hundred
-// and twenty came to 1.01x, which is why it never closed however long it ran:
-// there was not enough heart in the room.
+// The first estimate was far short. A heart covers about two thirds of the
+// circle it sits in, the pile leaves gaps between them, and the fill is only
+// ever as tall as what has landed -- so a screen wants something like three
+// and a half times its own area in hearts, not two and a half.
 //
-// Counted from the actual viewport, so a wide monitor gets what it needs and a
-// laptop is not made to simulate two thousand of them for nothing.
-const COVERAGE = 2.5
-const MEAN_CIRCLE_AREA = 2400
+// That is thousands of them, which is the real constraint: filling a path
+// three thousand times a frame is too slow, so they are stamped from
+// pre-drawn sprites instead (see SPRITES). Once drawing is a blit, the count
+// stops being the thing that limits this.
+//
+// Counted from the viewport, so a wide monitor gets what it needs and a laptop
+// is not asked to simulate four thousand for nothing.
+const COVERAGE = 3.5
+const MEAN_HEART_AREA = 2100
 const countFor = (width: number, height: number) =>
-  Math.max(420, Math.min(1500, Math.round((width * height * COVERAGE) / MEAN_CIRCLE_AREA)))
+  Math.max(700, Math.min(4200, Math.round((width * height * COVERAGE) / MEAN_HEART_AREA)))
 
 // Down, because they fall. Everything else follows: they drop, meet the floor,
 // and pack upward as more land on top of them -- which is the tank filling.
@@ -61,8 +65,9 @@ interface Heart {
   vx: number
   vy: number
   r: number
-  rot: number
-  spin: number
+  // Which pre-drawn sprite this one is: a size row and an angle within it.
+  sizeIndex: number
+  angle: number
   spawnAt: number
   live: boolean
 }
@@ -79,15 +84,52 @@ const HEART = new Path2D(
   ' c0 3.78 -3.4 6.86 -8.55 11.54 L12 21.35 Z'
 )
 
-function drawHeart(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number) {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(rot)
-  const s = r / 11
-  ctx.scale(s, s)
-  ctx.translate(-12, -12.4)
-  ctx.fill(HEART)
-  ctx.restore()
+// Every heart that will ever be drawn, drawn once.
+//
+// Filling a bezier path thousands of times a frame is what put a ceiling on
+// the count, and the count is the whole effect. Each size and angle is
+// rendered to its own small canvas up front, and the frame loop only blits --
+// which is roughly an order of magnitude cheaper and is why there can now be
+// four thousand of them instead of six hundred.
+//
+// Angles rather than a live rotation for the same reason: a rotated draw costs
+// a transform per heart, and nobody can tell twelve angles from a continuum
+// when the things are tumbling into a pile.
+const SPRITE_SIZES = 14
+const SPRITE_ANGLES = 12
+
+interface Sprite {
+  canvas: HTMLCanvasElement
+  half: number
+}
+
+function buildSprites(color: string, dpr: number, minR: number, maxR: number): Sprite[][] {
+  const sheets: Sprite[][] = []
+  for (let si = 0; si < SPRITE_SIZES; si++) {
+    const r = minR + ((maxR - minR) * si) / (SPRITE_SIZES - 1)
+    const row: Sprite[] = []
+    // Room for the shape at any angle, plus a pixel so nothing clips.
+    const box = Math.ceil(r * 2.2) + 2
+    for (let ai = 0; ai < SPRITE_ANGLES; ai++) {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.ceil(box * dpr)
+      canvas.height = Math.ceil(box * dpr)
+      const c = canvas.getContext('2d')
+      if (c) {
+        c.setTransform(dpr, 0, 0, dpr, 0, 0)
+        c.fillStyle = color
+        c.translate(box / 2, box / 2)
+        c.rotate((ai / SPRITE_ANGLES) * Math.PI * 2)
+        const scale = r / 9
+        c.scale(scale, scale)
+        c.translate(-12, -12.4)
+        c.fill(HEART)
+      }
+      row.push({ canvas, half: box / 2 })
+    }
+    sheets.push(row)
+  }
+  return sheets
 }
 
 export default function HeartRush({ color, onFilled }: HeartRushProps) {
@@ -136,8 +178,18 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     // Built from an index rather than at random so a replay looks the same as
     // the run it is replaying.
     const count = countFor(width, height)
+    // The smallest are still a heart somebody can see rather than a speck, and
+    // the range is narrow enough that the pile reads as one material.
+    const MIN_R = 20
+    const MAX_R = 66
+    const sprites = buildSprites(color, dpr, MIN_R, MAX_R)
     const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
       const t = i / count
+      // A golden-ratio walk again, skewed so small ones outnumber large --
+      // small hearts take the gaps large ones leave, and a mixed pile is
+      // denser than a uniform one.
+      const spread = ((i * 61.803) % 100) / 100
+      const sizeIndex = Math.round(Math.pow(spread, 1.7) * (SPRITE_SIZES - 1))
       return {
         // Entering from above the screen, spread across and beyond its width so
         // the edges fill as readily as the middle.
@@ -150,12 +202,15 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         // Fast enough to clear the queue above them rather than being
         // shouldered down by it.
         vy: 900 + (i % 9) * 70,
-        // Skewed small. A wide range packs far tighter than a uniform one:
-        // the small ones take the gaps the large ones leave, which is the
-        // difference between a pile and a lattice with holes in it.
-        r: 9 + Math.round(Math.pow(t, 1.8) * 42) + (i % 5) * 3,
-        rot: (((i * 29) % 100) / 100 - 0.5) * 0.8,
-        spin: (((i % 7) - 3) / 3) * 0.9,
+        // Size from its own sequence, not from its place in the queue.
+        //
+        // It was derived from the same t that sets the spawn time, so every
+        // small heart fell first and every large one last -- the pile arrived
+        // sorted. A separate walk over the same index mixes them: at any
+        // moment what is falling is a handful of each.
+        r: MIN_R + (sizeIndex / (SPRITE_SIZES - 1)) * (MAX_R - MIN_R),
+        sizeIndex,
+        angle: (i * 5) % SPRITE_ANGLES,
         spawnAt: t * 2400 + (i % 6) * 18,
         live: false,
       }
@@ -207,12 +262,10 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         if (Math.abs(heart.vx) < 9 && Math.abs(heart.vy) < 9) {
           heart.vx = 0
           heart.vy = 0
-          heart.spin *= 0.9
         }
 
         heart.x += heart.vx * dt
         heart.y += heart.vy * dt
-        heart.rot += heart.spin * dt
 
         if (heart.x < heart.r) { heart.x = heart.r; heart.vx = Math.abs(heart.vx) * 0.4 }
         if (heart.x > width - heart.r) { heart.x = width - heart.r; heart.vx = -Math.abs(heart.vx) * 0.4 }
@@ -278,10 +331,16 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
 
       // Draw.
       ctx.clearRect(0, 0, width, height)
-      ctx.fillStyle = color
       for (const heart of hearts) {
         if (!heart.live) continue
-        drawHeart(ctx, heart.x, heart.y, heart.r, heart.rot)
+        const sprite = sprites[heart.sizeIndex][heart.angle]
+        ctx.drawImage(
+          sprite.canvas,
+          heart.x - sprite.half,
+          heart.y - sprite.half,
+          sprite.half * 2,
+          sprite.half * 2,
+        )
       }
 
       // Ask how much of the screen they cover, a few times a second rather
