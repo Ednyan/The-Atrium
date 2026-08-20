@@ -297,7 +297,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Zoom Sensitivity */}
           <div>
             <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-              Zoom Sensitivity: {zoomSensitivity.toFixed(2)}
+              Zoom speed: {zoomSensitivity.toFixed(2)}
             </label>
             <input
               type="range"
@@ -309,7 +309,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               className="w-full accent-nier-bg"
             />
             <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
-              Higher values zoom faster for mouse wheel and trackpad.
+              How far a notch of the wheel, or a pinch, moves you.
             </p>
           </div>
 
@@ -320,10 +320,10 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
-          {/* Trace Distance Indicators Toggle */}
+          {/* Trace Point to off-screen traces Toggle */}
           <div className="flex items-center justify-between">
             <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Distance Indicators
+              Point to off-screen traces
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
               <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -340,13 +340,13 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             </label>
           </div>
           <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
-            Show off-screen trace direction &amp; distance
+            Arrows at the edge, with how far away it is
           </p>
 
-          {/* Trace Type Labels Toggle */}
+          {/* Label each trace's type Toggle */}
           <div className="flex items-center justify-between">
             <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Trace Type Labels
+              Label each trace's type
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
               <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -373,7 +373,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
-          {/* Hide Own Name Tag Toggle */}
+          {/* Hide my name Toggle */}
           <div className="flex items-center justify-between">
             <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
               Hide My Name Tag
@@ -396,7 +396,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             Hide your own username label above your cursor
           </p>
 
-          {/* Hide Other Users' Name Tags Toggle */}
+          {/* Hide other names Toggle */}
           <div className="flex items-center justify-between">
             <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
               Hide Others' Name Tags
@@ -419,7 +419,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             Hide username labels above other users' cursors
           </p>
 
-          {/* Hide Other Users' Cursors Toggle */}
+          {/* Hide other cursors Toggle */}
           <div className="flex items-center justify-between">
             <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
               Hide Others' Cursors
@@ -442,10 +442,10 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             Completely hide other users' cursor indicators
           </p>
 
-          {/* Trace Edge Fade Toggle */}
+          {/* Fade traces near the edge Toggle */}
           <div className="flex items-center justify-between">
             <label className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase">
-              Trace Edge Fade
+              Fade traces near the edge
             </label>
             <label className="flex items-center gap-2 cursor-pointer group">
               <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -476,7 +476,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {lobbyId && (
             <div>
               <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-                Undo History Depth: {undoDepth}
+                Steps you can undo: {undoDepth}
               </label>
               <input
                 type="range"
@@ -493,11 +493,11 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             </div>
           )}
 
-          {/* Batch Placement Shape (per-atrium) */}
+          {/* Shape for batch placement Shape (per-atrium) */}
           {lobbyId && (
             <div>
               <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-                Batch Placement
+                Shape for batch placement
               </label>
               <div className="flex gap-2">
                 {(['square', 'circle'] as const).map(shape => (

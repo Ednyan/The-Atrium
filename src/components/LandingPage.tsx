@@ -737,9 +737,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             </h1>
 
             <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">
-              A museum of references created by you.
+              Your wall of references.
               <span className="block text-nier-bg/70 text-base mt-2">
-                Create your atrium. Discover others. Leave traces.
+                Create your atrium. Leave traces. Discover others.
               </span>
             </p>
 
@@ -804,7 +804,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 three peers. */}
             {!isAuthenticated && (
               <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">
-                Free to use • No credit card
+                Free to use • Free to share • Free to explore
               </p>
             )}
 
@@ -862,14 +862,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed">
-                <span className="text-nier-bg">The Digital Atrium</span> is a collaborative infinite canvas 
-                where people gather to share, explore, and build together.
+                <span className="text-nier-bg">The Digital Atrium</span> is an infinite canvas 
+                where people gather to build their wall of references and ideas.
               </p>
               <p className="text-nier-bg/80 text-base leading-relaxed">
-                Like a grand entrance hall in a museum, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
+                Like a whiteboard or pinboard, the atrium serves as a central space where art, ideas, and content from many sources come together in one place.
               </p>
               <p className="text-nier-bg/80 text-base leading-relaxed">
-               Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium walls.
+               Create your own private atrium for you, your community or team, or explore public spaces to see what others have hanged in the their atrium wall.
                It's a living document of collective expression for sharing and brainstorming. Have you heard of mind maps?
               </p>
 

@@ -303,7 +303,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </label>
 
             <div className="space-y-2">
-              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Grid Color</label>
+              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Colour</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
@@ -337,7 +337,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </div>
           </div>
 
-          {/* Background Color */}
+          {/* Colour */}
           <div className="space-y-3">
             <div className="flex items-baseline gap-3 mb-3">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
@@ -346,7 +346,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </div>
             
             <div className="space-y-2">
-              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Background Color</label>
+              <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Colour</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
@@ -365,10 +365,10 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             </div>
           </div>
 
-          {/* Floating Particles */}
+          {/* Drifting particles */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Floating Particles</span>
+              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Drifting particles</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             
@@ -393,7 +393,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             {settings.particlesEnabled && (
               <div className="space-y-3 ml-1">
                 <div className="space-y-2">
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Particle Color</label>
+                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Colour</label>
                   <div className="flex gap-2 items-center">
                     <input
                       type="color"
@@ -551,7 +551,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
                 {/* Scale Controls */}
                 <div className="space-y-3 mt-4 pt-4 border-t border-nier-border/20">
-                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Appearance Settings</span>
+                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Appearance</span>
                   
                   <div className="space-y-2">
                     <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
@@ -569,7 +569,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Layout Pattern</label>
+                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Arrangement</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2 cursor-pointer group">
                         <div className={`w-3 h-3 border transition-colors ${
