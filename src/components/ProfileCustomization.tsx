@@ -17,17 +17,20 @@ interface ProfileCustomizationProps {
 const DEFAULT_UNDO_DEPTH = 25
 const MAX_UNDO_DEPTH = 100
 
+// Five, from the palette the rest of the app is drawn in.
+//
+// Ten swatches is a decision to make rather than a colour to pick, and half of
+// them were near-duplicates -- mint beside cyan beside green, salmon beside
+// pink beside red. These are the five the contributors wall uses for its
+// ranks: far enough apart to tell two people apart at a glance, and already
+// the colours this place is made of. The picker underneath still takes
+// anything at all.
 const PRESET_COLORS = [
-  '#ffffff', // White
-  '#ff6b6b', // Red
-  '#4ecdc4', // Cyan
-  '#ffd93d', // Yellow
-  '#95e1d3', // Mint
-  '#c38fff', // Purple
-  '#ff9a8c', // Salmon
-  '#6bcf7f', // Green
-  '#ff85a2', // Pink
-  '#89a4f4', // Blue
+  '#FF8A3D', // Orange
+  '#E8C15A', // Amber
+  '#9AD4C4', // Mint
+  '#A8B6D9', // Blue
+  '#C77DFF', // Purple
 ]
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
@@ -225,7 +228,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           added to make it scroll, bottom-0 anchored to the bottom of the
           full scrollable content instead of the visible box. */}
       <div
-        className="z-[10000] bg-nier-blackLight border border-nier-border/40 w-80 max-h-[90vh] pointer-events-auto relative flex flex-col"
+        className="z-[10000] bg-nier-blackLight border border-nier-border/40 w-[min(30rem,92vw)] max-h-[90vh] pointer-events-auto relative flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Corner brackets */}
@@ -235,7 +238,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
 
         <div
-          className="p-5 overflow-y-auto flex-1 min-h-0"
+          className="p-6 overflow-y-auto flex-1 min-h-0"
           style={{
             touchAction: 'pan-y',
             overscrollBehavior: 'contain',
@@ -255,10 +258,92 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         </div>
 
         <form onSubmit={handleSave} className="space-y-5">
+          {/* Display Name */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
+                {isDesktop ? 'Username' : 'Display Name'}
+              </span>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+            </div>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+              placeholder={isDesktop ? 'Your username' : 'Your display name'}
+              maxLength={30}
+              disabled={!isDesktop && !canChangeName}
+            />
+            
+            {!isDesktop && !canChangeName && (
+              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
+                ◇ Can change in {daysUntilChange} days
+              </p>
+            )}
+          </div>
+
+          {/* This atrium */}
+          <div className="flex items-baseline gap-3 pt-2">
+            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">This atrium</span>
+            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+          </div>
+
+          {/* Undo History Depth (per-atrium) */}
+          {lobbyId && (
+            <div>
+              <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
+                Steps you can undo: {undoDepth}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max={MAX_UNDO_DEPTH}
+                step="1"
+                value={undoDepth}
+                onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
+                className="w-full accent-nier-bg"
+              />
+              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
+                How many Ctrl+Z steps to remember in this atrium. Kept only in this browser/session — never saved online.
+              </p>
+            </div>
+          )}
+
+          {/* Shape for batch placement Shape (per-atrium) */}
+          {lobbyId && (
+            <div>
+              <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
+                Shape for batch placement
+              </label>
+              <div className="flex gap-2">
+                {(['square', 'circle'] as const).map(shape => (
+                  <button
+                    key={shape}
+                    type="button"
+                    onClick={() => handlePackingShapeChange(shape)}
+                    className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
+                      packingShape === shape
+                        ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
+                        : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
+                    }`}
+                  >
+                    {shape}
+                  </button>
+                ))}
+              </div>
+              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
+                How dropping or pasting multiple files at once gets arranged in this atrium.
+                Reorganize Selected asks for a shape each time and ignores this.
+              </p>
+            </div>
+          )}
+
           {/* Color Picker */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Cursor Color</span>
+              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Your cursor</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             <div className="grid grid-cols-5 gap-2 mb-2">
@@ -279,6 +364,9 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                 />
               ))}
             </div>
+            <p className="text-nier-bg/70 text-xs tracking-wider mb-2">
+              How other people see you pointing. Used in every atrium, not only this one.
+            </p>
             <input
               type="color"
               value={selectedColor}
@@ -289,7 +377,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
 
           {/* Moving around */}
           <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
+            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
             <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Moving around</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
@@ -315,7 +403,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
 
           {/* What you see */}
           <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
+            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
             <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">What you see</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
@@ -368,7 +456,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
 
           {/* People in the room */}
           <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
+            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">04</span>
             <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">People in the room</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
@@ -464,88 +552,6 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <p className="text-nier-bg/70 text-xs tracking-wider -mt-3">
             Softly fade traces out as they leave the edge of your view
           </p>
-
-          {/* This atrium */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">04</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">This atrium</span>
-            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
-          {/* Undo History Depth (per-atrium) */}
-          {lobbyId && (
-            <div>
-              <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-                Steps you can undo: {undoDepth}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max={MAX_UNDO_DEPTH}
-                step="1"
-                value={undoDepth}
-                onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
-                className="w-full accent-nier-bg"
-              />
-              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
-                How many Ctrl+Z steps to remember in this atrium. Kept only in this browser/session — never saved online.
-              </p>
-            </div>
-          )}
-
-          {/* Shape for batch placement Shape (per-atrium) */}
-          {lobbyId && (
-            <div>
-              <label className="block text-nier-bg/80 text-xs tracking-[0.1em] uppercase mb-2">
-                Shape for batch placement
-              </label>
-              <div className="flex gap-2">
-                {(['square', 'circle'] as const).map(shape => (
-                  <button
-                    key={shape}
-                    type="button"
-                    onClick={() => handlePackingShapeChange(shape)}
-                    className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
-                      packingShape === shape
-                        ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
-                        : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
-                    }`}
-                  >
-                    {shape}
-                  </button>
-                ))}
-              </div>
-              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
-                How dropping or pasting multiple files at once gets arranged in this atrium.
-                Reorganize Selected asks for a shape each time and ignores this.
-              </p>
-            </div>
-          )}
-
-          {/* Display Name */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
-                {isDesktop ? 'Username' : 'Display Name'}
-              </span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-              placeholder={isDesktop ? 'Your username' : 'Your display name'}
-              maxLength={30}
-              disabled={!isDesktop && !canChangeName}
-            />
-            
-            {!isDesktop && !canChangeName && (
-              <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
-                ◇ Can change in {daysUntilChange} days
-              </p>
-            )}
-          </div>
 
           {/* Error/Success Messages */}
           {error && (
