@@ -1,115 +1,69 @@
-// Hearts filling the screen, as physics rather than as timing.
+// Hearts falling until there is nothing else to see.
 //
-// They fall from above the frame, land, and pack upward as more come down on
-// top of them -- a tank filling with something light poured into it.
+// This was a rigid-body simulation: hearts that collided, packed against the
+// floor and filled the room from the bottom up. It worked, and every problem
+// it ever had was a problem of contact -- piles that jammed, piles that
+// shivered, piles that stopped short of the top. None of that is what the
+// screen is meant to show. What it is meant to show is more and more of them
+// until they are all there is.
 //
-// The CSS version was three hundred and sixty independent tweens that knew
-// nothing about each other: they passed through one another, never packed, and
-// the moment the screen was "full" had to be guessed at with a timer. What the
-// effect actually describes -- a tank filling with something buoyant -- is a
-// simulation, so this is one.
-//
-// Canvas rather than DOM. Four hundred elements with their own transforms is
-// already heavy and cannot be made to collide; four hundred circles on a canvas
-// is a fraction of a frame, and the count is what makes it read as a fill.
-//
-// The screen reports when it is actually covered, and the colour and the words
-// wait for that rather than for a number somebody tuned by eye.
+// So they pass through each other. Nothing collides and nothing settles: they
+// fall, they leave the bottom, they come back in above the top, and more join
+// every frame -- so what is on screen keeps growing until the overlaps close
+// it. They never stop coming. No solver, no grid, no contact, which also buys
+// several times as many of them for less work than the pile cost.
 
 import { useEffect, useRef } from 'react'
 
 interface HeartRushProps {
   // Resolved to a real colour by the caller: canvas cannot read a CSS variable.
   color: string
-  // Fired once, when the packed hearts cover the screen.
+  // Fired once, when the falling hearts cover the screen.
   onFilled: () => void
 }
 
-// How many it takes to close a screen.
+// How much heart has to be on screen at once for the overlaps to close it.
 //
-// The first estimate was far short. A heart covers about two thirds of the
-// circle it sits in, the pile leaves gaps between them, and the fill is only
-// ever as tall as what has landed -- so a screen wants something like three
-// and a half times its own area in hearts, not two and a half.
-//
-// That is thousands of them, which is the real constraint: filling a path
-// three thousand times a frame is too slow, so they are stamped from
-// pre-drawn sprites instead (see SPRITES). Once drawing is a blit, the count
-// stops being the thing that limits this.
-//
-// Counted from the viewport, so a wide monitor gets what it needs and a laptop
-// is not asked to simulate four thousand for nothing.
-const COVERAGE = 3.5
+// Falling rather than packed, so this is instantaneous coverage rather than an
+// accumulated pile: a heart covers about two thirds of its own circle, they
+// fall where they fall, and roughly four screens' worth at any one moment is
+// what turns into a single colour.
+const COVERAGE = 4.2
 const MEAN_HEART_AREA = 2100
 const countFor = (width: number, height: number) =>
-  Math.max(700, Math.min(4200, Math.round((width * height * COVERAGE) / MEAN_HEART_AREA)))
+  Math.max(900, Math.min(6000, Math.round((width * height * COVERAGE) / MEAN_HEART_AREA)))
 
-// Down, because they fall. Everything else follows: they drop, meet the floor,
-// and pack upward as more land on top of them -- which is the tank filling.
-// Gentle. It was two and a half thousand with a nine-hundred kick on top, so
-// the first hearts arrived like they had been thrown rather than poured, and
-// the whole thing was over before it read as anything.
-const GRAVITY = 1900 // px/s²
-const MAX_SPEED = 1500
-const DAMPING = 0.86
-// Two passes of pushing overlaps apart is enough at this density. More looks
-// no better and costs a frame budget that a one-shot animation does not have.
-const RELAX_PASSES = 2
+const MIN_R = 20
+const MAX_R = 66
 
-// Coarse cells for asking how much of the screen is covered. Fine enough to
-// notice gaps a person would see, coarse enough to be free.
+// The speeds the falling version was actually reaching on screen once gravity
+// had done its work, kept because that pace was right. Slower ones read as
+// further away and faster ones as nearer, which is the oldest trick there is
+// for giving a flat thing depth.
+const MIN_FALL = 700 // px/s
+const MAX_FALL = 1500
+
+// How long the fall takes to reach full rate. The ramp is what makes it read
+// as arriving rather than as being switched on.
+const RAMP_MS = 4200
+
+const SPRITE_SIZES = 14
+const SPRITE_ANGLES = 12
+
 const FILL_COLS = 34
 const FILL_ROWS = 20
-// Nearly all of it, and measured strictly. It used to call the screen full at
-// nine tenths of a coarse grid, with each heart marking a square the width of
-// itself -- so it over-reported twice over and faded while there were still
-// visible gaps. Finer cells, a smaller mark, and a threshold that means it.
 const FILL_THRESHOLD = 0.985
 
-interface Heart {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  r: number
-  // Which pre-drawn sprite this one is: a size row and an angle within it.
-  // Which pre-drawn sprite this one is: a size row, and an angle taken from
-  // how far it has turned.
-  sizeIndex: number
-  rot: number
-  spin: number
-  spawnAt: number
-  live: boolean
-}
-
-// The ordinary heart, as a path rather than as four beziers guessed at.
-//
-// Drawn once and reused: Path2D takes the same 24-unit outline every icon set
-// uses, so the shape is the one people recognise instead of an approximation
-// of it. Its box is 24 by 24 with the centre a little below the middle, which
-// is why it is translated by 12 and 12.4 rather than by half of each.
 const HEART = new Path2D(
   'M12 21.35 L10.55 20.03 C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3' +
   ' c1.74 0 3.41 0.81 4.5 2.09 C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5' +
   ' c0 3.78 -3.4 6.86 -8.55 11.54 L12 21.35 Z'
 )
 
-// Every heart that will ever be drawn, drawn once.
-//
-// Filling a bezier path thousands of times a frame is what put a ceiling on
-// the count, and the count is the whole effect. Each size and angle is
-// rendered to its own small canvas up front, and the frame loop only blits --
-// which is roughly an order of magnitude cheaper and is why there can now be
-// four thousand of them instead of six hundred.
-//
-// Angles rather than a live rotation for the same reason: a rotated draw costs
-// a transform per heart, and nobody can tell twelve angles from a continuum
-// when the things are tumbling into a pile.
-const SPRITE_SIZES = 14
-const SPRITE_ANGLES = 12
-
-// Deterministic, so a replay is the same rush -- and unrelated to any of the
-// walks that place things, which is the point of using one.
+// Deterministic, so a replay is the same fall -- and unrelated to the walk
+// that places them, which is the property that matters. Size and position were
+// once taken from the same sequence, and every large heart fell down one side
+// of the screen because of it.
 function hash(n: number) {
   let x = (n * 2654435761) >>> 0
   x ^= x >>> 15
@@ -123,16 +77,19 @@ interface Sprite {
   half: number
 }
 
-function buildSprites(color: string, dpr: number, minR: number, maxR: number): Sprite[][] {
+// Every heart that will ever be drawn, drawn once.
+//
+// Filling a bezier path is what put a ceiling on the count, and the count is
+// the whole effect. Each size and angle is rendered up front and the frame
+// loop only blits, which is about an order of magnitude cheaper.
+function buildSprites(color: string, dpr: number): Sprite[][] {
   const sheets: Sprite[][] = []
   for (let si = 0; si < SPRITE_SIZES; si++) {
-    const r = minR + ((maxR - minR) * si) / (SPRITE_SIZES - 1)
+    const r = MIN_R + ((MAX_R - MIN_R) * si) / (SPRITE_SIZES - 1)
     const row: Sprite[] = []
-    // Room for the shape at any angle.
-    //
-    // It was 2.2r, and the heart is 2.22r across before it is turned at all --
-    // so the widest part of every sprite was being clipped by its own canvas.
-    // Rotated, the corners need the diagonal of that, which is what 3.2 buys.
+    // The heart is 2.22r across before it is turned at all, and turned it
+    // needs the diagonal of that -- at 2.2 every sprite clipped its own
+    // shoulders flat.
     const box = Math.ceil(r * 3.2) + 4
     for (let ai = 0; ai < SPRITE_ANGLES; ai++) {
       const canvas = document.createElement('canvas')
@@ -143,7 +100,10 @@ function buildSprites(color: string, dpr: number, minR: number, maxR: number): S
         c.setTransform(dpr, 0, 0, dpr, 0, 0)
         c.fillStyle = color
         c.translate(box / 2, box / 2)
-        c.rotate((ai / SPRITE_ANGLES) * Math.PI * 2)
+        // A lean rather than a tumble. Nothing knocks them any more, so a full
+        // circle of angles would be arbitrary; a quarter radian either side of
+        // upright is enough to break up a wall of identical glyphs.
+        c.rotate((ai / (SPRITE_ANGLES - 1) - 0.5) * 0.5)
         const scale = r / 9
         c.scale(scale, scale)
         c.translate(-12, -12.4)
@@ -156,17 +116,25 @@ function buildSprites(color: string, dpr: number, minR: number, maxR: number): S
   return sheets
 }
 
+interface Heart {
+  x: number
+  y: number
+  fall: number
+  sway: number
+  phase: number
+  sizeIndex: number
+  angle: number
+  liveAt: number
+}
+
 export default function HeartRush({ color, onFilled }: HeartRushProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const filledRef = useRef(false)
 
-  // Held in a ref rather than read from the closure.
-  //
-  // The caller passes an inline arrow, so its identity changes on every
-  // render -- and the moment the fill fired, the parent re-rendered, the
-  // effect saw a "new" callback, tore the whole simulation down and started it
-  // again from nothing. That is the flicker: a screen of packed hearts
-  // vanishing and a fresh rush beginning underneath the colour fading in.
+  // Held in a ref rather than read from the closure. The caller passes an
+  // inline arrow, so its identity changes on every render -- and the moment
+  // the fill fired, the effect saw a "new" callback and restarted the whole
+  // thing underneath the colour fading in.
   const onFilledRef = useRef(onFilled)
   onFilledRef.current = onFilled
 
@@ -174,8 +142,8 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    // A simulation cannot be "turned off" the way a transition can, so anyone
-    // who asked for reduced motion gets the end of it immediately.
+    // A fall cannot be "turned off" the way a transition can, so anyone who
+    // asked for reduced motion gets the end of it immediately.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       onFilledRef.current()
       return
@@ -192,74 +160,38 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       height = window.innerHeight
       canvas.width = Math.floor(width * dpr)
       canvas.height = Math.floor(height * dpr)
-      canvas.style.width = `${width}px`
-      canvas.style.height = `${height}px`
+      canvas.style.width = width + 'px'
+      canvas.style.height = height + 'px'
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     size()
     window.addEventListener('resize', size)
 
-    // Built from an index rather than at random so a replay looks the same as
-    // the run it is replaying.
+    const sprites = buildSprites(color, dpr)
     const count = countFor(width, height)
-    // The smallest are still a heart somebody can see rather than a speck, and
-    // the range is narrow enough that the pile reads as one material.
-    const MIN_R = 20
-    const MAX_R = 66
-    const sprites = buildSprites(color, dpr, MIN_R, MAX_R)
+
     const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
-      const t = i / count
-      // Independent of where it lands.
-      //
-      // Size and position were both (i * 61.803) % 100 -- the same number --
-      // so the largest hearts could only appear where that walk runs high,
-      // which is one side of the screen. Switching to 38.197 made it worse,
-      // not better: that is a hundred minus 61.803, so the two became exactly
-      // anti-correlated and every large one moved to the other side. A hash
-      // has no relationship to the walk at all, which is the property wanted.
-      //
-      // Skewed so small ones outnumber large: small hearts take the gaps large
-      // ones leave, and a mixed pile is denser than a uniform one.
-      const spread = hash(i)
-      const sizeIndex = Math.round(Math.pow(spread, 1.7) * (SPRITE_SIZES - 1))
+      // Position from a golden-ratio walk, size from a hash: two questions,
+      // two sequences, so neither predicts the other.
+      const across = ((i * 61.803) % 100) / 100
+      const sizeIndex = Math.round(Math.pow(hash(i), 1.7) * (SPRITE_SIZES - 1))
       return {
-        // Entering from above the screen, spread across and beyond its width so
-        // the edges fill as readily as the middle.
-        x: ((i * 61.803) % 100) / 100 * (width * 1.1) - width * 0.05,
-        // Deep. Queued within a few hundred pixels of each other they would be
-        // touching before they had moved -- which is not a fall, it is a jam
-        // being shoved from behind.
-        y: -120 - ((i * 137) % 2800),
-        vx: (((i % 11) - 5) / 5) * 45,
-        // Barely a push. What separates them is where they start, not how hard
-        // they are thrown.
-        vy: 120 + (i % 9) * 26,
-        // Size from its own sequence, not from its place in the queue.
-        //
-        // It was derived from the same t that sets the spawn time, so every
-        // small heart fell first and every large one last -- the pile arrived
-        // sorted. A separate walk over the same index mixes them: at any
-        // moment what is falling is a handful of each.
-        r: MIN_R + (sizeIndex / (SPRITE_SIZES - 1)) * (MAX_R - MIN_R),
+        x: across * (width * 1.12) - width * 0.06,
+        // Spread far above the frame, so what arrives is already staggered
+        // rather than coming in as a line.
+        y: -height * (0.1 + hash(i * 13 + 5) * 2.2),
+        fall: MIN_FALL + hash(i * 7 + 1) * (MAX_FALL - MIN_FALL),
+        sway: (hash(i * 3 + 2) - 0.5) * 26,
+        phase: hash(i * 5 + 3) * Math.PI * 2,
         sizeIndex,
-        // Upright, all of them. They only turn once something turns them,
-        // which is what falling things actually do -- a sky full of hearts at
-        // twelve different angles reads as confetti rather than as a pour.
-        rot: 0,
-        spin: 0,
-        spawnAt: t * 5200 + (i % 6) * 22,
-        live: false,
+        angle: Math.floor(hash(i * 11 + 7) * SPRITE_ANGLES),
+        // They join in order, so the fall thickens rather than starting at
+        // full rate.
+        liveAt: (i / count) * RAMP_MS,
       }
     })
 
-    // A uniform grid, so each heart only asks its neighbours about overlaps
-    // rather than asking all four hundred.
-    const cell = 110
-    const buckets = new Map<number, number[]>()
-    const keyOf = (x: number, y: number) => ((x / cell) | 0) * 100003 + ((y / cell) | 0)
-
     const fill = new Uint8Array(FILL_COLS * FILL_ROWS)
-
     let start = 0
     let last = 0
     let frame = 0
@@ -268,144 +200,42 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     const step = (now: number) => {
       if (!start) { start = now; last = now }
       const elapsed = now - start
-      // Capped, so a dropped frame or a backgrounded tab does not teleport
-      // everything through everything else.
       const dt = Math.min((now - last) / 1000, 1 / 30)
       last = now
 
-      for (const heart of hearts) {
-        if (!heart.live && elapsed >= heart.spawnAt) heart.live = true
-      }
-
-      // Gravity fades as the pile forms.
-      //
-      // Held constant, it goes on crushing everything into the floor long
-      // after there is anywhere to go, and the solver spends every frame
-      // undoing overlaps that gravity puts straight back -- which is the
-      // shivering. Once the room is full there is nothing left to pull on.
-      const pull = GRAVITY * Math.max(0, 1 - elapsed / 7600)
-
-      // Integrate.
-      for (const heart of hearts) {
-        if (!heart.live) continue
-        heart.vy += pull * dt
-        if (heart.vy > MAX_SPEED) heart.vy = MAX_SPEED
-        heart.vx *= 1 - (1 - DAMPING) * dt * 6
-        heart.vy *= 1 - (1 - DAMPING) * dt * 2
-        // Anything barely moving is put to sleep. A heart trembling half a
-        // pixel a frame inside a pile is not settling, it is vibrating, and
-        // hundreds of them doing it at once is what reads as a glitch.
-        if (Math.abs(heart.vx) < 9 && Math.abs(heart.vy) < 9) {
-          heart.vx = 0
-          heart.vy = 0
-          heart.spin = 0
-        }
-
-        heart.rot += heart.spin * dt
-        // Turning bleeds off far faster than falling does, so a knocked heart
-        // rolls a little and settles rather than spinning where it lies.
-        heart.spin *= 1 - Math.min(1, dt * 3.2)
-
-        heart.x += heart.vx * dt
-        heart.y += heart.vy * dt
-
-        if (heart.x < heart.r) { heart.x = heart.r; heart.vx = Math.abs(heart.vx) * 0.4 }
-        if (heart.x > width - heart.r) { heart.x = width - heart.r; heart.vx = -Math.abs(heart.vx) * 0.4 }
-        // The floor they pack against.
-        if (heart.y > height - heart.r * 0.8) { heart.y = height - heart.r * 0.8; heart.vy = 0 }
-      }
-
-      // Separate.
-      for (let pass = 0; pass < RELAX_PASSES; pass++) {
-        buckets.clear()
-        for (let i = 0; i < hearts.length; i++) {
-          const heart = hearts[i]
-          if (!heart.live) continue
-          const key = keyOf(heart.x, heart.y)
-          const bucket = buckets.get(key)
-          if (bucket) bucket.push(i)
-          else buckets.set(key, [i])
-        }
-
-        for (let i = 0; i < hearts.length; i++) {
-          const a = hearts[i]
-          if (!a.live) continue
-          const cx = (a.x / cell) | 0
-          const cy = (a.y / cell) | 0
-          for (let ox = -1; ox <= 1; ox++) {
-            for (let oy = -1; oy <= 1; oy++) {
-              const bucket = buckets.get((cx + ox) * 100003 + (cy + oy))
-              if (!bucket) continue
-              for (const j of bucket) {
-                if (j <= i) continue
-                const b = hearts[j]
-                const dx = b.x - a.x
-                const dy = b.y - a.y
-                // Hearts are wider than they are tall, so they are treated as
-                // slightly flattened circles -- close enough at this scale, and
-                // it keeps them from stacking into columns.
-                const min = (a.r + b.r) * 0.7
-                const distSq = dx * dx + dy * dy
-                if (distSq >= min * min || distSq === 0) continue
-                const dist = Math.sqrt(distSq)
-                const push = (min - dist) / 2
-                const nx = dx / dist
-                const ny = dy / dist
-                a.x -= nx * push
-                a.y -= ny * push
-                b.x += nx * push
-                b.y += ny * push
-                // Bleed speed only where they are actually closing on each
-                // other, and gently. Damping every overlapping pair by a
-                // seventh, twice a frame, crushed a heart's velocity to
-                // nothing while it was still below the screen -- so it stopped
-                // dead and everything behind it piled into it.
-                const closing = (b.vy - a.vy) * ny + (b.vx - a.vx) * nx
-                if (closing < 0) {
-                  a.vy *= 0.97
-                  b.vy *= 0.97
-                  // A knock sets them turning. How much depends on how much of
-                  // the impact was sideways -- a heart landing squarely on
-                  // another stays upright, one clipping its shoulder spins off
-                  // it. That is the only thing that ever rotates one.
-                  const glance = (b.vx - a.vx) * ny - (b.vy - a.vy) * nx
-                  const kick = Math.max(-3.4, Math.min(3.4, glance * 0.006))
-                  a.spin -= kick
-                  b.spin += kick
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Draw.
       ctx.clearRect(0, 0, width, height)
-      for (const heart of hearts) {
-        if (!heart.live) continue
-        // The nearest pre-drawn angle to however far it has turned. Twelve
-        // steps is indistinguishable from a continuum on something this size
-        // and costs a blit rather than a transform.
-        const angle = ((Math.round((heart.rot / (Math.PI * 2)) * SPRITE_ANGLES) % SPRITE_ANGLES) + SPRITE_ANGLES) % SPRITE_ANGLES
-        const sprite = sprites[heart.sizeIndex][angle]
+
+      for (let i = 0; i < hearts.length; i++) {
+        const heart = hearts[i]
+        if (elapsed < heart.liveAt) continue
+
+        heart.y += heart.fall * dt
+        // Back in above the top rather than lost. The screen fills because
+        // more and more are in it, and a heart that leaves for good is one
+        // fewer -- this is what makes them keep coming.
+        if (heart.y - 140 > height) heart.y = -140 - hash(i * 17 + 11) * 260
+
+        const sprite = sprites[heart.sizeIndex][heart.angle]
+        const x = heart.x + Math.sin(elapsed / 900 + heart.phase) * heart.sway
         ctx.drawImage(
           sprite.canvas,
-          heart.x - sprite.half,
+          x - sprite.half,
           heart.y - sprite.half,
           sprite.half * 2,
           sprite.half * 2,
         )
       }
 
-      // Ask how much of the screen they cover, a few times a second rather
-      // than every frame.
+      // How much of the screen they cover, asked a few times a second rather
+      // than every frame. Marked smaller than the heart so it under-reports:
+      // fading early is by far the worse mistake.
       if (!filledRef.current && ++frame % 6 === 0) {
         fill.fill(0)
         const cw = width / FILL_COLS
         const ch = height / FILL_ROWS
         for (const heart of hearts) {
-          if (!heart.live) continue
-          const r = heart.r * 0.55
+          if (elapsed < heart.liveAt) continue
+          const r = (MIN_R + ((MAX_R - MIN_R) * heart.sizeIndex) / (SPRITE_SIZES - 1)) * 0.55
           const c0 = Math.max(0, ((heart.x - r) / cw) | 0)
           const c1 = Math.min(FILL_COLS - 1, ((heart.x + r) / cw) | 0)
           const r0 = Math.max(0, ((heart.y - r) / ch) | 0)
@@ -422,15 +252,9 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         }
       }
 
-      // Settled. The packed frame is what the colour fades in over, so it is
-      // held rather than kept in motion behind it.
-      if (filledRef.current && elapsed > 10200) {
-        return
-      }
-
-      // A backstop. If the pack somehow never closes -- a very wide window, a
-      // very slow machine -- the message must still arrive.
-      if (!filledRef.current && elapsed > 9500) {
+      // A backstop. On a very wide window or a slow machine the screen might
+      // not close, and the thanks has to arrive either way.
+      if (!filledRef.current && elapsed > RAMP_MS + 3200) {
         filledRef.current = true
         onFilledRef.current()
       }
