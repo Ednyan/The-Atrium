@@ -193,7 +193,7 @@ function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            About
+            Preview
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -250,16 +250,20 @@ function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
 // bottom where only the already-convinced arrive.
 const sections: Section[] = [
   { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
-  { id: 'about', title: 'About', subtitle: 'A tour of the place' },
+  { id: 'preview', title: 'Preview', subtitle: 'A tour of the place' },
   { id: 'support', title: 'Support Us', subtitle: 'What holds the atrium up' },
   { id: 'creator', title: 'The Creator', subtitle: 'How this came to be' },
-  { id: 'basics', title: 'The Basics', subtitle: 'What an atrium actually is' },
+  { id: 'about', title: 'About', subtitle: 'What an atrium actually is' },
   { id: 'limitations', title: 'Limitations', subtitle: 'Where the free tier stops' },
   { id: 'desktop', title: 'Desktop App', subtitle: 'Your atriums, stored locally' },
   { id: 'navigation', title: 'Navigation', subtitle: 'Move, create, collaborate' },
 ]
 
 const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
+
+// The sticky bar's height (h-14). Both the jump and the scroll-spy measure
+// against it, so it is written once.
+const NAV_HEIGHT = 56
 
 // The bar across the top.
 //
@@ -284,7 +288,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
         className="backdrop-blur-md border-b border-nier-border/25"
         style={{ background: 'rgb(var(--c-ground) / 0.82)' }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6 lg:gap-8">
 
           {/* The mark and the name, which together are the way back to the
               top -- so the title section needs no entry of its own in the bar.
@@ -313,14 +317,18 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                 maskPosition: 'center',
               }}
             />
-            <span className="text-nier-strong text-sm sm:text-sm tracking-[0.22em] uppercase whitespace-nowrap">
+            <span className="hidden xl:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
               The Digital Atrium
             </span>
           </button>
 
           {/* The sections. Hidden where they would wrap into two rows and stop
               being a bar at all -- the rail and the scroll still work there. */}
-          <nav className="hidden lg:flex items-center gap-1 mx-auto">
+          {/* One line, always. Below xl the entries lose a little of their
+              padding and letter-spacing and the wordmark drops to just the
+              mark, because seven titles plus a name plus two buttons do not
+              fit across 1024px and a bar that wraps is not a bar. */}
+          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 mx-auto">
             {items.map(({ id, title, index }) => {
               const isActive = activeSection === index
               return (
@@ -328,7 +336,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                   key={id}
                   type="button"
                   onClick={() => onJump(index)}
-                  className={`relative px-3 py-2 text-xs tracking-[0.18em] uppercase transition-colors ${
+                  className={`relative whitespace-nowrap px-2 xl:px-3 py-2 text-[11px] xl:text-xs tracking-[0.14em] xl:tracking-[0.18em] uppercase transition-colors ${
                     isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
                   }`}
                 >
@@ -452,14 +460,17 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       const progress = scrollTop / scrollHeight
       setScrollProgress(progress)
 
-      // Determine active section
+      // The section whose top edge has most recently passed under the bar.
+      //
+      // This used to be "the last section whose top is above the middle of the
+      // window", which breaks for any section shorter than half a screen:
+      // jumping to Support Us put its top at the bar and The Creator's top at
+      // 600px, both above the midpoint, so the bar lit The Creator and the
+      // page looked like it had scrolled straight past what you clicked.
       let currentSection = 0
       sectionRefs.current.forEach((ref, index) => {
-        if (ref) {
-          const rect = ref.getBoundingClientRect()
-          if (rect.top <= window.innerHeight / 2) {
-            currentSection = index
-          }
+        if (ref && ref.getBoundingClientRect().top <= NAV_HEIGHT + 24) {
+          currentSection = index
         }
       })
       setActiveSection(currentSection)
@@ -479,8 +490,20 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
     .map((section, index) => ({ ...section, index }))
     .filter(({ id }) => id !== 'hero' && !(isDesktop && id === 'desktop'))
 
+  // scrollIntoView puts the section's top edge at the container's top edge,
+  // which is underneath the sticky bar -- so every jump hid its own heading
+  // behind the thing you clicked. Scroll the container by hand instead, with
+  // the bar's height taken off.
   const scrollToSection = (index: number) => {
-    sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth' })
+    const target = sectionRefs.current[index]
+    const container = containerRef.current
+    if (!target || !container) return
+    const top =
+      target.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop -
+      NAV_HEIGHT
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
   return (
@@ -830,25 +853,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 two actions inline, a third inline item made the row read as
                 three peers. */}
             {!isAuthenticated && (
-              <p className="text-nier-bg/70 text-sm tracking-wider mb-6 -mt-6">
+              <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">
                 Free to use • Free to share • Free to explore
               </p>
             )}
 
-            {/* Who made it, said once and early. A person's name on the front
-                of a thing is the difference between a product and somebody's
-                work -- and anybody who wants the rest of that story has a door
-                to it here rather than having to scroll for it. */}
-            <p className={`text-nier-bg/70 text-sm tracking-wider ${isAuthenticated ? '-mt-2 mb-10' : 'mb-10'}`}>
-              Made by Eduardo Paranhos.{' '}
-              <button
-                type="button"
-                onClick={() => scrollToSection(sectionIndex('creator'))}
-                className="underline decoration-nier-border/40 underline-offset-4 hover:text-nier-strong hover:decoration-nier-border transition-colors"
-              >
-                More about the creator
-              </button>
-            </p>
 
             {/* Three pillars as a rule-separated row rather than floating chips,
                 so they read as one grounded line under the actions. */}
@@ -869,8 +878,38 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             </div>
           </div>
 
-          {/* RIGHT: the product */}
+          {/* RIGHT: the product, and whose it is.
+
+              The credit sits on the frame's top edge rather than under the
+              buttons on the left, where it was a line of small print among
+              other lines of small print. Here it reads the way a plate beside
+              a piece does: the name is the loud part, "made by" is the quiet
+              label above it, and the whole block is the door to the rest of
+              the story. */}
           <div className="relative">
+            <button
+              type="button"
+              onClick={() => scrollToSection(sectionIndex('creator'))}
+              className="group ml-auto mb-5 flex flex-col items-end text-right"
+            >
+              <span className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors">
+                <span
+                  className="w-1.5 h-1.5 rotate-45 border transition-colors"
+                  style={{ borderColor: 'rgb(var(--c-accent) / 0.6)' }}
+                />
+                Made by
+              </span>
+              <span className="mt-1.5 text-base sm:text-lg tracking-[0.12em] uppercase text-nier-strong leading-none">
+                Eduardo Paranhos
+              </span>
+              <span className="mt-2 flex items-center gap-2 text-[11px] tracking-[0.18em] uppercase text-nier-bg/70 group-hover:text-nier-strong transition-colors">
+                About the creator
+                <span className="transition-transform duration-300 group-hover:translate-y-0.5">↓</span>
+              </span>
+              {/* The rule draws itself in under the whole thing on hover, the
+                  way the name rule on the contributors wall does. */}
+              <span className="mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500 bg-gradient-to-l from-nier-border/60 to-transparent" />
+            </button>
             <ShowcaseFrame />
           </div>
         </div>
@@ -882,8 +921,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         </div>
       </section>
 
-      {/* SECTION 2: About -- the reel. First, because a page about a
-          place is weaker than seeing the place. */}
+      {/* SECTION 2: Preview -- the reel. Early, because a page about a place
+          is weaker than seeing the place. */}
       <VideoShowcaseSection sectionRef={el => sectionRefs.current[1] = el} />
       {/* SECTION 3: Support Us */}
       <ContributionsSection sectionRef={el => sectionRefs.current[2] = el} />
@@ -1015,7 +1054,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
         </div>
       </section>
-      {/* SECTION 5: The Basics */}
+      {/* SECTION 5: About */}
       <section 
         ref={el => sectionRefs.current[4] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
@@ -1025,7 +1064,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              The Basics
+              About
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
