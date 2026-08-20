@@ -71,6 +71,14 @@ const FILL_THRESHOLD = 0.985
 // which reads as the animation being cut off at its own peak.
 const HOLD_AFTER_FULL_MS = 1500
 
+// How strong an outline ever gets.
+//
+// Full strength drew a hard line around every heart, which separates them into
+// stamps rather than suggesting depth between them. Half is enough to tell one
+// from the one behind it and little enough that losing it is a softening
+// rather than a change of shape.
+const EDGE_MAX = 0.5
+
 // The ordinary heart: the twenty-four unit outline, drawn once as a path and
 // stamped from there. No file to fetch, nothing third-party in the bundle, and
 // it takes the interface's colour like everything else here.
@@ -264,7 +272,7 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
     // still drawn. The second follows the first: while they are sparse each
     // heart is edged against the page, and as the screen closes the edges go.
     let covered = 0
-    let edgeStrength = 1
+    let edgeStrength = EDGE_MAX
     // When the screen first closed, so the hold can be measured from it.
     let fullAt = 0
     // A rolling frame time, and how many are allowed to be falling at once.
@@ -366,7 +374,7 @@ export default function HeartRush({ color, edgeColor, onFilled }: HeartRushProps
         // it is still most of the way there, at four fifths it is nearly gone.
         // A linear fade would have them all still outlined at the moment the
         // screen is supposed to be one colour.
-        edgeStrength = Math.pow(Math.max(0, 1 - covered), 1.7)
+        edgeStrength = EDGE_MAX * Math.pow(Math.max(0, 1 - covered), 1.7)
 
         if (covered >= FILL_THRESHOLD) {
           if (!fullAt) fullAt = elapsed
