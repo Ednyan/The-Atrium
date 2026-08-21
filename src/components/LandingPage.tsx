@@ -6,6 +6,9 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
+import { useTranslation } from '../lib/i18n'
+import RichText from './RichText'
+import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
@@ -96,6 +99,7 @@ function ShowcaseFrame() {
 // Kept out of `sections` for the same reason the reel is: it's an interlude,
 // not a stop, and adding it would shift every right-rail nav index below it.
 function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | null) => void }) {
+  const { t } = useTranslation()
   const [showContribute, setShowContribute] = useState(false)
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
@@ -111,21 +115,15 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            Support Me
+            {t('landing.nav.support')}
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
 
         <div className="grid md:grid-cols-2 gap-10 items-start">
           <div className="space-y-4">
-            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">
-              The Digital Atrium is made and maintained by one person. Donations keep the lights on and
-              the development going.
-            </p>
-            <p className="text-nier-bg/70 text-base leading-relaxed tracking-wide">
-              Donate once or monthly. Choose a name when you donate and it joins the
-              others holding the place up. Go see them on the contributors page.
-            </p>
+            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">{t('landing.support.body1')}</p>
+            <p className="text-nier-bg/70 text-base leading-relaxed tracking-wide">{t('landing.support.body2')}</p>
           </div>
 
           <div className="relative">
@@ -135,7 +133,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
               {month && month.goalCents > 0 ? (
                 <>
                   <div className="flex items-baseline justify-between mb-2">
-                    <span className="font-mono text-xs tracking-[0.2em] uppercase text-nier-bg/70">This month</span>
+                    <span className="font-mono text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.support.thisMonth')}</span>
                     <span className="font-mono text-sm tracking-wider text-nier-strong">
                       {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
                     </span>
@@ -153,9 +151,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                   </p>
                 </>
               ) : (
-                <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70">
-                  This place is kept standing by the people who use it
-                </p>
+                <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70">{t('landing.support.keptStanding')}</p>
               )}
 
               <div className="flex flex-col sm:flex-row gap-2 mt-6">
@@ -174,7 +170,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                   onClick={() => openContributors('/')}
                   className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
-                  Contributors
+                  {t('welcome.contributors')}
                 </button>
               </div>
             </div>
@@ -190,6 +186,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
 // It is the second stop on the page, and the first thing anybody should see:
 // a page describing a place is weaker than the place moving.
 function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | null) => void }) {
+  const { t } = useTranslation()
   const [available, setAvailable] = useState(true)
 
   return (
@@ -198,7 +195,7 @@ function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            Preview
+            {t('landing.nav.preview')}
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -233,8 +230,8 @@ function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                 }}
               >
                 <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 12px rgb(var(--c-accent) / 0.33)` }} />
-                <p className="font-mono text-sm tracking-[0.3em] uppercase text-nier-bg/80">Transmission incoming</p>
-                <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70">A tour of the atrium is being recorded</p>
+                <p className="font-mono text-sm tracking-[0.3em] uppercase text-nier-bg/80">{t('landing.preview.transmission')}</p>
+                <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70">{t('landing.preview.recording')}</p>
               </div>
             )}
           </div>
@@ -287,6 +284,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
   onJump: (index: number) => void
   onDonate: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="sticky top-0 z-50">
       <div
@@ -306,7 +304,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
             type="button"
             onClick={() => onJump(0)}
             className="flex items-center gap-2.5 shrink-0 group"
-            title="Back to the top"
+            title={t('landing.backToTop')}
           >
             <span
               aria-hidden="true"
@@ -334,7 +332,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               mark, because seven titles plus a name plus two buttons do not
               fit across 1024px and a bar that wraps is not a bar. */}
           <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 mx-auto">
-            {items.map(({ id, title, index }) => {
+            {items.map(({ id, index }) => {
               const isActive = activeSection === index
               return (
                 <button
@@ -345,7 +343,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                     isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
                   }`}
                 >
-                  {title}
+                  {t(`landing.nav.${id}` as TranslationKey)}
                   {isActive && (
                     <span
                       className="absolute left-3 right-3 -bottom-px h-[2px]"
@@ -371,6 +369,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
 }
 
 export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPageProps) {
+  const { t } = useTranslation()
   const theme = useLandingTheme()
   const [showDonate, setShowDonate] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
@@ -652,7 +651,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   isActive ? 'text-nier-strong' : 'text-nier-bg/75'
                 }`}
               >
-                {section.title}
+                {t(`landing.nav.${section.id}` as TranslationKey)}
               </span>
               
               {/* Indicator bracket */}
@@ -770,9 +769,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: 'rgb(var(--c-accent))' }} />
                 <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: 'rgb(var(--c-accent))' }} />
               </span>
-              <span className="text-xs tracking-[0.28em] uppercase" style={{ color: `rgb(var(--c-accent) / 0.9)` }}>
-                A Shared Canvas Experience
-              </span>
+              <span className="text-xs tracking-[0.28em] uppercase" style={{ color: `rgb(var(--c-accent) / 0.9)` }}>{t('landing.hero.tagline')}</span>
             </div>
 
             {/* Oversized and tightly set. The old headline was font-extralight
@@ -806,11 +803,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               </span>
             </h1>
 
-            <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">
-              Your wall of references.
-              <span className="block text-nier-bg/70 text-base mt-2">
-                Create an atrium and leave your traces.
-              </span>
+            <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">{t('landing.hero.sub1')}<span className="block text-nier-bg/70 text-base mt-2">{t('landing.hero.sub2')}</span>
             </p>
 
             {/* Filled rather than outlined. Previously the call to action had
@@ -839,7 +832,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                {isAuthenticated ? 'Continue to Atrium' : 'Enter The Atrium'}
+                {isAuthenticated ? t('landing.continue') : t('landing.enter')}
               </button>
 
               {/* Secondary path, inline with the primary one. Scrolls rather
@@ -863,7 +856,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                       e.currentTarget.style.backgroundColor = 'transparent'
                     }}
                   >
-                    ↓ Download Desktop App
+                    ↓ {t('landing.hero.download')}
                   </button>
                 </>
               )}
@@ -873,9 +866,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 two actions inline, a third inline item made the row read as
                 three peers. */}
             {!isAuthenticated && (
-              <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">
-                Free to use • Free to share • Free to explore
-              </p>
+              <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">{t('landing.hero.free')}</p>
             )}
 
 
@@ -883,16 +874,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 so they read as one grounded line under the actions. */}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-xs tracking-[0.16em] uppercase text-nier-bg/80">
               {([
-                { label: 'Infinite Canvas', color: 'rgb(var(--c-accent))' },
-                { label: 'Private Atriums', color: 'rgb(var(--c-emerald))' },
-                { label: 'Live Presence', color: 'rgb(var(--c-sky))' },
-              ] as const).map(({ label, color }) => (
+                { label: 'Infinite Canvas', key: 'landing.feature.canvas', color: 'rgb(var(--c-accent))' },
+                { label: 'Private Atriums', key: 'landing.feature.atriums', color: 'rgb(var(--c-emerald))' },
+                { label: 'Live Presence', key: 'landing.feature.presence', color: 'rgb(var(--c-sky))' },
+              ] as const).map(({ label, key, color }) => (
                 <div key={label} className="flex items-center gap-2 group/feat">
                   <div
                     className="w-1.5 h-1.5 rotate-45 transition-transform duration-300 group-hover/feat:scale-150"
                     style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}AA` }}
                   />
-                  <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{label}</span>
+                  <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{t(key)}</span>
                 </div>
               ))}
             </div>
@@ -914,13 +905,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             >
               <span className="byline flex items-center gap-2.5 text-[11px] sm:text-xs tracking-[0.3em] uppercase">
                 <span className="byline-mark w-2 h-2 rotate-45" />
-                Made by
+                {t('landing.madeBy')}
               </span>
               <span className="mt-2.5 text-xl sm:text-2xl tracking-[0.12em] uppercase text-nier-strong leading-none">
                 Eduardo Paranhos
               </span>
               <span className="byline-link mt-3 flex items-center gap-2 text-xs sm:text-[13px] tracking-[0.18em] uppercase text-nier-bg/70">
-                About the creator
+                {t('landing.aboutCreator')}
                 <span className="transition-transform duration-300 group-hover:translate-y-0.5">↓</span>
               </span>
               {/* The rule draws itself in under the whole thing on hover, the
@@ -933,7 +924,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
         {/* Scroll hint, pinned low but out of the content's way */}
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-pulse pointer-events-none">
-          <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">Scroll</span>
+          <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">{t('landing.hero.scroll')}</span>
           <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
         </div>
       </section>
@@ -954,7 +945,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              The Creator
+              {t('landing.nav.creator')}
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
@@ -962,17 +953,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
 
           {/* Placeholder for personal content */}
           <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
-            <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">
-              My name is Eduardo Paranhos.
-              I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Atrium.
-            </p>
+            <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">{t('landing.creator.p1')}</p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
-            <p className="text-nier-bg/75 text-base leading-relaxed italic">
-              I wanted something simple to use and fast to iterate in, like pinning ideas in a whiteboard.
-              A mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.
-            </p>
+            <p className="text-nier-bg/75 text-base leading-relaxed italic">{t('landing.creator.p2')}</p>
           </div>
 
           {/* Where else to find him.
@@ -987,7 +972,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent" />
               <span className="text-nier-strong text-xs sm:text-sm tracking-[0.3em] uppercase whitespace-nowrap">
-                Connect with me
+                {t('support.connect')}
               </span>
               <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
             </div>
@@ -1039,7 +1024,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              About
+              {t('landing.nav.about')}
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
@@ -1047,56 +1032,41 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed">
-                <span className="text-nier-bg">The Digital Atrium</span> is an infinite canvas 
-                where people gather to build their wall of references and ideas.
+                <RichText text={t('landing.about.lead')} className="text-nier-bg" />
               </p>
-              <p className="text-nier-bg/80 text-base leading-relaxed">
-                Like a whiteboard or pinboard, an atrium serves as a central space where art, ideas, and content from many sources come together in one place.
-              </p>
-              <p className="text-nier-bg/80 text-base leading-relaxed">
-               Create your own private atrium or explore public spaces to see what others have hanged in the their digital wall.
-               It's great for brainstorming! Have you heard of mind maps?
-              </p>
+              <p className="text-nier-bg/80 text-base leading-relaxed">{t('landing.about.p2')}</p>
+              <p className="text-nier-bg/80 text-base leading-relaxed">{t('landing.about.p3')}</p>
 
               {/* An atrium from above: scattered traces, other visitors, and
                   the bracket viewport is you -- the concept the paragraphs
                   describe, drawn instead of described. */}
               <AtriumMapDiagram />
-              <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70 -mt-2">
-                an atrium, from above
-              </p>
+              <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70 -mt-2">{t('landing.about.diagram')}</p>
             </div>
 
             <div className="space-y-4">
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-accent))', boxShadow: `0 0 8px rgb(var(--c-accent) / 0.53)` }} />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Traces</span>
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t('landing.about.traces')}</span>
                 </div>
-                <p className="text-nier-bg/75 text-base leading-relaxed">
-                  Leave text, embeds, or shapes anywhere on the infinite canvas. Each trace persists for you to see or others to find.
-                </p>
+                <p className="text-nier-bg/75 text-base leading-relaxed">{t('landing.about.tracesDesc')}</p>
               </div>
               
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-emerald))', boxShadow: `0 0 8px rgb(var(--c-emerald) / 0.53)` }} />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Atriums</span>
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t('landing.about.atriums')}</span>
                 </div>
-                <p className="text-nier-bg/75 text-base leading-relaxed">
-                  Private or public spaces with their own infinite canvas. Invite friends or open 
-                  to the world.
-                </p>
+                <p className="text-nier-bg/75 text-base leading-relaxed">{t('landing.about.atriumsDesc')}</p>
               </div>
               
               <div className="border border-nier-border/30 p-6 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-sky))', boxShadow: `0 0 8px rgb(var(--c-sky) / 0.53)` }} />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">Presence</span>
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t('landing.about.presence')}</span>
                 </div>
-                <p className="text-nier-bg/75 text-base leading-relaxed">
-                  See others exploring the same space in real-time. A shared experience, even when apart.
-                </p>
+                <p className="text-nier-bg/75 text-base leading-relaxed">{t('landing.about.presenceDesc')}</p>
               </div>
             </div>
           </div>
@@ -1113,26 +1083,22 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              Limitations
+              {t('landing.nav.limitations')}
             </h2>
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
           </div>
 
-          <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">
-            "How is this even possible while being free?"
-          </p>
+          <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">{t('landing.limits.question')}</p>
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
             <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The secret is in the design. The Atrium doesn't actually store your images, videos, or media — traces are mostly just <span className="text-nier-strong">paths</span> (URLs) pointing to content hosted elsewhere. This keeps the storage footprint incredibly small.
+              <RichText text={t('landing.limits.secret')} className="text-nier-strong" />
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
 
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              The entire platform runs on free-tier services for now, which means there are a couple of limits:
-            </p>
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">{t('landing.limits.freeTier')}</p>
 
             <div className="grid sm:grid-cols-2 gap-4 mb-6">
               <div className="border border-nier-border/20 p-5 bg-nier-black/40">
@@ -1140,11 +1106,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-base font-mono">3</span>
                   </div>
-                  <span className="text-nier-strong text-base tracking-wider uppercase">Atriums per user</span>
+                  <span className="text-nier-strong text-base tracking-wider uppercase">{t('landing.limits.perUser')}</span>
                 </div>
-                <p className="text-nier-bg/70 text-sm leading-relaxed">
-                  Each account can create up to three atriums — more than enough to get started.
-                </p>
+                <p className="text-nier-bg/70 text-sm leading-relaxed">{t('landing.limits.perUserDesc')}</p>
               </div>
 
               <div className="border border-nier-border/20 p-5 bg-nier-black/40">
@@ -1152,17 +1116,13 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-sm font-mono">10<span className="text-[11px]">MB</span></span>
                   </div>
-                  <span className="text-nier-strong text-base tracking-wider uppercase">Per atrium</span>
+                  <span className="text-nier-strong text-base tracking-wider uppercase">{t('landing.limits.perAtrium')}</span>
                 </div>
-                <p className="text-nier-bg/70 text-sm leading-relaxed">
-                  Each atrium has a 10MB data limit — but since traces are just references, you'll find it goes a long way.
-                </p>
+                <p className="text-nier-bg/70 text-sm leading-relaxed">{t('landing.limits.perAtriumDesc')}</p>
               </div>
             </div>
 
-            <p className="text-nier-bg/75 text-base leading-relaxed text-center italic">
-              As you'll soon realize, it's plenty.
-            </p>
+            <p className="text-nier-bg/75 text-base leading-relaxed text-center italic">{t('landing.limits.plenty')}</p>
           </div>
         </div>
       </section>
@@ -1187,7 +1147,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
             <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              Navigation
+              {t('landing.nav.navigation')}
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
@@ -1197,16 +1157,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div>
               <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
                 <span className="text-nier-bg/70">01</span>
-                Navigation
+                {t('landing.nav.controls')}
               </h3>
               {/* The two gestures, performed: the cursor drags and the world
                   moves, then the scroll pulse zooms it. */}
               <PanZoomDemo />
               <div className="grid sm:grid-cols-3 gap-4">
                 {[
-                  { key: 'Click + Drag', desc: 'Pan around the canvas' },
-                  { key: 'Scroll Wheel', desc: 'Zoom in and out' },
-                  { key: 'T Key', desc: 'Quick-place a trace' },
+                  { key: 'Click + Drag', desc: t('landing.controls.drag') },
+                  { key: 'Scroll Wheel', desc: t('landing.controls.scroll') },
+                  { key: 'T Key', desc: t('landing.controls.tKey') },
                 ].map((control, i) => (
                   <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
                     <div className="text-nier-strong text-base font-mono mb-2">{control.key}</div>
@@ -1219,26 +1179,22 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             {/* Creating traces */}
             <div>
               <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">02</span>
-                Leaving Traces
-              </h3>
+                <span className="text-nier-bg/70">02</span>{t('landing.nav.leavingTraces')}</h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30 sm:flex sm:items-center sm:gap-6">
                 <div className="flex-1">
-                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">
-                  Click the Leave trace button (or T key shortcut) to leave a trace. Choose between:
-                </p>
+                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">{t('landing.nav.chooseBetween')}</p>
                 <div className="flex flex-wrap gap-4 sm:gap-6 text-base">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-bg/80"><span className="text-nier-bg">Text</span> — Notes, thoughts, poetry</span>
+                    <span className="text-nier-bg/80"><span className="text-nier-bg">{t('landing.nav.text')}</span>{t('landing.nav.textDesc')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-bg/80"><span className="text-nier-bg">Embed</span> — Links, videos, content</span>
+                    <span className="text-nier-bg/80"><span className="text-nier-bg">{t('landing.nav.embed')}</span>{t('landing.nav.embedDesc')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-bg/80"><span className="text-nier-bg">Shape</span> — Visual elements</span>
+                    <span className="text-nier-bg/80"><span className="text-nier-bg">{t('landing.nav.shape')}</span>{t('landing.nav.shapeDesc')}</span>
                   </div>
                 </div>
                 </div>
@@ -1252,21 +1208,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             {/* Storage recommendation */}
             <div>
               <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">03</span>
-                Adding Your Content
-              </h3>
+                <span className="text-nier-bg/70">03</span>{t('landing.nav.addingContent')}</h3>
               <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
-                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">
-                  The atrium connects to your content through embedded links. We recommend using free 
-                  third-party platforms for hosting your media:
-                </p>
+                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">{t('landing.nav.contentDesc')}</p>
                 <div className="flex flex-wrap gap-4 text-base">
                   {[
-                    { name: 'YouTube', desc: 'Videos' },
-                    { name: 'Pinterest', desc: 'Image boards' },
-                    { name: 'Imgur', desc: 'Images' },
-                    { name: 'Instagram', desc: 'Photos' },
-                    { name: 'SoundCloud', desc: 'Audio' },
+                    { name: 'YouTube', desc: t('landing.platform.youtube') },
+                    { name: 'Pinterest', desc: t('landing.platform.pinterest') },
+                    { name: 'Imgur', desc: t('landing.platform.imgur') },
+                    { name: 'Instagram', desc: t('landing.platform.instagram') },
+                    { name: 'SoundCloud', desc: t('landing.platform.soundcloud') },
                   ].map((platform, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
@@ -1274,47 +1225,37 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                     </div>
                   ))}
                 </div>
-                <p className="text-nier-bg/70 text-sm mt-4 italic">
-                  Simply copy the embed link or image URL from these platforms and paste it into your trace.
-                </p>
+                <p className="text-nier-bg/70 text-sm mt-4 italic">{t('landing.nav.copyEmbed')}</p>
               </div>
             </div>
 
             {/* The ecosystem */}
             <div>
               <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">04</span>
-                The Ecosystem
-              </h3>
+                <span className="text-nier-bg/70">04</span>{t('landing.nav.ecosystem')}</h3>
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-xl">1</span>
                   </div>
-                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">Create</h4>
-                  <p className="text-nier-bg/75 text-sm leading-relaxed">
-                    Set up your atrium. Define its purpose and who can access it.
-                  </p>
+                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">{t('landing.nav.create')}</h4>
+                  <p className="text-nier-bg/75 text-sm leading-relaxed">{t('landing.nav.createDesc')}</p>
                   <CreateTraceDemo />
                 </div>
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-xl">2</span>
                   </div>
-                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">Populate</h4>
-                  <p className="text-nier-bg/75 text-sm leading-relaxed">
-                    Invite others or leave traces yourself. Build a collection of ideas.
-                  </p>
+                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">{t('landing.nav.populate')}</h4>
+                  <p className="text-nier-bg/75 text-sm leading-relaxed">{t('landing.nav.populateDesc')}</p>
                   <PopulateDemo />
                 </div>
                 <div className="text-center p-3 sm:p-6">
                   <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
                     <span className="text-nier-bg -rotate-45 text-xl">3</span>
                   </div>
-                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">Explore</h4>
-                  <p className="text-nier-bg/75 text-sm leading-relaxed">
-                    Navigate the infinite canvas. Discover traces left by others.
-                  </p>
+                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">{t('landing.nav.explore')}</h4>
+                  <p className="text-nier-bg/75 text-sm leading-relaxed">{t('landing.nav.exploreDesc')}</p>
                   <ExploreDemo />
                 </div>
               </div>
@@ -1353,7 +1294,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             style={{ clipPath: DONATE_CUT }}
           >
             <span className="text-base tracking-[0.2em] uppercase font-medium">
-              {isAuthenticated ? 'Continue to Atrium' : 'Begin Your Journey'}
+              {isAuthenticated ? t('landing.continue') : t('landing.hero.beginJourney')}
             </span>
           </button>
 
@@ -1367,9 +1308,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-            <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">
-              Free to enter, and kept standing by the people who use it.
-            </p>
+            <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">{t('landing.closing.free')}</p>
             <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
           </div>
         </div>
@@ -1416,7 +1355,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
               >
-                Privacy Policy
+                {t('landing.privacy')}
               </a>
               <span className="text-nier-bg/40 text-xs">◇</span>
               <a
@@ -1425,16 +1364,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
               >
-                Terms of Service
+                {t('landing.terms')}
               </a>
             </div>
           )}
 
           {/* Shown on desktop too -- the copyright covers the app itself, not
               just the website. */}
-          <div className="text-nier-bg/50 text-[0.7rem] tracking-[0.12em] uppercase">
-            © 2026 Eduardo Paranhos · All rights reserved
-          </div>
+          <div className="text-nier-bg/50 text-[0.7rem] tracking-[0.12em] uppercase">{t('landing.footer.copyright')}</div>
         </div>
       </footer>
 
