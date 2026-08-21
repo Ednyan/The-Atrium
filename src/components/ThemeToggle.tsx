@@ -5,9 +5,9 @@
 // place. There is nothing per-page about it, and a switch that only applied to
 // the page you happened to be on would be a worse version of no switch at all.
 //
-// Three states, not two. "Auto" follows the machine and is not the same as
-// having picked whichever mode the machine is in right now -- somebody whose
-// laptop turns dark at sunset should turn with it.
+// Two states. Dark is where everyone starts (see useLandingTheme), so an
+// "Auto" that follows the machine would contradict that on every laptop set
+// to light -- the switch says what it is showing and flips it, nothing more.
 
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { useTranslation } from '../lib/i18n'
@@ -19,12 +19,10 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
   // height from everything standing next to it.
   variant?: 'panel' | 'atrium'
 }) {
-  const { preference, resolved, cycle } = useLandingTheme()
+  const { resolved, cycle } = useLandingTheme()
   const { t } = useTranslation()
 
-  const label = preference === 'system'
-    ? t('theme.auto', { mode: resolved === 'dark' ? t('theme.modeDark') : t('theme.modeLight') })
-    : preference === 'dark' ? t('theme.dark') : t('theme.light')
+  const label = resolved === 'dark' ? t('theme.dark') : t('theme.light')
 
   return (
     <button
@@ -40,7 +38,7 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
       // an atrium, where whatever is on the canvas showed through it.
       style={variant === 'atrium' ? undefined : { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
     >
-      {preference === 'system' ? '◐' : resolved === 'dark' ? '☾' : '☀'}
+      {resolved === 'dark' ? '☾' : '☀'}
       <span className="hidden 2xl:inline ml-2">{label}</span>
     </button>
   )

@@ -32,11 +32,8 @@ export const en = {
   'common.theme': 'Theme',
 
   // ---------------------------------------------------- light and dark
-  'theme.auto': 'Auto · {mode}',
   'theme.dark': 'Dark',
   'theme.light': 'Light',
-  'theme.modeDark': 'dark',
-  'theme.modeLight': 'light',
   'theme.label': 'Theme: {mode}',
   'theme.change': 'Theme: {mode}. Click to change.',
 

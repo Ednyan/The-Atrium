@@ -316,7 +316,14 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
         className="backdrop-blur-md border-b border-nier-border/25"
         style={{ background: 'rgb(var(--c-ground) / 0.82)' }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6 lg:gap-8">
+        {/* Three columns rather than a row of three things.
+
+            A flex row with mx-auto on the middle child centres it in whatever
+            space the other two leave, so the sections drifted left or right
+            depending on how wide the language made the buttons beside them.
+            A grid whose outer columns are 1fr puts the middle one in the
+            centre of the bar itself, and it stays there in every language. */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
 
           {/* The mark and the name, which together are the way back to the
               top -- so the title section needs no entry of its own in the bar.
@@ -328,7 +335,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
           <button
             type="button"
             onClick={() => onJump(0)}
-            className="flex items-center gap-2.5 shrink-0 group"
+            className="flex items-center gap-2.5 shrink-0 group justify-self-start"
             title={t('landing.backToTop')}
           >
             <span
@@ -345,43 +352,47 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                 maskPosition: 'center',
               }}
             />
-            <span className="hidden 2xl:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
+            <span className="hidden sm:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
               The Digital Atrium
             </span>
           </button>
 
           {/* The sections, two ways.
 
-              Inline from xl up, where seven of them genuinely fit. Below that
-              they become a menu behind a button, because the alternative is
-              picking which entries to sacrifice -- and the widths are not
-              English's to decide anyway: Spanish runs 25% longer, and the
-              scripts still to come have no width I can measure from here.
+              Inline from 2xl up, and a menu below that. The wordmark now
+              holds its place on the left at every width, which costs the row
+              about 200px -- enough that the longest language (Spanish, a
+              quarter longer than English) no longer fits beside it at 1280.
+              Rather than drop the name the moment a language gets wordy, the
+              inline row waits for a screen with room for both.
 
-              The previous attempt let the row scroll instead, which stopped it
-              breaking the layout but simply hid the last entry off the right
-              edge. A menu that admits it is a menu beats a bar that quietly
-              loses Navigation. */}
-          <nav className="hidden xl:flex items-center gap-0.5 mx-auto min-w-0">
-            {items.map(({ id, index }) => {
+              Separated by rules, because seven titles in one typeface at one
+              size with even spacing read as a sentence of unrelated words
+              rather than as seven things you can choose between. */}
+          <nav className="hidden 2xl:flex items-center justify-self-center min-w-0">
+            {items.map(({ id, index }, i) => {
               const isActive = activeSection === index
               return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onJump(index)}
-                  className={`relative whitespace-nowrap px-2 py-2 text-[11px] tracking-[0.1em] uppercase transition-colors ${
-                    isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
-                  }`}
-                >
-                  {t(`landing.nav.${id}` as TranslationKey)}
-                  {isActive && (
-                    <span
-                      className="absolute left-2 right-2 -bottom-px h-[2px]"
-                      style={{ background: '#FF8A3D' }}
-                    />
+                <div key={id} className="flex items-center">
+                  {i > 0 && (
+                    <span aria-hidden="true" className="h-3 w-px bg-nier-border/25 mx-1" />
                   )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => onJump(index)}
+                    className={`relative whitespace-nowrap px-3 py-2 text-[11px] tracking-[0.1em] uppercase transition-colors ${
+                      isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
+                    }`}
+                  >
+                    {t(`landing.nav.${id}` as TranslationKey)}
+                    {isActive && (
+                      <span
+                        className="absolute left-3 right-3 -bottom-px h-[2px]"
+                        style={{ background: '#FF8A3D' }}
+                      />
+                    )}
+                  </button>
+                </div>
               )
             })}
           </nav>
@@ -391,7 +402,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               weight. It carries the section you are in beside it where there
               is room, so the bar still answers "where am I" without the menu
               being open. */}
-          <div ref={menuRef} className="relative xl:hidden ml-auto shrink-0">
+          <div ref={menuRef} className="relative 2xl:hidden justify-self-center shrink-0">
             <button
               type="button"
               onClick={() => setMenuOpen(open => !open)}
@@ -438,7 +449,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 justify-self-end">
             <LanguageToggle />
 
             <ThemeToggle />
@@ -726,11 +737,19 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <button
               key={section.id}
               onClick={() => scrollToSection(index)}
-              className="group flex items-center gap-3 transition-all duration-300"
+              className="group relative flex items-center transition-all duration-300"
             >
-              {/* Section label (shows on hover or when active) */}
+              {/* The name, out of the flow and deaf to the pointer.
+                  
+                  It used to sit in the row as a sibling of the mark, which
+                  meant the button was as wide as the longest section name --
+                  so the label appeared when the pointer crossed the empty
+                  space where it would be, several centimetres from anything
+                  visible. Absolute and pointer-events-none leaves the button
+                  exactly the size of the mark, which is the only thing on
+                  screen to aim at. */}
               <span 
-                className={`text-xs tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline opacity-0 group-hover:opacity-100 ${
+                className={`pointer-events-none absolute right-full mr-3 whitespace-nowrap text-xs tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline opacity-0 group-hover:opacity-100 ${
                   isActive ? 'text-nier-strong' : 'text-nier-bg/75'
                 }`}
               >
@@ -984,13 +1003,21 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <button
               type="button"
               onClick={() => scrollToSection(sectionIndex('creator'))}
-              className="group ml-auto mb-8 lg:mb-12 lg:-mt-10 flex flex-col items-end text-right"
+              // w-fit rather than the full column: the button was as wide as
+              // the row it sat in, so most of its hit area was empty space to
+              // the left of the words and the words themselves were only part
+              // of what answered. Now the target is exactly the three lines
+              // that look like a target, and all three of them respond to the
+              // hover together -- a name that stays inert while the arrow
+              // under it moves reads as a caption above a link, not as one
+              // thing you can press.
+              className="group w-fit ml-auto mb-8 lg:mb-12 lg:-mt-10 flex flex-col items-end text-right cursor-pointer"
             >
               <span className="byline flex items-center gap-2.5 text-[11px] sm:text-xs tracking-[0.3em] uppercase">
                 <span className="byline-mark w-2 h-2 rotate-45" />
                 {t('landing.madeBy')}
               </span>
-              <span className="mt-2.5 text-xl sm:text-2xl tracking-[0.12em] uppercase text-nier-strong leading-none">
+              <span className="mt-2.5 text-xl sm:text-2xl tracking-[0.12em] uppercase text-nier-strong leading-none transition-opacity duration-300 opacity-90 group-hover:opacity-100">
                 Eduardo Paranhos
               </span>
               <span className="byline-link mt-3 flex items-center gap-2 text-xs sm:text-[13px] tracking-[0.18em] uppercase text-nier-bg/70">

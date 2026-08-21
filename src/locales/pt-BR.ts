@@ -279,11 +279,8 @@ const ptBR: Catalogue = {
   'landing.nav.explore': 'Explorar',
   // ---------------------------------------------------- light and dark
   'common.updated': 'atualizado',
-  'theme.auto': 'Auto · {mode}',
   'theme.dark': 'Escuro',
   'theme.light': 'Claro',
-  'theme.modeDark': 'escuro',
-  'theme.modeLight': 'claro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Clique para mudar.',
   'goal.thisMonth': 'Contribuições este mês',

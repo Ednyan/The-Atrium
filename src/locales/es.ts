@@ -275,11 +275,8 @@ const es: Catalogue = {
   'landing.nav.explore': 'Explorar',
   // ---------------------------------------------------- light and dark
   'common.updated': 'actualizado',
-  'theme.auto': 'Auto · {mode}',
   'theme.dark': 'Oscuro',
   'theme.light': 'Claro',
-  'theme.modeDark': 'oscuro',
-  'theme.modeLight': 'claro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Haz clic para cambiar.',
   'goal.thisMonth': 'Contribuciones este mes',

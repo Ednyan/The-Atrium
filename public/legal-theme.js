@@ -10,19 +10,29 @@
 // Loaded from <head> without defer, so the stored choice is on the element
 // before anything paints and there is no flash of the wrong colour.
 //
-// The same key, the same three states and the same cycle as the app
-// (src/lib/useLandingTheme.ts, src/components/ThemeToggle.tsx). Auto follows
-// the machine and is not the same as having picked whichever mode the machine
-// is in today: a laptop that turns dark at sunset should turn with it, and
-// that only works if "no choice" is itself a state.
+// Two states and a dark default, matching the app (src/lib/useLandingTheme.ts).
+// These pages are reached from the app and open in a tab of their own, so they
+// have to agree with it about what "no choice yet" means -- and it means dark,
+// not whatever the machine prefers.
+//
+// Storage matches the app too: sessionStorage on the web, so a choice holds
+// for the visit and the next one opens dark again. These pages only ever run
+// in a browser, so there is no desktop branch to mirror.
 (function () {
   var KEY = 'atrium_landing_theme'
   var root = document.documentElement
-  var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
+
+  function store() {
+    try {
+      return window.sessionStorage
+    } catch (e) {
+      return null
+    }
+  }
 
   function stored() {
     try {
-      var value = localStorage.getItem(KEY)
+      var value = store() && store().getItem(KEY)
       return value === 'light' || value === 'dark' ? value : null
     } catch (e) {
       return null
@@ -31,20 +41,15 @@
 
   var choice = stored()
 
-  function system() {
-    return media && media.matches ? 'dark' : 'light'
-  }
-
   function resolved() {
-    return choice || system()
+    return choice || 'dark'
   }
 
-  // Only an explicit choice is written to the element. With nothing set, the
-  // stylesheet's own prefers-color-scheme block decides -- which is what keeps
-  // these pages correct even if this file never runs at all.
+  // Always written, because there is no longer a "let the stylesheet decide"
+  // state -- dark is the answer until somebody says otherwise, and the
+  // attribute is what says so.
   function paint() {
-    if (choice) root.setAttribute('data-theme', choice)
-    else root.removeAttribute('data-theme')
+    root.setAttribute('data-theme', resolved())
   }
 
   paint()
@@ -56,8 +61,8 @@
 
     function render() {
       paint()
-      var text = choice ? (choice === 'dark' ? 'Dark' : 'Light') : 'Auto · ' + system()
-      if (glyph) glyph.textContent = choice ? (resolved() === 'dark' ? '☾' : '☀') : '◐'
+      var text = resolved() === 'dark' ? 'Dark' : 'Light'
+      if (glyph) glyph.textContent = resolved() === 'dark' ? '☾' : '☀'
       if (label) label.textContent = text
       if (button) {
         button.title = 'Theme: ' + text
@@ -65,25 +70,11 @@
       }
     }
 
-    if (media && media.addEventListener) media.addEventListener('change', render)
-
-    // These pages open in a tab of their own, so the app is sitting in the one
-    // behind. Without this, a choice made here would not reach it until that
-    // tab was reloaded.
-    window.addEventListener('storage', function (event) {
-      if (event.key !== KEY) return
-      choice = event.newValue === 'light' || event.newValue === 'dark' ? event.newValue : null
-      render()
-    })
-
     if (button) {
       button.addEventListener('click', function () {
-        // Whatever you are looking at, its opposite, then back to following
-        // the machine.
-        choice = choice ? (choice === 'dark' ? 'light' : null) : (system() === 'dark' ? 'light' : 'dark')
+        choice = resolved() === 'dark' ? 'light' : 'dark'
         try {
-          if (choice) localStorage.setItem(KEY, choice)
-          else localStorage.removeItem(KEY)
+          if (store()) store().setItem(KEY, choice)
         } catch (e) {}
         render()
       })

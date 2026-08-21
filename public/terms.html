@@ -8,37 +8,16 @@
 <script src="/legal-theme.js"></script>
 <style>
   /* The same tokens the app is built out of, as channel triplets so opacity
-     can be written into any of them. Light is the base set and dark is the
-     override, which is the order these values were designed in. */
+     can be written into any of them.
+
+     Dark is the base set, not the override, and there is no
+     prefers-color-scheme block any more. The app decided that dark is what
+     everyone gets until they ask otherwise (src/lib/useLandingTheme.ts), and
+     following the machine here would have made these two pages disagree with
+     the app they were reached from. Writing dark into :root also means the
+     right answer survives scripts being blocked entirely -- which is exactly
+     what happened to this page once already. */
   :root {
-    --c-fg: 48 44 39;
-    --c-strong: 22 20 18;
-    --c-line: 154 146 134;
-    --c-ground: 242 239 232;
-    --c-surface: 252 250 246;
-    --c-accent: 46 40 34;
-    --c-danger: 180 35 26;
-    color-scheme: light;
-  }
-
-  /* No choice made: follow the machine. This is a media query rather than
-     something script has to set, so the page is already the right colour
-     before anything runs -- and stays right if scripts are blocked. */
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) {
-      --c-fg: 203 203 203;
-      --c-strong: 255 255 255;
-      --c-line: 143 143 143;
-      --c-ground: 25 25 25;
-      --c-surface: 40 40 40;
-      --c-accent: 217 217 217;
-      --c-danger: 255 97 97;
-      color-scheme: dark;
-    }
-  }
-
-  /* A choice made, which wins over the machine in either direction. */
-  :root[data-theme='dark'] {
     --c-fg: 203 203 203;
     --c-strong: 255 255 255;
     --c-line: 143 143 143;
@@ -47,6 +26,18 @@
     --c-accent: 217 217 217;
     --c-danger: 255 97 97;
     color-scheme: dark;
+  }
+
+  /* The one choice there is. */
+  :root[data-theme='light'] {
+    --c-fg: 48 44 39;
+    --c-strong: 22 20 18;
+    --c-line: 154 146 134;
+    --c-ground: 242 239 232;
+    --c-surface: 252 250 246;
+    --c-accent: 46 40 34;
+    --c-danger: 180 35 26;
+    color-scheme: light;
   }
 
   * { box-sizing: border-box; }

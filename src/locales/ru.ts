@@ -281,11 +281,8 @@ const ru: Catalogue = {
   'landing.nav.explore': 'Исследовать',
   // ---------------------------------------------------- light and dark
   'common.updated': 'обновлено',
-  'theme.auto': 'Авто · {mode}',
   'theme.dark': 'Тёмная',
   'theme.light': 'Светлая',
-  'theme.modeDark': 'тёмная',
-  'theme.modeLight': 'светлая',
   'theme.label': 'Тема: {mode}',
   'theme.change': 'Тема: {mode}. Нажмите, чтобы изменить.',
   'goal.thisMonth': 'Пожертвования в этом месяце',

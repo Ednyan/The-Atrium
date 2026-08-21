@@ -279,11 +279,8 @@ const it: Catalogue = {
   'landing.nav.explore': 'Esplora',
   // ---------------------------------------------------- light and dark
   'common.updated': 'aggiornato',
-  'theme.auto': 'Auto · {mode}',
   'theme.dark': 'Scuro',
   'theme.light': 'Chiaro',
-  'theme.modeDark': 'scuro',
-  'theme.modeLight': 'chiaro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Clicca per cambiare.',
   'goal.thisMonth': 'Contributi questo mese',
