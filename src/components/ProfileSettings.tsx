@@ -3,6 +3,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
 import { deleteMyAccount } from '../lib/account'
+import { useTranslation } from '../lib/i18n'
 import {
   MAX_UNDO_DEPTH,
   readUndoDepth,
@@ -20,6 +21,7 @@ interface ProfileSettingsProps {
 }
 
 export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
+  const { t } = useTranslation()
   const { userId, username, setUsername, playerColor, setPlayerColor } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [actualUsername, setActualUsername] = useState('')
@@ -128,7 +130,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       .update({ player_color: color, updated_at: new Date().toISOString() })
       .eq('id', userId)
     if (updateError) {
-      setError(updateError.message || 'Failed to save your cursor colour')
+      setError(updateError.message || t('profile.errCursorColour'))
       return
     }
     setColorSaved(true)
@@ -158,13 +160,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     if (!supabase || !userId) return
 
     if (!isDesktop && !canChange) {
-      setError(`You can change your display name in ${daysUntilChange} days`)
+      setError(t('profile.canChangeIn', { days: daysUntilChange }))
       setLoading(false)
       return
     }
 
     if (displayName.length < 1 || displayName.length > 30) {
-      setError('Name must be 1-30 characters')
+      setError(t('profile.errNameLength'))
       setLoading(false)
       return
     }
@@ -202,7 +204,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         onClose()
       }, 2000)
     } catch (err: any) {
-      setError(err.message || 'Failed to update name')
+      setError(err.message || t('profile.errUpdateName'))
     } finally {
       setLoading(false)
     }
@@ -215,25 +217,25 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     setPasswordLoading(true)
 
     if (!supabase) {
-      setPasswordError('Authentication not available')
+      setPasswordError(t('auth.errUnavailable'))
       setPasswordLoading(false)
       return
     }
 
     if (newPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters')
+      setPasswordError(t('profile.errPasswordLength'))
       setPasswordLoading(false)
       return
     }
 
     if (newPassword !== confirmPassword) {
-      setPasswordError('Passwords do not match')
+      setPasswordError(t('auth.passwordsDoNotMatch'))
       setPasswordLoading(false)
       return
     }
 
     if (!currentPassword) {
-      setPasswordError('Enter your current password')
+      setPasswordError(t('profile.errEnterCurrent'))
       setPasswordLoading(false)
       return
     }
@@ -254,13 +256,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         password: currentPassword,
       })
       if (reauthError) {
-        setPasswordError('That is not your current password')
+        setPasswordError(t('profile.errWrongCurrent'))
         setPasswordLoading(false)
         return
       }
 
       if (currentPassword === newPassword) {
-        setPasswordError('The new password is the same as the current one')
+        setPasswordError(t('profile.errSamePassword'))
         setPasswordLoading(false)
         return
       }
@@ -281,7 +283,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         setPasswordSuccess(false)
       }, 2000)
     } catch (err: any) {
-      setPasswordError(err.message || 'Failed to update password')
+      setPasswordError(err.message || t('profile.errUpdatePassword'))
     } finally {
       setPasswordLoading(false)
     }
@@ -332,7 +334,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h2 className="text-lg text-white tracking-[0.15em] uppercase">Profile Settings</h2>
+            <h2 className="text-lg text-white tracking-[0.15em] uppercase">{t('profile.title')}</h2>
           </div>
           <button
             onClick={onClose}
@@ -346,7 +348,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           {/* Username (permanent) - only show on web */}
           {!isDesktop && (
             <div>
-              <label className="block text-nier-bg/70 text-xs tracking-[0.1em] uppercase mb-2">Username (permanent)</label>
+              <label className="block text-nier-bg/70 text-xs tracking-[0.1em] uppercase mb-2">{t('profile.usernamePermanent')}</label>
               <div className="bg-nier-black border border-nier-border/20 px-3 py-2 text-nier-bg/75 text-sm tracking-wide">
                 {actualUsername}
               </div>
@@ -355,27 +357,27 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
           <form onSubmit={handleUpdateDisplayName}>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              {isDesktop ? 'Username' : 'Display Name'}
+              {isDesktop ? t('auth.username') : t('profile.displayName')}
             </label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-              placeholder={isDesktop ? 'Your username' : 'Your display name'}
+              placeholder={isDesktop ? t('profile.yourUsername') : t('profile.yourDisplayName')}
               maxLength={30}
               disabled={!isDesktop && !canChange}
             />
             
             {!isDesktop && !canChange && (
               <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
-                ◇ You can change your display name in {daysUntilChange} days
+                ◇ {t('profile.canChangeIn', { days: daysUntilChange })}
               </p>
             )}
 
             {!isDesktop && canChange && (
               <p className="text-nier-bg/60 text-[0.7rem] leading-relaxed tracking-wide mt-2">
-                ✓ You can change your display name now
+                ✓ {t('profile.canChangeNow')}
               </p>
             )}
 
@@ -387,7 +389,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
             {success && (
               <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide mt-2">
-                ✓ {isDesktop ? 'Username' : 'Display name'} updated
+                ✓ {isDesktop ? t('auth.username') : t('profile.displayName')} {t('common.updated')}
               </div>
             )}
 
@@ -396,7 +398,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               disabled={loading || (!isDesktop && !canChange) || displayName === username}
               className="w-full mt-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {loading ? 'Updating...' : isDesktop ? 'Update Username' : 'Update Display Name'}
+              {loading ? t('profile.updating') : isDesktop ? t('profile.updateUsername') : t('profile.updateDisplayName')}
             </button>
           </form>
 
@@ -407,12 +409,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               the same three the in-atrium profile panel offers, reading and
               writing the same keys -- changed here, they apply there. */}
           <div className="flex items-baseline gap-3">
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">How you work</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('profile.howYouWork')}</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
           <div>
-            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Your cursor</label>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('profile.yourCursor')}</label>
             <div className="grid grid-cols-6 gap-2 mb-2">
               {PRESET_COLORS.map((color) => (
                 <button
@@ -434,19 +436,19 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 type="color"
                 value={selectedColor}
                 onChange={(e) => handleColorChange(e.target.value)}
-                title="Any other colour"
+                title={t('profile.anyOtherColour')}
                 className="w-full h-10 border-2 border-nier-border/30 hover:border-nier-border/60 bg-nier-black cursor-pointer"
               />
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-              How other people see you pointing, in every atrium.
-              {colorSaved && <span className="text-nier-bg/80"> Saved.</span>}
+              {t('profile.cursorNote')}
+              {colorSaved && <span className="text-nier-bg/80"> {t('profile.saved')}</span>}
             </p>
           </div>
 
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              Steps you can undo: {undoDepth}
+              {t('profile.undoSteps', { count: undoDepth })}
             </label>
             <input
               type="range"
@@ -458,13 +460,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               className="w-full accent-nier-bg"
             />
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-              How many Ctrl+Z steps to remember, in every atrium. Kept in this browser only, never saved online.
+              {t('profile.undoNote')}
             </p>
           </div>
 
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              Shape for batch placement
+              {t('profile.batchShape')}
             </label>
             <div className="flex gap-2">
               {(['square', 'circle'] as const).map(shape => (
@@ -478,13 +480,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
                   }`}
                 >
-                  {shape}
+                  {shape === 'square' ? t('profile.shapeSquare') : t('profile.shapeCircle')}
                 </button>
               ))}
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-              How dropping or pasting several files at once gets arranged, in every atrium.
-              Reorganize Selected asks for a shape each time and ignores this.
+              {t('profile.batchNote')}
             </p>
           </div>
 
@@ -504,14 +505,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   }}
                   className="w-full text-left text-nier-bg/80 text-xs tracking-[0.1em] uppercase flex items-center justify-between hover:text-nier-bg transition-colors"
                 >
-                  <span>Change Password</span>
+                  <span>{t('profile.changePassword')}</span>
                   <span className="text-nier-bg/70">{showPasswordChange ? '▼' : '▶'}</span>
                 </button>
                 
                 {showPasswordChange && (
                   <form onSubmit={handlePasswordChange} className="space-y-3 mt-3">
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">Current Password</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">{t('profile.currentPassword')}</label>
                       <input
                         type="password"
                         value={currentPassword}
@@ -524,7 +525,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </div>
 
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">New Password</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">{t('profile.newPassword')}</label>
                       <input
                         type="password"
                         value={newPassword}
@@ -537,7 +538,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </div>
                     
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">Confirm New Password</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">{t('profile.confirmNewPassword')}</label>
                       <input
                         type="password"
                         value={confirmPassword}
@@ -557,7 +558,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
                     {passwordSuccess && (
                       <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
-                        ✓ Password updated
+                        ✓ {t('profile.passwordUpdated')}
                       </div>
                     )}
 
@@ -566,7 +567,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       disabled={passwordLoading || !currentPassword || !newPassword || !confirmPassword}
                       className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      {passwordLoading ? 'Updating...' : 'Update Password'}
+                      {passwordLoading ? t('profile.updating') : t('profile.updatePassword')}
                     </button>
                   </form>
                 )}
@@ -582,10 +583,10 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             <>
               <div>
                 <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                  Pinterest
+                  {t('profile.pinterest')}
                 </label>
                 {pinterestStatusLoading ? (
-                  <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide">Checking connection...</p>
+                  <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide">{t('profile.pinterestChecking')}</p>
                 ) : pinterestConnected ? (
                   <div className="space-y-2">
                     <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
@@ -596,7 +597,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       disabled={pinterestDisconnecting}
                       className="w-full py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      {pinterestDisconnecting ? 'Disconnecting...' : 'Disconnect Pinterest'}
+                      {pinterestDisconnecting ? t('profile.pinterestDisconnecting') : t('profile.pinterestDisconnect')}
                     </button>
                   </div>
                 ) : (
@@ -606,17 +607,17 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       disabled={!isPinterestConfigured()}
                       className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      Connect Pinterest
+                      {t('profile.pinterestConnect')}
                     </button>
                     {!isPinterestConfigured() && (
                       <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
-                        Pinterest integration isn't configured yet.
+                        {t('profile.pinterestUnconfigured')}
                       </p>
                     )}
                   </>
                 )}
                 <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
-                  Lets you import a board's pins as traces from inside an atrium.
+                  {t('profile.pinterestNote')}
                 </p>
               </div>
 
@@ -632,7 +633,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-bg/80 text-[0.7rem] tracking-[0.1em] uppercase transition-colors"
               >
-                Privacy Policy
+                {t('landing.privacy')}
               </a>
               <span className="text-nier-bg/50 text-[0.7rem]">◇</span>
               <a
@@ -641,7 +642,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-bg/80 text-[0.7rem] tracking-[0.1em] uppercase transition-colors"
               >
-                Terms of Service
+                {t('landing.terms')}
               </a>
             </div>
           )}
@@ -656,12 +657,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   onClick={() => setShowDeleteConfirm(true)}
                   className="w-full py-2 border border-nier-red/60 text-nier-red text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 transition-colors"
                 >
-                  Delete Account
+                  {t('profile.deleteAccount')}
                 </button>
               ) : (
                 <div className="border border-nier-red/60 bg-nier-red/10 p-3 space-y-3">
                   <p className="text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
-                    This permanently deletes your account, profile, and every atrium you own. Content you placed in atriums owned by other people stays, but is anonymized to "Deleted User" instead of your name. This cannot be undone.
+                    {t('profile.deleteWarning')}
                   </p>
                   <p className="text-nier-bg/75 text-xs tracking-[0.1em] uppercase">
                     Type <span className="text-nier-bg normal-case">{actualUsername}</span> to confirm
@@ -687,14 +688,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       disabled={deleteLoading || deleteConfirmText !== actualUsername}
                       className="flex-1 py-2 bg-nier-red/80 text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      {deleteLoading ? 'Deleting...' : 'Delete Permanently'}
+                      {deleteLoading ? t('profile.deleting') : t('profile.deletePermanently')}
                     </button>
                     <button
                       onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteError('') }}
                       disabled={deleteLoading}
                       className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 </div>
