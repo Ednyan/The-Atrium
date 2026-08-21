@@ -62,6 +62,7 @@
    * that display text is held to; at this size the word is around 120px, well
    * past where that threshold applies. */
   --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
+  --welcome-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 
   --nier-bg: #cbcbcb;
   --nier-bg-dark: #b5b5b5;
@@ -93,7 +94,14 @@
   --c-coral: 227 94 79;
   --c-danger: 180 35 26;
   --c-shadow: 122 112 96;
-  --metal-title: linear-gradient(100deg, #B8860B 0%, #8A6620 100%);
+  /* Graphite, not gold. The brass version was warm enough to read as a
+     colour choice about the word rather than as a lit surface, and on paper it
+     came out yellow. This is the same idea in the paper theme's own
+     temperature: near-black through to a mid grey, 16:1 and 6.9:1, so it is a
+     black title with a sheen across it rather than a coloured one. */
+  --metal-title: linear-gradient(100deg, #1A1714 0%, #55504A 100%);
+  /* Flat ink. Two identical stops, so the component keeps one code path. */
+  --welcome-title: linear-gradient(100deg, #161412 0%, #161412 100%);
 }
 
 [data-landing-theme='dark'] {
@@ -113,6 +121,7 @@
   --c-danger: 255 97 97;
   --c-shadow: 0 0 0;
   --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
+  --welcome-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 }
 
 @keyframes pulse {
@@ -908,27 +917,34 @@ input[type='color']::-moz-color-swatch { border: none; }
    cut corner is a clip-path, and a clip-path would have cut the tail off. */
 .donate-btn-wrap { position: relative; display: inline-flex; }
 
+/* Fixed and in the body, because the page it most needed to escape is
+   fixed inset-0 overflow-hidden. Left/top come from the component, which
+   measures the button and decides which side has room. */
 .donate-bubble {
-  position: absolute;
-  top: calc(100% + 11px);
-  left: 50%;
-  transform: translateX(-50%) translateY(-5px);
+  position: fixed;
   opacity: 0;
   pointer-events: none;
   white-space: nowrap;
-  z-index: 60;
+  z-index: 10000700;
+  transform: translateY(-5px);
   transition: opacity 170ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+.donate-bubble[data-side='top'] { transform: translateY(5px); }
+.donate-bubble[data-ready='true'] { opacity: 1; transform: translateY(0); }
+
+/* The tail follows the button, not the middle of the bubble: near an edge the
+   body gets pushed back inside the screen and the two stop agreeing. */
 .donate-bubble::before {
   content: '';
   position: absolute;
-  top: -3px;
-  left: 50%;
+  left: var(--tail-x, 50%);
   width: 9px;
   height: 9px;
   transform: translateX(-50%) rotate(45deg);
   background: #FF8A3D;
 }
+.donate-bubble[data-side='bottom']::before { top: -3px; }
+.donate-bubble[data-side='top']::before { bottom: -3px; }
 .donate-bubble > span {
   display: block;
   position: relative;
@@ -941,16 +957,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   padding: 7px 13px;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
   box-shadow: 0 0 18px rgba(255, 138, 61, 0.35);
-}
-
-/* Pointer only. On a touchscreen the first tap would show the bubble and the
-   second would press the button, which is a worse button. */
-@media (hover: hover) {
-  .donate-btn-wrap:hover .donate-bubble,
-  .donate-btn-wrap:focus-within .donate-bubble {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

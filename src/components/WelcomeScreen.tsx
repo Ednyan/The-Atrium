@@ -303,7 +303,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 // right and sits half a space left of centre. Pulling that
                 // trailing space back is what actually centres it.
                 textIndent: '0.16em',
-                backgroundImage: 'var(--metal-title)',
+                backgroundImage: 'var(--welcome-title)',
                 WebkitBackgroundClip: 'text',
                 backgroundClip: 'text',
                 color: 'transparent',

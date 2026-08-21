@@ -9,6 +9,8 @@
 // label and are clipped to the button, so they read as texture rather than as
 // decoration parked next to the text.
 
+import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from '../lib/i18n'
 
 interface DonateButtonProps {
@@ -78,12 +80,72 @@ export default function DonateButton({
   const accent = variant === 'accent'
   const { t } = useTranslation()
 
+  // The bubble is placed by measurement rather than by CSS offsets, and
+  // rendered into document.body rather than into the button.
+  //
+  // Two things were cutting it off on the contributors page at once. The
+  // button sits at bottom-6 right-6, so a bubble pinned below it and centred
+  // on it ran off both the bottom and the right of the screen -- and that page
+  // is fixed inset-0 overflow-hidden, so even a bubble in the right place
+  // would have been clipped by an ancestor it had no way to escape. A portal
+  // answers the second; flipping and clamping answers the first.
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  const bubbleRef = useRef<HTMLSpanElement>(null)
+  const [hovered, setHovered] = useState(false)
+  const [place, setPlace] = useState<
+    { left: number; top: number; tail: number; side: 'top' | 'bottom' } | null
+  >(null)
+
+  // Before paint, so the bubble never shows in the wrong place first.
+  useLayoutEffect(() => {
+    if (!hovered) { setPlace(null); return }
+    const anchor = wrapRef.current
+    const bubble = bubbleRef.current
+    if (!anchor || !bubble) return
+
+    const a = anchor.getBoundingClientRect()
+    const width = bubble.offsetWidth
+    const height = bubble.offsetHeight
+    const gap = 11
+    const margin = 8
+
+    // Below unless below would not fit and above would.
+    const fitsBelow = a.bottom + gap + height + margin <= window.innerHeight
+    const fitsAbove = a.top - gap - height - margin >= 0
+    const side: 'top' | 'bottom' = fitsBelow || !fitsAbove ? 'bottom' : 'top'
+
+    const wanted = a.left + a.width / 2 - width / 2
+    const left = Math.max(margin, Math.min(wanted, window.innerWidth - width - margin))
+
+    setPlace({
+      left,
+      top: side === 'bottom' ? a.bottom + gap : a.top - gap - height,
+      // The tail keeps pointing at the button even after the body has been
+      // pushed back inside the screen.
+      tail: Math.max(10, Math.min(a.left + a.width / 2 - left, width - 10)),
+      side,
+    })
+  }, [hovered])
+
+  // Pointer only. On a touchscreen the first tap would show the bubble and the
+  // second would press the button, which is a worse button.
+  const canHover = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(hover: hover)').matches
+
   // Wrapped, because the button carries a clip-path for its cut corner and a
   // clip-path cuts its children too -- a bubble sitting below the button would
   // have been sliced off at the button's edge. The wrapper is what the hover
   // is read from, and what the bubble is positioned against.
   return (
-    <span className={`donate-btn-wrap ${wrapperClassName}`}>
+    <span
+      ref={wrapRef}
+      className={`donate-btn-wrap ${wrapperClassName}`}
+      onMouseEnter={() => canHover && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => canHover && setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
     <button
       type="button"
       onClick={onClick}
@@ -122,9 +184,23 @@ export default function DonateButton({
     </button>
 
       {/* What it is asking for, said only when somebody points at it. */}
-      <span className="donate-bubble" aria-hidden="true">
-        <span>{t('donate.tooltip')}</span>
-      </span>
+      {hovered && createPortal(
+        <span
+          ref={bubbleRef}
+          className="donate-bubble"
+          aria-hidden="true"
+          data-side={place?.side ?? 'bottom'}
+          data-ready={place ? 'true' : 'false'}
+          style={place
+            ? { left: place.left, top: place.top, ['--tail-x' as string]: `${place.tail}px` }
+            // First paint is a measurement: laid out where it will end up
+            // horizontally so wrapping matches, but not yet shown.
+            : { left: 0, top: 0 }}
+        >
+          <span>{t('donate.tooltip')}</span>
+        </span>,
+        document.body,
+      )}
     </span>
   )
 }
