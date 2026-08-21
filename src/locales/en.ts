@@ -201,6 +201,7 @@ export const en = {
   'support.emailNote': 'Say something',
 
   // --------------------------------------------------------- the front page
+  'landing.sections': 'Sections',
   'landing.nav.hero': 'The Digital Atrium',
   'landing.nav.preview': 'Preview',
   'landing.nav.support': 'Support Me',

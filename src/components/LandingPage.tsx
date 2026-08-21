@@ -286,6 +286,30 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
   onDonate: () => void
 }) {
   const { t } = useTranslation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // The two ways out of a menu somebody opened by accident.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
+
+  const active = items.find(item => item.index === activeSection)
+
   return (
     <div className="sticky top-0 z-50">
       <div
@@ -321,18 +345,24 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                 maskPosition: 'center',
               }}
             />
-            <span className="hidden xl:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
+            <span className="hidden 2xl:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
               The Digital Atrium
             </span>
           </button>
 
-          {/* The sections. Hidden where they would wrap into two rows and stop
-              being a bar at all -- the rail and the scroll still work there. */}
-          {/* One line, always. Below xl the entries lose a little of their
-              padding and letter-spacing and the wordmark drops to just the
-              mark, because seven titles plus a name plus two buttons do not
-              fit across 1024px and a bar that wraps is not a bar. */}
-          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 mx-auto min-w-0 overflow-x-auto no-scrollbar">
+          {/* The sections, two ways.
+
+              Inline from xl up, where seven of them genuinely fit. Below that
+              they become a menu behind a button, because the alternative is
+              picking which entries to sacrifice -- and the widths are not
+              English's to decide anyway: Spanish runs 25% longer, and the
+              scripts still to come have no width I can measure from here.
+
+              The previous attempt let the row scroll instead, which stopped it
+              breaking the layout but simply hid the last entry off the right
+              edge. A menu that admits it is a menu beats a bar that quietly
+              loses Navigation. */}
+          <nav className="hidden xl:flex items-center gap-0.5 mx-auto min-w-0">
             {items.map(({ id, index }) => {
               const isActive = activeSection === index
               return (
@@ -340,14 +370,14 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                   key={id}
                   type="button"
                   onClick={() => onJump(index)}
-                  className={`relative whitespace-nowrap px-2 xl:px-3 py-2 text-[11px] xl:text-xs tracking-[0.14em] xl:tracking-[0.18em] uppercase transition-colors ${
+                  className={`relative whitespace-nowrap px-2 py-2 text-[11px] tracking-[0.1em] uppercase transition-colors ${
                     isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
                   }`}
                 >
                   {t(`landing.nav.${id}` as TranslationKey)}
                   {isActive && (
                     <span
-                      className="absolute left-3 right-3 -bottom-px h-[2px]"
+                      className="absolute left-2 right-2 -bottom-px h-[2px]"
                       style={{ background: '#FF8A3D' }}
                     />
                   )}
@@ -356,7 +386,59 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
             })}
           </nav>
 
-          <div className="flex items-center gap-2 ml-auto lg:ml-0 shrink-0">
+          {/* Three lines, drawn rather than typed: the glyph everybody already
+              reads as "the rest of the menu is in here", in the app's own
+              weight. It carries the section you are in beside it where there
+              is room, so the bar still answers "where am I" without the menu
+              being open. */}
+          <div ref={menuRef} className="relative xl:hidden ml-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(open => !open)}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label={t('landing.sections')}
+              className="cut-corner inline-flex items-center gap-2 h-[2.125rem] px-3 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 transition-colors"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+            >
+              <span className="flex flex-col gap-[3px]" aria-hidden="true">
+                <span className="block w-4 h-px bg-current" />
+                <span className="block w-4 h-px bg-current" />
+                <span className="block w-4 h-px bg-current" />
+              </span>
+              <span className="hidden sm:inline text-[11px] tracking-[0.1em] uppercase whitespace-nowrap max-w-[9rem] truncate">
+                {active ? t(`landing.nav.${active.id}` as TranslationKey) : t('landing.sections')}
+              </span>
+            </button>
+
+            {menuOpen && (
+              <div
+                role="menu"
+                className="panel-in absolute right-0 top-[calc(100%+6px)] z-[10000200] min-w-[12rem] border border-nier-border/40 py-1 max-h-[70vh] overflow-y-auto"
+                style={{ backgroundColor: 'rgb(var(--c-surface))' }}
+              >
+                {items.map(({ id, index }) => {
+                  const isActive = activeSection === index
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { onJump(index); setMenuOpen(false) }}
+                      className={`w-full px-4 py-2.5 text-left text-[11px] tracking-[0.12em] uppercase transition-colors flex items-center justify-between gap-3 ${
+                        isActive ? 'text-nier-strong bg-nier-bg/10' : 'text-nier-bg/80 hover:text-nier-strong hover:bg-nier-bg/5'
+                      }`}
+                    >
+                      <span>{t(`landing.nav.${id}` as TranslationKey)}</span>
+                      {isActive && <span className="text-[10px]" style={{ color: '#FF8A3D' }}>◇</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <LanguageToggle />
 
             <ThemeToggle />

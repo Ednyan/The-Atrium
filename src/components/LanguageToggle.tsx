@@ -111,7 +111,7 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
             is where somebody reads their language's own name; up here it only
             has to say which one is on, and a code does that in a width that
             cannot change with the language. */}
-        <span className="hidden sm:inline">{active.code.toUpperCase()}</span>
+        <span className="hidden 2xl:inline">{active.code.toUpperCase()}</span>
       </button>
 
       {open && (

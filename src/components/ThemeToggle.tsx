@@ -39,7 +39,7 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
       style={variant === 'atrium' ? undefined : { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
     >
       {preference === 'system' ? '◐' : resolved === 'dark' ? '☾' : '☀'}
-      <span className="hidden sm:inline ml-2">{label}</span>
+      <span className="hidden 2xl:inline ml-2">{label}</span>
     </button>
   )
 }
