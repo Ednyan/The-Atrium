@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
+import RichText from './RichText'
 
 const REPO = 'Ednyan/The-Atrium'
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
@@ -17,9 +17,14 @@ interface Build {
   // it. Shown only while that platform's button is under the pointer: three
   // paragraphs of caveats standing permanently under three buttons reads as
   // a list of reasons not to download anything.
-  // Takes t rather than being ReactNode, because this list is built at module
-  // scope where no hook can reach. Called at render instead.
-  firstRun?: (t: (key: TranslationKey) => string) => ReactNode
+  //
+  // One catalogue key per platform, not per emphasised word. An earlier
+  // version keyed only the bold lead-in ("On Windows,") and left the rest of
+  // the sentence hardcoded -- which reads as English with a translated word
+  // stuck on the front the moment another language is chosen. RichText
+  // carries the whole sentence, with *emphasis* for the bold phrases and
+  // `code` for the one literal, never-translated shell command.
+  noteKeyText: TranslationKey
 }
 
 // Every platform is matched by asset filename against the latest release, so
@@ -35,44 +40,19 @@ const BUILDS: Build[] = [
     // Not Authenticode-signed -- the signing key this project has is the
     // updater's, which is a different thing entirely -- so SmartScreen shows
     // its blue screen on a build it has not seen before.
-    firstRun: (t) => (
-      <>
-        <span className="text-nier-bg">{t('desktop.onWindows')}</span> SmartScreen may show a blue
-        "Windows protected your PC" screen the first time. That is what it does with any
-        installer it has not seen many times before, not a verdict on this one. Click{' '}
-        <span className="text-nier-bg">{t('desktop.moreInfo')}</span>, then{' '}
-        <span className="text-nier-bg">{t('desktop.runAnyway')}</span>.
-      </>
-    ),
+    noteKeyText: 'desktop.noteWindows' as const,
   },
   {
     os: 'macOS',
     match: /\.dmg$/,
     noteKey: 'desktop.macos' as const,
-    firstRun: (t) => (
-      <>
-        <span className="text-nier-bg">{t('desktop.onMacos')}</span> the first launch will say the app
-        "cannot be opened because the developer cannot be verified". That's because the
-        build isn't signed with an Apple Developer certificate, not because anything is
-        wrong with it. Right-click the app and choose <span className="text-nier-bg">{t('desktop.open')}</span>,
-        then confirm — macOS remembers the choice afterwards.
-      </>
-    ),
+    noteKeyText: 'desktop.noteMacos' as const,
   },
   {
     os: 'Linux',
     match: /\.AppImage$/,
     noteKey: 'desktop.linux' as const,
-    firstRun: (t) => (
-      <>
-        <span className="text-nier-bg">{t('desktop.onLinux')}</span> an AppImage arrives without the
-        executable bit set. Either tick{' '}
-        <span className="text-nier-bg">{t('desktop.allowExecuting')}</span> in the file
-        manager's properties, or run{' '}
-        <span className="text-nier-bg font-mono">chmod +x</span> on it. Some minimal
-        distributions also need FUSE installed.
-      </>
-    ),
+    noteKeyText: 'desktop.noteLinux' as const,
   },
 ]
 
@@ -212,7 +192,10 @@ export default function DesktopAppSection() {
             style={{ opacity: noteOpen ? 1 : 0 }}
           >
             <p className="text-nier-bg/80 text-xs tracking-wider leading-relaxed">
-              {BUILDS.find(build => build.os === noteOs)?.firstRun?.(t)}
+              {(() => {
+                const build = BUILDS.find(b => b.os === noteOs)
+                return build ? <RichText text={t(build.noteKeyText)} className="text-nier-bg" /> : null
+              })()}
             </p>
           </div>
         </div>

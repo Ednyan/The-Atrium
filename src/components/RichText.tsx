@@ -1,4 +1,4 @@
-// Emphasis inside a translated string.
+// Emphasis -- and literal, untranslatable code -- inside a translated string.
 //
 // The alternative was splitting every sentence that needed a coloured phrase
 // into three keys -- before, highlight, after -- which makes the catalogue
@@ -10,28 +10,41 @@
 // asterisks to whatever their language leans on, and the key stays one
 // sentence they can read.
 //
-// Deliberately the only markup there is. A second one would be a formatting
+// One more marker than there used to be. `Like this` is a second, distinct
+// kind of span: a literal shell command or filename that must never be
+// translated and reads better in monospace -- not a phrase to emphasise, a
+// value to copy. Two markers is the line; a third would be a formatting
 // language, and this is a paragraph on a card.
-
 export default function RichText({ text, className = '' }: {
   text: string
-  // The class applied to the emphasised runs. Defaults to the app's orange.
+  // The class applied to the emphasised (*...*) runs. Defaults to the app's
+  // orange. Code (`...`) runs are always monospace and never take this class.
   className?: string
 }) {
-  const parts = text.split(/\*([^*]+)\*/g)
+  // Split on whichever kind of span comes first at each point, so *emphasis*
+  // and `code` can appear in either order and don't have to be balanced
+  // against each other -- only against their own kind.
+  const parts = text.split(/(\*[^*]+\*|`[^`]+`)/g)
 
   return (
     <>
-      {parts.map((part, index) =>
-        // Odd indices are what sat between a pair of asterisks.
-        index % 2 === 1
-          ? (
+      {parts.map((part, index) => {
+        if (part.startsWith('*') && part.endsWith('*') && part.length > 1) {
+          return (
             <span key={index} className={className || 'support-orange font-medium'}>
-              {part}
+              {part.slice(1, -1)}
             </span>
           )
-          : part,
-      )}
+        }
+        if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
+          return (
+            <span key={index} className="font-mono">
+              {part.slice(1, -1)}
+            </span>
+          )
+        }
+        return part
+      })}
     </>
   )
 }

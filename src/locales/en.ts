@@ -329,13 +329,9 @@ export const en = {
   'desktop.web': 'Web',
   'desktop.desktop': 'Desktop',
   'desktop.moveBetween': 'You can move between them: download an atrium from the web and import it into the desktop app, or upload a local one when you want to share it.',
-  'desktop.onWindows': 'On Windows,',
-  'desktop.onMacos': 'On macOS,',
-  'desktop.onLinux': 'On Linux,',
-  'desktop.moreInfo': 'More info',
-  'desktop.runAnyway': 'Run anyway',
-  'desktop.open': 'Open',
-  'desktop.allowExecuting': 'Allow executing file as program',
+  'desktop.noteWindows': '*On Windows,* SmartScreen may show a blue "Windows protected your PC" screen the first time. That is what it does with any installer it has not seen many times before, not a verdict on this one. Click *More info*, then *Run anyway*.',
+  'desktop.noteMacos': '*On macOS,* the first launch will say the app "cannot be opened because the developer cannot be verified". That’s because the build isn’t signed with an Apple Developer certificate, not because anything is wrong with it. Right-click the app and choose *Open*, then confirm — macOS remembers the choice afterwards.',
+  'desktop.noteLinux': '*On Linux,* an AppImage arrives without the executable bit set. Either tick *Allow executing file as program* in the file manager’s properties, or run `chmod +x` on it. Some minimal distributions also need FUSE installed.',
 
   // --------------------------------------------------------- the front page
   'landing.sections': 'Sections',
