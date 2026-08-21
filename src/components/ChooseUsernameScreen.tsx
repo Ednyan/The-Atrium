@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useTranslation } from '../lib/i18n'
+import RichText from './RichText'
 import { supabase } from '../lib/supabase'
 
 interface ChooseUsernameScreenProps {
@@ -19,6 +21,7 @@ interface ChooseUsernameScreenProps {
 // Creating the row here means sign-in no longer depends on that trigger having
 // worked.
 export default function ChooseUsernameScreen({ userId, email, onComplete }: ChooseUsernameScreenProps) {
+  const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -55,7 +58,7 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
       // A row belonging to this same user is fine -- that's just re-running
       // the step. Anyone else's is a genuine clash.
       if (taken && taken.id !== userId) {
-        setError('Username already taken')
+        setError(t('auth.errUsernameTaken'))
         setLoading(false)
         return
       }
@@ -94,23 +97,21 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
 
         <div className="flex items-center gap-3 mb-1">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h2 className="text-nier-bg tracking-[0.15em] uppercase text-sm">Choose a Username</h2>
+          <h2 className="text-nier-bg tracking-[0.15em] uppercase text-sm">{t('chooseName.title')}</h2>
         </div>
         <p className="text-nier-bg/75 text-[10px] tracking-[0.1em] uppercase ml-5 mb-6">
-          One last step
+          {t('chooseName.step')}
         </p>
 
         <p className="text-nier-bg/80 text-[11px] tracking-wide mb-3">
-          Signed in as <span className="text-nier-bg break-all">{email}</span>. Pick the name
-          others will see on your traces.
+          <RichText text={t('chooseName.signedIn', { email })} className="text-nier-bg break-all" />
         </p>
 
         {/* Called out before the input, not after: usernames are permanent, and
             burying that under the field is how people end up stuck with a typo. */}
         <div className="border border-nier-border/30 bg-nier-black/60 px-3 py-2 mb-5">
           <p className="text-nier-bg/80 text-[10px] tracking-wide">
-            ⚠ Your username is <span className="text-nier-bg">permanent</span> and can't be
-            changed later. Your display name can.
+            ⚠ <RichText text={t('chooseName.permanentWarning')} className="text-nier-bg" />
           </p>
         </div>
 
@@ -121,11 +122,11 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
             onChange={(e) => { setUsername(e.target.value); setError('') }}
             autoFocus
             maxLength={20}
-            placeholder="username"
+            placeholder={t('chooseName.placeholder')}
             className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
           />
           <p className="text-nier-bg/70 text-[9px] tracking-wider uppercase">
-            3-20 characters, letters/numbers/underscores
+            {t('chooseName.hint')}
           </p>
 
           {error && (

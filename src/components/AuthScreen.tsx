@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 
 interface AuthScreenProps {
@@ -10,6 +11,7 @@ interface AuthScreenProps {
 }
 
 export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialError }: AuthScreenProps) {
+  const { t } = useTranslation()
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [emailOrUsername, setEmailOrUsername] = useState('')
@@ -120,25 +122,25 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
 
     // Validate username
     if (username.length < 3 || username.length > 20) {
-      setError('Username must be 3-20 characters')
+      setError(t('auth.errUsernameLength'))
       setLoading(false)
       return
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      setError('Username can only contain letters, numbers, and underscores')
+      setError(t('auth.errUsernameChars'))
       setLoading(false)
       return
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError(t('auth.passwordsDoNotMatch'))
       setLoading(false)
       return
     }
 
     if (!supabase) {
-      setError('Authentication not available')
+      setError(t('auth.errUnavailable'))
       setLoading(false)
       return
     }
@@ -152,7 +154,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
         .maybeSingle()
 
       if (existingUser) {
-        setError('Username already taken')
+        setError(t('auth.errUsernameTaken'))
         setLoading(false)
         return
       }
@@ -172,7 +174,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
       if (signupError) {
         // Check for specific error messages
         if (signupError.message.includes('already registered')) {
-          setError('This email is already registered. Please log in instead.')
+          setError(t('auth.errEmailRegistered'))
         } else {
           throw signupError
         }
@@ -228,7 +230,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
     setLoading(true)
 
     if (!supabase) {
-      setError('Authentication not available')
+      setError(t('auth.errUnavailable'))
       setLoading(false)
       return
     }
@@ -289,13 +291,13 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
     setLoading(true)
 
     if (!supabase) {
-      setError('Authentication not available')
+      setError(t('auth.errUnavailable'))
       setLoading(false)
       return
     }
 
     if (!email) {
-      setError('Please enter your email address')
+      setError(t('auth.errNoEmail'))
       setLoading(false)
       return
     }
@@ -334,9 +336,9 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
           <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
           
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">Check Your Email</h2>
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">{t('auth.checkEmail')}</h2>
           <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
-            We've sent you an email with a link to reset your password. Please check your inbox and follow the instructions.
+            {t('auth.resetSent')}
           </p>
           <button
             onClick={() => {
@@ -346,7 +348,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             }}
             className="w-full py-3 border border-nier-border/60 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bg hover:text-nier-black hover:border-nier-bg"
           >
-            Back to Login
+            {t('auth.backToLogin')}
           </button>
         </div>
       </div>
@@ -372,9 +374,9 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
           <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
           
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">Check Your Email</h2>
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">{t('auth.checkEmail')}</h2>
           <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
-            We've sent you an email with a confirmation link. Please check your inbox and click the link to verify your account.
+            {t('auth.confirmSentVerify')}
           </p>
           <button
             onClick={() => {
@@ -383,7 +385,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             }}
             className="w-full py-3 border border-nier-border/60 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bg hover:text-nier-black hover:border-nier-bg"
           >
-            Back to Login
+            {t('auth.backToLogin')}
           </button>
         </div>
       </div>
@@ -422,7 +424,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             
             <div className="flex items-center gap-3">
               <span className="text-nier-bg/75 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
-              <span className="text-[10px] tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">Back</span>
+              <span className="text-[10px] tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">{t('auth.back')}</span>
             </div>
           </div>
         </button>
@@ -443,7 +445,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             <div className="w-8 h-[1px] bg-gradient-to-l from-transparent to-nier-border/40" />
           </div>
           <h1 className="text-xl text-nier-bg tracking-[0.2em] uppercase">
-            {mode === 'login' ? 'Welcome' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+            {mode === 'login' ? t('auth.welcome') : mode === 'signup' ? t('auth.createAccount') : t('auth.resetPassword')}
           </h1>
         </div>
 
@@ -451,21 +453,21 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           {mode === 'signup' && (
             <div>
               <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                Username
+                {t('auth.username')}
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder="Choose a unique username"
+                placeholder={t('auth.usernamePlaceholder')}
                 required
                 minLength={3}
                 maxLength={20}
                 pattern="[a-zA-Z0-9_]+"
               />
               <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
-                3-20 characters, letters, numbers, underscores
+                {t('auth.usernameHint')}
               </p>
             </div>
           )}
@@ -473,33 +475,33 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           {mode === 'login' ? (
             <div>
               <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                Email or Username
+                {t('auth.emailOrUsername')}
               </label>
               <input
                 type="text"
                 value={emailOrUsername}
                 onChange={(e) => setEmailOrUsername(e.target.value)}
                 className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder="your@email.com or username"
+                placeholder={t('auth.emailOrUsernamePlaceholder')}
                 required
               />
             </div>
           ) : (
             <div>
               <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                Email
+                {t('auth.email')}
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder="your@email.com"
+                placeholder={t('auth.emailPlaceholder')}
                 required
               />
               {mode === 'forgot' && (
                 <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
-                  Enter the email associated with your account
+                  {t('auth.emailForReset')}
                 </p>
               )}
             </div>
@@ -508,7 +510,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           {mode !== 'forgot' && (
             <div>
               <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                Password
+                {t('auth.password')}
               </label>
               <input
                 type="password"
@@ -521,7 +523,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               />
               {mode === 'signup' && (
                 <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
-                  Minimum 6 characters
+                  {t('auth.passwordHint')}
                 </p>
               )}
             </div>
@@ -530,7 +532,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           {mode === 'signup' && (
             <div>
               <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                Confirm Password
+                {t('auth.confirmPassword')}
               </label>
               <input
                 type="password"
@@ -543,7 +545,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               />
               {confirmPassword.length > 0 && confirmPassword !== password && (
                 <p className="text-[9px] tracking-wider mt-2 uppercase" style={{ color: '#FF6161' }}>
-                  Passwords do not match
+                  {t('auth.passwordsDoNotMatch')}
                 </p>
               )}
             </div>
@@ -560,7 +562,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             disabled={loading}
             className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '◇ Processing...' : mode === 'login' ? 'Log In' : mode === 'signup' ? 'Sign Up' : 'Send Reset Link'}
+            {loading ? `◇ ${t('auth.processing')}` : mode === 'login' ? t('auth.logIn') : mode === 'signup' ? t('auth.signUp') : t('auth.sendResetLink')}
           </button>
 
           {/* Google sign-in. Web only: OAuth returns via an HTTP redirect, and
@@ -591,7 +593,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
                   <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
                   <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
                 </svg>
-                Continue with Google
+                {t('auth.continueWithGoogle')}
               </button>
             </>
           )}
@@ -606,7 +608,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               }}
               className="text-nier-bg/75 text-[10px] tracking-wider hover:text-nier-bg transition-colors block w-full"
             >
-              ◇ Forgot your password?
+              ◇ {t('auth.forgotPassword')}
             </button>
           )}
           <button
@@ -621,7 +623,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             }}
             className="text-nier-bg/80 text-[11px] tracking-wider hover:text-nier-bg transition-colors"
           >
-            {mode === 'login' ? "◇ Don't have an account? Sign up" : mode === 'signup' ? '◇ Already have an account? Log in' : '◇ Back to Login'}
+            {mode === 'login' ? `◇ ${t('auth.noAccount')}` : mode === 'signup' ? `◇ ${t('auth.haveAccount')}` : `◇ ${t('auth.backToLogin')}`}
           </button>
           <div className="flex items-center justify-center gap-3">
             <a
@@ -630,7 +632,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               rel="noopener noreferrer"
               className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
             >
-              Privacy Policy
+              {t('landing.privacy')}
             </a>
             <span className="text-nier-bg/50 text-[9px]">◇</span>
             <a
@@ -639,7 +641,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
               rel="noopener noreferrer"
               className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
             >
-              Terms of Service
+              {t('landing.terms')}
             </a>
           </div>
         </div>
