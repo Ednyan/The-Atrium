@@ -41,6 +41,8 @@ export const en = {
   'welcome.logOut': 'Log Out',
   'welcome.exit': 'Exit Application',
   'welcome.useBrowserLanguage': "Use my browser's",
+  'welcome.website': 'Visit the website',
+  'welcome.websiteTitle': 'Opens the-atrium.pages.dev in your browser',
 
   // -------------------------------------------------------- atrium browser
   'browser.loadingTitle': 'Loading Atriums',

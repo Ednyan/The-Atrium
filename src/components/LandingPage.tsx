@@ -8,6 +8,7 @@ import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
+import ConnectTiles from './ConnectTiles'
 import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
@@ -977,39 +978,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { name: 'Website', note: 'Portfolio and work', url: 'https://mindeformer.wixstudio.com/mindeformer' },
-                { name: 'Instagram', note: 'Pictures of things', url: 'https://www.instagram.com/red.puer/' },
-                { name: 'Youtube', note: 'Videos', url: 'https://www.youtube.com/@mindeformer' },
-                { name: 'Email', note: 'Say something', url: 'mailto:thedigitalatrium@gmail.com' },
-              ].map((social) => (
-                <a
-                  key={social.name}
-                  href={isDesktop ? '#' : social.url}
-                  target={isDesktop ? undefined : '_blank'}
-                  rel={isDesktop ? undefined : 'noopener noreferrer'}
-                  onClick={isDesktop ? (e) => {
-                    e.preventDefault()
-                    import('@tauri-apps/plugin-shell').then(({ open }) => open(social.url))
-                  } : undefined}
-                  className="group border border-nier-border/30 hover:border-nier-bg/60 bg-nier-blackLight/40 hover:bg-nier-blackLight/70 px-4 py-3.5 text-left transition-colors cursor-pointer"
-                  style={{ clipPath: DONATE_CUT }}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-nier-strong text-xs tracking-[0.18em] uppercase">
-                      {social.name}
-                    </span>
-                    <span className="text-nier-bg/40 text-xs transition-all duration-300 group-hover:text-nier-bg/80 group-hover:-translate-y-0.5 group-hover:translate-x-0.5">
-                      ↗
-                    </span>
-                  </span>
-                  <span className="mt-1 block text-nier-bg/60 text-[0.7rem] tracking-wide">
-                    {social.note}
-                  </span>
-                </a>
-              ))}
-            </div>
+            <ConnectTiles columns={4} />
           </div>
 
         </div>

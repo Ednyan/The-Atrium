@@ -8,6 +8,9 @@ import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import { useTranslation } from '../lib/i18n'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
+import CreatorPanel from './CreatorPanel'
+import { openExternalUrl } from '../lib/openExternal'
+import { ATRIUM_WEBSITE } from '../lib/creatorLinks'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { openContributors } from '../lib/contributorsRoute'
@@ -31,6 +34,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   // reads as going a layer deeper rather than as a page being replaced.
   const [leaving, setLeaving] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
+  const [showCreator, setShowCreator] = useState(false)
   // Evaluated once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
   // launch, and this must never appear over the canvas.
@@ -247,6 +251,34 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} />
         </div>
+        {/* Whose place this is, in the margin the goal gauge left empty.
+            The same plate the front page wears in its top corner, for the same
+            reason: a person's name on the front of a thing is the difference
+            between a product and somebody's work. On desktop it is also the
+            only place that story is told, since nobody opens an app they have
+            installed to go and read its landing page.
+
+            Hidden below lg, where the gauge hides too -- the margins it lives
+            in stop existing. */}
+        <button
+          type="button"
+          onClick={() => setShowCreator(true)}
+          className="group hidden lg:flex fixed right-10 xl:right-16 top-1/2 -translate-y-1/2 z-20 flex-col items-end text-right"
+        >
+          <span className="byline flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase">
+            <span className="byline-mark w-1.5 h-1.5 rotate-45" />
+            {t('landing.madeBy')}
+          </span>
+          <span className="mt-2 text-sm tracking-[0.12em] uppercase text-nier-strong leading-none">
+            Eduardo Paranhos
+          </span>
+          <span className="byline-link mt-2 flex items-center gap-2 text-[10px] tracking-[0.18em] uppercase text-nier-bg/70">
+            {t('landing.aboutCreator')}
+            <span className="transition-transform duration-300 group-hover:translate-x-0.5">→</span>
+          </span>
+          <span className="byline-rule mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
+        </button>
+
         <div className="absolute bottom-8 left-8 w-16 h-16 border-l border-b border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r border-b border-nier-border/30" />
 
@@ -458,6 +490,22 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 can sit here from the day the plumbing lands. */}
             <LanguageToggle variant="menu" />
 
+            {/* Desktop only: the web app is already on the website, and this
+                would be a button that reloads the page you are looking at.
+                Handed to the system browser rather than opened in the webview,
+                which has no address bar to get back from. */}
+            {isDesktop && (
+              <button
+                onClick={() => openExternalUrl(ATRIUM_WEBSITE)}
+                onMouseEnter={() => setIsHovered('website')}
+                onMouseLeave={() => setIsHovered(null)}
+                title={t('welcome.websiteTitle')}
+                className="menu-row"
+              >
+                <span className="relative z-10">◇ {t('welcome.website')} ↗</span>
+              </button>
+            )}
+
             {/* About button (desktop only) */}
             {isDesktop && onBackToLanding && (
               <button
@@ -538,6 +586,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
 
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
+
+      {showCreator && <CreatorPanel onClose={() => setShowCreator(false)} />}
       {showAppeal && (
         <SupportAppeal
           onClose={() => setShowAppeal(false)}

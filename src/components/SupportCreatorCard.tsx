@@ -11,17 +11,9 @@
 // for paying -- a name on the wall -- lives on the other card, under the
 // button that does the paying.
 
-import { isDesktop } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
-import { DONATE_CUT } from './DonateButton'
 import RichText from './RichText'
-
-const LINKS = [
-  { key: 'website', url: 'https://mindeformer.wixstudio.com/mindeformer' },
-  { key: 'instagram', url: 'https://www.instagram.com/red.puer/' },
-  { key: 'youtube', url: 'https://www.youtube.com/@mindeformer' },
-  { key: 'email', url: 'mailto:thedigitalatrium@gmail.com' },
-] as const
+import ConnectTiles from './ConnectTiles'
 
 export default function SupportCreatorCard() {
   const { t } = useTranslation()
@@ -66,34 +58,7 @@ export default function SupportCreatorCard() {
         <div className="support-rule flex-1 h-px" />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        {LINKS.map(link => (
-          <a
-            key={link.key}
-            href={isDesktop ? '#' : link.url}
-            target={isDesktop ? undefined : '_blank'}
-            rel={isDesktop ? undefined : 'noopener noreferrer'}
-            onClick={isDesktop ? (event) => {
-              event.preventDefault()
-              import('@tauri-apps/plugin-shell').then(({ open }) => open(link.url))
-            } : undefined}
-            className="support-tile group border border-nier-border/30 bg-nier-black/30 hover:bg-nier-black/50 px-3 py-2.5 text-left transition-colors cursor-pointer"
-            style={{ clipPath: DONATE_CUT }}
-          >
-            <span className="flex items-center justify-between gap-2">
-              <span className="text-nier-strong text-[11px] tracking-[0.15em] uppercase">
-                {t(`support.${link.key}` as 'support.website')}
-              </span>
-              <span className="text-nier-bg/40 text-[11px] transition-all duration-300 group-hover:text-nier-bg/80 group-hover:-translate-y-0.5 group-hover:translate-x-0.5">
-                ↗
-              </span>
-            </span>
-            <span className="mt-0.5 block text-nier-bg/55 text-[0.7rem] tracking-wide">
-              {t(`support.${link.key}Note` as 'support.websiteNote')}
-            </span>
-          </a>
-        ))}
-      </div>
+      <ConnectTiles />
     </div>
   )
 }
