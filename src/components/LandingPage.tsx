@@ -1215,9 +1215,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
               <PanZoomDemo />
               <div className="grid sm:grid-cols-3 gap-4">
                 {[
-                  { key: 'Click + Drag', desc: t('landing.controls.drag') },
-                  { key: 'Scroll Wheel', desc: t('landing.controls.scroll') },
-                  { key: 'T Key', desc: t('landing.controls.tKey') },
+                  { key: t('landing.controls.dragKey'), desc: t('landing.controls.drag') },
+                  { key: t('landing.controls.scrollKey'), desc: t('landing.controls.scroll') },
+                  { key: t('landing.controls.tKeyKey'), desc: t('landing.controls.tKey') },
                 ].map((control, i) => (
                   <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
                     <div className="text-nier-strong text-base font-mono mb-2">{control.key}</div>

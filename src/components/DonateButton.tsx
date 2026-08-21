@@ -73,7 +73,7 @@ export function DonateHearts({ color }: { color: string }) {
 export default function DonateButton({
   onClick,
   variant = 'accent',
-  label = 'Donate',
+  label,
   className = '',
   wrapperClassName = '',
 }: DonateButtonProps) {
@@ -179,7 +179,7 @@ export default function DonateButton({
             strokeLinejoin="round"
           />
         </svg>
-        {label}
+        {label ?? t('landing.donate')}
       </span>
     </button>
 

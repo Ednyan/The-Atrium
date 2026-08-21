@@ -300,7 +300,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
           >
             <span className="transition-transform duration-300 group-hover:-translate-x-1">◁</span>
-            Back
+            {t('common.back')}
           </button>
         )}
 
@@ -316,7 +316,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           <div className="space-y-[clamp(0.5rem,1.5vh,1rem)]">
             <div className="flex items-center justify-center gap-4">
               <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
-              <span className="text-nier-bg/75 text-xs tracking-[0.3em] uppercase">Welcome to the</span>
+              <span className="text-nier-bg/75 text-xs tracking-[0.3em] uppercase">{t('welcome.welcomeToThe')}</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
             {/* The same face the website's title wears -- silver on black,
@@ -351,7 +351,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 goes through an arbitrary-value class. */}
             <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" ink={theme.resolved === 'light'} />
             <p className="text-nier-bg/80 text-xs tracking-[0.2em] uppercase">
-              A quiet space for creative presence
+              {t('welcome.tagline')}
             </p>
           </div>
 

@@ -10,6 +10,7 @@
 // laptop turns dark at sunset should turn with it.
 
 import { useLandingTheme } from '../lib/useLandingTheme'
+import { useTranslation } from '../lib/i18n'
 
 export default function ThemeToggle({ className = '', variant = 'panel' }: {
   className?: string
@@ -19,17 +20,18 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
   variant?: 'panel' | 'atrium'
 }) {
   const { preference, resolved, cycle } = useLandingTheme()
+  const { t } = useTranslation()
 
   const label = preference === 'system'
-    ? `Auto · ${resolved}`
-    : preference === 'dark' ? 'Dark' : 'Light'
+    ? t('theme.auto', { mode: resolved === 'dark' ? t('theme.modeDark') : t('theme.modeLight') })
+    : preference === 'dark' ? t('theme.dark') : t('theme.light')
 
   return (
     <button
       type="button"
       onClick={cycle}
-      title={`Theme: ${label}`}
-      aria-label={`Theme: ${label}. Click to change.`}
+      title={t('theme.label', { mode: label })}
+      aria-label={t('theme.change', { mode: label })}
       className={variant === 'atrium'
         ? `atrium-btn ${className}`
         : `cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors ${className}`}

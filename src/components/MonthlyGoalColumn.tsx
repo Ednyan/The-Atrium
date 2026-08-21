@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react'
 import type { MonthlyProgress } from '../lib/contributions'
+import { useTranslation } from '../lib/i18n'
 
 interface MonthlyGoalColumnProps {
   month: MonthlyProgress | null
@@ -31,6 +32,7 @@ const BUBBLES = [
 ]
 
 export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: MonthlyGoalColumnProps) {
+  const { t } = useTranslation()
   // Starts empty and is told to fill one frame later, so the transition has
   // something to travel from. Setting the real height immediately would paint
   // it full and animate nothing.
@@ -57,7 +59,7 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: Mont
       className={`hidden lg:flex fixed top-1/2 -translate-y-1/2 z-20 flex-col items-center gap-4 group ${
         side === 'left' ? 'left-10 xl:left-16' : 'right-10 xl:right-16'
       }`}
-      title="See who keeps this running"
+      title={t('goal.seeWho')}
     >
       {/* The goal sits at the top, where the column is trying to reach, and
           the figure raised sits at the bottom with the fill it describes. The
@@ -105,7 +107,7 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: Mont
         className="text-[11px] tracking-[0.28em] uppercase text-nier-bg/70 group-hover:text-nier-bg transition-colors whitespace-nowrap"
         style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
       >
-        Contributions this month
+        {t('goal.thisMonth')}
       </span>
     </button>
   )

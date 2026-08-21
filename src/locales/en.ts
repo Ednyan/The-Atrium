@@ -30,6 +30,33 @@ export const en = {
   'common.language': 'Language',
   'common.theme': 'Theme',
 
+  // ---------------------------------------------------- light and dark
+  'theme.auto': 'Auto · {mode}',
+  'theme.dark': 'Dark',
+  'theme.light': 'Light',
+  'theme.modeDark': 'dark',
+  'theme.modeLight': 'light',
+  'theme.label': 'Theme: {mode}',
+  'theme.change': 'Theme: {mode}. Click to change.',
+
+  // ------------------------------------------------------ the monthly gauge
+  'goal.thisMonth': 'Contributions this month',
+  'goal.seeWho': 'See who keeps this running',
+
+  // -------------------------------------------------------- a door that is shut
+  'locked.passwordNeeded': 'Password needed',
+  'locked.passwordWhy': 'This atrium is password-protected, and the last time you entered it was long enough ago that the door has closed again.',
+  'locked.passwordHow': 'Open it from the atrium browser — find it in the list, or use its ID, and you will be asked for the password there.',
+  'locked.cannotOpen': "Can't open this atrium",
+  'locked.enterPassword': 'Enter the password',
+  'locked.toBrowser': 'Atrium browser',
+
+  // ------------------------------------------------------- crossing over
+  'entering.title': 'Entering Atrium',
+  'entering.crossing': 'Crossing into another realm',
+  'entering.aligning': 'Aligning the gate',
+  'entering.preparing': 'Preparing passage',
+
   // -------------------------------------------------------- welcome screen
   'welcome.enter': 'Enter the Atrium',
   'welcome.settings': 'Profile Settings',
@@ -41,6 +68,8 @@ export const en = {
   'welcome.logOut': 'Log Out',
   'welcome.exit': 'Exit Application',
   'welcome.useBrowserLanguage': "Use my browser's",
+  'welcome.welcomeToThe': 'Welcome to the',
+  'welcome.tagline': 'A quiet space for creative presence',
   'welcome.website': 'Visit the website',
   'welcome.websiteTitle': 'Opens the-atrium.pages.dev in your browser',
 
@@ -267,6 +296,9 @@ export const en = {
   'landing.backToTop': 'Back to the top',
   'landing.hero.download': 'Download Desktop App',
   'landing.hero.beginJourney': 'Begin Your Journey',
+  'landing.controls.dragKey': 'Click + Drag',
+  'landing.controls.scrollKey': 'Scroll Wheel',
+  'landing.controls.tKeyKey': 'T Key',
   'landing.controls.drag': 'Pan around the canvas',
   'landing.controls.scroll': 'Zoom in and out',
   'landing.controls.tKey': 'Quick-place a trace',

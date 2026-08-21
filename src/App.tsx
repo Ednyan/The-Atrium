@@ -5,6 +5,7 @@ import AuthScreen from './components/AuthScreen'
 import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
+import { useTranslation } from './lib/i18n'
 import DesktopIntro from './components/DesktopIntro'
 import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
@@ -549,6 +550,7 @@ function navigate(path: string) {
 }
 
 function AppInner() {
+  const { t } = useTranslation()
   const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
 
   // Light or dark, published once at the root so every screen inherits it.
@@ -1536,15 +1538,13 @@ function AppInner() {
               <>
                 <div className="flex items-center gap-3 mb-5">
                   <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
-                  <h2 className="text-nier-strong text-lg tracking-[0.12em] uppercase leading-none">Password needed</h2>
+                  <h2 className="text-nier-strong text-lg tracking-[0.12em] uppercase leading-none">{t('locked.passwordNeeded')}</h2>
                 </div>
                 <p className="text-nier-bg/80 text-sm leading-relaxed mb-3">
-                  This atrium is password-protected, and the last time you entered
-                  it was long enough ago that the door has closed again.
+                  {t('locked.passwordWhy')}
                 </p>
                 <p className="text-nier-bg/70 text-xs leading-relaxed">
-                  Open it from the atrium browser — find it in the list, or use its
-                  ID, and you will be asked for the password there.
+                  {t('locked.passwordHow')}
                 </p>
               </>
             ) : (
@@ -1552,7 +1552,7 @@ function AppInner() {
                 <div className="flex items-center gap-3 mb-5">
                   <div className="w-2 h-2 rotate-45 border" style={{ borderColor: 'rgb(var(--c-danger) / 0.6)' }} />
                   <h2 className="text-lg tracking-[0.12em] uppercase leading-none" style={{ color: 'rgb(var(--c-danger))' }}>
-                    Can't open this atrium
+                    {t('locked.cannotOpen')}
                   </h2>
                 </div>
                 <p className="text-nier-bg/80 text-sm leading-relaxed">{lobbyAccessError}</p>
@@ -1567,7 +1567,7 @@ function AppInner() {
               className="cut-corner w-full mt-7 inline-flex items-center justify-center h-[2.375rem] text-[11px] tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
               style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))' }}
             >
-              {isPasswordError ? '◇ Enter the password' : '◇ Atrium browser'}
+              {isPasswordError ? `◇ ${t('locked.enterPassword')}` : `◇ ${t('locked.toBrowser')}`}
             </button>
           </div>
         </div>
