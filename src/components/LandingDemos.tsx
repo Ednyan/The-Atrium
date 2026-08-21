@@ -7,6 +7,8 @@
 // (bracket-framed trace cards, diamond cursors with name tags, the grid) so
 // the demos read as the product, not as marketing illustrations of it.
 
+import { useTranslation } from '../lib/i18n'
+
 // Mirrors LandingPage's ACCENT set -- duplicated rather than exported since
 // these two files are the only consumers and a shared module for three hex
 // strings is more plumbing than it saves.
@@ -122,6 +124,7 @@ function DemoTrace({ kind, className, style, children }: {
 // edge traces peek in, selling "this keeps going past the frame".
 
 export function LivingAtriumScene() {
+  const { t } = useTranslation()
   return (
     <div className="absolute inset-0 overflow-hidden landing-demo" aria-hidden="true">
       {/* world: oversized so the drift never shows an edge */}
@@ -153,7 +156,7 @@ export function LivingAtriumScene() {
             className="block font-mono text-[9px] text-nier-bg/90 whitespace-nowrap overflow-hidden border-r"
             style={{ borderColor: `${C.silver}AA`, animation: 'ldTyping 9s steps(14) infinite' }}
           >
-            a shared canvas
+            {t('demo.sharedCanvas')}
           </span>
         </div>
 
@@ -215,6 +218,7 @@ export function LivingAtriumScene() {
 // clusters -- the "camera" someone is panning around a much larger space.
 
 export function AtriumMapDiagram() {
+  const { t } = useTranslation()
   // Deterministic scatter, weighted into three loose clusters so the
   // viewport's stations have something to visit.
   const dots = Array.from({ length: 26 }, (_, i) => {
@@ -253,16 +257,16 @@ export function AtriumMapDiagram() {
           the section-accent hues, with the same name tags the hero cursors
           carry so they read as people, not markers */}
       {([
-        { name: 'Drifter', color: 'rgb(var(--c-amber))', anim: 'ldMapVisitorA 17s ease-in-out infinite' },
-        { name: 'Echo', color: 'rgb(var(--c-coral))', anim: 'ldMapVisitorB 23s ease-in-out infinite' },
-      ] as const).map(({ name, color, anim }) => (
-        <div key={name} className="absolute" style={{ animation: anim }}>
+        { nameKey: 'demo.visitorA' as const, color: 'rgb(var(--c-amber))', anim: 'ldMapVisitorA 17s ease-in-out infinite' },
+        { nameKey: 'demo.visitorB' as const, color: 'rgb(var(--c-coral))', anim: 'ldMapVisitorB 23s ease-in-out infinite' },
+      ]).map(({ nameKey, color, anim }) => (
+        <div key={nameKey} className="absolute" style={{ animation: anim }}>
           <div className="w-1.5 h-1.5 rotate-45" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
           <span
             className="absolute left-2.5 top-0.5 font-mono text-[8px] tracking-wider whitespace-nowrap px-1 py-px"
             style={{ color, backgroundColor: 'rgb(var(--c-ground) / 0.75)', border: `1px solid ${color}55` }}
           >
-            {name}
+            {t(nameKey)}
           </span>
         </div>
       ))}
@@ -274,7 +278,7 @@ export function AtriumMapDiagram() {
           className="absolute -bottom-4 left-0 font-mono text-[8px] tracking-[0.18em] uppercase"
           style={{ color: `${C.silver}99` }}
         >
-          you
+          {t('demo.you')}
         </span>
       </div>
 
@@ -304,6 +308,7 @@ export function AtriumMapDiagram() {
 // pulse zooms it -- the two navigation gestures, shown not listed.
 
 export function PanZoomDemo() {
+  const { t } = useTranslation()
   return (
     <div className="relative w-full h-36 border border-nier-border/25 overflow-hidden mb-5 landing-demo" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.5)' }} aria-hidden="true">
       <div className="absolute -inset-[25%]" style={{ ...GRID_BG, animation: 'ldPanWorld 12s ease-in-out infinite' }}>
@@ -318,7 +323,7 @@ export function PanZoomDemo() {
         style={{ borderColor: `${C.silver}66`, opacity: 0, animation: 'ldPanPress 12s linear infinite' }}
       />
       <span className="absolute bottom-1.5 right-2 font-mono text-[8px] tracking-[0.18em] uppercase text-nier-bg/70">
-        drag to pan · scroll to zoom
+        {t('demo.panZoom')}
       </span>
 
       <style>{`
@@ -355,6 +360,7 @@ export function PanZoomDemo() {
 // shape, matching the three types the adjacent copy lists.
 
 export function TraceCycleDemo() {
+  const { t } = useTranslation()
   const phase = (name: string, delay: string) => ({
     animation: `${name} 9s linear infinite`,
     animationDelay: delay,
@@ -380,7 +386,7 @@ export function TraceCycleDemo() {
         </div>
       </div>
       <span className="absolute -bottom-5 inset-x-0 text-center font-mono text-[8px] tracking-[0.18em] uppercase text-nier-bg/70">
-        one trace, any form
+        {t('demo.oneTrace')}
       </span>
 
       <style>{`

@@ -309,6 +309,34 @@ export const en = {
   'support.email': 'Email',
   'support.emailNote': 'Say something',
 
+  // -------------------------------------- the little animations on the page
+  'demo.sharedCanvas': 'a shared canvas',
+  'demo.you': 'you',
+  'demo.visitorA': 'Drifter',
+  'demo.visitorB': 'Echo',
+  'demo.panZoom': 'drag to pan · scroll to zoom',
+  'demo.oneTrace': 'one trace, any form',
+
+  // --------------------------------------------------- the desktop section
+  'desktop.title': 'Desktop App',
+  'desktop.lead': 'The same atrium, running on your own machine. Your references live in a folder you control, images come straight off your drive instead of needing somewhere to host them, and nothing is capped.',
+  'desktop.fit': "It's the better fit for a big personal reference library. The web version is the better fit for anything you want other people in.",
+  'desktop.windows': 'Windows 10 or later',
+  'desktop.macos': 'Apple Silicon & Intel',
+  'desktop.linux': 'AppImage, most distros',
+  'desktop.unavailable': 'Not available yet',
+  'desktop.allReleases': 'All releases',
+  'desktop.web': 'Web',
+  'desktop.desktop': 'Desktop',
+  'desktop.moveBetween': 'You can move between them: download an atrium from the web and import it into the desktop app, or upload a local one when you want to share it.',
+  'desktop.onWindows': 'On Windows,',
+  'desktop.onMacos': 'On macOS,',
+  'desktop.onLinux': 'On Linux,',
+  'desktop.moreInfo': 'More info',
+  'desktop.runAnyway': 'Run anyway',
+  'desktop.open': 'Open',
+  'desktop.allowExecuting': 'Allow executing file as program',
+
   // --------------------------------------------------------- the front page
   'landing.sections': 'Sections',
   'landing.nav.hero': 'The Digital Atrium',

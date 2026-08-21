@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslation } from '../lib/i18n'
+import type { TranslationKey } from '../locales/en'
 
 const REPO = 'Ednyan/The-Atrium'
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
@@ -10,12 +12,14 @@ interface Build {
   // build is published for that platform yet, which is shown honestly rather
   // than linking somewhere broken.
   match?: RegExp
-  note: string
+  noteKey: TranslationKey
   // What the operating system will say the first time, and what to do about
   // it. Shown only while that platform's button is under the pointer: three
   // paragraphs of caveats standing permanently under three buttons reads as
   // a list of reasons not to download anything.
-  firstRun?: ReactNode
+  // Takes t rather than being ReactNode, because this list is built at module
+  // scope where no hook can reach. Called at render instead.
+  firstRun?: (t: (key: TranslationKey) => string) => ReactNode
 }
 
 // Every platform is matched by asset filename against the latest release, so
@@ -27,30 +31,30 @@ const BUILDS: Build[] = [
   {
     os: 'Windows',
     match: /\.exe$/,
-    note: 'Windows 10 or later',
+    noteKey: 'desktop.windows' as const,
     // Not Authenticode-signed -- the signing key this project has is the
     // updater's, which is a different thing entirely -- so SmartScreen shows
     // its blue screen on a build it has not seen before.
-    firstRun: (
+    firstRun: (t) => (
       <>
-        <span className="text-nier-bg">On Windows,</span> SmartScreen may show a blue
+        <span className="text-nier-bg">{t('desktop.onWindows')}</span> SmartScreen may show a blue
         "Windows protected your PC" screen the first time. That is what it does with any
         installer it has not seen many times before, not a verdict on this one. Click{' '}
-        <span className="text-nier-bg">More info</span>, then{' '}
-        <span className="text-nier-bg">Run anyway</span>.
+        <span className="text-nier-bg">{t('desktop.moreInfo')}</span>, then{' '}
+        <span className="text-nier-bg">{t('desktop.runAnyway')}</span>.
       </>
     ),
   },
   {
     os: 'macOS',
     match: /\.dmg$/,
-    note: 'Apple Silicon & Intel',
-    firstRun: (
+    noteKey: 'desktop.macos' as const,
+    firstRun: (t) => (
       <>
-        <span className="text-nier-bg">On macOS,</span> the first launch will say the app
+        <span className="text-nier-bg">{t('desktop.onMacos')}</span> the first launch will say the app
         "cannot be opened because the developer cannot be verified". That's because the
         build isn't signed with an Apple Developer certificate, not because anything is
-        wrong with it. Right-click the app and choose <span className="text-nier-bg">Open</span>,
+        wrong with it. Right-click the app and choose <span className="text-nier-bg">{t('desktop.open')}</span>,
         then confirm — macOS remembers the choice afterwards.
       </>
     ),
@@ -58,12 +62,12 @@ const BUILDS: Build[] = [
   {
     os: 'Linux',
     match: /\.AppImage$/,
-    note: 'AppImage, most distros',
-    firstRun: (
+    noteKey: 'desktop.linux' as const,
+    firstRun: (t) => (
       <>
-        <span className="text-nier-bg">On Linux,</span> an AppImage arrives without the
+        <span className="text-nier-bg">{t('desktop.onLinux')}</span> an AppImage arrives without the
         executable bit set. Either tick{' '}
-        <span className="text-nier-bg">Allow executing file as program</span> in the file
+        <span className="text-nier-bg">{t('desktop.allowExecuting')}</span> in the file
         manager's properties, or run{' '}
         <span className="text-nier-bg font-mono">chmod +x</span> on it. Some minimal
         distributions also need FUSE installed.
@@ -91,6 +95,7 @@ const COMPARISON: Array<{ feature: string; web: string; desktop: string; favours
 // to the releases page if the API is unreachable or rate-limited, which is
 // still a working route to the download.
 export default function DesktopAppSection() {
+  const { t } = useTranslation()
   const [version, setVersion] = useState<string | null>(null)
   const [assets, setAssets] = useState<Record<string, string>>({})
   // Which download button the pointer (or focus) is on, and so which
@@ -130,19 +135,16 @@ export default function DesktopAppSection() {
       <div className="flex items-center gap-3 mb-10">
         <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-silver) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-silver) / 0.27)` }} />
         <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
-          Desktop App
+          {t('desktop.title')}
         </h2>
         <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
       </div>
 
       <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed mb-3">
-        The same atrium, running on your own machine. Your references live in a
-        folder you control, images come straight off your drive instead of
-        needing somewhere to host them, and nothing is capped.
+        {t('desktop.lead')}
       </p>
       <p className="text-nier-bg/75 text-base leading-relaxed mb-8">
-        It's the better fit for a big personal reference library. The web version
-        is the better fit for anything you want other people in.
+        {t('desktop.fit')}
       </p>
 
       {/* Downloads */}
@@ -174,7 +176,7 @@ export default function DesktopAppSection() {
                 {available ? '↓ ' : ''}{build.os}
               </div>
               <div className="text-nier-bg/70 text-xs tracking-wider">
-                {available ? build.note : 'Not available yet'}
+                {available ? t(build.noteKey) : t('desktop.unavailable')}
               </div>
             </a>
           )
@@ -210,7 +212,7 @@ export default function DesktopAppSection() {
             style={{ opacity: noteOpen ? 1 : 0 }}
           >
             <p className="text-nier-bg/80 text-xs tracking-wider leading-relaxed">
-              {BUILDS.find(build => build.os === noteOs)?.firstRun}
+              {BUILDS.find(build => build.os === noteOs)?.firstRun?.(t)}
             </p>
           </div>
         </div>
@@ -224,7 +226,7 @@ export default function DesktopAppSection() {
           rel="noopener noreferrer"
           className="hover:text-nier-bg/80 transition-colors underline decoration-nier-border/20"
         >
-          All releases
+          {t('desktop.allReleases')}
         </a>
         {' · '}Updates install themselves once you're running it.
       </p>
@@ -233,8 +235,8 @@ export default function DesktopAppSection() {
       <div className="border border-nier-border/25">
         <div className="grid grid-cols-3 border-b border-nier-border/25 bg-nier-black/40">
           <div className="p-3 text-nier-bg/70 text-xs tracking-[0.15em] uppercase" />
-          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-sky) / 0.8)` }}>Web</div>
-          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-emerald) / 0.8)` }}>Desktop</div>
+          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-sky) / 0.8)` }}>{t('desktop.web')}</div>
+          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-emerald) / 0.8)` }}>{t('desktop.desktop')}</div>
         </div>
         {COMPARISON.map((row, i) => (
           <div
@@ -253,8 +255,7 @@ export default function DesktopAppSection() {
       </div>
 
       <p className="text-nier-bg/70 text-sm leading-relaxed mt-6">
-        You can move between them: download an atrium from the web and import it
-        into the desktop app, or upload a local one when you want to share it.
+        {t('desktop.moveBetween')}
       </p>
     </div>
   )
