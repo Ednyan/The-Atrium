@@ -218,7 +218,14 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     // is the whole effect, so the overdraw is not incidental. These are soft
     // shapes with no edge to keep crisp and they are moving; 1.25 is a
     // quarter of the fill rate for a difference nobody can catch.
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.25)
+    // 1.25 on an ordinary screen, 1 on a big one. The cost here is fill rate
+    // and fill rate is area: the same ratio that is cheap at 1080p is drawing
+    // two and a half times as much at 4K, on machines no more likely to
+    // manage it. Above roughly a 1440p screen's worth of pixels the ratio
+    // goes to one, which is a quarter less to paint for a difference nobody
+    // can catch on soft shapes that are moving.
+    const wide = window.innerWidth * window.innerHeight > 2_300_000
+    const dpr = Math.min(window.devicePixelRatio || 1, wide ? 1 : 1.25)
     let width = window.innerWidth
     let height = window.innerHeight
     const size = () => {
@@ -282,6 +289,17 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     // density rather than the motion. Density is the effect; stutter is not.
     let smoothedFrame = 16
     let admitted = 0
+    // A ceiling that only ever comes down.
+    //
+    // The throttle below used to push `admitted` back when a frame ran long,
+    // which took hearts that were already falling off the screen -- so a
+    // machine that could not keep up did not degrade, it flickered: the crowd
+    // surged, thinned, surged again, and the oscillation was more visible
+    // than the slowness it was reacting to. Lowering a ceiling instead means
+    // a slow machine simply ends up with fewer hearts than a fast one, which
+    // is what degrading gracefully looks like. It never rises again, so the
+    // animation cannot hunt.
+    let ceiling = hearts.length
 
     const step = (now: number) => {
       if (!start) { start = now; last = now }
@@ -302,8 +320,14 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       // Two per cent a frame lets the full pour arrive inside a second, which
       // leaves the ramp to do the pacing it was written to do.
       const admitStep = Math.max(6, hearts.length * 0.02)
-      if (smoothedFrame < 22) admitted = Math.min(hearts.length, admitted + admitStep)
-      else admitted = Math.max(0, admitted - admitStep * 1.5)
+      // Twenty-six milliseconds is comfortably past a 60Hz frame, so this
+      // only fires on a machine that is genuinely behind rather than on the
+      // odd long frame. A quarter of the full crowd is the floor: below that
+      // it stops being the same effect.
+      if (smoothedFrame > 26) {
+        ceiling = Math.max(hearts.length * 0.25, ceiling * 0.94)
+      }
+      admitted = Math.min(ceiling, admitted + admitStep)
 
       // Motion blur, by fading the last frame rather than erasing it.
       //
