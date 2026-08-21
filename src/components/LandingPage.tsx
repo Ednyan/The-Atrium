@@ -925,7 +925,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                   desktop build it would scroll to a section that isn't there. */}
               {!isDesktop && (
                 <>
-                  <span className="text-nier-bg/50 text-sm tracking-[0.2em] uppercase">or</span>
+                  <span className="text-nier-bg/50 text-sm tracking-[0.2em] uppercase">{t('landing.or')}</span>
                   <button
                     onClick={() => scrollToSection(sectionIndex('desktop'))}
                     className="group px-6 py-4 border-2 text-base tracking-[0.18em] uppercase transition-all duration-300"

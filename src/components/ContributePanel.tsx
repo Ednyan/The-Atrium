@@ -174,17 +174,16 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             <div className="flex items-center gap-3 mb-5">
               <div className="w-1.5 h-1.5 rotate-45 border" style={{ borderColor: '#FF6161' }} />
               <h3 className="tracking-[0.15em] uppercase" style={{ color: '#FF6161' }}>
-                That name is taken
+                {t('donate.collisionTitle')}
               </h3>
             </div>
 
             <p className="text-sm tracking-wide leading-relaxed font-bold mb-4" style={{ color: '#FF6161' }}>
-              Someone is already on the contributors wall as “{displayName.trim()}”.
+              {t('donate.collisionWho', { name: displayName.trim() })}
             </p>
 
             <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-6">
-              One name is one contributor here, so your amount would be added to
-              theirs and you would appear as one person.
+              {t('donate.collisionWhy')}
             </p>
 
             <button
@@ -192,10 +191,10 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               onClick={() => { setCollisionAccepted(true); setConfirmingCollision(false) }}
               className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
-              Yes, that was me
+              {t('donate.collisionYes')}
             </button>
             <p className="text-nier-bg/70 text-xs tracking-wider mt-2 mb-5 leading-relaxed">
-              Your donations are added together under the one name.
+              {t('donate.collisionYesNote')}
             </p>
 
             <button
@@ -204,10 +203,10 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               className="w-full py-3 border text-xs tracking-[0.15em] uppercase transition-colors"
               style={{ borderColor: 'rgba(255,97,97,0.5)', color: '#FF6161' }}
             >
-              No — I'll choose another name
+              {t('donate.collisionNo')}
             </button>
             <p className="text-nier-bg/70 text-xs tracking-wider mt-2 leading-relaxed">
-              Takes you back to pick a name of your own.
+              {t('donate.collisionNoNote')}
             </p>
           </div>
         )}
@@ -231,12 +230,12 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
                   : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
               }`}
             >
-              {isMonthly ? 'Monthly' : 'One-off'}
+              {isMonthly ? t('donate.monthlyOption') : t('donate.oneOff')}
             </button>
           ))}
         </div>
 
-        <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Amount</label>
+        <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('donate.amount')}</label>
         <div className="flex gap-2 mb-3">
           {presets.map(preset => (
             <button
@@ -266,13 +265,13 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             inputMode="decimal"
             value={customAmount}
             onChange={e => setCustomAmount(e.target.value)}
-            placeholder="Another amount"
+            placeholder={t('donate.otherAmount')}
             className="w-full pl-9 pr-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
           />
         </div>
         {customAmount.trim() && !amountValid && (
           <p className="text-xs tracking-wider mb-2" style={{ color: '#FF6161' }}>
-            The minimum is €1.
+            {t('donate.minimum')}
           </p>
         )}
 
@@ -296,7 +295,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             onChange={e => { setDisplayName(e.target.value); setCollisionAccepted(false) }}
             onFocus={() => setNameFocused(true)}
             onBlur={() => setNameFocused(false)}
-            placeholder="Leave empty to stay anonymous"
+            placeholder={t('donate.namePlaceholder')}
             maxLength={60}
             aria-describedby="donate-display-name-help"
             className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
@@ -306,10 +305,12 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           </span>
         </div>
         {nameProblem ? (
-          <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>{nameProblem}</p>
+          <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>
+            {t(nameProblem.key, nameProblem.key === 'donate.errNameLength' ? { max: nameProblem.max } : undefined)}
+          </p>
         ) : taken ? (
           <p className="text-xs tracking-wide mt-2 font-bold leading-relaxed" style={{ color: 'rgb(var(--c-danger))' }}>
-            “{displayName.trim()}” is taken. Carry on if that was you.
+            {t('donate.takenShort', { name: displayName.trim() })}
           </p>
         ) : (
           // Four sentences became one line.
@@ -321,7 +322,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           // somebody does next, and the field's own placeholder already says
           // it -- so this says the one thing the placeholder cannot.
           <p className="text-nier-bg/70 text-xs tracking-wide mt-2 leading-relaxed">
-            Checked before it appears.
+            {t('donate.nameChecked')}
           </p>
         )}
 
@@ -337,7 +338,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           disabled={busy || !amountValid || !!nameProblem || !supabase}
           className="donate-commit w-full mt-5 py-3 text-xs tracking-[0.15em] uppercase disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {busy ? 'Opening…' : monthly ? `Donate €${chosenAmount || 0} monthly` : `Donate €${chosenAmount || 0}`}
+          {busy ? t('donate.opening') : t(monthly ? 'donate.submitMonthly' : 'donate.submit', { amount: chosenAmount || 0 })}
         </button>
 
         {/* Was a paragraph listing every payment method by name, which nobody
@@ -345,7 +346,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             remains answers the real hesitation: who takes the card, and
             whether monthly can be stopped. */}
         <p className="text-nier-bg/70 text-xs tracking-wide mt-3 leading-relaxed">
-          Paid securely through Stripe. Cancel monthly any time.
+          {t('donate.stripeNote')}
         </p>
 
         {/* What paying gets you, under the button that does the paying.

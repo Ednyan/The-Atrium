@@ -1507,8 +1507,8 @@ function AppInner() {
     if (verifyingAccess) {
       return (
         <AtriumTransitionOverlay
-          title="Verifying Access"
-          subtitle="◇ Calibrating threshold"
+          title={t('entering.verifying')}
+          subtitle={`◇ ${t('entering.calibrating')}`}
           frames={LOADING_ANIMATION_FRAMES}
           loop={true}
           progressClassName="h-full bg-nier-bg/80 animate-nier-slide"
@@ -1579,8 +1579,8 @@ function AppInner() {
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase === 'entering') {
         return (
           <AtriumTransitionOverlay
-            title="Entering Atrium"
-            subtitle="◇ Crossing into another realm"
+            title={t('entering.title')}
+            subtitle={`◇ ${t('entering.crossing')}`}
             videoSrc={ENTERING_ANIMATION_VIDEO_SRC}
             onAnimationComplete={() => setAtriumTransitionPhase('flash')}
             progressClassName="h-full bg-nier-bg/80"
@@ -1595,8 +1595,8 @@ function AppInner() {
       if (transitionLobbyId === route.lobbyId && atriumTransitionPhase !== 'ready') {
         return (
           <AtriumTransitionOverlay
-            title="Entering Atrium"
-            subtitle={enteringVideoReady ? '◇ Aligning the gate' : '◇ Preparing passage'}
+            title={t('entering.title')}
+            subtitle={enteringVideoReady ? `◇ ${t('entering.aligning')}` : `◇ ${t('entering.preparing')}`}
             frames={LOADING_ANIMATION_FRAMES}
             loop={true}
             progressClassName="h-full bg-nier-bg/80 animate-nier-slide"
@@ -1618,8 +1618,8 @@ function AppInner() {
     // Still waiting for verification
     return (
       <AtriumTransitionOverlay
-        title="Entering Atrium"
-        subtitle="◇ Tuning spatial resonance"
+        title={t('entering.title')}
+        subtitle={`◇ ${t('entering.tuning')}`}
         frames={LOADING_ANIMATION_FRAMES}
         loop={true}
         progressClassName="h-full bg-nier-bg/80 animate-nier-slide"

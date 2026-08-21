@@ -23,13 +23,21 @@ const hasUnrenderableCharacters = (value: string) =>
   })
 const MAX_NAME_LENGTH = 40
 
-export function checkDisplayName(name: string): string | null {
+// Returns a catalogue key rather than a sentence: this runs in lib/, where
+// there is no hook to read the language from, and the caller is the one that
+// can translate. MAX_NAME_LENGTH rides along because the number belongs to
+// this file, not to whoever translates the sentence around it.
+export type NameProblem =
+  | { key: 'donate.errNameLength'; max: number }
+  | { key: 'donate.errNameBanned' | 'donate.errNameUrl' | 'donate.errNameUnrenderable' }
+
+export function checkDisplayName(name: string): NameProblem | null {
   const trimmed = name.trim()
   if (trimmed.length === 0) return null // staying anonymous is a valid choice
-  if (trimmed.length > MAX_NAME_LENGTH) return `Names are limited to ${MAX_NAME_LENGTH} characters.`
-  if (BANNED_NAME_PATTERN.test(trimmed)) return "That name can't be used here."
-  if (URL_LIKE_PATTERN.test(trimmed)) return "Names can't contain web addresses."
-  if (hasUnrenderableCharacters(trimmed)) return "That name contains characters that can't be shown."
+  if (trimmed.length > MAX_NAME_LENGTH) return { key: 'donate.errNameLength', max: MAX_NAME_LENGTH }
+  if (BANNED_NAME_PATTERN.test(trimmed)) return { key: 'donate.errNameBanned' }
+  if (URL_LIKE_PATTERN.test(trimmed)) return { key: 'donate.errNameUrl' }
+  if (hasUnrenderableCharacters(trimmed)) return { key: 'donate.errNameUnrenderable' }
   return null
 }
 

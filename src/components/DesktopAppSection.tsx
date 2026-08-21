@@ -60,14 +60,16 @@ const BUILDS: Build[] = [
 // marketing: the atrium cap and size limit are both gated on !isDesktop, and
 // Pinterest/Google sign-in are web-only because their OAuth needs a redirect
 // the desktop shell can't receive.
-const COMPARISON: Array<{ feature: string; web: string; desktop: string; favours: 'web' | 'desktop' | 'both' }> = [
-  { feature: 'Where atriums live', web: 'In the cloud', desktop: 'A folder on your disk', favours: 'both' },
-  { feature: 'Number of atriums', web: 'Up to 3', desktop: 'Unlimited', favours: 'desktop' },
-  { feature: 'Size per atrium', web: '10 MB', desktop: 'Unlimited', favours: 'desktop' },
-  { feature: 'Images', web: 'Hosted links', desktop: 'Straight off your computer', favours: 'desktop' },
-  { feature: 'Works offline', web: 'No', desktop: 'Yes', favours: 'desktop' },
-  { feature: 'Others can join you', web: 'Yes, live', desktop: 'Solo', favours: 'web' },
-  { feature: 'Share a link', web: 'Yes', desktop: 'Export a file', favours: 'web' },
+// Keys rather than words, like the build list above it. `id` names the row
+// so the three keys that make it up stay legible as a set.
+const COMPARISON: Array<{ id: string; favours: 'web' | 'desktop' | 'both' }> = [
+  { id: 'where', favours: 'both' },
+  { id: 'count', favours: 'desktop' },
+  { id: 'size', favours: 'desktop' },
+  { id: 'images', favours: 'desktop' },
+  { id: 'offline', favours: 'desktop' },
+  { id: 'others', favours: 'web' },
+  { id: 'share', favours: 'web' },
 ]
 
 // Downloads for the desktop build, with the link resolved from the latest
@@ -223,15 +225,15 @@ export default function DesktopAppSection() {
         </div>
         {COMPARISON.map((row, i) => (
           <div
-            key={row.feature}
+            key={row.id}
             className={`grid grid-cols-3 text-sm ${i % 2 === 0 ? 'bg-nier-black/20' : ''}`}
           >
-            <div className="p-3 text-nier-bg/80">{row.feature}</div>
+            <div className="p-3 text-nier-bg/80">{t(`compare.feature.${row.id}` as TranslationKey)}</div>
             <div className={`p-3 text-center ${row.favours === 'web' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
-              {row.web}
+              {t(`compare.web.${row.id}` as TranslationKey)}
             </div>
             <div className={`p-3 text-center ${row.favours === 'desktop' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
-              {row.desktop}
+              {t(`compare.desktop.${row.id}` as TranslationKey)}
             </div>
           </div>
         ))}
