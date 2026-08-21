@@ -14,6 +14,7 @@ import MonthlyGoalColumn from './MonthlyGoalColumn'
 import { SOFT_SEPIA, WHITE_ROOM } from '../lib/atriumThemePresets'
 import { resolveThemeNow } from '../lib/useLandingTheme'
 import { openContributors } from '../lib/contributorsRoute'
+import { useTranslation } from '../lib/i18n'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
@@ -30,6 +31,7 @@ interface LobbyBrowserProps {
 }
 
 export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
+  const { t } = useTranslation()
   const [lobbies, setLobbies] = useState<LobbyWithOwner[]>([])
   const [userLobbies, setUserLobbies] = useState<LobbyWithOwner[]>([])
   // Lobbies the current user administers but doesn't own -- admins get the
@@ -155,7 +157,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       })
       .catch((err) => {
         if (!cancelled) {
-          setVaultError(err instanceof Error ? err.message : 'Failed to load vault folder')
+          setVaultError(err instanceof Error ? err.message : t('browser.vaultLoadError'))
         }
       })
 
@@ -340,7 +342,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       setLobbies(enrichedPublic)
     } catch (err: any) {
       console.error('Error loading lobbies:', err)
-      setError(`Failed to load lobbies: ${err?.message || 'Unknown error'}`)
+      setError(t('browser.errLoadLobbies', { message: err?.message || t('browser.errUnknown') }))
     } finally {
       setLoading(false)
     }
@@ -412,7 +414,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const createLobby = async () => {
     if (!supabase) return
     if (newLobbyName.length < 3) {
-      setError('Lobby name must be at least 3 characters')
+      setError(t('browser.errNameLength'))
       return
     }
 
@@ -426,7 +428,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         })
 
         if (count && count >= 3) {
-          setError('You can only create up to 3 lobbies')
+          setError(t('browser.errLimitReached'))
           return
         }
       }
@@ -459,7 +461,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       setNewLobbyIsPublic(true)
     } catch (err: any) {
       console.error('Error creating lobby:', err)
-      setError(err.message || 'Failed to create lobby')
+      setError(err.message || t('browser.errCreateLobby'))
     }
   }
 
@@ -480,7 +482,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       // If blacklisted, show error
       if (accessStatus === 'blacklisted') {
-        setError('You have been blocked from entering this atrium')
+        setError(t('browser.errBlockedEnter'))
         return
       }
 
@@ -519,7 +521,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       }
     } catch (err) {
       console.error('Error checking lobby access:', err)
-      setError('Failed to check atrium access')
+      setError(t('browser.errCheckAccess'))
     }
   }
 
@@ -542,7 +544,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        setJoinByIdError('Not authenticated')
+        setJoinByIdError(t('browser.errNotAuthenticated'))
         setJoinByIdLoading(false)
         return
       }
@@ -555,7 +557,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         .single()
       
       if (lobbyError || !lobby) {
-        setJoinByIdError('Atrium not found. Please check the ID.')
+        setJoinByIdError(t('browser.errAtriumNotFound'))
         setJoinByIdLoading(false)
         return
       }
@@ -568,7 +570,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       // If blacklisted, show error
       if (accessStatus === 'blacklisted') {
-        setJoinByIdError('You have been blocked from this atrium')
+        setJoinByIdError(t('browser.errBlockedJoin'))
         setJoinByIdLoading(false)
         return
       }
@@ -605,7 +607,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       }
     } catch (err) {
       console.error('Error joining by ID:', err)
-      setJoinByIdError('Failed to join atrium')
+      setJoinByIdError(t('browser.errJoinFailed'))
       setJoinByIdLoading(false)
     }
   }
@@ -625,7 +627,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       checkCanCreateLobby()
     } catch (err) {
       console.error('Error deleting lobby:', err)
-      setError('Failed to delete lobby')
+      setError(t('browser.errDeleteLobby'))
     } finally {
       setDeleteConfirmId(null)
     }
@@ -654,7 +656,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       const nextVaultPath = await setVaultBasePath(selected)
       setVaultPath(nextVaultPath)
     } catch (err) {
-      setVaultError(err instanceof Error ? err.message : 'Failed to update vault folder')
+      setVaultError(err instanceof Error ? err.message : t('browser.vaultUpdateError'))
     } finally {
       setVaultBusy(false)
     }
@@ -683,7 +685,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       setEditingLobbyName('')
     } catch (err) {
       console.error('Error renaming lobby:', err)
-      setError('Failed to rename atrium')
+      setError(t('browser.errRenameLobby'))
     }
   }
 
@@ -695,11 +697,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-bg/40" />
           <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-bg/40" />
           <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-bg/40" />
-          <p className="text-nier-strong text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading Atriums</p>
+          <p className="text-nier-strong text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">{t('browser.loadingTitle')}</p>
           <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/15 overflow-hidden mx-auto">
             <div className="h-full bg-nier-bg/80 animate-nier-slide" />
           </div>
-          <p className="text-nier-bg/75 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+          <p className="text-nier-bg/75 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ {t('common.pleaseWait')}</p>
         </div>
       </div>
     )
@@ -786,10 +788,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
                 <h2 className="text-2xl text-nier-strong tracking-[0.08em] uppercase font-normal leading-none">
-                  Atrium Browser
+                  {t('browser.title')}
                 </h2>
               </div>
-              <p className="text-nier-bg/70 text-xs tracking-[0.18em] uppercase ml-5 mt-1.5">Select destination</p>
+              <p className="text-nier-bg/70 text-xs tracking-[0.18em] uppercase ml-5 mt-1.5">{t('browser.selectDestination')}</p>
             </div>
             <div className="flex items-center gap-2">
               {/* First in the row, before the window controls: those are things
@@ -799,7 +801,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               <button
                 onClick={toggleFullscreen}
                 className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                title={isFullscreen ? t('browser.exitFullscreen') : t('atrium.fullscreen')}
               >
                 {isFullscreen ? '⊡' : '⊞'}
               </button>
@@ -809,7 +811,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
               >
                 <span className={loading ? 'animate-spin' : ''}>↻</span>
-                Refresh
+                {t('browser.refresh')}
               </button>
               <button
                 onClick={onClose}
@@ -823,12 +825,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="mt-4 border border-nier-border/20 bg-nier-black/60 px-4 py-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <div className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-1">Desktop Vault</div>
+                  <div className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-1">{t('browser.vault')}</div>
                   <p className="text-nier-bg/80 text-xs tracking-wide break-all">
-                    {vaultPath || 'Preparing local atrium vault...'}
+                    {vaultPath || t('browser.vaultPreparing')}
                   </p>
                   <p className="text-nier-bg/70 text-xs tracking-wide mt-2">
-                    Each atrium is mirrored into its own folder with an atrium.json file and copied local media.
+                    {t('browser.vaultDescription')}
                   </p>
                 </div>
                 <button
@@ -836,7 +838,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   disabled={vaultBusy}
                   className="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
                 >
-                  {vaultBusy ? 'Syncing...' : 'Change Folder'}
+                  {vaultBusy ? t('browser.vaultSyncing') : t('browser.vaultChangeFolder')}
                 </button>
               </div>
               {vaultError && (
@@ -856,17 +858,17 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {/* Create Lobby */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Create New</span>
+              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('browser.createNew')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               {!canCreateMore && (
-                <span className="text-xs tracking-wider" style={{ color: '#FF6161' }}>Limit reached</span>
+                <span className="text-xs tracking-wider" style={{ color: '#FF6161' }}>{t('browser.limitReached')}</span>
               )}
             </div>
 
             {showCreateLobby ? (
               <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
                 <div>
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.nameLabel')}</label>
                   <input
                     type="text"
                     // The form only exists while showCreateLobby is on, so this
@@ -876,18 +878,18 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     autoFocus
                     value={newLobbyName}
                     onChange={(e) => setNewLobbyName(e.target.value)}
-                    placeholder="Enter name..."
+                    placeholder={t('browser.namePlaceholder')}
                     className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                     maxLength={50}
                   />
                 </div>
                 <div>
-                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Password (Optional)</label>
+                  <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.passwordOptional')}</label>
                   <input
                     type="password"
                     value={newLobbyPassword}
                     onChange={(e) => setNewLobbyPassword(e.target.value)}
-                    placeholder="Leave empty for no password"
+                    placeholder={t('browser.passwordPlaceholder')}
                     className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
                 </div>
@@ -901,7 +903,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
                     className="hidden"
                   />
-                  <span className="tracking-wider uppercase text-xs">{isDesktop ? 'Local Public (visible to others on this PC)' : 'Public (visible in browser)'}</span>
+                  <span className="tracking-wider uppercase text-xs">{isDesktop ? t('browser.localPublicLabel') : t('browser.publicLabel')}</span>
                 </label>
                 <div className="flex gap-3 pt-2">
                   {/* The cut corner every committing action wears. */}
@@ -910,13 +912,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     className="flex-1 py-2.5 text-xs tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
                     style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))', clipPath: DONATE_CUT }}
                   >
-                    Create Atrium
+                    {t('browser.createCommit')}
                   </button>
                   <button
                     onClick={() => setShowCreateLobby(false)}
                     className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
@@ -932,7 +934,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 style={{ clipPath: DONATE_CUT }}
               >
-                ◇ Create New Atrium
+                ◇ {t('browser.create')}
               </button>
             )}
           </section>
@@ -942,7 +944,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <section>
               <div className="flex items-baseline gap-3 mb-4">
                 <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Your Atriums</span>
+                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.yours')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 <span className="text-nier-bg/70 text-xs tabular-nums">{userLobbies.length}/3</span>
               </div>
@@ -994,16 +996,16 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                                 setEditingLobbyName(lobby.name)
                               }}
                               className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Rename"
+                              title={t('browser.rename')}
                             >
                               ✎
                             </button>
                           </div>
                         )}
                         <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
-                          <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
-                          <span>{lobby.isPublic ? (isDesktop ? '◦ Local Public' : '◦ Public') : (isDesktop ? '◦ Local Private' : '◦ Private')}</span>
-                          {lobby.passwordHash && <span>◦ Secured</span>}
+                          <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
+                          <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
+                          {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -1011,21 +1013,21 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           onClick={() => onJoinLobby(lobby.id)}
                           className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors"
                         >
-                          Enter
+                          {t('browser.enter')}
                         </button>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
                           className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          title="Copy this atrium's ID to share it"
+                          title={t('browser.copyIdTitle')}
                         >
-                          Copy ID
+                          {t('browser.copyId')}
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
                           className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          title="Manage access, password, and autosave without entering"
+                          title={t('browser.manageTitle')}
                         >
-                          Manage
+                          {t('browser.manage')}
                         </button>
                         <button
                           onClick={() => setDeleteConfirmId(lobby.id)}
@@ -1046,7 +1048,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           {adminLobbies.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">Administered Atriums</span>
+                <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('browser.administeredAtriums')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
               <div className="grid gap-3">
@@ -1056,10 +1058,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                       <div className="flex-1">
                         <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
                         <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
-                          <span>◇ {lobby.playerCount}/{lobby.maxPlayers} users</span>
-                          <span>{lobby.isPublic ? (isDesktop ? '◦ Local Public' : '◦ Public') : (isDesktop ? '◦ Local Private' : '◦ Private')}</span>
-                          {lobby.passwordHash && <span>◦ Secured</span>}
-                          <span className="text-nier-bg/70">◦ Admin</span>
+                          <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
+                          <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
+                          {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
+                          <span className="text-nier-bg/70">◦ {t('browser.admin')}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -1067,21 +1069,21 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           onClick={() => handleJoinClick(lobby)}
                           className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors"
                         >
-                          Enter
+                          {t('browser.enter')}
                         </button>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
                           className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          title="Copy this atrium's ID to share it"
+                          title={t('browser.copyIdTitle')}
                         >
-                          Copy ID
+                          {t('browser.copyId')}
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
                           className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          title="Manage access, password, and autosave without entering"
+                          title={t('browser.manageTitle')}
                         >
-                          Manage
+                          {t('browser.manage')}
                         </button>
                       </div>
                     </div>
@@ -1101,7 +1103,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
-                  {isDesktop ? 'Import, Export & Restore' : 'Import & Export'}
+                  {isDesktop ? t('browser.importExportRestore') : t('browser.importExport')}
                 </span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
@@ -1114,7 +1116,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   disabled={!canCreateMore}
                   className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  ◇ Import (.json)
+                  ◇ {t('browser.importJson')}
                 </button>
 
                 {/* Same format on both platforms, different machinery: the web
@@ -1123,7 +1125,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   onClick={() => (isDesktop ? setShowExport(true) : setShowDownload(true))}
                   className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
-                  ◇ Export (.json)
+                  ◇ {t('browser.exportJson')}
                 </button>
 
                 {/* Desktop only: rebuilds an atrium from the copy kept in the
@@ -1135,12 +1137,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     onClick={() => setShowVaultRecovery(true)}
                     className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
-                    ◇ Restore From Vault
+                    ◇ {t('browser.restoreVault')}
                   </button>
                 )}
               </div>
               {!canCreateMore && (
-                <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>You have 3 atriums. Delete one to import.</p>
+                <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>{t('browser.limitReachedImport')}</p>
               )}
             </section>
           )}
@@ -1149,14 +1151,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           <section>
             <div className="flex items-center gap-2 mb-4">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Available Atriums</span>
+              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.availableAtriums')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              <span className="text-nier-bg/70 text-xs">{lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length} found</span>
+              <span className="text-nier-bg/70 text-xs">{t('browser.found', { count: lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length })}</span>
               <button
                 onClick={() => setShowJoinById(true)}
                 className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
               >
-                Join by ID
+                {t('browser.joinById')}
               </button>
             </div>
             
@@ -1167,7 +1169,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search atriums by name..."
+                  placeholder={t('browser.searchPlaceholder')}
                   className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors pr-10"
                 />
                 {searchQuery && (
@@ -1184,7 +1186,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="grid gap-3">
               {lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
                 <div className="text-nier-bg/70 text-center py-12 text-xs tracking-wider uppercase">
-                  {searchQuery ? 'No atriums match your search' : 'No atriums available'}
+                  {searchQuery ? t('browser.noMatch') : t('browser.noneAvailable')}
                 </div>
               ) : (
                 lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).map(lobby => (
@@ -1196,25 +1198,25 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           {!lobby.isPublic && <span className="ml-2 text-nier-bg/70 text-xs">{isDesktop ? '[Local Private]' : '[Private]'}</span>}
                         </h4>
                         <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
-                          <span>Atrium by: ◇ {lobby.ownerUsername}</span>
+                          <span>{t('browser.atriumBy')} ◇ {lobby.ownerUsername}</span>
                           <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
-                          {lobby.passwordHash && <span>◦ Secured</span>}
-                          {!lobby.isPublic && <span>{isDesktop ? '◦ Local Private' : '◦ Whitelisted'}</span>}
+                          {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
+                          {!lobby.isPublic && <span>{isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.whitelisted')}`}</span>}
                         </div>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
                           className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          title="Copy this atrium's ID to share it"
+                          title={t('browser.copyIdTitle')}
                         >
-                          Copy ID
+                          {t('browser.copyId')}
                         </button>
                         <button
                           onClick={() => handleJoinClick(lobby)}
                           className="px-4 py-2 border border-nier-border/40 text-nier-bg text-xs tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
                         >
-                          Enter
+                          {t('browser.enter')}
                         </button>
                       </div>
                     </div>
@@ -1250,13 +1252,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
             
-            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ Password Required</h3>
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ {t('browser.passwordRequired')}</h3>
             <input
               type="password"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-              placeholder="Insert password here..."
+              placeholder={t('browser.passwordFieldPlaceholder')}
               autoComplete="new-password"
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors mb-4"
               autoFocus
@@ -1266,7 +1268,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 onClick={handlePasswordSubmit}
                 className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
               >
-                Enter
+                {t('browser.enter')}
               </button>
               <button
                 onClick={() => {
@@ -1275,7 +1277,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 }}
                 className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -1291,9 +1293,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
             
-            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-2">◇ Join by ID</h3>
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-2">◇ {t('browser.joinById')}</h3>
             <p className="text-nier-bg/75 text-xs tracking-wider mb-4">
-              Enter the atrium ID shared with you by the atrium owner.
+              {t('browser.joinByIdDescription')}
             </p>
             {joinByIdError && (
               <div className="text-xs mb-3 bg-red-400/10 border border-red-400/30 px-3 py-2" style={{ color: '#FF6161' }}>
@@ -1308,7 +1310,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 setJoinByIdError(null)
               }}
               onKeyPress={(e) => e.key === 'Enter' && lobbyIdInput && handleJoinById()}
-              placeholder="Atrium ID (UUID)..."
+              placeholder={t('browser.idPlaceholder')}
               autoComplete="off"
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors mb-4 font-mono"
               autoFocus
@@ -1319,7 +1321,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 disabled={!lobbyIdInput || joinByIdLoading}
                 className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {joinByIdLoading ? 'Checking...' : 'Enter'}
+                {joinByIdLoading ? t('browser.checking') : t('browser.enter')}
               </button>
               <button
                 onClick={() => {
@@ -1329,7 +1331,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 }}
                 className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -1345,22 +1347,22 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
             
-            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ Delete Atrium</h3>
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ {t('browser.deleteAtrium')}</h3>
             <p className="text-nier-bg/75 text-xs tracking-wider mb-6">
-              Are you sure you want to delete this atrium? All traces will be lost.
+              {t('browser.deleteConfirm')}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => deleteLobby(deleteConfirmId)}
                 className="flex-1 py-2 bg-red-500/80 text-nier-strong text-xs tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
               >
-                Delete
+                {t('common.delete')}
               </button>
               <button
                 onClick={() => setDeleteConfirmId(null)}
                 className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -1421,7 +1423,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         onClick={() => setShowReportForm(true)}
         className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-nier-bg/75 hover:text-nier-bg/75 text-xs font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
       >
-        Report a problem or suggest a feature
+        {t('browser.reportProblem')}
       </button>
       {showReportForm && (
         <ReportFeedbackModal
