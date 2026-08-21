@@ -6,6 +6,8 @@ import NameApprovalPanel from './NameApprovalPanel'
 import ThemeToggle from './ThemeToggle'
 import HeartRush from './HeartRush'
 import DonateButton, { DONATE_CUT } from './DonateButton'
+import { useTranslation } from '../lib/i18n'
+import type { TranslationKey } from '../locales/en'
 import {
   getCachedContributions,
   searchContributors,
@@ -76,11 +78,11 @@ const THANKS_HINT_MS = 3200
 // is why the wall looked like its brightness had been turned down. Lines sit
 // at 3:1 and are drawn thicker to earn it; names stay at their own figure.
 const TIERS = [
-  { min: 50, label: '€50 and above', color: '#FF8A3D', light: '#B24700', lightLine: '#E85C00', glow: 'rgba(255,138,61,0.30)' },
-  { min: 25, label: '€25 – €49', color: '#E8C15A', light: '#826312', lightLine: '#AA8218', glow: 'rgba(232,193,90,0.26)' },
-  { min: 10, label: '€10 – €24', color: '#9AD4C4', light: '#317462', lightLine: '#40967E', glow: 'rgba(154,212,196,0.22)' },
-  { min: 5, label: '€5 – €9', color: '#A8B6D9', light: '#4A66AA', lightLine: '#7188C1', glow: 'rgba(168,182,217,0.20)' },
-  { min: 0, label: '€1 – €4', color: '#CBCBCB', light: '#676767', lightLine: '#888888', glow: 'rgba(203,203,203,0.16)' },
+  { min: 50, labelKey: 'wall.tierTop', color: '#FF8A3D', light: '#B24700', lightLine: '#E85C00', glow: 'rgba(255,138,61,0.30)' },
+  { min: 25, labelKey: 'wall.tier25', color: '#E8C15A', light: '#826312', lightLine: '#AA8218', glow: 'rgba(232,193,90,0.26)' },
+  { min: 10, labelKey: 'wall.tier10', color: '#9AD4C4', light: '#317462', lightLine: '#40967E', glow: 'rgba(154,212,196,0.22)' },
+  { min: 5, labelKey: 'wall.tier5', color: '#A8B6D9', light: '#4A66AA', lightLine: '#7188C1', glow: 'rgba(168,182,217,0.20)' },
+  { min: 0, labelKey: 'wall.tier1', color: '#CBCBCB', light: '#676767', lightLine: '#888888', glow: 'rgba(203,203,203,0.16)' },
 ]
 
 // Monthly support has its own colour rather than a place in the amount scale.
@@ -89,7 +91,7 @@ const TIERS = [
 // that at a glance rather than only through the pulse.
 const MONTHLY_TIER = {
   min: 0,
-  label: 'Monthly',
+  labelKey: 'wall.monthly',
   color: '#C77DFF',
   light: '#7B2CD6',
   lightLine: '#B859FF',
@@ -249,10 +251,10 @@ const formatDate = (iso: string) => {
 // who ever kept this running -- and the others are questions asked of it. So
 // the control names it first and returns to it.
 const RANGES = [
-  { id: 'all', label: 'All time' },
-  { id: 'year', label: 'Last year' },
-  { id: 'month', label: 'Last month' },
-  { id: 'week', label: 'Last week' },
+  { id: 'all', labelKey: 'wall.rangeAll' },
+  { id: 'year', labelKey: 'wall.rangeYear' },
+  { id: 'month', labelKey: 'wall.rangeMonth' },
+  { id: 'week', labelKey: 'wall.rangeWeek' },
 ] as const
 
 type RangeId = (typeof RANGES)[number]['id']
@@ -280,6 +282,7 @@ const normalise = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 export default function ContributorsAtrium({ onClose, onContribute, thanks = false, thanksName = '' }: ContributorsAtriumProps) {
+  const { t } = useTranslation()
   // The wall follows the same light or dark choice the website does. It is a
   // page people are sent to from a browser, not a surface inside the app.
   const theme = useLandingTheme()
@@ -714,7 +717,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       <svg aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0 }}>
         <defs>
           {TIERS.map((tier, index) => (
-            <linearGradient key={tier.label} id={`contributor-run-${index}`} x1="0" y1="0" x2="1" y2="1">
+            <linearGradient key={tier.labelKey} id={`contributor-run-${index}`} x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor={lineOf(tier, isLight)} />
               <stop offset="35%" stopColor={lineOf(tier, isLight)} />
               <stop offset="100%" stopColor={lineOf(MONTHLY_TIER, isLight)} />
@@ -835,14 +838,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     up somewhere it shouldn't. */}
                 {person.isSeed && (
                   <div className="text-[11px] tracking-[0.2em] uppercase mt-1" style={{ color: '#FF6161' }}>
-                    False donation
+                    {t('wall.falseDonation')}
                   </div>
                 )}
                 {/* Answers the question this trace exists to answer: it is
                     still counted, it is just past what the page can draw. */}
                 {person.isBeyondWall && (
                   <div className="text-[11px] tracking-[0.2em] uppercase mt-1 text-nier-bg/70">
-                    Still counted · found by search
+                    {t('wall.beyondWall')}
                   </div>
                 )}
                 <div className="flex flex-wrap items-baseline justify-between mt-1 gap-x-2">
@@ -866,10 +869,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             <div className="absolute -translate-x-1/2 -translate-y-1/2 text-center w-[320px]">
               <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed">
                 {range !== 'all'
-                  ? 'Nobody contributed in this period.'
+                  ? t('wall.emptyPeriod')
                   : data.fetchedAt === null
-                    ? 'This atrium fills once the app has been online.'
-                    : 'Nobody here yet. The first name on this wall could be yours.'}
+                    ? t('wall.emptyOffline')
+                    : t('wall.emptyFirst')}
               </p>
             </div>
           )}
@@ -890,7 +893,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               if (event.key === 'Enter') { event.preventDefault(); nextMatch() }
               if (event.key === 'Escape') { event.preventDefault(); setQuery('') }
             }}
-            placeholder="Find a name"
+            placeholder={t('wall.search')}
             className="w-full pl-8 pr-4 py-2 bg-nier-black/80 border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
           />
         </div>
@@ -924,10 +927,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       <div className="absolute top-6 left-6 pointer-events-none">
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">Contributors</h1>
+          <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">{t('wall.title')}</h1>
         </div>
         <p className="text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
-          Everyone who donated for the Digital Atrium is here. If you contributed, your name is somewhere below.
+          {t('wall.intro')}
         </p>
       </div>
 
@@ -949,7 +952,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               >
                 ◇
               </span>
-              {RANGES.find(entry => entry.id === range)?.label}
+              {t((RANGES.find(entry => entry.id === range)?.labelKey ?? 'wall.rangeAll') as TranslationKey)}
             </button>
 
             {rangeOpen && (
@@ -965,7 +968,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                         : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
                     }`}
                   >
-                    {entry.label}
+                    {t(entry.labelKey as TranslationKey)}
                   </button>
                 ))}
               </div>
@@ -980,7 +983,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
           style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
         >
-          ← Back
+          ← {t('common.back')}
         </button>
       </div>
 
@@ -1005,15 +1008,15 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           >
             ◇
           </span>
-          Donation ranks
+          {t('wall.ranks')}
         </button>
 
         {legendOpen && (
           <div className="mt-2 space-y-1">
             {TIERS.map(tier => (
-              <div key={tier.label} className="flex items-center gap-2">
+              <div key={tier.labelKey} className="flex items-center gap-2">
                 <span className="w-3 h-[2px]" style={{ background: lineOf(tier, isLight) }} />
-                <span className="text-xs tracking-wider" style={{ color: inkOf(tier, isLight) }}>{tier.label}</span>
+                <span className="text-xs tracking-wider" style={{ color: inkOf(tier, isLight) }}>{t(tier.labelKey as TranslationKey)}</span>
               </div>
             ))}
             {/* Not a rank. Every contributor is placed by what they have
@@ -1029,7 +1032,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 }}
               />
               <span className="text-xs tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
-                Monthly, running
+                {t('wall.monthlyRunning')}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -1038,7 +1041,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                 style={{ background: `linear-gradient(90deg, ${inkOf(TIERS[TIERS.length - 1], isLight)}, ${inkOf(MONTHLY_TIER, isLight)})` }}
               />
               <span className="text-xs tracking-wider" style={{ color: inkOf(MONTHLY_TIER, isLight) }}>
-                Monthly, ended
+                {t('wall.monthlyEnded')}
               </span>
             </div>
           </div>
@@ -1049,7 +1052,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       {month && month.goalCents > 0 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[min(420px,60vw)] pointer-events-none">
           <div className="flex items-baseline justify-between mb-1">
-            <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">This month</span>
+            <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">{t('wall.thisMonth')}</span>
             <span className="text-xs text-nier-bg/80 tracking-wider">
               {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
             </span>
@@ -1082,7 +1085,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           className="absolute bottom-6 right-6 px-7 py-4 text-[11px] tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.03] active:scale-[0.99]"
           style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))', clipPath: DONATE_CUT }}
         >
-          ◇ Contributor Names
+          ◇ {t('wall.names')}
         </button>
       ) : (
         // The same button it is everywhere else, hearts and all. It was
@@ -1153,7 +1156,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   transition: 'opacity 900ms ease-out, transform 900ms cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
               >
-                Thank you
+                {t('wall.thankYou')}
                 {shownName && (
                   <span
                     className="block text-[clamp(1.4rem,4.5vw,2.8rem)] tracking-[0.16em] mt-3 font-normal"
@@ -1173,9 +1176,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   transition: 'opacity 800ms ease-out, transform 800ms cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
               >
-                {shownName
-                  ? 'Your name will join the contributors wall once approved — usually within 48 hours. The receipt has been emailed to you.'
-                  : 'Your contribution is counted. The receipt has been emailed to you.'}
+                {shownName ? t('wall.thanksNamed') : t('wall.thanksAnonymous')}
               </p>
 
               <p
@@ -1186,7 +1187,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   transition: 'opacity 700ms ease-out',
                 }}
               >
-                Click anywhere to hide the message
+                {t('wall.dismiss')}
               </p>
             </div>
           </div>
