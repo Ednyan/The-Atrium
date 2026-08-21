@@ -331,7 +331,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               padding and letter-spacing and the wordmark drops to just the
               mark, because seven titles plus a name plus two buttons do not
               fit across 1024px and a bar that wraps is not a bar. */}
-          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 mx-auto">
+          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 mx-auto min-w-0 overflow-x-auto no-scrollbar">
             {items.map(({ id, index }) => {
               const isActive = activeSection === index
               return (

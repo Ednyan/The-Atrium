@@ -105,7 +105,13 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
         style={variant === 'atrium' ? undefined : { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
       >
         ◈
-        <span className="hidden sm:inline">{active.endonym}</span>
+        {/* The code, not the endonym. This button sits in a bar that is
+            already full, and "Português (Brasil)" is 150px of it -- enough to
+            push the nav into the Donate button on its own. The dropdown below
+            is where somebody reads their language's own name; up here it only
+            has to say which one is on, and a code does that in a width that
+            cannot change with the language. */}
+        <span className="hidden sm:inline">{active.code.toUpperCase()}</span>
       </button>
 
       {open && (

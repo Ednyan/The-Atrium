@@ -1039,3 +1039,18 @@ input[type='color']::-moz-color-swatch { border: none; }
 @media (prefers-reduced-motion: reduce) {
   .name-bubble { transition: none; }
 }
+
+/* A row that would rather scroll than shove its neighbours.
+   The landing bar's section list is one line of seven entries whose width
+   changes with the language -- Spanish runs about 25% wider than English, and
+   a language added later could run wider still. min-w-0 is what actually lets
+   a flex child shrink below its content (the default min-width:auto refuses),
+   and the scroll is the escape hatch on the narrowest screens rather than the
+   normal case. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

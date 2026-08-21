@@ -25,7 +25,7 @@ import { useEffect, useState } from 'react'
 import { en, type Catalogue, type TranslationKey } from '../locales/en'
 
 export type LanguageCode =
-  | 'en' | 'es' | 'pt' | 'it' | 'fr' | 'de'
+  | 'en' | 'es' | 'pt-BR' | 'pt-PT' | 'it' | 'fr' | 'de'
   | 'ja' | 'hi' | 'zh' | 'ru' | 'ko'
 
 export interface Language {
@@ -43,7 +43,12 @@ export interface Language {
 export const LANGUAGES: Language[] = [
   { code: 'en', endonym: 'English', english: 'English' },
   { code: 'es', endonym: 'Español', english: 'Spanish' },
-  { code: 'pt', endonym: 'Português', english: 'Portuguese' },
+  // Two distinct catalogues, not one hedging between them -- Guardar/Salvar,
+  // Ecrã/Tela and the "a carregar" / "carregando" gerund split are different
+  // enough that a single Portuguese would have been the wrong choice for
+  // whichever half of its readers it wasn't written for.
+  { code: 'pt-BR', endonym: 'Português (Brasil)', english: 'Portuguese (Brazil)' },
+  { code: 'pt-PT', endonym: 'Português (Portugal)', english: 'Portuguese (Portugal)' },
   { code: 'fr', endonym: 'Français', english: 'French' },
   { code: 'de', endonym: 'Deutsch', english: 'German' },
   { code: 'it', endonym: 'Italiano', english: 'Italian' },
@@ -59,7 +64,13 @@ export const LANGUAGES: Language[] = [
 // to know. A language with no entry here simply isn't offered yet, which is
 // why the picker only shows what actually exists.
 const loaders: Partial<Record<LanguageCode, () => Promise<{ default: Catalogue }>>> = {
-  // es: () => import('../locales/es'),
+  es: () => import('../locales/es'),
+  'pt-BR': () => import('../locales/pt-BR'),
+  'pt-PT': () => import('../locales/pt-PT'),
+  fr: () => import('../locales/fr'),
+  de: () => import('../locales/de'),
+  it: () => import('../locales/it'),
+  ru: () => import('../locales/ru'),
 }
 
 const KEY = 'atrium_language'
@@ -77,18 +88,30 @@ function isAvailable(code: string): code is LanguageCode {
   return availableLanguages().some(language => language.code === code)
 }
 
+// Portugal, Angola, Mozambique, Cape Verde, Guinea-Bissau, São Tomé and
+// Timor-Leste write European Portuguese; a bare 'pt' with no region, or any
+// region not in that set, defaults to Brazilian -- the far larger audience
+// online, and the one a region-less tag most likely means.
+const EUROPEAN_PORTUGUESE_REGIONS = new Set(['pt', 'ao', 'mz', 'cv', 'gw', 'st', 'tl'])
+
 // What the browser is asking for, if the app speaks it. navigator.languages is
-// in preference order, and entries are tags like 'pt-BR' -- matched on the
-// part before the dash, since the app does not split Brazilian from European
-// Portuguese and offering somebody nothing because of a region subtag would be
-// a silly reason to fall back to English.
+// in preference order, and entries are tags like 'pt-BR' or 'de-AT' -- for
+// every language but Portuguese the region is discarded and only the part
+// before the dash is matched, since the app doesn't otherwise split a
+// language by country and offering somebody nothing because of a region
+// subtag would be a silly reason to fall back to English.
 function browserLanguage(): LanguageCode {
   try {
     const wanted = navigator.languages && navigator.languages.length
       ? navigator.languages
       : [navigator.language]
     for (const tag of wanted) {
-      const base = (tag || '').toLowerCase().split('-')[0]
+      const [base, region] = (tag || '').toLowerCase().split('-')
+      if (base === 'pt') {
+        const code = EUROPEAN_PORTUGUESE_REGIONS.has(region ?? '') ? 'pt-PT' : 'pt-BR'
+        if (isAvailable(code)) return code
+        continue
+      }
       if (isAvailable(base)) return base
     }
   } catch {
