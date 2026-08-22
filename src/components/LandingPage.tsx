@@ -323,7 +323,15 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
             depending on how wide the language made the buttons beside them.
             A grid whose outer columns are 1fr puts the middle one in the
             centre of the bar itself, and it stays there in every language. */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+        {/* Edge to edge, not a centred column.
+
+            max-w-7xl held the bar to 1280px and centred it, so on a 1920
+            screen there were 320 dead pixels between the window and the name
+            -- the bar looked inset from a page that runs the full width. The
+            grid stays, because it is what keeps the sections centred in every
+            language; only the cap is gone. What is left either side is the
+            padding, which is there so nothing touches the glass. */}
+        <div className="px-4 sm:px-6 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
 
           {/* The mark and the name, which together are the way back to the
               top -- so the title section needs no entry of its own in the bar.
@@ -332,10 +340,15 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               opaque black square: as an image it would be a black tile on the
               light theme. It is painted as a mask instead, so it takes the
               foreground ink and is the right colour in both. */}
+          {/* The name and, when the sections have collapsed, the button that
+              holds them -- one group at the left edge. The menu button used to
+              sit in the middle column, which put the way into the sections
+              nowhere near the thing it belongs to. */}
+          <div className="flex items-center gap-3 justify-self-start min-w-0">
           <button
             type="button"
             onClick={() => onJump(0)}
-            className="flex items-center gap-2.5 shrink-0 group justify-self-start"
+            className="flex items-center gap-2.5 shrink-0 group"
             title={t('landing.backToTop')}
           >
             <span
@@ -356,6 +369,61 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               The Digital Atrium
             </span>
           </button>
+
+          {/* Three lines, drawn rather than typed: the glyph everybody already
+              reads as "the rest of the menu is in here", in the app's own
+              weight. It carries the section you are in beside it where there
+              is room, so the bar still answers "where am I" without the menu
+              being open. */}
+          <div ref={menuRef} className="relative 2xl:hidden shrink-0">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(open => !open)}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label={t('landing.sections')}
+              className="cut-corner inline-flex items-center gap-2 h-[2.125rem] px-3 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 transition-colors"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+            >
+              <span className="flex flex-col gap-[3px]" aria-hidden="true">
+                <span className="block w-4 h-px bg-current" />
+                <span className="block w-4 h-px bg-current" />
+                <span className="block w-4 h-px bg-current" />
+              </span>
+              <span className="hidden sm:inline text-[11px] tracking-[0.1em] uppercase whitespace-nowrap max-w-[9rem] truncate">
+                {active ? t(`landing.nav.${active.id}` as TranslationKey) : t('landing.sections')}
+              </span>
+            </button>
+
+            {menuOpen && (
+              <div
+                role="menu"
+                className="panel-in absolute left-0 top-[calc(100%+6px)] z-[10000200] min-w-[12rem] border border-nier-border/40 py-1 max-h-[70vh] overflow-y-auto"
+                style={{ backgroundColor: 'rgb(var(--c-surface))' }}
+              >
+                {items.map(({ id, index }) => {
+                  const isActive = activeSection === index
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { onJump(index); setMenuOpen(false) }}
+                      className={`w-full px-4 py-2.5 text-left text-[11px] tracking-[0.12em] uppercase transition-colors flex items-center justify-between gap-3 ${
+                        isActive ? 'text-nier-strong bg-nier-bg/10' : 'text-nier-bg/80 hover:text-nier-strong hover:bg-nier-bg/5'
+                      }`}
+                    >
+                      <span>{t(`landing.nav.${id}` as TranslationKey)}</span>
+                      {isActive && <span className="text-[10px]" style={{ color: '#FF8A3D' }}>◇</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          </div>
+
 
           {/* The sections, two ways.
 
@@ -396,58 +464,6 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               )
             })}
           </nav>
-
-          {/* Three lines, drawn rather than typed: the glyph everybody already
-              reads as "the rest of the menu is in here", in the app's own
-              weight. It carries the section you are in beside it where there
-              is room, so the bar still answers "where am I" without the menu
-              being open. */}
-          <div ref={menuRef} className="relative 2xl:hidden justify-self-center shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenuOpen(open => !open)}
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              aria-label={t('landing.sections')}
-              className="cut-corner inline-flex items-center gap-2 h-[2.125rem] px-3 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 transition-colors"
-              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-            >
-              <span className="flex flex-col gap-[3px]" aria-hidden="true">
-                <span className="block w-4 h-px bg-current" />
-                <span className="block w-4 h-px bg-current" />
-                <span className="block w-4 h-px bg-current" />
-              </span>
-              <span className="hidden sm:inline text-[11px] tracking-[0.1em] uppercase whitespace-nowrap max-w-[9rem] truncate">
-                {active ? t(`landing.nav.${active.id}` as TranslationKey) : t('landing.sections')}
-              </span>
-            </button>
-
-            {menuOpen && (
-              <div
-                role="menu"
-                className="panel-in absolute right-0 top-[calc(100%+6px)] z-[10000200] min-w-[12rem] border border-nier-border/40 py-1 max-h-[70vh] overflow-y-auto"
-                style={{ backgroundColor: 'rgb(var(--c-surface))' }}
-              >
-                {items.map(({ id, index }) => {
-                  const isActive = activeSection === index
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => { onJump(index); setMenuOpen(false) }}
-                      className={`w-full px-4 py-2.5 text-left text-[11px] tracking-[0.12em] uppercase transition-colors flex items-center justify-between gap-3 ${
-                        isActive ? 'text-nier-strong bg-nier-bg/10' : 'text-nier-bg/80 hover:text-nier-strong hover:bg-nier-bg/5'
-                      }`}
-                    >
-                      <span>{t(`landing.nav.${id}` as TranslationKey)}</span>
-                      {isActive && <span className="text-[10px]" style={{ color: '#FF8A3D' }}>◇</span>}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
 
           <div className="flex items-center gap-2 shrink-0 justify-self-end">
             <LanguageToggle />
