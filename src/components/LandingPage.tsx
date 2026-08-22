@@ -437,7 +437,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               Separated by rules, because seven titles in one typeface at one
               size with even spacing read as a sentence of unrelated words
               rather than as seven things you can choose between. */}
-          <nav className="hidden 2xl:flex items-center justify-self-center min-w-0">
+          <nav className="hidden 2xl:flex col-start-2 items-center justify-self-center min-w-0">
             {items.map(({ id, index }, i) => {
               const isActive = activeSection === index
               return (
@@ -465,7 +465,17 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
             })}
           </nav>
 
-          <div className="flex items-center gap-2 shrink-0 justify-self-end">
+          {/* Placed in the third column rather than left to land there.
+
+              The nav between these two is `hidden` below 2xl, and hidden means
+              display:none -- so it stops being a grid item at all, and
+              auto-placement put this group in the middle column instead.
+              justify-self-end then pushed it to the end of *that* column,
+              which is the middle of the bar: the buttons stopped at the centre
+              on exactly the screens where the sections had folded away.
+              Naming the column makes the placement independent of how many
+              items happen to be rendered. */}
+          <div className="col-start-3 flex items-center gap-2 shrink-0 justify-self-end">
             <LanguageToggle />
 
             <ThemeToggle />
