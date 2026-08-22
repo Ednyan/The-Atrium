@@ -56,6 +56,11 @@ const SPRITE_SIZES = 14
 // as indistinguishable as twelve on something falling this fast.
 const SPRITE_ANGLES = 7
 
+// How far the backing store is allowed to shrink under load. Three quarters
+// of a 1080p screen is 810p upscaled, which on soft overlapping shapes moving
+// at a thousand pixels a second is not a difference anyone reports.
+const MIN_SCALE = 0.75
+
 const FILL_COLS = 34
 const FILL_ROWS = 20
 const FILL_THRESHOLD = 0.985
@@ -225,22 +230,26 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     // goes to one, which is a quarter less to paint for a difference nobody
     // can catch on soft shapes that are moving.
     const wide = window.innerWidth * window.innerHeight > 2_300_000
-    const dpr = Math.min(window.devicePixelRatio || 1, wide ? 1 : 1.25)
+    const baseDpr = Math.min(window.devicePixelRatio || 1, wide ? 1 : 1.25)
+    // And it can come down further while it runs -- see the throttle in the
+    // loop. Below about three quarters the softness starts to be legible on
+    // the largest hearts, so that is the floor.
+    let scale = baseDpr
     let width = window.innerWidth
     let height = window.innerHeight
     const size = () => {
       width = window.innerWidth
       height = window.innerHeight
-      canvas.width = Math.floor(width * dpr)
-      canvas.height = Math.floor(height * dpr)
+      canvas.width = Math.floor(width * scale)
+      canvas.height = Math.floor(height * scale)
       canvas.style.width = width + 'px'
       canvas.style.height = height + 'px'
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.setTransform(scale, 0, 0, scale, 0, 0)
     }
     size()
     window.addEventListener('resize', size)
 
-    const sprites = getSprites(color, dpr)
+    const sprites = getSprites(color, baseDpr)
     const count = countFor(width, height)
 
     const hearts: Heart[] = Array.from({ length: count }, (_, i) => {
@@ -289,6 +298,8 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     // density rather than the motion. Density is the effect; stutter is not.
     let smoothedFrame = 16
     let admitted = 0
+    // When the resolution last came down, so the steps are spaced.
+    let easedAt = 0
     // A ceiling that only ever comes down.
     //
     // The throttle below used to push `admitted` back when a frame ran long,
@@ -324,7 +335,32 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
       // only fires on a machine that is genuinely behind rather than on the
       // odd long frame. A quarter of the full crowd is the floor: below that
       // it stops being the same effect.
-      if (smoothedFrame > 26) {
+      //
+      // But resolution goes first, and the crowd only thins once there is no
+      // resolution left to give. Both are ways of painting fewer pixels; they
+      // are not equally visible. Dropping the backing store from 1.25 to 0.75
+      // is nine tenths of the cost gone on shapes that are soft, moving, and
+      // three deep in their own overdraw -- there is no edge in this picture
+      // for the softness to show up on. Dropping three quarters of the hearts
+      // changes the one thing the screen is about. So the ladder is climbed
+      // down in that order, and a machine has to fail at 0.75 before it is
+      // allowed to lose a single heart.
+      //
+      // Half a second between steps, and the rolling average is reset after
+      // each one, so the next reading is of the resolution just chosen rather
+      // than of the one that provoked the step. Without that it would fall
+      // through every rung of the ladder in three frames on the strength of a
+      // single slow moment.
+      const easeable = scale > MIN_SCALE
+      if (smoothedFrame > 22 && easeable && now - easedAt > 500) {
+        scale = Math.max(MIN_SCALE, scale - 0.2)
+        // Resizing the surface clears it, so this costs one frame of trail.
+        // At this point in the fall the trails are a few frames long and
+        // rebuild in the same few; it is not a thing you can catch.
+        size()
+        easedAt = now
+        smoothedFrame = 16
+      } else if (smoothedFrame > 26 && !easeable) {
         ceiling = Math.max(hearts.length * 0.25, ceiling * 0.94)
       }
       admitted = Math.min(ceiling, admitted + admitStep)
@@ -345,10 +381,18 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
         : (through - BLUR_FROM) / (1 - BLUR_FROM)
       const erase = NO_TRAIL - (NO_TRAIL - MAX_TRAIL) * blur
 
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.fillStyle = `rgba(0,0,0,${erase})`
-      ctx.fillRect(0, 0, width, height)
-      ctx.globalCompositeOperation = 'source-over'
+      // destination-out at full alpha is a clear, and saying so is cheaper
+      // than asking the compositor to work it out: no blend, no source. This
+      // is the whole of the first three quarters of the ramp, which is where
+      // the trail has not started yet.
+      if (erase >= 1) {
+        ctx.clearRect(0, 0, width, height)
+      } else {
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.fillStyle = `rgba(0,0,0,${erase})`
+        ctx.fillRect(0, 0, width, height)
+        ctx.globalCompositeOperation = 'source-over'
+      }
 
       for (let i = 0; i < hearts.length; i++) {
         const heart = hearts[i]
