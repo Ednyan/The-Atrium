@@ -1220,11 +1220,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">{t('landing.limits.question')}</p>
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-3">
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
               <RichText text={t('landing.limits.secret')} className="text-nier-strong" />
-            </p>
-            <p className="text-nier-bg/70 text-sm leading-relaxed mb-6 italic">
-              <RichText text={t('landing.limits.desktopNote')} className="text-nier-bg" />
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
@@ -1252,6 +1249,26 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <p className="text-nier-bg/70 text-sm leading-relaxed">{t('landing.limits.perAtriumDesc')}</p>
               </div>
             </div>
+
+            {/* The way out of the limits, directly under them.
+
+                It used to sit above the two cards, which answered the
+                objection before the reader had it. Read in this order the
+                section states the cap, states the size, and then says where
+                neither applies -- and the phrase saying so is the way to that
+                section rather than an instruction to go looking for it.
+
+                Inside the desktop build the Desktop App section is not
+                rendered at all, so there is nothing to jump to; the phrase
+                stays emphasised there but stops being a control, which is
+                what omitting the handler does. */}
+            <p className="text-nier-bg/70 text-sm leading-relaxed italic mt-2">
+              <RichText
+                text={t('landing.limits.desktopNote')}
+                className={isDesktop ? 'text-nier-bg not-italic' : 'inline-jump not-italic'}
+                onEmphasisClick={isDesktop ? undefined : () => scrollToSection(sectionIndex('desktop'))}
+              />
+            </p>
           </div>
         </div>
       </section>

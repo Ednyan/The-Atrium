@@ -839,6 +839,26 @@ input[type='color']::-moz-color-swatch { border: none; }
 }
 .support-card .corner { border-color: rgb(var(--c-orange) / 0.75); }
 .support-orange { color: rgb(var(--c-orange)); }
+
+/* A phrase inside a sentence that is also a way to somewhere else.
+   Written here rather than as a Tailwind arbitrary value, because
+   text-[rgb(var(--c-orange))] does not survive the scanner -- it compiles to
+   nothing and the text silently inherits its parent's colour.
+   The underline is what makes it read as a link: colour alone does not, and
+   colour alone is also invisible to anyone who cannot separate these two
+   hues. */
+.inline-jump {
+  color: rgb(var(--c-orange));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgb(var(--c-orange) / 0.45);
+  transition: text-decoration-color 160ms ease, color 160ms ease;
+  cursor: pointer;
+}
+.inline-jump:hover,
+.inline-jump:focus-visible {
+  text-decoration-color: rgb(var(--c-orange));
+}
 .support-rule { background-image: linear-gradient(to right, rgb(var(--c-orange) / 0.5), transparent); }
 .support-well {
   border-color: rgb(var(--c-orange) / 0.3);
