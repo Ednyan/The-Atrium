@@ -211,6 +211,32 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           </div>
         )}
 
+        {/* What paying gets you, before being asked to pay.
+
+            This sat under the submit button, on the argument that an outcome
+            belongs next to the action that causes it. But there it reads as a
+            footnote to a decision already made: by the time anyone reached it
+            they had picked an amount and typed a name, and the reason for
+            doing either was still further down the card. Above the heading it
+            is the invitation rather than the receipt -- here is what your name
+            joins, and then the form that joins it. */}
+        <div className="support-well border p-4 mb-5">
+          <p className="text-nier-bg/75 text-xs tracking-wide leading-relaxed mb-3">
+            {t('support.wall')}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              onClose()
+              openContributors(window.location.hash.replace(/^#/, '') || '/welcome')
+            }}
+            className="support-action w-full py-2.5 border text-[11px] tracking-[0.15em] uppercase"
+            style={{ clipPath: DONATE_CUT }}
+          >
+            ◇ {t('support.seeWall')}
+          </button>
+        </div>
+
         <div className="flex items-center gap-3 mb-5">
           <div className="byline-mark w-2 h-2 rotate-45" />
           <h3 className="support-orange tracking-[0.15em] uppercase">{t('donate.heading')}</h3>
@@ -301,7 +327,10 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
           />
           <span className="name-bubble" id="donate-display-name-help" role="tooltip">
-            <span>{t('donate.nameHelp')}</span>
+            <span>
+              {t('donate.nameHelp')}
+              <span className="name-bubble-note">{t('donate.nameHelpNote')}</span>
+            </span>
           </span>
         </div>
         {nameProblem ? (
@@ -348,29 +377,6 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
         <p className="text-nier-bg/70 text-xs tracking-wide mt-3 leading-relaxed">
           {t('donate.stripeNote')}
         </p>
-
-        {/* What paying gets you, under the button that does the paying.
-
-            It used to sit in the middle of the card beside this one, between
-            the argument and the social links, where it read as another part of
-            the story. It is not part of the story -- it is the outcome, and
-            the place for that is next to the action. */}
-        <div className="support-well border p-4 mt-5">
-          <p className="text-nier-bg/75 text-xs tracking-wide leading-relaxed mb-3">
-            {t('support.wall')}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              onClose()
-              openContributors(window.location.hash.replace(/^#/, '') || '/welcome')
-            }}
-            className="support-action w-full py-2.5 border text-[11px] tracking-[0.15em] uppercase"
-            style={{ clipPath: DONATE_CUT }}
-          >
-            ◇ {t('support.seeWall')}
-          </button>
-        </div>
 
         </div>
         </div>

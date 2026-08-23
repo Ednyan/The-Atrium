@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { isDesktop } from '../lib/supabase'
 import { sendFeedbackReport, canSendFeedbackDirectly } from '../lib/feedback'
+import { useTranslation } from '../lib/i18n'
 
 const SUPPORT_EMAIL = 'thedigitalatrium@gmail.com'
 
@@ -18,6 +19,7 @@ interface ReportFeedbackModalProps {
 // configured yet), so the feature never fully breaks. Shared between the
 // in-atrium HUD menu and the Atrium Browser.
 export function ReportFeedbackModal({ onClose, username, atriumName }: ReportFeedbackModalProps) {
+  const { t } = useTranslation()
   const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')
   const [reportSubject, setReportSubject] = useState('')
   const [reportDescription, setReportDescription] = useState('')
@@ -39,44 +41,44 @@ export function ReportFeedbackModal({ onClose, username, atriumName }: ReportFee
         <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-bg pointer-events-none" />
 
         <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4">
-          <span className="text-nier-bg/70 mr-2">◇</span>Report / Suggest
+          <span className="text-nier-bg/70 mr-2">◇</span>{t('report.title')}
         </h3>
 
         {reportSentMessage ? (
           <p className="text-nier-bg/80 text-xs tracking-wider text-center py-4">{reportSentMessage}</p>
         ) : (
           <>
-            <label className="block text-nier-bg/70 text-xs tracking-[0.15em] uppercase mb-1.5">Motive</label>
+            <label className="block text-nier-bg/70 text-xs tracking-[0.15em] uppercase mb-1.5">{t('report.motive')}</label>
             <select
               value={reportMotive}
               onChange={(e) => setReportMotive(e.target.value as 'bug' | 'feature' | 'other')}
               disabled={isSendingReport}
               className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-3 focus:border-nier-bg focus:outline-none tracking-wider disabled:opacity-50"
             >
-              <option value="bug">Report a Problem</option>
-              <option value="feature">Suggest a Feature</option>
-              <option value="other">Other</option>
+              <option value="bug">{t('report.motiveBug')}</option>
+              <option value="feature">{t('report.motiveFeature')}</option>
+              <option value="other">{t('report.motiveOther')}</option>
             </select>
 
-            <label className="block text-nier-bg/70 text-xs tracking-[0.15em] uppercase mb-1.5">Subject</label>
+            <label className="block text-nier-bg/70 text-xs tracking-[0.15em] uppercase mb-1.5">{t('report.subject')}</label>
             <input
               type="text"
               value={reportSubject}
               onChange={(e) => setReportSubject(e.target.value)}
               disabled={isSendingReport}
-              placeholder="Short summary..."
+              placeholder={t('report.subjectPlaceholder')}
               maxLength={100}
               className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-3 focus:border-nier-bg focus:outline-none tracking-wider disabled:opacity-50"
             />
 
-            <label className="block text-nier-bg/70 text-xs tracking-[0.15em] uppercase mb-1.5">Description</label>
+            <label className="block text-nier-bg/70 text-xs tracking-[0.15em] uppercase mb-1.5">{t('report.description')}</label>
             <textarea
               autoFocus
               value={reportDescription}
               onChange={(e) => setReportDescription(e.target.value)}
               rows={5}
               disabled={isSendingReport}
-              placeholder={reportMotive === 'feature' ? "What would you like to see added?" : "What happened? Steps to reproduce, if it's a bug..."}
+              placeholder={reportMotive === 'feature' ? t('report.descriptionPlaceholderFeature') : t('report.descriptionPlaceholderBug')}
               className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-4 focus:border-nier-bg focus:outline-none tracking-wider resize-none disabled:opacity-50"
             />
 
@@ -99,7 +101,7 @@ export function ReportFeedbackModal({ onClose, username, atriumName }: ReportFee
                     })
                     setIsSendingReport(false)
                     if (result.success) {
-                      setReportSentMessage('✓ Sent — thank you!')
+                      setReportSentMessage(t('report.sent'))
                       setTimeout(() => {
                         onClose()
                       }, 1500)
@@ -125,14 +127,14 @@ export function ReportFeedbackModal({ onClose, username, atriumName }: ReportFee
                 disabled={!reportDescription.trim() || isSendingReport}
                 className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {isSendingReport ? 'Sending…' : canSendFeedbackDirectly() ? 'Send' : 'Open Email'}
+                {isSendingReport ? t('report.sending') : canSendFeedbackDirectly() ? t('report.send') : t('report.openEmail')}
               </button>
               <button
                 onClick={onClose}
                 disabled={isSendingReport}
                 className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors disabled:opacity-30"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </>

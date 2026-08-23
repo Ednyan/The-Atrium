@@ -125,8 +125,11 @@ export default function DesktopAppSection() {
       <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed mb-3">
         {t('desktop.lead')}
       </p>
-      <p className="text-nier-bg/75 text-base leading-relaxed mb-8">
+      <p className="text-nier-bg/75 text-base leading-relaxed mb-3">
         {t('desktop.fit')}
+      </p>
+      <p className="text-nier-bg/70 text-sm leading-relaxed mb-8 italic">
+        <RichText text={t('desktop.soloNote')} className="text-nier-bg" />
       </p>
 
       {/* Downloads */}

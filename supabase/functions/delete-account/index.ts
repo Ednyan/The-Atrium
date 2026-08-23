@@ -21,7 +21,7 @@
 // add_account_deletion_support.sql.
 
 import { corsHeaders } from '../_shared/cors.ts'
-import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
+import { createAdminClient, createAnonClient, getAuthenticatedUser } from '../_shared/supabaseAdmin.ts'
 
 // Not a real user id (real ones are UUIDs) -- just a stable marker so
 // anonymized content can still be told apart from a live account if ever
@@ -36,12 +36,74 @@ Deno.serve(async (req: Request) => {
 
   try {
     const admin = createAdminClient()
-    const userId = await getAuthenticatedUserId(req, admin)
-    if (!userId) {
+    const user = await getAuthenticatedUser(req, admin)
+    if (!user) {
       return new Response(JSON.stringify({ error: 'Not authenticated' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
+    }
+    const userId = user.id
+
+    // The password is checked here rather than in the browser.
+    //
+    // A valid session JWT is all this endpoint used to require, so the
+    // password prompt in Profile Settings was a gate in front of the door
+    // rather than a lock in it: anyone holding the session -- someone at an
+    // unlocked machine, say -- could skip the panel and call this directly.
+    // Deletion is the one irreversible action in the app, so the proof has to
+    // live inside the trust boundary, where no request can be shaped to
+    // avoid it.
+    //
+    // This is not a brute-force surface worth rate-limiting on its own: you
+    // need a valid session for the account before you get here, and guessing
+    // the password of an account you are already signed into buys nothing.
+    // (Supabase throttles repeated sign-in attempts regardless.)
+    //
+    // Accounts created through Google have no password to check -- requiring
+    // one would lock them out of deleting their own account forever -- so the
+    // check applies exactly when there is an email/password identity to check
+    // against. That is read from the server's own copy of the user, never
+    // from anything the caller sent.
+    const hasPassword = (user.identities ?? []).some(
+      (identity: { provider: string }) => identity.provider === 'email',
+    )
+
+    if (hasPassword) {
+      let password = ''
+      try {
+        const body = await req.json()
+        password = typeof body?.password === 'string' ? body.password : ''
+      } catch {
+        // No body, or not JSON. Treated as no password supplied.
+      }
+
+      if (!password) {
+        return new Response(JSON.stringify({ error: 'password_required' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Signing in is the only way to verify a password: there is no
+      // "check this password" API, and the service-role key deliberately
+      // cannot do it -- it bypasses authentication rather than performing
+      // it. The anon client is thrown away with the request, and the
+      // password is never logged.
+      const anon = createAnonClient()
+      const { error: reauthError } = await anon.auth.signInWithPassword({
+        email: user.email!,
+        password,
+      })
+      if (reauthError) {
+        return new Response(JSON.stringify({ error: 'invalid_password' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      // Drop the session that check just minted, so a refresh token for this
+      // account cannot outlive a delete that fails further down.
+      await anon.auth.signOut()
     }
 
     const anonymize = { user_id: ANONYMIZED_USER_ID, username: ANONYMIZED_USERNAME }

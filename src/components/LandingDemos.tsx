@@ -236,7 +236,11 @@ export function AtriumMapDiagram() {
 
   return (
     <div
-      className="relative w-full h-44 border border-nier-border/25 overflow-hidden landing-demo"
+      // Taller from md up, where it stands in the column beside About's two
+      // paragraphs rather than under them: 176px left it bottoming out well
+      // short of the prose and the block ended on a ragged edge. The dots are
+      // placed in percentages, so a taller box just spreads them further.
+      className="relative w-full h-44 md:h-52 border border-nier-border/25 overflow-hidden landing-demo"
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.5)', ...GRID_BG }}
       aria-hidden="true"
     >

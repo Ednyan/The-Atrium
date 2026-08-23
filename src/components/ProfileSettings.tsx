@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
 import { deleteMyAccount } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
+import RichText from './RichText'
 import {
   MAX_UNDO_DEPTH,
   readUndoDepth,
@@ -51,6 +52,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   // typing the account's own username as an explicit confirmation.
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletePassword, setDeletePassword] = useState('')
+  // Accounts created through Google have no password, so there is nothing to
+  // ask them for -- and asking anyway would leave them unable to delete their
+  // own account. Assumed true until the identities come back, so the field is
+  // never missing for someone who does need it. The Edge Function decides
+  // this again from its own copy of the user; this is only what to show.
+  const [hasPassword, setHasPassword] = useState(true)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
@@ -61,10 +69,31 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [undoDepth, setUndoDepth] = useState(() => readUndoDepth())
   const [packingShape, setPackingShape] = useState(() => readPackingShape())
 
+  // Whether the colour in use came from the picker rather than the five
+  // presets, which decides whether the picker cell shows that colour or the
+  // plus that invites you to choose one. Case-folded because an <input
+  // type="color"> always reports lowercase hex while the presets are written
+  // in upper -- comparing them raw would call every preset "custom".
+  const isCustomColour = !PRESET_COLORS.some(
+    c => c.toLowerCase() === selectedColor.toLowerCase(),
+  )
+
   useEffect(() => {
     loadProfile()
-    if (!isDesktop) loadPinterestStatus()
+    if (!isDesktop) {
+      loadPinterestStatus()
+      loadHasPassword()
+    }
   }, [])
+
+  const loadHasPassword = async () => {
+    if (!supabase) return
+    const { data } = await supabase.auth.getUser()
+    const identities = data?.user?.identities ?? []
+    if (identities.length > 0) {
+      setHasPassword(identities.some((identity: { provider: string }) => identity.provider === 'email'))
+    }
+  }
 
   const loadPinterestStatus = async () => {
     setPinterestStatusLoading(true)
@@ -290,14 +319,35 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   }
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== actualUsername) return
+    // actualUsername is empty until the profile row loads, and an empty
+    // confirmation box matches an empty expected name -- which would turn
+    // "type your username" into "type nothing" on the one action in this
+    // panel that cannot be undone. Loading has to have happened first.
+    if (!actualUsername || deleteConfirmText !== actualUsername) return
     setDeleteError('')
+
+    if (hasPassword && !deletePassword) {
+      setDeleteError(t('profile.errEnterCurrent'))
+      return
+    }
+
     setDeleteLoading(true)
 
-    const result = await deleteMyAccount()
+    // The password goes to the Edge Function and is checked there, rather
+    // than being checked here first. Verifying in the browser would only ever
+    // be a gate in front of the request -- the endpoint would still delete on
+    // a valid session alone, so anything that skipped this panel skipped the
+    // password with it. One check, on the side that cannot be bypassed.
+    const result = await deleteMyAccount(deletePassword)
 
     if (!result.success) {
-      setDeleteError(result.error || 'Failed to delete account.')
+      setDeleteError(
+        result.code === 'invalid_password'
+          ? t('profile.errWrongCurrent')
+          : result.code === 'password_required'
+            ? t('profile.errEnterCurrent')
+            : result.error || 'Failed to delete account.',
+      )
       setDeleteLoading(false)
       return
     }
@@ -316,6 +366,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
+      // Clicking the backdrop deliberately does nothing: this panel holds
+      // half-typed passwords and a delete-account confirmation, and a stray
+      // click beside it should not throw that away. The × is the way out.
+      // The stop is explicit rather than merely omitted so that no ancestor
+      // added later can quietly turn a miss-click back into a dismissal.
+      onClick={(e) => e.stopPropagation()}
     >
       {/* Capped and scrolling, like every other panel in the app. The brackets
           sit on this outer, non-scrolling wrapper so they stay pinned to the
@@ -327,23 +383,32 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
 
-        <div
-          className="p-6 overflow-y-auto flex-1 min-h-0"
-          style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
-        >
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h2 className="text-lg text-white tracking-[0.15em] uppercase">{t('profile.title')}</h2>
+        {/* Outside the scroller, so the way out stays on screen.
+            The title and the × used to be the first thing inside the
+            scrolling area, which meant the only control that closes this
+            panel scrolled off the top the moment anybody went looking for
+            the delete-account section at the bottom -- the furthest point
+            from the exit is exactly where somebody is most likely to want
+            it. The padding splits with it: the header keeps the top, the
+            scroller keeps the sides and the bottom. */}
+        <div className="flex justify-between items-center gap-3 px-6 pt-6 pb-4 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60 shrink-0" />
+            <h2 className="text-lg text-white tracking-[0.15em] uppercase truncate">{t('profile.title')}</h2>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+            aria-label={t('common.close')}
+            className="w-8 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
           >
             ×
           </button>
         </div>
 
+        <div
+          className="px-6 pb-6 overflow-y-auto flex-1 min-h-0"
+          style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+        >
         <div className="space-y-4">
           {/* Username (permanent) - only show on web */}
           {!isDesktop && (
@@ -370,25 +435,25 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             />
             
             {!isDesktop && !canChange && (
-              <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
+              <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mt-2">
                 ◇ {t('profile.canChangeIn', { days: daysUntilChange })}
               </p>
             )}
 
             {!isDesktop && canChange && (
-              <p className="text-nier-bg/60 text-[0.7rem] leading-relaxed tracking-wide mt-2">
+              <p className="text-nier-bg/60 text-[0.8rem] leading-relaxed tracking-wide mt-2">
                 ✓ {t('profile.canChangeNow')}
               </p>
             )}
 
             {error && (
-              <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.7rem] leading-relaxed tracking-wide mt-2">
+              <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.8rem] leading-relaxed tracking-wide mt-2">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide mt-2">
+              <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.8rem] leading-relaxed tracking-wide mt-2">
                 ✓ {isDesktop ? t('auth.username') : t('profile.displayName')} {t('common.updated')}
               </div>
             )}
@@ -416,6 +481,49 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('profile.yourCursor')}</label>
             <div className="grid grid-cols-6 gap-2 mb-2">
+              {/* First cell, and it is "anything else" -- the colour you chose
+                  yourself belongs at the head of the row rather than tacked
+                  on after the five suggestions. It has to read as a control
+                  rather than as another preset that happens to be a
+                  different colour. A bare <input type="color"> renders as a
+                  filled swatch identical in shape to the five beside it, so
+                  the only thing saying it opens a picker was a title
+                  attribute -- which is a tooltip nobody hovers for and no
+                  touch device shows at all.
+
+                  So the native input is stretched over the cell at zero
+                  opacity (it stays the real click target, and the OS picker
+                  it opens is the point), and what shows through is a dashed
+                  cell with a plus: the shape "add your own" takes everywhere
+                  else. Dashed against five solid swatches is the difference
+                  you can see without reading anything. */}
+              <div
+                className={`relative w-full h-10 border-2 border-dashed transition-colors cursor-pointer group ${
+                  isCustomColour
+                    ? 'border-nier-bg'
+                    : 'border-nier-border/50 hover:border-nier-border/80'
+                }`}
+                style={{
+                  backgroundColor: isCustomColour ? selectedColor : 'transparent',
+                  boxShadow: isCustomColour ? `0 0 12px ${selectedColor}40` : 'none',
+                }}
+              >
+                <input
+                  type="color"
+                  value={selectedColor}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  title={t('profile.anyOtherColour')}
+                  aria-label={t('profile.anyOtherColour')}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                {/* Hidden once the cell is carrying a colour of its own, where
+                    it would be a plus sitting on top of the answer. */}
+                {!isCustomColour && (
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-base leading-none text-nier-bg/70 group-hover:text-nier-bg transition-colors">
+                    +
+                  </span>
+                )}
+              </div>
               {PRESET_COLORS.map((color) => (
                 <button
                   key={color}
@@ -432,15 +540,8 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   }}
                 />
               ))}
-              <input
-                type="color"
-                value={selectedColor}
-                onChange={(e) => handleColorChange(e.target.value)}
-                title={t('profile.anyOtherColour')}
-                className="w-full h-10 border-2 border-nier-border/30 hover:border-nier-border/60 bg-nier-black cursor-pointer"
-              />
             </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+            <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mt-1.5">
               {t('profile.cursorNote')}
               {colorSaved && <span className="text-nier-bg/80"> {t('profile.saved')}</span>}
             </p>
@@ -459,7 +560,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
               className="w-full accent-nier-bg"
             />
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+            <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mt-1.5">
               {t('profile.undoNote')}
             </p>
           </div>
@@ -484,7 +585,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 </button>
               ))}
             </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+            <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mt-1.5">
               {t('profile.batchNote')}
             </p>
           </div>
@@ -551,13 +652,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </div>
 
                     {passwordError && (
-                      <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.7rem] leading-relaxed tracking-wide">
+                      <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.8rem] leading-relaxed tracking-wide">
                         {passwordError}
                       </div>
                     )}
 
                     {passwordSuccess && (
-                      <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
+                      <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.8rem] leading-relaxed tracking-wide">
                         ✓ {t('profile.passwordUpdated')}
                       </div>
                     )}
@@ -586,10 +687,10 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   {t('profile.pinterest')}
                 </label>
                 {pinterestStatusLoading ? (
-                  <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide">{t('profile.pinterestChecking')}</p>
+                  <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">{t('profile.pinterestChecking')}</p>
                 ) : pinterestConnected ? (
                   <div className="space-y-2">
-                    <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
+                    <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.8rem] leading-relaxed tracking-wide">
                       ✓ Connected{pinterestUsername ? ` as @${pinterestUsername}` : ''}
                     </div>
                     <button
@@ -609,14 +710,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     >
                       {t('profile.pinterestConnect')}
                     </button>
-                    {!isPinterestConfigured() && (
-                      <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
-                        {t('profile.pinterestUnconfigured')}
-                      </p>
-                    )}
+                    {/* "The integration isn't configured yet" used to sit
+                        here, directly above "the integration isn't finished
+                        yet" -- two sentences saying the same thing to the
+                        same person, and the one below covers it. The key
+                        stays in the catalogue; only this instance is gone. */}
                   </>
                 )}
-                <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-2">
+                <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mt-2">
                   {t('profile.pinterestNote')}
                 </p>
               </div>
@@ -661,11 +762,21 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 </button>
               ) : (
                 <div className="border border-nier-red/60 bg-nier-red/10 p-3 space-y-3">
-                  <p className="text-nier-bg text-[0.7rem] leading-relaxed tracking-wide">
+                  <p className="text-nier-bg text-[0.8rem] leading-relaxed tracking-wide">
                     {t('profile.deleteWarning')}
                   </p>
+                  {/* This line was hardcoded English -- "Type X to confirm"
+                      spliced around a <span> -- while two catalogue keys for
+                      it sat unused. It is one key now, with the name inside
+                      the sentence, because the name lands in a different
+                      place in every language. RichText renders that run in
+                      the username's real case so it can be copied exactly,
+                      which is the whole reason it was a span to begin with. */}
                   <p className="text-nier-bg/75 text-xs tracking-[0.1em] uppercase">
-                    Type <span className="text-nier-bg normal-case">{actualUsername}</span> to confirm
+                    <RichText
+                      text={t('profile.deleteTypeToConfirm', { name: actualUsername })}
+                      className="text-nier-bg normal-case"
+                    />
                   </p>
                   <input
                     type="text"
@@ -676,8 +787,33 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     autoComplete="off"
                   />
 
+                  {/* And the account password on top of it. Typing a username
+                      that is printed on the screen directly above the box is
+                      a guard against misclicking, not against a stranger at
+                      an unlocked machine -- the password is what tells those
+                      two apart. Hidden for accounts that signed up through
+                      Google, which have no password to give. */}
+                  {hasPassword && (
+                  <div>
+                    <label
+                      htmlFor="delete-account-password"
+                      className="block text-nier-bg/75 text-xs tracking-[0.1em] uppercase mb-2"
+                    >
+                      {t('profile.currentPassword')}
+                    </label>
+                    <input
+                      id="delete-account-password"
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-red/60 transition-colors"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  )}
+
                   {deleteError && (
-                    <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.7rem] leading-relaxed tracking-wide">
+                    <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-[0.8rem] leading-relaxed tracking-wide">
                       {deleteError}
                     </div>
                   )}
@@ -685,13 +821,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   <div className="flex gap-2">
                     <button
                       onClick={handleDeleteAccount}
-                      disabled={deleteLoading || deleteConfirmText !== actualUsername}
+                      disabled={deleteLoading || !actualUsername || deleteConfirmText !== actualUsername || (hasPassword && !deletePassword)}
                       className="flex-1 py-2 bg-nier-red/80 text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {deleteLoading ? t('profile.deleting') : t('profile.deletePermanently')}
                     </button>
                     <button
-                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteError('') }}
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeletePassword(''); setDeleteError('') }}
                       disabled={deleteLoading}
                       className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
                     >

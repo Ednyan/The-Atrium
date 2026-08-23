@@ -116,7 +116,7 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
         <div className="flex items-center gap-3 mb-8">
           <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
           <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            {t('landing.nav.support')}
+            {t('landing.support.title')}
           </h2>
           <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
         </div>
@@ -1108,7 +1108,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent" />
               <span className="text-nier-strong text-xs sm:text-sm tracking-[0.3em] uppercase whitespace-nowrap">
-                {t('support.connect')}
+                {t('landing.connect')}
               </span>
               <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
             </div>
@@ -1123,7 +1123,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
         ref={el => sectionRefs.current[4] = el}
         className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
       >
-        <div className="max-w-3xl w-full mx-auto" data-reveal>
+        {/* Wider than it was, because the three concept cards below now sit in
+            a row and 3xl gave each of them 245px to work with. 4xl is a width
+            the page already uses (the contributions panel), so this is not a
+            new measure, just the other one. */}
+        <div className="max-w-4xl w-full mx-auto" data-reveal>
           {/* Section header */}
           <div className="flex items-center gap-3 mb-10">
             <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
@@ -1133,46 +1137,66 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
             <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
+          {/* Two stacked blocks rather than two tall columns.
+
+              This was one 2-up grid: every paragraph plus the diagram down the
+              left, the three cards stacked down the right. It held together
+              only while the prose was long enough to reach the bottom of the
+              third card -- and once About lost a paragraph the left column
+              ended at the diagram while the right ran on for another card and
+              a half, bottoming out nowhere near each other.
+
+              It was also the wrong shape for what is being said. Traces,
+              Atriums and Sharing are three parallel ideas, and stacking them
+              in a column beside unrelated prose reads as a sidebar to that
+              prose rather than as three things of equal weight. A row of
+              three says what they are, and it cannot fall out of balance with
+              a paragraph again because it no longer stands next to one. */}
+          <div className="grid md:grid-cols-2 gap-8 md:gap-10 items-start mb-10">
             <div className="space-y-4">
               <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed">
                 <RichText text={t('landing.about.lead')} className="text-nier-bg" />
               </p>
               <p className="text-nier-bg/80 text-base leading-relaxed">{t('landing.about.p2')}</p>
-              <p className="text-nier-bg/80 text-base leading-relaxed">{t('landing.about.p3')}</p>
+            </div>
 
-              {/* An atrium from above: scattered traces, other visitors, and
-                  the bracket viewport is you -- the concept the paragraphs
-                  describe, drawn instead of described. */}
+            {/* An atrium from above: scattered traces, other visitors, and
+                the bracket viewport is you -- the concept the paragraphs
+                describe, drawn instead of described. It sits beside them now
+                rather than under them, which is where a picture of what the
+                text just said belongs. */}
+            <div>
               <AtriumMapDiagram />
-              <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70 -mt-2">{t('landing.about.diagram')}</p>
+              <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70 mt-2">{t('landing.about.diagram')}</p>
             </div>
+          </div>
 
-            <div className="space-y-4">
-              <div className="border border-nier-border/30 p-6 bg-nier-black/50">
+          {/* Grid children stretch by default, so the three end up the height
+              of the tallest without being told to -- which matters because the
+              descriptions are different lengths in every language. */}
+          <div className="grid md:grid-cols-3 gap-4">
+            {[
+              { title: 'landing.about.traces', desc: 'landing.about.tracesDesc', ink: '--c-accent' },
+              { title: 'landing.about.atriums', desc: 'landing.about.atriumsDesc', ink: '--c-emerald' },
+              { title: 'landing.about.presence', desc: 'landing.about.presenceDesc', ink: '--c-sky' },
+            ].map(card => (
+              <div key={card.title} className="border border-nier-border/30 p-5 bg-nier-black/50">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-accent))', boxShadow: `0 0 8px rgb(var(--c-accent) / 0.53)` }} />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t('landing.about.traces')}</span>
+                  <div
+                    className="w-2 h-2 rotate-45 shrink-0"
+                    style={{ backgroundColor: `rgb(var(${card.ink}))`, boxShadow: `0 0 8px rgb(var(${card.ink}) / 0.53)` }}
+                  />
+                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t(card.title as TranslationKey)}</span>
                 </div>
-                <p className="text-nier-bg/75 text-base leading-relaxed">{t('landing.about.tracesDesc')}</p>
+                {/* Smaller only once the cards are in a row. A third of 4xl is
+                    288px, and 16px type in that measure breaks into ragged
+                    five-word lines -- the trade the Limitations cards already
+                    make at a similar width. Below md there is no row: each
+                    card is the full column, where 14px would run to nearly
+                    ninety characters a line, so it stays at 16 there. */}
+                <p className="text-nier-bg/75 text-base md:text-sm leading-relaxed">{t(card.desc as TranslationKey)}</p>
               </div>
-              
-              <div className="border border-nier-border/30 p-6 bg-nier-black/50">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-emerald))', boxShadow: `0 0 8px rgb(var(--c-emerald) / 0.53)` }} />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t('landing.about.atriums')}</span>
-                </div>
-                <p className="text-nier-bg/75 text-base leading-relaxed">{t('landing.about.atriumsDesc')}</p>
-              </div>
-              
-              <div className="border border-nier-border/30 p-6 bg-nier-black/50">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 rotate-45" style={{ backgroundColor: 'rgb(var(--c-sky))', boxShadow: `0 0 8px rgb(var(--c-sky) / 0.53)` }} />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t('landing.about.presence')}</span>
-                </div>
-                <p className="text-nier-bg/75 text-base leading-relaxed">{t('landing.about.presenceDesc')}</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
@@ -1196,8 +1220,11 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
           <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">{t('landing.limits.question')}</p>
 
           <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
+            <p className="text-nier-bg/80 text-base leading-relaxed mb-3">
               <RichText text={t('landing.limits.secret')} className="text-nier-strong" />
+            </p>
+            <p className="text-nier-bg/70 text-sm leading-relaxed mb-6 italic">
+              <RichText text={t('landing.limits.desktopNote')} className="text-nier-bg" />
             </p>
 
             <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
@@ -1225,8 +1252,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
                 <p className="text-nier-bg/70 text-sm leading-relaxed">{t('landing.limits.perAtriumDesc')}</p>
               </div>
             </div>
-
-            <p className="text-nier-bg/75 text-base leading-relaxed text-center italic">{t('landing.limits.plenty')}</p>
           </div>
         </div>
       </section>

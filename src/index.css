@@ -1023,6 +1023,18 @@ input[type='color']::-moz-color-swatch { border: none; }
   box-shadow: 0 12px 30px rgb(var(--c-shadow) / 0.4);
 }
 
+/* The review note, set apart from the explanation above it rather than run
+   into the same paragraph -- it's an aside about process, not part of what
+   the field does, and a rule plus a dimmer tone says that without another
+   sentence spent saying it. */
+.name-bubble-note {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgb(var(--c-orange) / 0.2);
+  color: rgb(var(--c-fg) / 0.6);
+}
+
 /* Hover only, and never while the field is being typed in: an explanation
    floating over the thing you are already doing is in the way, not helpful. */
 @media (hover: hover) {
