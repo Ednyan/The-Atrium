@@ -65,9 +65,32 @@ Deno.serve(async (req: Request) => {
     // check applies exactly when there is an email/password identity to check
     // against. That is read from the server's own copy of the user, never
     // from anything the caller sent.
-    const hasPassword = (user.identities ?? []).some(
-      (identity: { provider: string }) => identity.provider === 'email',
-    )
+    // Read two ways round, and default to asking.
+    //
+    // `(user.identities ?? []).some(p => p === 'email')` on its own decides
+    // "no password required" from an absent list just as readily as from a
+    // Google-only one -- so anything that left identities unpopulated would
+    // turn this whole check off and report success while doing it. A control
+    // whose failure mode is "silently stop checking" is not one worth having.
+    //
+    // So: skip the password only when the account positively says it has no
+    // email identity. If both sources are silent we cannot tell, and the
+    // wrong guess in that direction is unrecoverable, so we ask. The cost of
+    // being wrong the other way is a Google user seeing "that is not your
+    // password" and having to write in -- annoying, and reversible.
+    const identities = user.identities ?? []
+    const metaProviders: string[] = Array.isArray(user.app_metadata?.providers)
+      ? user.app_metadata.providers
+      : user.app_metadata?.provider
+        ? [user.app_metadata.provider]
+        : []
+
+    const providersKnown = identities.length > 0 || metaProviders.length > 0
+    const hasEmailIdentity =
+      identities.some((identity: { provider: string }) => identity.provider === 'email') ||
+      metaProviders.includes('email')
+
+    const hasPassword = !providersKnown || hasEmailIdentity
 
     if (hasPassword) {
       let password = ''
@@ -103,7 +126,17 @@ Deno.serve(async (req: Request) => {
       }
       // Drop the session that check just minted, so a refresh token for this
       // account cannot outlive a delete that fails further down.
-      await anon.auth.signOut()
+      //
+      // Guarded, because this is tidying rather than the job: unguarded it
+      // sits in the same try as the deletion, so a hiccup signing a session
+      // out would throw to the 500 below and the account the caller just
+      // proved they own would not be deleted. The token it is disposing of
+      // belongs to an account that is about to stop existing anyway.
+      try {
+        await anon.auth.signOut()
+      } catch (signOutError) {
+        console.error('[delete-account] could not discard the re-auth session:', signOutError)
+      }
     }
 
     const anonymize = { user_id: ANONYMIZED_USER_ID, username: ANONYMIZED_USERNAME }
