@@ -310,7 +310,7 @@ export const en = {
   'support.who': 'My name is *Eduardo Paranhos*, a 3D artist who was tired of seeing my computer desktop cluttered with random images and notes every time I went looking for inspiration and built the next project.',
   'support.costs': "I couldn't find a free platform with the features and flexibility I wanted, so I decided to build it myself. I believe the Digital Atrium is useful to more people than just me, which is why it's *free to use*.",
   'support.ask': 'Donations go toward the *continued development* of the Digital Atrium.',
-  'support.wall': 'The Digital Atrium has a contributors page where every name stands for a donation. Make a donation and become an official contributor!',
+  'support.wall': "Every donation received can be seen on the Digital Atrium's contributors page. When you donate, your name can appear there too, if you'd like.",
   'support.seeWall': 'See the contributors page',
   'support.connect': 'My work and contact',
   'support.website': 'Website',

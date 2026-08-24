@@ -179,7 +179,7 @@ const es: Catalogue = {
   'support.who': 'Me llamo *Eduardo Paranhos*, soy un artista 3D que estaba cansado de ver mi escritorio lleno de imágenes y notas sueltas cada vez que buscaba inspiración y construía el siguiente proyecto.',
   'support.costs': 'No encontré ninguna plataforma gratuita que ofreciera las funciones y la flexibilidad que quería, así que decidí crearla yo mismo. Creo que Digital Atrium puede ser útil para más gente, y por eso lo ofrezco de *uso gratuito*.',
   'support.ask': 'Las donaciones contribuyen a la *continuidad del desarrollo* de Digital Atrium.',
-  'support.wall': 'Digital Atrium tiene una página de colaboradores donde cada nombre representa una donación. ¡Haz una donación y conviértete en colaborador oficial!',
+  'support.wall': 'Todas las donaciones recibidas se pueden ver en la página de colaboradores del Digital Atrium. Al donar, tu nombre también puede aparecer ahí, si quieres.',
   'support.seeWall': 'Ver la página de colaboradores',
   'support.connect': 'Mi trabajo y contacto',
   'support.website': 'Sitio web',

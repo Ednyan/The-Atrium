@@ -181,7 +181,7 @@ const fr: Catalogue = {
   'support.who': "Je m'appelle *Eduardo Paranhos*, je suis artiste 3D et j'en avais assez de voir mon bureau d'ordinateur encombré d'images et de notes éparpillées à chaque fois que je cherchais l'inspiration et construisais le prochain projet.",
   'support.costs': "Je n'ai trouvé aucune plateforme gratuite offrant les fonctionnalités et la flexibilité que je voulais, alors j'ai décidé de la construire moi-même. Je pense que Digital Atrium peut être utile à d'autres, c'est pourquoi je le propose en *accès gratuit*.",
   'support.ask': 'Les dons contribuent à la *poursuite du développement* de Digital Atrium.',
-  'support.wall': 'Digital Atrium a une page des contributeurs où chaque nom représente un don. Faites un don et devenez contributeur officiel !',
+  'support.wall': 'Tous les dons reçus sont visibles sur la page des contributeurs de Digital Atrium. En faisant un don, votre nom peut aussi y figurer, si vous le souhaitez.',
   'support.seeWall': 'Voir la page des contributeurs',
   'support.connect': 'Mon travail et mes contacts',
   'support.website': 'Site web',

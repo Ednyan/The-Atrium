@@ -186,7 +186,7 @@ const ptPT: Catalogue = {
   'support.who': 'Chamo-me *Eduardo Paranhos*, sou um artista 3D que estava cansado de ver o meu ambiente de trabalho do computador ocupado com imagens e notas aleatórias cada vez que procurava inspiração e construía o próximo projeto.',
   'support.costs': 'Não encontrei nenhuma plataforma gratuita que oferecesse as funcionalidades e flexibilidade que queria, então, decidi eu mesmo criá-la. Acredito que o Digital Atrium seja útil para mais pessoas e por isso é que o disponibilizo para *uso gratuito*.',
   'support.ask': 'As doações contribuem para a *continuidade no desenvolvimento* do Digital Atrium.',
-  'support.wall': 'No Digital Atrium foi criada uma página de colaboradores onde cada nome representa uma doação. Faça uma doação e torne-se um colaborador oficial!',
+  'support.wall': 'Todas as doações recebidas podem ser vistas na página de colaboradores do Digital Atrium. Ao fazer uma doação também poderá ver o seu nome lá, caso queira.',
   'support.seeWall': 'Ver página de colaboradores',
   'support.connect': 'O meu trabalho e contactos',
   'support.website': 'Site',
