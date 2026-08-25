@@ -208,6 +208,12 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 const proxyFallbackFor = (url: string) =>
   isDesktop ? '' : `/api/proxy-image?url=${encodeURIComponent(url)}`
 
+// The spacing of the grid lines drawn under the atrium, which is what Shift
+// snaps a dragged trace onto. Hardcoded there too (LobbyScene's updateGrid),
+// and repeated rather than imported because the two live in different trees --
+// if that one ever becomes configurable, this is the other half to change.
+const GRID_SNAP = 50
+
 const ROTATION_SNAP_DEGREES = 5
 
 // How close to the viewport edge the cursor has to get before dragging a
@@ -2412,8 +2418,32 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
 
   if (activeTransformMode === 'move') {
       // Convert screen delta to world delta
-      const worldDeltaX = deltaX / currentZoom
-      const worldDeltaY = deltaY / currentZoom
+      let worldDeltaX = deltaX / currentZoom
+      let worldDeltaY = deltaY / currentZoom
+
+      // Shift snaps the trace onto the grid it is being dragged over.
+      //
+      // Shift already means "snap" here -- it is what rounds a rotation to a
+      // clean multiple -- so this is the same key doing the same job to the
+      // other half of a transform. It is read on every move rather than at
+      // mousedown, which matters twice over: Shift at mousedown already means
+      // "add to selection", and holding it partway through a drag is how
+      // somebody actually reaches for this, having started the drag and then
+      // decided they want it lined up.
+      //
+      // The delta is adjusted rather than the final position, so a
+      // multi-selection keeps its internal arrangement: the trace under the
+      // cursor lands on the grid and everything selected with it travels the
+      // same distance, instead of every trace independently collapsing onto
+      // the nearest line and destroying the spacing between them.
+      if (e.shiftKey && startTransformRef.current) {
+        const targetX = startTransformRef.current.x + worldDeltaX
+        const targetY = startTransformRef.current.y + worldDeltaY
+        const snappedX = Math.round(targetX / GRID_SNAP) * GRID_SNAP
+        const snappedY = Math.round(targetY / GRID_SNAP) * GRID_SNAP
+        worldDeltaX += snappedX - targetX
+        worldDeltaY += snappedY - targetY
+      }
       
       // Check if we have multi-selected traces to move together
       const currentMultiSelected = multiSelectedIdsRef.current
