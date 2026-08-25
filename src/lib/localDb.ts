@@ -103,7 +103,35 @@ async function renamePath(oldPath: string, newPath: string): Promise<void> {
 }
 
 async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
-  await invoke('write_binary_file', { path, bytes: Array.from(bytes) })
+  // Raw bytes over Tauri's binary channel, the same fix read_binary_file
+  // already had. `Array.from(bytes)` built a JS array with one element per
+  // byte, which Tauri then serialised as JSON text roughly 3.6x the size of
+  // the file -- 18MB for a 5MB photo, 180MB for a 50MB video, most of a second
+  // just in Array.from before anything was sent. That is what made importing
+  // feel slow next to a native app, and what made large videos look like they
+  // had hung: the webview was building one gigantic string.
+  //
+  // Tauri sends a raw body only when the payload itself is the binary, so the
+  // path rides inside it -- see write_binary_file in main.rs for the layout.
+  const pathBytes = new TextEncoder().encode(path)
+  const payload = new Uint8Array(4 + pathBytes.length + bytes.length)
+  new DataView(payload.buffer).setUint32(0, pathBytes.length, false)
+  payload.set(pathBytes, 4)
+  payload.set(bytes, 4 + pathBytes.length)
+
+  try {
+    await invoke('write_binary_file', payload)
+  } catch (rawError) {
+    // An app mid-update can be running this file against the previous binary,
+    // whose write_binary_file still expects { path, bytes } -- the same window
+    // read_binary_file keeps its array branch for. One slow retry beats a
+    // failed import; a genuine write failure just fails twice.
+    try {
+      await invoke('write_binary_file', { path, bytes: Array.from(bytes) })
+    } catch {
+      throw rawError
+    }
+  }
 }
 
 async function readBinaryFile(path: string): Promise<Uint8Array> {

@@ -271,14 +271,46 @@ fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
     fs::write(file_path, contents).map_err(|e| e.to_string())
 }
 
+// Takes a raw binary payload rather than `bytes: Vec<u8>`.
+//
+// This is the write-side twin of the problem described on read_binary_file
+// below, and it was left behind when that one was fixed. A `Vec<u8>` parameter
+// means the front end has to hand Tauri a JSON array of numbers -- one decimal
+// number and a comma per byte -- so importing a 25MB video shipped about 90MB
+// of text: a second building the array, another serialising it, another parsed
+// back out in serde here. Big files did not merely feel slow, they stalled the
+// webview building one enormous string.
+//
+// Tauri only routes a payload over the raw channel when the payload *is* the
+// binary, which leaves nowhere for the destination path to travel as an
+// argument -- so it travels inside the payload: a four-byte big-endian length,
+// the UTF-8 path, then the file. A header would have meant percent-encoding
+// the path to keep it ASCII, and these paths contain whatever the user named
+// their atrium.
 #[tauri::command]
-fn write_binary_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
+fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let body = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes,
+        _ => return Err("write_binary_file expects a raw binary payload".to_string()),
+    };
+
+    if body.len() < 4 {
+        return Err("write_binary_file payload is missing its path header".to_string());
+    }
+    let path_len = u32::from_be_bytes([body[0], body[1], body[2], body[3]]) as usize;
+    if body.len() < 4 + path_len {
+        return Err("write_binary_file payload is truncated".to_string());
+    }
+
+    let path = std::str::from_utf8(&body[4..4 + path_len]).map_err(|e| e.to_string())?;
+    let contents = &body[4 + path_len..];
+
     let file_path = PathBuf::from(path);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    fs::write(file_path, bytes).map_err(|e| e.to_string())
+    fs::write(file_path, contents).map_err(|e| e.to_string())
 }
 
 // Returns an ipc::Response rather than a Vec<u8>.
