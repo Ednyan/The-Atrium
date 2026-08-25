@@ -2,7 +2,7 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, Fragment, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -322,22 +322,6 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   }
   segments.push('Z')
   return segments.join(' ')
-}
-
-// Background luminance, for chrome that has to stay readable on whatever
-// colour an atrium's owner picked. Module scope because the two existing
-// hexToRgb helpers live inside render closures, and a third copy is worse
-// than one shared function.
-//
-// Rec. 709 weights -- green dominates perceived brightness, so a mid green
-// reads far lighter than a mid blue of the same numeric value.
-function atriumIsLight(background: string | undefined): boolean {
-  const hex = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(background || '#0a0a0f')
-  if (!hex) return false
-  const r = parseInt(hex[1], 16)
-  const g = parseInt(hex[2], 16)
-  const b = parseInt(hex[3], 16)
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5
 }
 
 export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
@@ -868,24 +852,6 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
   const [localShapePoints, setLocalShapePoints] = useState<Record<string, any[]>>({}) // Track shape points during drag
   const [colorPickerCallback, setColorPickerCallback] = useState<((color: string) => void) | null>(null) // For fallback color picker
-  // The shades the chrome drawn on top of traces is made of.
-  //
-  // An atrium's background is whatever its owner chose, and the labels and
-  // buttons that sit over it were fixed darks -- fine on the default near
-  // black, illegible the moment somebody picked a pale background. The theme
-  // tokens are no help here: [data-landing-theme] is only ever set on the
-  // landing and contributors pages, so inside an atrium they are always the
-  // dark set no matter what the page is showing.
-  //
-  // So this follows the background instead, by the same luminance test the
-  // cursor outline already uses. Channel triplets rather than colours,
-  // because they are handed to CSS variables that get an alpha applied.
-  const traceChrome = useMemo(() => (
-    atriumIsLight(atriumBackground)
-      ? { fg: '34 30 26', ground: '242 239 232', line: '120 112 100' }
-      : { fg: '203 203 203', ground: '25 25 25', line: '143 143 143' }
-  ), [atriumBackground])
-
   const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
   const copiedTraceClipboardRef = useRef<TraceClipboardPayload | null>(null)
   const hasEyeDropperSupport = typeof window !== 'undefined' && 'EyeDropper' in window
@@ -4237,7 +4203,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                   }}
                 >
                   {(isSelected || isMultiSelected || showTraceTypeLabels) && (
-                    <div className="trace-nier-type-badge" style={{ '--trace-chrome-fg': traceChrome.fg, '--trace-chrome-ground': traceChrome.ground, '--trace-chrome-line': traceChrome.line, } as React.CSSProperties}>{trace.shapeType === 'path' ? 'Path' : 'Shape'}</div>
+                    <div className="trace-nier-type-badge">{trace.shapeType === 'path' ? 'Path' : 'Shape'}</div>
                   )}
                   {(() => {
                     const shapeColor = trace.shapeColor || '#3b82f6'
@@ -4407,7 +4373,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                     overflow: 'hidden',
                   }}
                 >
-                  {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && <div className="trace-nier-type-badge" style={{ '--trace-chrome-fg': traceChrome.fg, '--trace-chrome-ground': traceChrome.ground, '--trace-chrome-line': traceChrome.line, } as React.CSSProperties}>{getTraceTypeLabel(trace.type)}</div>}
+                  {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && <div className="trace-nier-type-badge">{getTraceTypeLabel(trace.type)}</div>}
                   {showBorder && (
                     <>
                       <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
@@ -5229,13 +5195,16 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                     left: `${screenX}px`,
                     top: `${screenY + (borderHeight / 2 + 30)}px`,
                     transform: 'translate(-50%, 0)',
-                    // Same story as the type badge: these were literal darks
-                    // sitting on a background the atrium's owner chooses, so a
-                    // pale atrium got a black button with grey text on it.
-                    color: `rgb(${traceChrome.fg} / ${isCropMode ? 1 : 0.8})`,
-                    background: `rgb(${traceChrome.ground} / ${isCropMode ? 0.98 : 0.94})`,
-                    borderColor: `rgb(${isCropMode ? traceChrome.fg : traceChrome.line} / ${isCropMode ? 0.8 : 0.7})`,
-                    boxShadow: `0 0 ${isCropMode ? 10 : 8}px rgb(${isCropMode ? traceChrome.fg : traceChrome.line} / 0.3)`,
+                    // Tokens, like the type badge. Every colour here was a
+                    // literal of the dark palette, so in light mode the button
+                    // came out dark-on-dark. Inline styles take
+                    // rgb(var(--x) / a) directly -- it is only Tailwind's
+                    // scanner that cannot see tokens inside arbitrary class
+                    // values.
+                    color: isCropMode ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
+                    background: isCropMode ? 'rgb(var(--c-surface) / 0.98)' : 'rgb(var(--c-ground) / 0.94)',
+                    borderColor: isCropMode ? 'rgb(var(--c-fg) / 0.8)' : 'rgb(var(--c-line) / 0.7)',
+                    boxShadow: isCropMode ? '0 0 10px rgb(var(--c-fg) / 0.3)' : '0 0 8px rgb(var(--c-line) / 0.3)',
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
