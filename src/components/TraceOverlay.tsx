@@ -2,7 +2,7 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
-import React, { useState, useRef, useEffect, useMemo, Fragment, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -761,12 +761,31 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
   const [contextMenuSelectOpen, setContextMenuSelectOpen] = useState(false)
   const [selectFlyoutRect, setSelectFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
   const selectFlyoutCloseTimer = useRef<number | null>(null)
-  const openSelectFlyout = (e: React.MouseEvent<HTMLElement>) => {
+  const selectTriggerRef = useRef<HTMLDivElement>(null)
+  const openSelectFlyout = () => {
     if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
-    const rect = e.currentTarget.getBoundingClientRect()
-    setSelectFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
     setContextMenuSelectOpen(true)
   }
+
+  // Measured after layout, not during the mouseenter that opened it.
+  //
+  // Reading getBoundingClientRect() inside the event handler takes the row's
+  // position as it is at that instant -- but the context menu places itself
+  // twice: once where the click was, then again once useClampedMenuPosition
+  // has measured it and pulled it back inside the window. Hovering before
+  // that second placement stored a rect from the first, so the flyout opened
+  // beside where the row used to be. Clicking elsewhere and reopening looked
+  // like a refresh because by then the menu was already settled.
+  //
+  // A layout effect keyed on the menu's own position reads the row where it
+  // actually ended up, and re-reads it if the menu ever moves underneath.
+  useLayoutEffect(() => {
+    if (!contextMenuSelectOpen) return
+    const el = selectTriggerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setSelectFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
+  }, [contextMenuSelectOpen, contextMenuPos.x, contextMenuPos.y])
   const keepSelectFlyoutOpen = () => {
     if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
   }
@@ -6096,13 +6115,14 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
               const inGroup = traces.filter(t => (t.layerId ?? null) === groupId)
               return (
                 <div
+                  ref={selectTriggerRef}
                   className="relative"
                   onMouseEnter={openSelectFlyout}
                   onMouseLeave={scheduleCloseSelectFlyout}
                 >
                   <button className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
                     <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Select</span>
-                    <span className="text-gray-400 text-[10px]">{contextMenuFlyoutOnLeft ? '◂' : '▸'}</span>
+                    <span className="text-gray-300 text-[9px]">▶</span>
                   </button>
                   {contextMenuSelectOpen && selectFlyoutRect && (
                     <div
