@@ -148,6 +148,9 @@ interface TraceOverlayProps {
   // Without the drop shadow that used to separate them, a pale cursor on a
   // pale atrium is a pale cursor on a pale atrium.
   atriumBackground?: string
+  // The atrium's grid line spacing, so Shift-dragging snaps to the lines that
+  // are actually drawn rather than to a number this file decided on its own.
+  gridLineSpacing?: number
   lobbyWidth: number
   lobbyHeight: number
   zoom: number
@@ -208,11 +211,10 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 const proxyFallbackFor = (url: string) =>
   isDesktop ? '' : `/api/proxy-image?url=${encodeURIComponent(url)}`
 
-// The spacing of the grid lines drawn under the atrium, which is what Shift
-// snaps a dragged trace onto. Hardcoded there too (LobbyScene's updateGrid),
-// and repeated rather than imported because the two live in different trees --
-// if that one ever becomes configurable, this is the other half to change.
-const GRID_SNAP = 50
+// What Shift snaps a dragged trace onto when the atrium has no grid size of
+// its own. The same fallback LobbyScene draws with, so an atrium saved before
+// the setting existed snaps to the lines it is actually showing.
+const GRID_SNAP_FALLBACK = 50
 
 const ROTATION_SNAP_DEGREES = 5
 
@@ -330,7 +332,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -2437,10 +2439,11 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
       // same distance, instead of every trace independently collapsing onto
       // the nearest line and destroying the spacing between them.
       if (e.shiftKey && startTransformRef.current) {
+        const grid = gridLineSpacing && gridLineSpacing > 0 ? gridLineSpacing : GRID_SNAP_FALLBACK
         const targetX = startTransformRef.current.x + worldDeltaX
         const targetY = startTransformRef.current.y + worldDeltaY
-        const snappedX = Math.round(targetX / GRID_SNAP) * GRID_SNAP
-        const snappedY = Math.round(targetY / GRID_SNAP) * GRID_SNAP
+        const snappedX = Math.round(targetX / grid) * grid
+        const snappedY = Math.round(targetY / grid) * grid
         worldDeltaX += snappedX - targetX
         worldDeltaY += snappedY - targetY
       }

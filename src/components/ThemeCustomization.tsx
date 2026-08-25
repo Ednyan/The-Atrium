@@ -7,6 +7,7 @@ interface ThemeSettings {
   gridColor?: string
   gridOpacity?: number
   gridEnabled?: boolean
+  gridLineSpacing?: number
   backgroundColor?: string
   particlesEnabled?: boolean
   particleColor?: string
@@ -335,6 +336,24 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 className="w-full accent-nier-bg"
               />
             </div>
+
+            <div className="space-y-2">
+              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
+                Grid Size: {settings.gridLineSpacing ?? 50}px
+              </label>
+              <input
+                type="range"
+                min="10"
+                max="200"
+                step="5"
+                value={settings.gridLineSpacing ?? 50}
+                onChange={(e) => setSettings({ ...settings, gridLineSpacing: parseInt(e.target.value) })}
+                className="w-full accent-nier-bg"
+              />
+              <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
+                How far apart the lines are. Holding Shift while dragging a trace snaps it to them.
+              </p>
+            </div>
           </div>
 
           {/* Colour */}
@@ -605,7 +624,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   {(settings.groundPatternMode === 'grid' || !settings.groundPatternMode) && (
                     <div className="space-y-2">
                       <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                        Grid Spacing: {settings.gridSpacing || 100}px
+                        Element Spacing: {settings.gridSpacing || 100}px
                       </label>
                       <input
                         type="range"

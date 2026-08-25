@@ -2040,7 +2040,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         if (currentLobby?.themeSettings?.gridEnabled === false) return
         grid.lineStyle(1, gridColor, gridOpacity)
 
-        const gridSize = 50
+        // From the atrium's own settings, so the lines are the ones the user
+        // asked for -- and the ones Shift-dragging snaps onto, which reads
+        // the same value.
+        const gridSize = currentLobby?.themeSettings?.gridLineSpacing ?? 50
         // Account for zoom: visible world area = viewport / zoom
         const currentZoom = zoomRef.current
         const visibleW = window.innerWidth / currentZoom
@@ -3098,7 +3101,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       grid.clear()
       if (currentLobby.themeSettings?.gridEnabled === false) return
       grid.lineStyle(1, gridColor, gridOpacity)
-      const gridSize = 50
+      // The redraw path, which is the one that runs when the setting is
+      // changed -- so it has to read the same value as the initial draw
+      // above. Two copies of this function exist because the theme change
+      // rebuilds it with new colours; both had 50 written into them.
+      const gridSize = currentLobby.themeSettings?.gridLineSpacing ?? 50
       const currentZoom = zoomRef.current
       const visibleW = window.innerWidth / currentZoom
       const visibleH = window.innerHeight / currentZoom
@@ -3807,6 +3814,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <TraceOverlay
             traces={traces}
             atriumBackground={currentLobby?.themeSettings?.backgroundColor}
+            gridLineSpacing={currentLobby?.themeSettings?.gridLineSpacing}
             lobbyWidth={window.innerWidth}
             lobbyHeight={window.innerHeight}
             zoom={zoom}

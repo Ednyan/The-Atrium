@@ -206,6 +206,11 @@ export interface ThemeSettings {
   gridColor?: string
   gridOpacity?: number
   gridEnabled?: boolean
+  // Distance between the grid LINES, in world units. Distinct from
+  // gridSpacing below, which is how far apart the scattered ground elements
+  // sit -- two different things that both wanted to be called "grid spacing".
+  // Also what Shift-dragging a trace snaps onto.
+  gridLineSpacing?: number
   backgroundColor?: string
   particlesEnabled?: boolean
   particleColor?: string
