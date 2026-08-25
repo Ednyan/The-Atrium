@@ -997,10 +997,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Width (px)</label>
+                  {/* No maximum.
+                      1000px capped the spinner and marked anything larger as
+                      invalid, which made a shape meant to sit behind a whole
+                      cluster of traces impossible to type in -- while dragging
+                      one out on the canvas had never been limited at all, and
+                      neither is resizing it afterwards. The floor is 1 rather
+                      than 20 for the same reason: it is there so a stray
+                      keystroke cannot produce a shape with no area, not to
+                      have an opinion about how small is useful. */}
                   <input
                     type="number"
-                    min="20"
-                    max="1000"
+                    min="1"
                     value={shapeWidth}
                     onChange={(e) => applyShapeSize(parseInt(e.target.value) || 200, shapeHeight)}
                     className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
@@ -1010,8 +1018,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Height (px)</label>
                   <input
                     type="number"
-                    min="20"
-                    max="1000"
+                    min="1"
                     value={shapeHeight}
                     onChange={(e) => applyShapeSize(shapeWidth, parseInt(e.target.value) || 200)}
                     className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
