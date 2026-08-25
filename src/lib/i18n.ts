@@ -202,6 +202,31 @@ export function t(key: TranslationKey, vars?: Record<string, string | number>): 
   )
 }
 
+/**
+ * Which plural form the current language wants for a count.
+ *
+ * "1 contribution" / "2 contributions" is an English-shaped question, and
+ * asking it that way gets Russian wrong: it takes one form for 1, another for
+ * 2-4, and a third for 5 and up, so a single "add an s" rule mislabels three
+ * numbers in every ten. Intl.PluralRules already knows every language's rule,
+ * so this asks it rather than encoding a guess.
+ *
+ * Collapsed to three slots, because that is as many as any language this app
+ * speaks distinguishes: `other` and `many` share a key, which is the same
+ * string in each of them.
+ */
+export function pluralCategory(count: number): 'one' | 'few' | 'many' {
+  try {
+    const category = new Intl.PluralRules(currentLanguage()).select(count)
+    if (category === 'one') return 'one'
+    if (category === 'few') return 'few'
+    return 'many'
+  } catch {
+    // An environment without Intl, or a tag it dislikes: English's rule.
+    return count === 1 ? 'one' : 'many'
+  }
+}
+
 // The static privacy and terms pages write this same key, and both live in
 // their own tab. Without this an open app tab would keep whatever it read at
 // startup -- the same trap the theme switch fell into.

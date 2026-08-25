@@ -6,7 +6,7 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
-import { useTranslation } from '../lib/i18n'
+import { useTranslation, pluralCategory } from '../lib/i18n'
 import RichText from './RichText'
 import ConnectTiles from './ConnectTiles'
 import type { TranslationKey } from '../locales/en'
@@ -145,10 +145,23 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                       style={{ width: `${percent}%`, background: 'rgb(var(--c-accent))' }}
                     />
                   </div>
+                  {/* Zero keeps its own sentence rather than being handed to
+                      the plural rule -- "0 contributions" is arithmetic where
+                      "nobody yet" is the thing worth saying. Above zero the
+                      language picks its own form: Russian wants three, and
+                      wants the first of them again at 21, which no amount of
+                      appending an s gets right. */}
                   <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
                     {month.contributionCount === 0
-                      ? 'Nobody yet this month'
-                      : `${month.contributionCount} contribution${month.contributionCount === 1 ? '' : 's'} this month`}
+                      ? t('landing.support.noneYet')
+                      : t(
+                          ({
+                            one: 'landing.support.countOne',
+                            few: 'landing.support.countFew',
+                            many: 'landing.support.countMany',
+                          } as const)[pluralCategory(month.contributionCount)],
+                          { count: month.contributionCount },
+                        )}
                   </p>
                 </>
               ) : (
