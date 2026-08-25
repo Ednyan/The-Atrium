@@ -3357,15 +3357,42 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                minY <= viewportBottom + buffer
       }
 
-      const traceX = trace.x
-      const traceY = trace.y
-      // Rough bounds check (traces are centered, so add some buffer)
-      return traceX >= viewportLeft - buffer &&
-             traceX <= viewportRight + buffer &&
-             traceY >= viewportTop - buffer &&
-             traceY <= viewportBottom + buffer
+      // The trace's own extent, not a fixed buffer.
+      //
+      // This compared the centre point against the viewport plus a flat 500px
+      // allowance, which is only ever right by luck: a trace wider than that
+      // has its centre leave the boundary while its body is still covering
+      // the screen, and it blinks out in front of you. The bigger the trace
+      // the worse it is, which is exactly backwards -- the traces most worth
+      // keeping on screen are the ones most likely to vanish.
+      //
+      // Measuring from the nearest edge instead means a trace is dropped only
+      // once the whole of it has left. The fade further down already worked
+      // this way and carried a comment saying why; the filter that decides
+      // whether to render at all never did, so a trace could be culled before
+      // it had finished fading.
+      //
+      // Half-extents are in world units here (the viewport bounds above are
+      // already divided by zoom), so scale applies but zoom does not. A
+      // rotated trace uses its half-diagonal on both axes, which overstates
+      // the reach slightly and is the safe direction to be wrong in.
+      const { width: baseW, height: baseH } = getTraceSize(trace)
+      const boxW = trace.type === 'shape' ? (trace.width || 200) : baseW * (trace.cropWidth ?? 1)
+      const boxH = trace.type === 'shape' ? (trace.height || 200) : baseH * (trace.cropHeight ?? 1)
+      let halfW = (boxW * (trace.scaleX ?? trace.scale ?? 1)) / 2
+      let halfH = (boxH * (trace.scaleY ?? trace.scale ?? 1)) / 2
+      if ((trace.rotation ?? 0) % 360 !== 0) {
+        const halfDiag = Math.hypot(halfW, halfH)
+        halfW = halfDiag
+        halfH = halfDiag
+      }
+
+      return trace.x + halfW >= viewportLeft - buffer &&
+             trace.x - halfW <= viewportRight + buffer &&
+             trace.y + halfH >= viewportTop - buffer &&
+             trace.y - halfH <= viewportBottom + buffer
     })
-  }, [traces, zoom, worldOffset.x, worldOffset.y])
+  }, [traces, zoom, worldOffset.x, worldOffset.y, getTraceSize])
 
   // Memoize sorted items to avoid re-sorting on every render
   const sortedItems = React.useMemo(() => {
