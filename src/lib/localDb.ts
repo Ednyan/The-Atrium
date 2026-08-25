@@ -171,7 +171,16 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
       // tail of a longer old file stranded after the new one.
       await writeBinaryFile(path, bytes)
     } else {
-      await invoke('append_binary_file', binaryPayload(path, bytes))
+      try {
+        await invoke('append_binary_file', binaryPayload(path, bytes))
+      } catch (rawError) {
+        // Same two-shape fallback as writeBinaryFile: the command takes
+        // either encoding, so if the raw channel is unavailable the JSON one
+        // still lands the bytes. Slower, and a written file beats a fast
+        // half of one.
+        await invoke('append_binary_file', { path, bytes: Array.from(bytes) })
+          .catch(() => { throw rawError })
+      }
     }
     offset += WRITE_CHUNK_BYTES
   }

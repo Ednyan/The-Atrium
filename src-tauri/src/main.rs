@@ -268,7 +268,7 @@ fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    fs::write(file_path, contents).map_err(|e| e.to_string())
+    fs::write(file_path, &contents).map_err(|e| e.to_string())
 }
 
 // Takes a raw binary payload rather than `bytes: Vec<u8>`.
@@ -287,23 +287,49 @@ fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
 // the UTF-8 path, then the file. A header would have meant percent-encoding
 // the path to keep it ASCII, and these paths contain whatever the user named
 // their atrium.
-// Splits the payload described above into its path and its bytes.
-fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(PathBuf, &'a [u8]), String> {
-    let body = match request.body() {
-        tauri::ipc::InvokeBody::Raw(bytes) => bytes,
-        _ => return Err("expected a raw binary payload".to_string()),
-    };
-
-    if body.len() < 4 {
-        return Err("payload is missing its path header".to_string());
+// Splits an incoming write into its destination and its bytes, accepting
+// either encoding the front end can produce.
+//
+// The raw form is the fast one described above: a four-byte big-endian length,
+// the UTF-8 path, then the file, sent over Tauri's binary channel. The JSON
+// form is `{ path, bytes: [...] }` -- what this command took before, and what
+// the front end still falls back to.
+//
+// Taking both is not politeness, it is the difference between a slow write and
+// a lost file. When this only understood raw, anything that arrived as JSON
+// was rejected, the fallback retried in the one shape that had just been
+// removed, and the failure surfaced nowhere: the trace row was already written
+// with a local:// URL pointing at a file that never got created, so the atrium
+// came back later reading "Missing file". A write path is the wrong place to
+// be strict about wire format.
+fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(PathBuf, Vec<u8>), String> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(body) => {
+            if body.len() < 4 {
+                return Err("payload is missing its path header".to_string());
+            }
+            let path_len = u32::from_be_bytes([body[0], body[1], body[2], body[3]]) as usize;
+            if body.len() < 4 + path_len {
+                return Err("payload is truncated".to_string());
+            }
+            let path = std::str::from_utf8(&body[4..4 + path_len]).map_err(|e| e.to_string())?;
+            Ok((PathBuf::from(path), body[4 + path_len..].to_vec()))
+        }
+        tauri::ipc::InvokeBody::Json(value) => {
+            let path = value
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "payload has no path".to_string())?;
+            let bytes = value
+                .get("bytes")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| "payload has no bytes".to_string())?
+                .iter()
+                .map(|n| n.as_u64().unwrap_or(0) as u8)
+                .collect::<Vec<u8>>();
+            Ok((PathBuf::from(path), bytes))
+        }
     }
-    let path_len = u32::from_be_bytes([body[0], body[1], body[2], body[3]]) as usize;
-    if body.len() < 4 + path_len {
-        return Err("payload is truncated".to_string());
-    }
-
-    let path = std::str::from_utf8(&body[4..4 + path_len]).map_err(|e| e.to_string())?;
-    Ok((PathBuf::from(path), &body[4 + path_len..]))
 }
 
 #[tauri::command]
@@ -345,7 +371,7 @@ fn append_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
         .open(file_path)
         .map_err(|e| e.to_string())?;
 
-    file.write_all(contents).map_err(|e| e.to_string())
+    file.write_all(&contents).map_err(|e| e.to_string())
 }
 
 // Returns an ipc::Response rather than a Vec<u8>.

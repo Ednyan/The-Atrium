@@ -3631,8 +3631,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const localUrl = `local://traces/${storagePath}`
       // Pre-seed cache so TraceOverlay resolves instantly
       import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
-      // Write to local storage for persistence (fire-and-forget)
-      supabase.storage.from('traces').upload(storagePath, file)
+      // Written in the background so the trace can appear immediately -- but
+      // not ignored.
+      //
+      // This used to be a bare unawaited call. The trace row is inserted
+      // straight afterwards pointing at local://, so when the write failed
+      // there was a trace on the canvas referring to a file that had never
+      // been created: fine for the rest of the session, because the blob URL
+      // is cached in memory, and "Missing file" the next time the atrium was
+      // opened. Nothing anywhere said a word. A background write may be
+      // invisible while it works; it must not be invisible when it does not.
+      void supabase.storage.from('traces').upload(storagePath, file)
+        .then(({ error }: { error: any }) => {
+          if (error) {
+            console.error('[vault] failed to write media file:', storagePath, error)
+            showToast(`Couldn't save ${file.name} to the vault — it will show as a missing file`)
+          }
+        })
+        .catch((err: any) => {
+          console.error('[vault] failed to write media file:', storagePath, err)
+          showToast(`Couldn't save ${file.name} to the vault — it will show as a missing file`)
+        })
       return localUrl
     }
 

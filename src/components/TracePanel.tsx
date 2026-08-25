@@ -386,7 +386,15 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           // page-per-trace, which never reads back, worked fine.
           const { preCacheLocalUrl } = await import('../lib/localDb')
           preCacheLocalUrl(localUrl, blobUrl)
-          supabase.storage.from('traces').upload(storagePath, file)
+          // Background, but not ignored -- see the matching write in
+          // LobbyScene's uploadFile. An unwatched failure here leaves a trace
+          // pointing at a file that was never created, which only shows up as
+          // "Missing file" the next time the atrium is opened.
+          void supabase.storage.from('traces').upload(storagePath, file)
+            .then(({ error }: { error: any }) => {
+              if (error) console.error('[vault] failed to write media file:', storagePath, error)
+            })
+            .catch((err: any) => console.error('[vault] failed to write media file:', storagePath, err))
           uploadedUrl = localUrl
         } else if (supabase) {
           // Web: Upload to Supabase Storage
