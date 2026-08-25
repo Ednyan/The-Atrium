@@ -991,6 +991,32 @@ input[type='color']::-moz-color-swatch { border: none; }
   .donate-bubble { transition: none; }
 }
 
+/* The play/pause control on a video trace, shown only under the pointer.
+
+   A canvas full of videos was a canvas full of little grey pills -- chrome
+   repeated once per trace, competing with the thing it belongs to. It is only
+   ever wanted at the moment somebody is reaching for it, and reaching for it
+   means the pointer is already on the trace.
+
+   Keyed off the trace container's data attribute rather than a Tailwind group,
+   because that attribute is already on the element that receives the hover and
+   adding a second marker for the same element invites them to drift apart.
+
+   focus-within keeps it reachable by keyboard: tabbing to the button with no
+   pointer anywhere near would otherwise land on something invisible. */
+.trace-video-control {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+[data-trace-element="true"]:hover .trace-video-control,
+[data-trace-element="true"]:focus-within .trace-video-control {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-video-control { transition: none; }
+}
+
 /* The question mark beside "optional", and what it says.
    Square rather than a circle: there is not a rounded corner anywhere else in
    this app, and a round badge reads as borrowed from somewhere warmer. */

@@ -4553,7 +4553,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                   audio trace's: the one interactive thing inside a trace that
                   is otherwise inert to the pointer. */}
               {trace.type === 'video' && trace.mediaUrl && (
-                <div className="absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
+                <div className="trace-video-control absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
                   <button
                     className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
                     style={{
