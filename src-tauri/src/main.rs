@@ -287,6 +287,51 @@ fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
 // the UTF-8 path, then the file. A header would have meant percent-encoding
 // the path to keep it ASCII, and these paths contain whatever the user named
 // their atrium.
+// Lifts a path over Windows' 260-character MAX_PATH.
+//
+// A vault media file lands at
+//   <vault>\<atrium name, up to 80 chars>__<36-char id>\media\traces\<id>\<file>
+// which is around 200 characters before the atrium is even named. An atrium
+// with a long name pushes the whole thing past 260, and every Win32 call
+// underneath std::fs then refuses it -- so the file was never written, the
+// trace row was inserted anyway pointing at local://, and the atrium came back
+// reading "Missing file" for everything in it. One atrium, the one with the
+// long name, which is exactly how it was reported.
+//
+// The extended-length prefix opts into the wide API and raises the limit to
+// roughly 32,767. It requires a fully-qualified path with no forward slashes
+// and no . or .. components, so separators are normalised first and a relative
+// path is handed back untouched rather than corrupted.
+//
+// Shortening the folder name instead would have been the wrong fix twice over:
+// it does not help a deeply-nested vault, and it would change the folder every
+// existing long-named atrium already lives in, orphaning the files that ARE
+// there.
+#[cfg(windows)]
+fn extended_path(path: PathBuf) -> PathBuf {
+    const PREFIX: &str = r"\\?\";
+    const UNC_PREFIX: &str = r"\\?\UNC\";
+
+    if !path.is_absolute() {
+        return path;
+    }
+
+    let text = path.to_string_lossy().replace('/', r"\");
+    if text.starts_with(PREFIX) {
+        return PathBuf::from(text);
+    }
+    if let Some(rest) = text.strip_prefix(r"\\") {
+        // \\server\share -> \\?\UNC\server\share
+        return PathBuf::from(format!("{}{}", UNC_PREFIX, rest));
+    }
+    PathBuf::from(format!("{}{}", PREFIX, text))
+}
+
+#[cfg(not(windows))]
+fn extended_path(path: PathBuf) -> PathBuf {
+    path
+}
+
 // Splits an incoming write into its destination and its bytes, accepting
 // either encoding the front end can produce.
 //
@@ -335,6 +380,7 @@ fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(Pat
 #[tauri::command]
 fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let (file_path, contents) = split_binary_payload(&request)?;
+    let file_path = extended_path(file_path);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -361,6 +407,7 @@ fn append_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     use std::io::Write;
 
     let (file_path, contents) = split_binary_payload(&request)?;
+    let file_path = extended_path(file_path);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -389,14 +436,14 @@ fn append_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
 // too, so this isn't only about PDFs.
 #[tauri::command]
 fn read_binary_file(path: String) -> Result<tauri::ipc::Response, String> {
-    let bytes = fs::read(PathBuf::from(path)).map_err(|e| e.to_string())?;
+    let bytes = fs::read(extended_path(PathBuf::from(path))).map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[tauri::command]
 fn copy_file_to_path(source_path: String, destination_path: String) -> Result<(), String> {
-    let source = PathBuf::from(source_path);
-    let destination = PathBuf::from(destination_path);
+    let source = extended_path(PathBuf::from(source_path));
+    let destination = extended_path(PathBuf::from(destination_path));
 
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
