@@ -4475,6 +4475,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
               {/* Video Content */}
               {trace.type === 'video' && trace.mediaUrl && (
                 <video
+                  id={`video-${trace.id}`}
                   src={localMediaUrls[trace.id] || trace.mediaUrl}
                   controls={false}
                   className="w-full h-full pointer-events-none select-none"
@@ -4510,6 +4511,47 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                     })
                   }}
                 />
+              )}
+
+              {/* Play, for a video sitting on the canvas.
+
+                  The video element above cannot take the click itself: it is
+                  pointer-events-none so that dragging a video trace moves the
+                  trace rather than poking at the video, and controls={false}
+                  for the same reason. That left the canvas showing a still
+                  frame with no way to start it, and the modal as the only
+                  place a video would actually play.
+
+                  So it gets a control of its own, driven exactly like the
+                  audio trace's: the one interactive thing inside a trace that
+                  is otherwise inert to the pointer. */}
+              {trace.type === 'video' && trace.mediaUrl && (
+                <div className="absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
+                  <button
+                    className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
+                    style={{
+                      background: playingMedia.has(trace.id)
+                        ? 'rgb(var(--c-line) / 0.25)'
+                        : 'rgb(var(--c-fg) / 0.08)',
+                      color: playingMedia.has(trace.id) ? 'rgb(var(--c-fg))' : 'rgb(var(--c-fg) / 0.65)',
+                      border: `1px solid rgb(var(--c-fg) / ${playingMedia.has(trace.id) ? 0.45 : 0.2})`,
+                      backdropFilter: 'blur(8px)',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const el = document.getElementById(`video-${trace.id}`) as HTMLVideoElement | null
+                      if (el) { el.paused ? void el.play() : el.pause() }
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                  >
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
+                      {playingMedia.has(trace.id)
+                        ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
+                        : <polygon points="2,0.5 9,5 2,9.5"/>}
+                    </svg>
+                    {playingMedia.has(trace.id) ? 'Pause' : 'Play'}
+                  </button>
+                </div>
               )}
 
               {/* Audio Content */}

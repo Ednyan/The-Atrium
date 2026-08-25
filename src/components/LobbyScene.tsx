@@ -473,6 +473,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     cornerRadius: number
     shapeType: 'rectangle' | 'circle' | 'triangle'
   }
+  // How far through a batch import we are, or null when nothing is importing.
+  // Drives the panel that covers the atrium while files are being written.
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
+
   const [shapeDraftSize, setShapeDraftSize] = useState<ShapeDraft | null>(null)
   const shapeDraftSizeRef = useRef<ShapeDraft | null>(null)
   useEffect(() => { shapeDraftSizeRef.current = shapeDraftSize }, [shapeDraftSize])
@@ -3391,6 +3395,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     // Phase 2: pack the batch around the drop point, then upload/insert.
     const offsets = packBoxesAroundCenter(pending.map(p => p.size), 24, packingShapeRef.current)
 
+    setImportProgress({ done: 0, total: pending.length })
+
     for (let i = 0; i < pending.length; i++) {
       const item = pending[i]
       const dropX = worldX + offsets[i].x
@@ -3404,7 +3410,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       } else {
         await insertDroppedTrace(item.traceType, item.content, item.mediaUrl, dropX, dropY)
       }
+
+      setImportProgress({ done: i + 1, total: pending.length })
+
+      // A frame between files, so the count above actually reaches the screen.
+      //
+      // Everything in this loop is awaited, but awaits resolve in
+      // microtasks -- which run to exhaustion before the browser paints. A
+      // whole batch could therefore finish with the panel never having drawn
+      // a single number. requestAnimationFrame is the yield that hands the
+      // frame back, and it costs one frame per file against work measured in
+      // hundreds of them.
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     }
+
+    setImportProgress(null)
   }
 
   // Drag-and-drop trace creation
@@ -3689,6 +3709,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         media_url: mediaUrl || null,
         scale: 1.0,
         rotation: 0.0,
+        // Explicit, not left to the column default.
+        //
+        // TracePanel sets this; this path never did, so a dropped or
+        // imported trace took whatever the table hands out. The web
+        // migration moved that default from 8 to 0, but a SQLite column
+        // default is fixed when the table is created -- so every desktop
+        // vault made before that change still rounds the corners of
+        // everything imported into it. Saying 0 here is the same answer
+        // on both platforms and on a vault of any age.
+        border_radius: 0,
         lobby_id: lobbyId,
         show_description: false,
         show_filename: false,
@@ -3733,6 +3763,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         scaleX: 1.0,
         scaleY: 1.0,
         rotation: 0.0,
+        borderRadius: 0,
       }
       useGameStore.getState().addTrace(trace)
       return trace.id
@@ -3788,6 +3819,54 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         />
 
         {/* Drop Zone Indicator */}
+        {/* Importing: cover the atrium and say how far along it is.
+
+            Writing a batch of files is real work -- decoding each image to
+            measure it, packing the layout, a database insert apiece -- and it
+            all happens on the thread that draws the room, so the room stops
+            answering. Before this there was nothing to distinguish that from
+            the app having died, and panning a canvas mid-import only made it
+            worse.
+
+            pointer-events-auto is the lock: the overlay takes the clicks and
+            drags that would otherwise reach the canvas, so movement stops for
+            as long as the import runs and resumes by itself when it ends. */}
+        {importProgress && (
+          <div
+            className="absolute inset-0 z-[9999] pointer-events-auto flex items-center justify-center cursor-wait"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.72)', backdropFilter: 'blur(2px)' }}
+            onWheel={e => e.stopPropagation()}
+            onContextMenu={e => e.preventDefault()}
+          >
+            <div className="relative bg-nier-blackLight border border-nier-border/50 px-8 py-6 min-w-[280px]">
+              <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+
+              <p className="text-nier-strong text-xs tracking-[0.2em] uppercase font-mono mb-3">
+                {/* English, like every other string in this file. The
+                    atrium interior has not been through the catalogue yet
+                    (see TraceOverlay/LobbyScene in the i18n notes), and half
+                    a translated panel is worse than a consistent one. */}
+                ◇ Importing
+              </p>
+              <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden mb-2">
+                <div
+                  className="h-full transition-all duration-200 ease-out"
+                  style={{
+                    width: `${importProgress.total ? (importProgress.done / importProgress.total) * 100 : 0}%`,
+                    background: 'rgb(var(--c-fg))',
+                  }}
+                />
+              </div>
+              <p className="text-nier-bg/70 text-[0.7rem] tracking-[0.15em] uppercase font-mono">
+                {importProgress.done} / {importProgress.total} files
+              </p>
+            </div>
+          </div>
+        )}
+
         {isDragOver && (
           <div className="absolute inset-0 z-[9998] pointer-events-none flex items-center justify-center"
                style={{ backgroundColor: 'rgba(203, 203, 203, 0.08)', border: '2px dashed rgba(143, 143, 143, 0.5)' }}>
