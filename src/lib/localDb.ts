@@ -113,11 +113,7 @@ async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
   //
   // Tauri sends a raw body only when the payload itself is the binary, so the
   // path rides inside it -- see write_binary_file in main.rs for the layout.
-  const pathBytes = new TextEncoder().encode(path)
-  const payload = new Uint8Array(4 + pathBytes.length + bytes.length)
-  new DataView(payload.buffer).setUint32(0, pathBytes.length, false)
-  payload.set(pathBytes, 4)
-  payload.set(bytes, 4 + pathBytes.length)
+  const payload = binaryPayload(path, bytes)
 
   try {
     await invoke('write_binary_file', payload)
@@ -131,6 +127,53 @@ async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
     } catch {
       throw rawError
     }
+  }
+}
+
+// The path header the two binary write commands share -- see
+// write_binary_file in main.rs.
+function binaryPayload(path: string, bytes: Uint8Array): Uint8Array {
+  const pathBytes = new TextEncoder().encode(path)
+  const payload = new Uint8Array(4 + pathBytes.length + bytes.length)
+  new DataView(payload.buffer).setUint32(0, pathBytes.length, false)
+  payload.set(pathBytes, 4)
+  payload.set(bytes, 4 + pathBytes.length)
+  return payload
+}
+
+// How much of a file is in memory at once while it is being written.
+//
+// Eight megabytes is small enough that a huge import costs no more than a
+// small one, and large enough that the per-call overhead disappears against
+// the work -- a 500MB video is 63 round trips, not 500.
+const WRITE_CHUNK_BYTES = 8 * 1024 * 1024
+
+// Streams a blob to disk in slices, so peak memory is one chunk rather than
+// the whole file.
+//
+// Reading a 500MB video with arrayBuffer() means that video exists complete in
+// the webview, again in the IPC payload, and again on the Rust side, all at the
+// same instant. Slicing keeps every one of those the size of a chunk. Blob
+// slices are lazy: the bytes are only read when a slice is turned into a
+// buffer, so this never materialises the original either.
+async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
+  if (blob.size <= WRITE_CHUNK_BYTES) {
+    await writeBinaryFile(path, new Uint8Array(await blob.arrayBuffer()))
+    return
+  }
+
+  let offset = 0
+  while (offset < blob.size) {
+    const slice = blob.slice(offset, offset + WRITE_CHUNK_BYTES)
+    const bytes = new Uint8Array(await slice.arrayBuffer())
+    if (offset === 0) {
+      // Truncating, so re-importing over an existing path cannot leave the
+      // tail of a longer old file stranded after the new one.
+      await writeBinaryFile(path, bytes)
+    } else {
+      await invoke('append_binary_file', binaryPayload(path, bytes))
+    }
+    offset += WRITE_CHUNK_BYTES
   }
 }
 
@@ -1483,15 +1526,15 @@ class LocalStorage {
             filePath = await joinPathSegments(mediaBasePath, [bucket, ...path.split('/').filter(Boolean)])
           }
 
-          let bytes: Uint8Array
+          // A Blob is streamed rather than read whole -- see writeBlobToFile.
+          // Anything already in memory as bytes (a clipboard image, a
+          // converted embed) is written in one go, because it is already the
+          // thing streaming exists to avoid.
           if (fileData instanceof Blob || fileData instanceof File) {
-            const buffer = await fileData.arrayBuffer()
-            bytes = new Uint8Array(buffer)
+            await writeBlobToFile(filePath, fileData)
           } else {
-            bytes = fileData
+            await writeBinaryFile(filePath, fileData)
           }
-
-          await writeBinaryFile(filePath, bytes)
           return { data: { path }, error: null }
         } catch (e: any) {
           return { data: null, error: { message: e.message || String(e) } }

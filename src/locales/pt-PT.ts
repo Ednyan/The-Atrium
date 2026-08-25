@@ -174,6 +174,9 @@ const ptPT: Catalogue = {
   'chooseName.permanentWarning': 'O seu nome de utilizador é *permanente* e não pode ser alterado depois. O seu nome de exibição pode.',
   'chooseName.hint': '3-20 carateres, letras/números/traços baixos',
   'chooseName.placeholder': 'nome de utilizador',
+  'chooseName.continue': 'Continuar',
+  'chooseName.saving': 'A guardar...',
+  'chooseName.errSave': 'Não foi possível guardar esse nome de utilizador',
 
   // ------------------------------------------------------------- donating
   'donate.tooltip': 'Apoie o criador',
@@ -406,6 +409,9 @@ const ptPT: Catalogue = {
   'desktop.linux': 'AppImage, a maioria das distribuições',
   'desktop.unavailable': 'Ainda não disponível',
   'desktop.allReleases': 'Todas as versões',
+  'desktop.downloads': '{count} transferências até agora',
+  'desktop.latestRelease': 'Versão mais recente {version}',
+  'desktop.selfUpdating': 'As atualizações instalam-se sozinhas assim que estiver a usá-la.',
   'desktop.web': 'Web',
   'desktop.desktop': 'Computador',
   'desktop.moveBetween': 'Pode alternar entre os dois com as ferramentas de importação e exportação presentes na versão web e desktop: transfira um atrium a partir da web e importe-o para a aplicação de computador, ou vice-versa.',

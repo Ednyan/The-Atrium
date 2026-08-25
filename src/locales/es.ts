@@ -167,6 +167,9 @@ const es: Catalogue = {
   'chooseName.permanentWarning': 'Tu nombre de usuario es *permanente* y no se puede cambiar después. Tu nombre visible sí.',
   'chooseName.hint': '3-20 caracteres, letras/números/guiones bajos',
   'chooseName.placeholder': 'nombre de usuario',
+  'chooseName.continue': 'Continuar',
+  'chooseName.saving': 'Guardando...',
+  'chooseName.errSave': 'No se pudo guardar ese nombre de usuario',
 
   // ------------------------------------------------------------- donating
   'donate.tooltip': 'Apoya al creador',
@@ -399,6 +402,9 @@ const es: Catalogue = {
   'desktop.linux': 'AppImage, la mayoría de distros',
   'desktop.unavailable': 'Aún no disponible',
   'desktop.allReleases': 'Todas las versiones',
+  'desktop.downloads': '{count} descargas hasta ahora',
+  'desktop.latestRelease': 'Última versión {version}',
+  'desktop.selfUpdating': 'Las actualizaciones se instalan solas una vez que lo tienes en marcha.',
   'desktop.web': 'Web',
   'desktop.desktop': 'Escritorio',
   'desktop.moveBetween': 'Puedes alternar entre ambas con las herramientas de importación y exportación presentes en la versión web y de escritorio: descarga un atrium desde la web e impórtalo en la aplicación de escritorio, o viceversa.',

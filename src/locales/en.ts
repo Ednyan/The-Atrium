@@ -204,6 +204,9 @@ export const en = {
   'chooseName.permanentWarning': "Your username is *permanent* and can't be changed later. Your display name can.",
   'chooseName.hint': '3-20 characters, letters/numbers/underscores',
   'chooseName.placeholder': 'username',
+  'chooseName.continue': 'Continue',
+  'chooseName.saving': 'Saving...',
+  'chooseName.errSave': 'Could not save that username',
 
   // ------------------------------------------------- profile settings, web
   'profile.title': 'Profile Settings',
@@ -340,6 +343,9 @@ export const en = {
   'desktop.linux': 'AppImage, most distros',
   'desktop.unavailable': 'Not available yet',
   'desktop.allReleases': 'All releases',
+  'desktop.downloads': '{count} downloads so far',
+  'desktop.latestRelease': 'Latest release {version}',
+  'desktop.selfUpdating': "Updates install themselves once you're running it.",
   'desktop.web': 'Web',
   'desktop.desktop': 'Desktop',
   'desktop.moveBetween': 'You can switch between the two using the import/export tools available in both the web and desktop versions: download an atrium from the web and import it into the desktop app, or vice versa.',

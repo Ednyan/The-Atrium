@@ -82,7 +82,7 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
       onComplete(trimmed)
     } catch (err: any) {
       console.error('Failed to set username:', err)
-      setError(err?.message || 'Could not save that username')
+      setError(err?.message || t('chooseName.errSave'))
       setLoading(false)
     }
   }
@@ -140,7 +140,7 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
             disabled={loading || !username.trim()}
             className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {loading ? '◇ Saving...' : 'Continue'}
+            {loading ? `◇ ${t('chooseName.saving')}` : t('chooseName.continue')}
           </button>
         </form>
       </div>

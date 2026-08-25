@@ -1018,7 +1018,27 @@ function AppInner() {
           .select('username, display_name, player_color, active_lobby_id, username_chosen')
           .eq('id', session.user.id)
           .maybeSingle()
-          .then(async ({ data }: any) => {
+          .then(async ({ data, error }: any) => {
+            // A read that failed is not a profile that is missing.
+            //
+            // maybeSingle() answers with null data both when the row genuinely
+            // is not there and when the request never got through -- an access
+            // token that went stale while the tab sat open, RLS declining, the
+            // network dropping. Treating those as the same thing is what put
+            // established accounts in front of "choose a username", a screen
+            // that tells them the choice is permanent, on nothing worse than a
+            // long idle.
+            //
+            // So: say nothing on an error. onAuthStateChange fires for this
+            // same session with its own retries, and gets another go once the
+            // token has refreshed; the cost of waiting for it is a moment on
+            // the landing page, against a screen that reads like the account
+            // was lost.
+            if (error) {
+              setLoading(false)
+              return
+            }
+
             // Same recovery as onAuthStateChange: a session with no profile, or
             // one still on the trigger's auto-generated username, means no
             // username was ever chosen. Without this a reload would strand them
@@ -1142,7 +1162,7 @@ function AppInner() {
         // what a first Google sign-in did -- hand them the username screen,
         // which creates the profile itself.
         const loadProfile = async (attempt = 0): Promise<void> => {
-          const { data } = await (supabase!
+          const { data, error } = await (supabase!
             .from('profiles') as any)
             .select('username, display_name, player_color, username_chosen')
             .eq('id', session.user.id)
@@ -1150,7 +1170,16 @@ function AppInner() {
 
           if (!data) {
             if (attempt >= 3) {
-              setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+              // Only an answered query that came back empty means the profile
+              // is genuinely absent. An error means we could not find out --
+              // and guessing wrong in that direction shows somebody who has
+              // had an account for months a screen announcing they are about
+              // to pick a permanent username. Better to leave them signed out
+              // on the landing page, which the next refreshed token fixes by
+              // itself, than to say something untrue about their account.
+              if (!error) {
+                setPendingUsernameUser({ id: session.user.id, email: session.user.email ?? '' })
+              }
               // Same reason as the getSession path: the loading splash renders
               // ahead of the username screen, so it has to be cleared here too.
               setLoading(false)
@@ -1187,8 +1216,21 @@ function AppInner() {
           const justSignedIn = !wasSignedInRef.current
           wasSignedInRef.current = true
           const currentRoute = parseRoute()
+          // The landing page is somewhere people mean to be, so nothing
+          // navigates away from it.
+          //
+          // The guards below still could: SIGNED_IN is not only a login, it
+          // also arrives when a stale token refreshes, and if that is the
+          // first event this listener sees then justSignedIn is true and the
+          // event is not INITIAL_SESSION -- so somebody reading the front page
+          // with a session that had been idle got thrown to /welcome
+          // mid-scroll. Leaving only the login page as a departure point makes
+          // that impossible rather than merely unlikely: signing in still ends
+          // up at /welcome, because that is where signing in goes, and every
+          // other way of getting to the atrium from the landing page is a
+          // button the reader pressed on purpose.
           const isRealLogin = event !== 'INITIAL_SESSION' && justSignedIn
-          if (isRealLogin && (currentRoute.page === 'landing' || currentRoute.page === 'login')) {
+          if (isRealLogin && currentRoute.page === 'login') {
             navigate('/welcome')
           }
         }

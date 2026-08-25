@@ -80,6 +80,8 @@ export default function DesktopAppSection() {
   const { t } = useTranslation()
   const [version, setVersion] = useState<string | null>(null)
   const [assets, setAssets] = useState<Record<string, string>>({})
+  // Total installers downloaded across every release, or null until known.
+  const [downloads, setDownloads] = useState<number | null>(null)
   // Which download button the pointer (or focus) is on, and so which
   // first-launch note is showing.
   const [hoveredOs, setHoveredOs] = useState<Build['os'] | null>(null)
@@ -92,6 +94,33 @@ export default function DesktopAppSection() {
   }, [hoveredOs])
 
   const noteOpen = !!hoveredOs && !!assets[hoveredOs]
+
+  // Installers only, summed over every release.
+  //
+  // GitHub counts a download against each asset, and latest.json is an asset
+  // -- one every installed copy fetches on launch, hourly, and on every
+  // reconnect. Counting it would report the updater talking to itself: at the
+  // time of writing that manifest alone had three times as many hits as every
+  // installer combined. Signatures are fetched by the updater too, for the
+  // same reason. What is left is the number somebody meant to ask for.
+  useEffect(() => {
+    let cancelled = false
+    const INSTALLER = /\.(exe|msi|dmg|AppImage|deb|rpm)$/i
+    fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((releases: any) => {
+        if (cancelled || !Array.isArray(releases)) return
+        let total = 0
+        for (const release of releases) {
+          for (const asset of release.assets || []) {
+            if (INSTALLER.test(asset.name)) total += asset.download_count || 0
+          }
+        }
+        setDownloads(total)
+      })
+      .catch(() => { /* the count is a nicety; the downloads still work */ })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -207,7 +236,13 @@ export default function DesktopAppSection() {
       </div>
 
       <p className="text-nier-bg/70 text-xs tracking-wider mb-10">
-        {version ? `Latest release ${version} · ` : ''}
+        {version ? `${t('desktop.latestRelease', { version })} · ` : ''}
+        {downloads !== null && (
+          <>
+            <span className="text-nier-bg/85">{t('desktop.downloads', { count: downloads.toLocaleString() })}</span>
+            {' · '}
+          </>
+        )}
         <a
           href={RELEASES_URL}
           target="_blank"
@@ -216,7 +251,7 @@ export default function DesktopAppSection() {
         >
           {t('desktop.allReleases')}
         </a>
-        {' · '}Updates install themselves once you're running it.
+        {' · '}{t('desktop.selfUpdating')}
       </p>
 
       {/* Comparison */}

@@ -169,6 +169,9 @@ const fr: Catalogue = {
   'chooseName.permanentWarning': 'Votre nom d’utilisateur est *définitif* et ne pourra plus être modifié. Votre nom affiché, lui, le peut.',
   'chooseName.hint': '3 à 20 caractères, lettres/chiffres/tirets bas',
   'chooseName.placeholder': 'nom d’utilisateur',
+  'chooseName.continue': 'Continuer',
+  'chooseName.saving': 'Enregistrement...',
+  'chooseName.errSave': "Impossible d'enregistrer ce nom d'utilisateur",
 
   // ------------------------------------------------------------- donating
   'donate.tooltip': 'Soutenir le créateur',
@@ -401,6 +404,9 @@ const fr: Catalogue = {
   'desktop.linux': 'AppImage, la plupart des distributions',
   'desktop.unavailable': 'Pas encore disponible',
   'desktop.allReleases': 'Toutes les versions',
+  'desktop.downloads': '{count} téléchargements à ce jour',
+  'desktop.latestRelease': 'Dernière version {version}',
+  'desktop.selfUpdating': "Les mises à jour s'installent toutes seules une fois l'application lancée.",
   'desktop.web': 'Web',
   'desktop.desktop': 'Bureau',
   'desktop.moveBetween': "Vous pouvez passer de l'une à l'autre grâce aux outils d'import/export présents dans les versions web et bureau : téléchargez un atrium depuis le web et importez-le dans l'application de bureau, ou inversement.",

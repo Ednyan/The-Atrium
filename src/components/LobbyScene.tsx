@@ -657,6 +657,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
   const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
+  // One-shot request: a text trace just created from the canvas menu that
+  // should be selected and dropped straight into typing. Same shape and same
+  // reasoning as newPathTraceId -- ids are always fresh, so a useEffect keyed
+  // on the value fires once per request without needing to be reset.
+  const [newTextTraceId, setNewTextTraceId] = useState<string | null>(null)
   // Mirrors TraceOverlay's own multi-selection state (reported up via
   // onMultiSelectionChange) so the Layer panel can highlight every
   // multi-selected trace/group, not just the single selectedTraceId.
@@ -3699,8 +3704,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         // Same mapper the initial load/realtime paths use, so a freshly
         // dropped trace gets the full field set (showBorder/showBackground/
         // cropWidth/illuminate/etc.) instead of only ~15 of ~45 fields.
-        useGameStore.getState().addTrace(mapRowToTrace(data[0]))
+        const created = mapRowToTrace(data[0])
+        useGameStore.getState().addTrace(created)
+        // Returned so a caller can act on the trace it just made -- "Text" in
+        // the canvas menu needs the id to put it straight into editing.
+        return created.id
       }
+      return undefined
     } else {
       const preset = currentTracePreset(lobbyId)
       const trace: Trace = {
@@ -3725,6 +3735,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         rotation: 0.0,
       }
       useGameStore.getState().addTrace(trace)
+      return trace.id
     }
   }
 
@@ -3756,6 +3767,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
             newPathRequest={newPathTraceId}
+            newTextRequest={newTextTraceId}
             isDrawingMode={isDrawingMode}
             onMultiSelectionChange={setMultiSelectedTraceIds}
             canEdit={canEdit}
@@ -4746,12 +4758,30 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <button
                 key={item.label}
                 className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
-                onClick={() => {
-                  setClickedTracePosition({ x: mapContextMenu.worldX, y: mapContextMenu.worldY })
+                onClick={async () => {
+                  const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                  setMapContextMenu(null)
+
+                  // Text skips the panel entirely.
+                  //
+                  // Every other type needs something before it can exist -- a
+                  // URL, a file, a shape kind -- so a form is the only way to
+                  // ask. A text trace needs nothing: the form's one field is
+                  // the same text you are about to type into the trace itself,
+                  // so filling it in means typing the words somewhere else
+                  // first and then watching them appear somewhere else again.
+                  // Make it, and put the cursor in it.
+                  if (item.type === 'text') {
+                    if (!ensureLobbyHasSpace()) return
+                    const id = await insertDroppedTrace('text', '', undefined, anchor.x, anchor.y)
+                    if (id) setNewTextTraceId(id)
+                    return
+                  }
+
+                  setClickedTracePosition(anchor)
                   setTracePanelInitialType(item.type)
                   setTracePanelInitialShapeType(item.shape)
                   setShowTracePanel(true)
-                  setMapContextMenu(null)
                 }}
               >
                 {item.label}

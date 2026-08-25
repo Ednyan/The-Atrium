@@ -287,30 +287,65 @@ fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
 // the UTF-8 path, then the file. A header would have meant percent-encoding
 // the path to keep it ASCII, and these paths contain whatever the user named
 // their atrium.
-#[tauri::command]
-fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+// Splits the payload described above into its path and its bytes.
+fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(PathBuf, &'a [u8]), String> {
     let body = match request.body() {
         tauri::ipc::InvokeBody::Raw(bytes) => bytes,
-        _ => return Err("write_binary_file expects a raw binary payload".to_string()),
+        _ => return Err("expected a raw binary payload".to_string()),
     };
 
     if body.len() < 4 {
-        return Err("write_binary_file payload is missing its path header".to_string());
+        return Err("payload is missing its path header".to_string());
     }
     let path_len = u32::from_be_bytes([body[0], body[1], body[2], body[3]]) as usize;
     if body.len() < 4 + path_len {
-        return Err("write_binary_file payload is truncated".to_string());
+        return Err("payload is truncated".to_string());
     }
 
     let path = std::str::from_utf8(&body[4..4 + path_len]).map_err(|e| e.to_string())?;
-    let contents = &body[4 + path_len..];
+    Ok((PathBuf::from(path), &body[4 + path_len..]))
+}
 
-    let file_path = PathBuf::from(path);
+#[tauri::command]
+fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let (file_path, contents) = split_binary_payload(&request)?;
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
     fs::write(file_path, contents).map_err(|e| e.to_string())
+}
+
+// The continuation of the above, for files sent a slice at a time.
+//
+// Even over the raw channel, a single write means the whole file exists at
+// once in the webview, in the payload, and again in this process -- so a
+// 500MB video costs well over a gigabyte at the moment of import, on top of
+// whatever the atrium is already holding. Streaming keeps that flat: the
+// front end sends a few megabytes at a time and each one is appended here, so
+// peak memory is the size of a chunk rather than the size of the file, and
+// importing something enormous stops being different in kind from importing
+// something small.
+//
+// The first chunk goes through write_binary_file, which truncates -- so a
+// re-import over an existing path cannot leave the tail of the old file
+// behind the new one.
+#[tauri::command]
+fn append_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    use std::io::Write;
+
+    let (file_path, contents) = split_binary_payload(&request)?;
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file_path)
+        .map_err(|e| e.to_string())?;
+
+    file.write_all(contents).map_err(|e| e.to_string())
 }
 
 // Returns an ipc::Response rather than a Vec<u8>.
@@ -645,6 +680,7 @@ fn main() {
             get_file_size,
             write_vault_text_file,
             write_binary_file,
+            append_binary_file,
             read_binary_file,
             copy_file_to_path,
             move_path,

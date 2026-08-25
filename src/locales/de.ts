@@ -170,6 +170,9 @@ const de: Catalogue = {
   'chooseName.permanentWarning': 'Dein Benutzername ist *dauerhaft* und kann später nicht mehr geändert werden. Dein Anzeigename schon.',
   'chooseName.hint': '3-20 Zeichen, Buchstaben/Zahlen/Unterstriche',
   'chooseName.placeholder': 'Benutzername',
+  'chooseName.continue': 'Weiter',
+  'chooseName.saving': 'Wird gespeichert...',
+  'chooseName.errSave': 'Dieser Benutzername konnte nicht gespeichert werden',
 
   // ------------------------------------------------------------- donating
   'donate.tooltip': 'Den Ersteller unterstützen',
@@ -402,6 +405,9 @@ const de: Catalogue = {
   'desktop.linux': 'AppImage, die meisten Distributionen',
   'desktop.unavailable': 'Noch nicht verfügbar',
   'desktop.allReleases': 'Alle Versionen',
+  'desktop.downloads': 'Bisher {count} Downloads',
+  'desktop.latestRelease': 'Neueste Version {version}',
+  'desktop.selfUpdating': 'Updates installieren sich von selbst, sobald die App läuft.',
   'desktop.web': 'Web',
   'desktop.desktop': 'Desktop',
   'desktop.moveBetween': 'Du kannst mit den Import-/Export-Werkzeugen in der Web- und der Desktop-Version zwischen beiden wechseln: Lade ein Atrium aus dem Web herunter und importiere es in die Desktop-App, oder umgekehrt.',

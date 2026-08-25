@@ -173,6 +173,9 @@ const ru: Catalogue = {
   'chooseName.permanentWarning': 'Ваше имя пользователя *нельзя изменить* после сохранения. Отображаемое имя — можно.',
   'chooseName.hint': '3-20 символов: буквы/цифры/подчёркивания',
   'chooseName.placeholder': 'имя пользователя',
+  'chooseName.continue': 'Продолжить',
+  'chooseName.saving': 'Сохранение...',
+  'chooseName.errSave': 'Не удалось сохранить это имя пользователя',
 
   // ------------------------------------------------------------- donating
   'donate.tooltip': 'Поддержать автора',
@@ -405,6 +408,9 @@ const ru: Catalogue = {
   'desktop.linux': 'AppImage, большинство дистрибутивов',
   'desktop.unavailable': 'Пока недоступно',
   'desktop.allReleases': 'Все версии',
+  'desktop.downloads': 'Загрузок на данный момент: {count}',
+  'desktop.latestRelease': 'Последняя версия {version}',
+  'desktop.selfUpdating': 'Обновления устанавливаются сами, как только приложение запущено.',
   'desktop.web': 'Веб',
   'desktop.desktop': 'ПК',
   'desktop.moveBetween': 'Вы можете переключаться между версиями с помощью инструментов импорта и экспорта, доступных в веб- и десктоп-версиях: скачайте атриум из веб-версии и импортируйте его в приложение для ПК, или наоборот.',

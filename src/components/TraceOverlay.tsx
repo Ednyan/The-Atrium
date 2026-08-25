@@ -171,6 +171,10 @@ interface TraceOverlayProps {
   // freshly generated, so a plain useEffect keyed on this value fires
   // correctly for every new path without needing to be reset back to null.
   newPathRequest?: string | null
+  // One-shot request: a text trace just created from the canvas menu, to be
+  // selected and opened for typing. See newPathRequest above for why a plain
+  // value works as a signal here.
+  newTextRequest?: string | null
   // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
   // undo (see LobbyScene) instead of this file's trace undo/redo history.
   isDrawingMode?: boolean
@@ -320,7 +324,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -714,6 +718,19 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
     const rect = e.currentTarget.getBoundingClientRect()
     setGroupFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
     setContextMenuGroupOpen(true)
+    // Re-read the groups every time the flyout opens.
+    //
+    // The list below is otherwise loaded once on mount and kept current by a
+    // postgres_changes subscription -- which does nothing at all on desktop,
+    // where `supabase` is the local shim and `channel()` hands back a mock. So
+    // a group made in the Layer panel never reached this menu, and the only
+    // way to see it was to leave the atrium and come back, which remounts and
+    // re-runs the initial load.
+    //
+    // Asking on open fixes it on both platforms without depending on realtime:
+    // it is one small query, at the moment somebody is about to read the
+    // answer, and it cannot be stale by the time the flyout paints.
+    void loadGroupLayers()
   }
   const keepGroupFlyoutOpen = () => {
     if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
@@ -722,20 +739,48 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
     if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
     groupFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuGroupOpen(false), 200)
   }
+  // "Select" side flyout. Same open/keep/close trio as the flyouts above it;
+  // they are separate pieces of state so hovering one closes the others rather
+  // than leaving two open side by side.
+  const [contextMenuSelectOpen, setContextMenuSelectOpen] = useState(false)
+  const [selectFlyoutRect, setSelectFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const selectFlyoutCloseTimer = useRef<number | null>(null)
+  const openSelectFlyout = (e: React.MouseEvent<HTMLElement>) => {
+    if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
+    const rect = e.currentTarget.getBoundingClientRect()
+    setSelectFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
+    setContextMenuSelectOpen(true)
+  }
+  const keepSelectFlyoutOpen = () => {
+    if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
+  }
+  const scheduleCloseSelectFlyout = () => {
+    if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
+    selectFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuSelectOpen(false), 200)
+  }
+
   const [groupLayers, setGroupLayers] = useState<{ id: string; name: string; zIndex: number }[]>([])
+  // Hoisted out of the effect below so opening the flyout can ask again -- see
+  // openGroupFlyout for why once-on-mount was not enough.
+  const loadGroupLayers = useCallback(async () => {
+    if (!supabase || !lobbyId) return
+    const { data } = await (supabase!.from('layers') as any)
+      .select('id, name, z_index')
+      .eq('lobby_id', lobbyId)
+    if (!data) return
+    setGroupLayers(
+      data
+        .map((l: any) => ({ id: l.id, name: l.name, zIndex: l.z_index ?? 0 }))
+        .sort((a: any, b: any) => b.zIndex - a.zIndex)
+    )
+  }, [lobbyId])
+
   useEffect(() => {
     if (!supabase || !lobbyId) return
     let cancelled = false
     const loadLayers = async () => {
-      const { data } = await (supabase!.from('layers') as any)
-        .select('id, name, z_index')
-        .eq('lobby_id', lobbyId)
-      if (cancelled || !data) return
-      setGroupLayers(
-        data
-          .map((l: any) => ({ id: l.id, name: l.name, zIndex: l.z_index ?? 0 }))
-          .sort((a: any, b: any) => b.zIndex - a.zIndex)
-      )
+      if (cancelled) return
+      await loadGroupLayers()
     }
     loadLayers()
     const channel = supabase
@@ -746,7 +791,7 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
       cancelled = true
       channel.unsubscribe()
     }
-  }, [lobbyId])
+  }, [lobbyId, loadGroupLayers])
 
   // Reassigns the given traces to a layer group (or Ungrouped when
   // targetLayerId is null), placing them at the top of that group. Mirrors
@@ -872,6 +917,15 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
     setEditingTrace(trace)
     setPathCreationMode(true)
   }, [newPathRequest, setSelectedTraceId])
+
+  // The text equivalent: select it and open it for typing, with no path mode.
+  useEffect(() => {
+    if (!newTextRequest) return
+    const trace = tracesRef.current.find(t => t.id === newTextRequest)
+    if (!trace) return
+    setSelectedTraceId(trace.id)
+    setEditingTrace(trace)
+  }, [newTextRequest, setSelectedTraceId])
 
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
@@ -5755,6 +5809,31 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                 </button>
               )
             })()}
+            {/* The embed equivalent of Copy Text above. An embed trace IS its
+                link -- that is the whole of what it stores -- so the one thing
+                somebody is most likely to want back out of it had no way out
+                short of opening Customize and selecting the field by hand. */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace || trace.type !== 'embed') return null
+              const link = trace.mediaUrl || trace.content
+              if (!link) return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(link)
+                    } catch {
+                      // Ignore clipboard access failures, same as Copy Text.
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  <span className="text-gray-400 text-[10px]">◇</span> Copy Embed Link
+                </button>
+              )
+            })()}
             <button
               className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
@@ -5953,6 +6032,63 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                         onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
                       >
                         Move to Bottom of Group
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            {/* Select -- widens the selection from the trace under the
+                cursor, which is the thing you already have hold of. Reuses the
+                same multi-selection the Layer panel drives, so everything that
+                already acts on a multi-selection (Batch Edit, Reorganize,
+                delete) works on the result without knowing where it came
+                from. */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace) return null
+              const groupId = trace.layerId ?? null
+              const inGroup = traces.filter(t => (t.layerId ?? null) === groupId)
+              return (
+                <div
+                  className="relative"
+                  onMouseEnter={openSelectFlyout}
+                  onMouseLeave={scheduleCloseSelectFlyout}
+                >
+                  <button className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Select</span>
+                    <span className="text-gray-400 text-[10px]">{contextMenuFlyoutOnLeft ? '◂' : '▸'}</span>
+                  </button>
+                  {contextMenuSelectOpen && selectFlyoutRect && (
+                    <div
+                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                      style={
+                        contextMenuFlyoutOnLeft
+                          ? { top: selectFlyoutRect.top, right: window.innerWidth - selectFlyoutRect.left + 1 }
+                          : { top: selectFlyoutRect.top, left: selectFlyoutRect.right + 1 }
+                      }
+                      onMouseEnter={keepSelectFlyoutOpen}
+                      onMouseLeave={scheduleCloseSelectFlyout}
+                    >
+                      <button
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        onClick={() => {
+                          setMultiSelectedIds(new Set(inGroup.map(t => t.id)))
+                          setSelectedTraceId(trace.id)
+                          setContextMenu(null)
+                        }}
+                      >
+                        Select Group ({inGroup.length})
+                      </button>
+                      <button
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        onClick={() => {
+                          setMultiSelectedIds(new Set(traces.map(t => t.id)))
+                          setSelectedTraceId(trace.id)
+                          setContextMenu(null)
+                        }}
+                      >
+                        Select All ({traces.length})
                       </button>
                     </div>
                   )}
@@ -7580,6 +7716,67 @@ export default function TraceOverlay({ traces, atriumBackground, lobbyWidth, lob
                     ))}
                   </div>
                 </div>
+
+                {/* Text, for the text traces in the selection.
+
+                    Only shown when there are some: a font control over a
+                    selection of images is a control that does nothing, and the
+                    panel is already long. The traces it does not apply to are
+                    left alone rather than quietly given a font they will never
+                    render, which is also why the count says how many are
+                    actually about to change.
+
+                    Each one re-fits its own box, because auto-fit depends on
+                    the text inside it -- applying one width to the whole
+                    selection would size every trace to whichever happened to
+                    be measured. */}
+                {(() => {
+                  const textTraces = traces.filter(t => multiSelectedIds.has(t.id) && t.type === 'text')
+                  if (textTraces.length === 0) return null
+                  const seedFont = textTraces[0].fontFamily ?? 'sans'
+                  const mixed = textTraces.some(t => (t.fontFamily ?? 'sans') !== seedFont)
+                  return (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">
+                          Text ({textTraces.length})
+                        </span>
+                        <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
+                      </div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Font Family</label>
+                      <select
+                        value={mixed ? '' : seedFont}
+                        onChange={e => {
+                          const next = e.target.value
+                          if (!next) return
+                          for (const trace of textTraces) {
+                            const effectiveFontSize = typeof trace.fontSize === 'number'
+                              ? trace.fontSize
+                              : (trace.fontSize === 'small' ? 10 : trace.fontSize === 'large' ? 14 : 12)
+                            const textSize = computeAutoFitTextSize(
+                              trace.content ?? '',
+                              effectiveFontSize,
+                              { fontFamily: resolveFontFamilyCss(next) },
+                            )
+                            updateTraceCustomization(trace.id, {
+                              fontFamily: next,
+                              width: textSize.width,
+                              height: textSize.height,
+                            })
+                          }
+                        }}
+                        className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      >
+                        {/* Only while they disagree, and it cannot be chosen --
+                            picking it would mean "set them all to mixed". */}
+                        {mixed && <option value="" disabled>— mixed —</option>}
+                        {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })()}
 
                 {/* Toggle Options */}
                 <div className="space-y-3">
