@@ -817,6 +817,41 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   }
 
   const [groupLayers, setGroupLayers] = useState<{ id: string; name: string; zIndex: number }[]>([])
+
+  // How many rows of the Move to Group flyout are shown before it scrolls:
+  // New Group, Ungrouped, and three groups.
+  const GROUP_FLYOUT_VISIBLE_ROWS = 5
+  const groupFlyoutListRef = useRef<HTMLDivElement>(null)
+  const [groupFlyoutMaxHeight, setGroupFlyoutMaxHeight] = useState<number | undefined>(undefined)
+
+  // Cap the flyout at the bottom of its fifth row.
+  //
+  // Measured rather than written as a pixel constant, because the constant
+  // would be a copy of the row's padding and line-height kept in a second
+  // place -- correct until someone changes the type scale, and then quietly
+  // cutting a row in half. Reading the fifth row's own position also takes in
+  // the divider above it without having to know it is there.
+  useLayoutEffect(() => {
+    const el = groupFlyoutListRef.current
+    if (!contextMenuGroupOpen || !el) {
+      setGroupFlyoutMaxHeight(undefined)
+      return
+    }
+    const rows = el.querySelectorAll<HTMLElement>('[data-group-row]')
+    // Everything fits: no cap, so the flyout keeps its natural height.
+    if (rows.length <= GROUP_FLYOUT_VISIBLE_ROWS) {
+      setGroupFlyoutMaxHeight(undefined)
+      return
+    }
+    const last = rows[GROUP_FLYOUT_VISIBLE_ROWS - 1]
+    const style = window.getComputedStyle(el)
+    // offsetTop is measured inside the border, and box-sizing is border-box
+    // globally, so both borders and the bottom padding have to be added back
+    // for the fifth row to end up whole rather than clipped.
+    const padBottom = parseFloat(style.paddingBottom) || 0
+    const borders = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0)
+    setGroupFlyoutMaxHeight(last.offsetTop + last.offsetHeight + padBottom + borders)
+  }, [contextMenuGroupOpen, groupLayers.length])
   // Hoisted out of the effect below so opening the flyout can ask again -- see
   // openGroupFlyout for why once-on-mount was not enough.
   const loadGroupLayers = useCallback(async () => {
@@ -6720,6 +6755,98 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 </button>
               )
             })()}
+            {/* Move to Group -- reassigns the selected trace(s) to a layer
+                group (or Ungrouped) without opening the Layer panel.
+
+                Sits directly below Transformations and above Move Layer,
+                because its flyout is the one here that grows without limit:
+                every group in the atrium is a row, so in a heavily grouped
+                atrium this was the entry most likely to open past the bottom
+                of the screen. The higher it opens, the more room it has. */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace) return null
+              const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+              const targetIds = inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId]
+              const currentLayerId = inMultiSelect ? undefined : (trace.layerId ?? null)
+              return (
+                <div
+                  className="relative"
+                  onMouseEnter={openGroupFlyout}
+                  onMouseLeave={scheduleCloseGroupFlyout}
+                >
+                  <button
+                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                  >
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move to Group</span>
+                    <span className="text-gray-300 text-[9px]">▶</span>
+                  </button>
+                  {contextMenuGroupOpen && groupFlyoutRect && (
+                    <div
+                      ref={groupFlyoutListRef}
+                      // Marks this as UI for the canvas wheel handler, which
+                      // reads a scroll anywhere else as "zoom the atrium". It
+                      // already matched `button`, so a wheel over a row
+                      // scrolled while one over the gap between rows zoomed
+                      // the canvas behind the open menu.
+                      data-ui-element="true"
+                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain"
+                      style={{
+                        ...(contextMenuFlyoutOnLeft
+                          ? { top: groupFlyoutRect.top, right: window.innerWidth - groupFlyoutRect.left + 1 }
+                          : { top: groupFlyoutRect.top, left: groupFlyoutRect.right + 1 }),
+                        maxHeight: groupFlyoutMaxHeight,
+                      }}
+                      onMouseEnter={keepGroupFlyoutOpen}
+                      onMouseLeave={scheduleCloseGroupFlyout}
+                    >
+                      {/* New Group leads, where it used to sit at the bottom
+                          behind a rule. It is the one row whose place does not
+                          depend on how many groups exist, and from the top it
+                          stays reachable without scrolling however long the
+                          list gets. The rule follows it for the same reason it
+                          preceded it: this is the entry that does not move the
+                          trace somewhere that already exists. */}
+                      <button
+                        data-group-row
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center gap-2"
+                        onClick={() => {
+                          setNewGroupDialog({ traceIds: targetIds, name: '' })
+                          setContextMenu(null)
+                        }}
+                      >
+                        <span className="text-gray-400 text-[10px]">+</span> New Group…
+                      </button>
+                      <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+                      <button
+                        data-group-row
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                        disabled={currentLayerId === null}
+                        onClick={() => { moveTracesToGroup(targetIds, null); setContextMenu(null) }}
+                      >
+                        {currentLayerId === null && <span className="text-emerald-400 text-[9px]">✓</span>}
+                        Ungrouped
+                      </button>
+                      {groupLayers.length === 0 && (
+                        <span className="px-4 py-2 text-gray-300 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
+                      )}
+                      {groupLayers.map(layer => (
+                        <button
+                          key={layer.id}
+                          data-group-row
+                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                          disabled={currentLayerId === layer.id}
+                          onClick={() => { moveTracesToGroup(targetIds, layer.id); setContextMenu(null) }}
+                        >
+                          {currentLayerId === layer.id && <span className="text-emerald-400 text-[9px]">✓</span>}
+                          {layer.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
             {/* Move Layer submenu -- same side-flyout pattern, groups the
                 four z-order actions (one-step up/down, jump to top/bottom of
                 this trace's group) that used to each take their own row. */}
@@ -6832,77 +6959,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         }}
                       >
                         Select All ({traces.length})
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-            {/* Move to Group -- reassigns the selected trace(s) to a layer
-                group (or Ungrouped) without opening the Layer panel. */}
-            {(() => {
-              const trace = traces.find(t => t.id === contextMenu.traceId)
-              if (!trace) return null
-              const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
-              const targetIds = inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId]
-              const currentLayerId = inMultiSelect ? undefined : (trace.layerId ?? null)
-              return (
-                <div
-                  className="relative"
-                  onMouseEnter={openGroupFlyout}
-                  onMouseLeave={scheduleCloseGroupFlyout}
-                >
-                  <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
-                  >
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move to Group</span>
-                    <span className="text-gray-300 text-[9px]">▶</span>
-                  </button>
-                  {contextMenuGroupOpen && groupFlyoutRect && (
-                    <div
-                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto"
-                      style={
-                        contextMenuFlyoutOnLeft
-                          ? { top: groupFlyoutRect.top, right: window.innerWidth - groupFlyoutRect.left + 1 }
-                          : { top: groupFlyoutRect.top, left: groupFlyoutRect.right + 1 }
-                      }
-                      onMouseEnter={keepGroupFlyoutOpen}
-                      onMouseLeave={scheduleCloseGroupFlyout}
-                    >
-                      <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-                        disabled={currentLayerId === null}
-                        onClick={() => { moveTracesToGroup(targetIds, null); setContextMenu(null) }}
-                      >
-                        {currentLayerId === null && <span className="text-emerald-400 text-[9px]">✓</span>}
-                        Ungrouped
-                      </button>
-                      {groupLayers.length === 0 && (
-                        <span className="px-4 py-2 text-gray-300 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
-                      )}
-                      {groupLayers.map(layer => (
-                        <button
-                          key={layer.id}
-                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-                          disabled={currentLayerId === layer.id}
-                          onClick={() => { moveTracesToGroup(targetIds, layer.id); setContextMenu(null) }}
-                        >
-                          {currentLayerId === layer.id && <span className="text-emerald-400 text-[9px]">✓</span>}
-                          {layer.name}
-                        </button>
-                      ))}
-                      {/* Below the groups, behind a rule: it is the one entry
-                          here that does not move the trace somewhere that
-                          already exists. */}
-                      <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
-                      <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center gap-2"
-                        onClick={() => {
-                          setNewGroupDialog({ traceIds: targetIds, name: '' })
-                          setContextMenu(null)
-                        }}
-                      >
-                        <span className="text-gray-400 text-[10px]">+</span> New Group…
                       </button>
                     </div>
                   )}
