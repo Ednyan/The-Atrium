@@ -142,6 +142,12 @@ fn set_vault_base_path(app: tauri::AppHandle, path: String) -> Result<String, St
     let contents = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     fs::write(&settings_path, contents).map_err(|e| e.to_string())?;
 
+    // The scope granted at startup was for the old folder; without this the
+    // webview could not stream anything from the new one until a restart.
+    if let Err(e) = app.asset_protocol_scope().allow_directory(&base_path, true) {
+        eprintln!("[vault] could not open the asset scope on {:?}: {}", base_path, e);
+    }
+
     copy_dir_recursive_if_needed(&live_runtime_dir(&previous_base_path), &live_runtime_dir(&base_path))?;
 
     let next_live_database = live_database_path(&base_path);
@@ -743,6 +749,31 @@ fn main() {
         // install, since the running binary is the one being replaced.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // Let the webview stream media straight out of the vault.
+        //
+        // Video and audio traces used to be read whole over IPC and wrapped in
+        // a blob before anything could play, which is what made opening an
+        // atrium full of them so slow. The asset protocol hands the player a
+        // URL it fetches itself, so it streams and can seek.
+        //
+        // Scoped to the vault directory rather than widened in tauri.conf.json.
+        // The configured scope is $APPDATA, and the vault is not there -- it
+        // defaults to Documents and the user can move it anywhere -- so the
+        // path has to be added once it is known. Granting exactly this folder
+        // keeps the protocol from becoming a way to read any file on the
+        // machine.
+        .setup(|app| {
+            let handle = app.handle();
+            match current_vault_base_path(handle) {
+                Ok(base_path) => {
+                    if let Err(e) = app.asset_protocol_scope().allow_directory(&base_path, true) {
+                        eprintln!("[vault] could not open the asset scope on {:?}: {}", base_path, e);
+                    }
+                }
+                Err(e) => eprintln!("[vault] could not resolve the vault path for the asset scope: {}", e),
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_app_data_dir,
             get_vault_base_path,

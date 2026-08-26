@@ -13,6 +13,13 @@ async function resolveLocalUrl(url: string): Promise<string> {
   return mod.resolveLocalUrl(url)
 }
 
+// Video and audio stream from the vault rather than being read into memory --
+// see resolveLocalStreamUrl.
+async function resolveLocalStreamUrl(url: string): Promise<string> {
+  const mod = await import('../lib/localDb')
+  return mod.resolveLocalStreamUrl(url)
+}
+
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
@@ -1130,7 +1137,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     traces.forEach(trace => {
       if ((trace.type === 'audio' || trace.type === 'video') && trace.mediaUrl?.startsWith('local://')) {
         if (localMediaUrls[trace.id]) return
-        resolveLocalUrl(trace.mediaUrl).then(resolved => {
+        // Streamed, not read. This is the difference between opening an
+        // atrium of videos and waiting for every one of them to be copied
+        // into memory first.
+        resolveLocalStreamUrl(trace.mediaUrl).then(resolved => {
           setLocalMediaUrls(prev => ({ ...prev, [trace.id]: resolved }))
         }).catch(() => {
           setLocalMediaUrls(prev => ({ ...prev, [trace.id]: trace.mediaUrl! }))

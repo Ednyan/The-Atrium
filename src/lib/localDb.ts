@@ -183,6 +183,21 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
       }
     }
     offset += WRITE_CHUNK_BYTES
+
+    // Hand a frame back between chunks.
+    //
+    // Every step here is awaited, but awaits resolve in microtasks, which run
+    // to exhaustion before the browser paints -- so a long file's worth of
+    // slicing and copying lands as one unbroken block of work and the window
+    // stops responding for the duration. This is the lag right after an
+    // import finishes: the trace is already on screen from its blob URL, the
+    // panel has gone, and the vault write is still going.
+    //
+    // One frame per 8MB, so a 200MB video spends about a quarter of a second
+    // more in total and none of it holding the app still.
+    if (offset < blob.size) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    }
   }
 }
 
@@ -1774,6 +1789,9 @@ export const localClient = {
 
 // Cache resolved blob URLs so repeated calls (and re-mounts) don't re-read from disk
 const resolvedUrlCache = new Map<string, string>()
+// The same for asset-protocol URLs, which are cheap to build but still cost a
+// vault path lookup each time.
+const resolvedStreamUrlCache = new Map<string, string>()
 // Track in-flight resolutions to avoid duplicate reads for the same URL
 const pendingResolutions = new Map<string, Promise<string>>()
 
@@ -2170,6 +2188,50 @@ export async function resolveLocalUrl(url: string): Promise<string> {
 
   pendingResolutions.set(url, promise)
   return promise
+}
+
+/**
+ * A URL a <video> or <audio> can stream from, without reading the file first.
+ *
+ * resolveLocalUrl below reads the whole file over IPC, copies it again into a
+ * Uint8Array, and wraps that in a Blob -- roughly three times the file in
+ * memory, and nothing plays until every byte has arrived. For a photo that is
+ * a hiccup. For a folder of videos it is the reason opening the atrium takes
+ * so long: each one is read end to end before it can be shown, when all that
+ * was wanted was the first frame.
+ *
+ * Tauri's asset protocol hands the webview a URL it can fetch itself, so the
+ * player streams -- it reads what it needs, when it needs it, and honours
+ * range requests, which is also what makes seeking work rather than
+ * re-downloading. The vault directory is added to the protocol's scope at
+ * startup (see main.rs); anything outside it is refused, so this is not a
+ * general file-reading capability.
+ *
+ * Deliberately separate from resolveLocalUrl rather than replacing it. That
+ * one's blob: URL is what the database export embeds and what PDF rendering
+ * reads bytes back out of, and an asset: URL is neither of those things --
+ * it means nothing on another machine, and connect-src does not allow
+ * fetching it.
+ */
+export async function resolveLocalStreamUrl(url: string): Promise<string> {
+  if (!url.startsWith('local://')) return url
+
+  const cached = resolvedStreamUrlCache.get(url)
+  if (cached) return cached
+
+  try {
+    const filePath = await resolveLocalMediaFilePath(url)
+    if (!filePath) return url
+
+    const { convertFileSrc } = await import('@tauri-apps/api/core')
+    const streamUrl = convertFileSrc(filePath)
+    resolvedStreamUrlCache.set(url, streamUrl)
+    return streamUrl
+  } catch {
+    // A machine where the asset protocol is unavailable still gets its video,
+    // just the slow way.
+    return resolveLocalUrl(url)
+  }
 }
 
 /**
