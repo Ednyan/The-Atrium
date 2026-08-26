@@ -3822,6 +3822,30 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const buffer = 500 // Account for large traces
 
     return traces.filter(trace => {
+      // Anything actually playing survives the cull, wherever it has got to.
+      //
+      // Culling here UNMOUNTS the trace, which tears the <video>/<audio>
+      // element out of the DOM and stops it -- so scrolling away from a
+      // playing video killed it mid-sentence, and a track being listened to
+      // went silent as soon as its trace left the screen. The fade cull
+      // further down already made this exception; this filter runs before it
+      // ever gets the chance, so the exception never applied.
+      //
+      // Both stay rendered rather than merely audible: the fade still takes
+      // the opacity to zero off-screen, so this costs an invisible element
+      // that was going to be decoding anyway, and playback carries on where
+      // whoever started it expects it to.
+      if (playingMedia.has(trace.id)) return true
+
+      // An embed gets the same treatment while interaction is switched on,
+      // matching the fade cull. A cross-origin iframe reports nothing about
+      // what it is doing -- there is no play or stop to listen for -- so the
+      // toggle somebody deliberately turned on to use the thing is the only
+      // signal available for "this may be mid-playback". It is opt-in per
+      // trace, so this keeps a handful of embeds alive rather than all of
+      // them.
+      if (trace.type === 'embed' && trace.enableInteraction) return true
+
       // A path's x/y field is only set at creation and by whole-path moves --
       // dragging an individual point (or adding points while drawing) only
       // ever updates shapePoints, so x/y can drift arbitrarily far from
@@ -3879,7 +3903,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
              trace.y + halfH >= viewportTop - buffer &&
              trace.y - halfH <= viewportBottom + buffer
     })
-  }, [traces, zoom, worldOffset.x, worldOffset.y, getTraceSize])
+  }, [traces, zoom, worldOffset.x, worldOffset.y, getTraceSize, playingMedia])
 
   // Same reason as alignGuidesRef: the drag handler needs the current list,
   // and only the traces near the view are worth testing for alignment.
