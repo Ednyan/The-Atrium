@@ -1003,8 +1003,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // transformed individually rather than via x/y+scale).
   const groupStartRef = useRef<{
     center: { x: number; y: number }
-    traces: Record<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number; shapePoints?: any[] }>
-  }>({ center: { x: 0, y: 0 }, traces: {} })
+    bounds: { minX: number; minY: number; maxX: number; maxY: number }
+    traces: Record<string, any>
+  }>({ center: { x: 0, y: 0 }, bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, traces: {} })
 
   // Live angle badge shown while a rotation drag is in progress. `delta` marks
   // a group rotation, where the useful number is how far the selection turned
@@ -2372,7 +2373,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Starts a scale/rotate drag on the multi-selection as a whole. Unlike
   // handleMouseDown this isn't anchored to any one trace -- the pivot is the
   // shared bounding-box center, so every selected trace orbits it together.
-  const handleGroupMouseDown = (e: React.MouseEvent, mode: 'group-scale' | 'group-rotate') => {
+  // The corner is the whole difference between growing a selection from its
+  // middle and dragging one edge of it. Rotation still turns about the centre,
+  // which is the only fixed point a rotation has.
+  const groupPivotFor = (bounds: { minX: number; minY: number; maxX: number; maxY: number }, corner: string) => ({
+    x: corner.includes('l') ? bounds.maxX : bounds.minX,
+    y: corner.includes('t') ? bounds.maxY : bounds.minY,
+  })
+  const groupCornerFor = (bounds: { minX: number; minY: number; maxX: number; maxY: number }, corner: string) => ({
+    x: corner.includes('l') ? bounds.minX : bounds.maxX,
+    y: corner.includes('t') ? bounds.minY : bounds.maxY,
+  })
+
+  const handleGroupMouseDown = (e: React.MouseEvent, mode: 'group-scale' | 'group-rotate', corner = 'br') => {
     if (!canEdit) return
     e.stopPropagation()
     e.preventDefault()
@@ -2394,19 +2407,24 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       startTraces[id] = entry
     }
 
-    groupStartRef.current = { center: { x: bounds.centerX, y: bounds.centerY }, traces: startTraces }
+    groupStartRef.current = { center: { x: bounds.centerX, y: bounds.centerY }, bounds, traces: startTraces }
 
     setTransformMode(mode)
     transformModeRef.current = mode
-    startPosRef.current = { x: e.clientX, y: e.clientY, corner: 'group' }
-    const { screenX, screenY } = getScreenPosition(bounds.centerX, bounds.centerY)
+    startPosRef.current = { x: e.clientX, y: e.clientY, corner: mode === 'group-scale' ? `group-${corner}` : 'group' }
+    // Scaling measures from the anchored corner, so that is what the distance
+    // ratio has to be taken against; rotating measures from the centre.
+    const pivot = mode === 'group-scale'
+      ? groupPivotFor(bounds, corner)
+      : { x: bounds.centerX, y: bounds.centerY }
+    const { screenX, screenY } = getScreenPosition(pivot.x, pivot.y)
     centerRef.current = { x: screenX, y: screenY }
     isMultiDragActiveRef.current = true
     setCursorState('grabbing')
     document.body.classList.add('dragging')
   }
 
-  const handleGroupTouchDown = (e: React.TouchEvent, mode: 'group-scale' | 'group-rotate') => {
+  const handleGroupTouchDown = (e: React.TouchEvent, mode: 'group-scale' | 'group-rotate', corner = 'br') => {
     if (e.touches.length !== 1) return
     e.preventDefault()
     const touch = e.touches[0]
@@ -2418,7 +2436,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       stopPropagation: () => e.stopPropagation(),
       preventDefault: () => e.preventDefault(),
     } as unknown as React.MouseEvent
-    handleGroupMouseDown(synth, mode)
+    handleGroupMouseDown(synth, mode, corner)
   }
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -2431,7 +2449,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // single-trace lookup below.
     if (activeTransformMode === 'group-scale' || activeTransformMode === 'group-rotate') {
       justDraggedRef.current = true
-      const { center, traces: startTraces } = groupStartRef.current
+      const { center, bounds, traces: startTraces } = groupStartRef.current
+      const groupZoom = zoomRef.current || 1
+      const groupCorner = startPosRef.current.corner.startsWith('group-')
+        ? startPosRef.current.corner.slice(6)
+        : 'br'
+      // Everything below scales away from this point, so the opposite corner
+      // of the selection stays exactly where it was -- the same anchoring a
+      // single trace has always had. Scaling from the centre instead meant the
+      // selection grew in every direction at once and the corner under the
+      // cursor never went where it was put.
+      const pivot = activeTransformMode === 'group-scale'
+        ? groupPivotFor(bounds, groupCorner)
+        : center
       const startAngle = Math.atan2(startPosRef.current.y - centerRef.current.y, startPosRef.current.x - centerRef.current.x)
       const currentAngle = Math.atan2(e.clientY - centerRef.current.y, e.clientX - centerRef.current.x)
 
@@ -2441,6 +2471,69 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         const startDist = Math.hypot(startPosRef.current.x - centerRef.current.x, startPosRef.current.y - centerRef.current.y)
         const currentDist = Math.hypot(e.clientX - centerRef.current.x, e.clientY - centerRef.current.y)
         factor = startDist > 0 ? Math.max(0.01, currentDist / startDist) : 1
+
+        // Shift lines the selection's dragged corner up with its neighbours,
+        // the same as it does for one trace. The correction lands on the
+        // FACTOR rather than on a position, because that is the only handle a
+        // group scale has: solve for the factor that puts the corner on the
+        // target and every trace in the selection follows it.
+        const startCorner = groupCornerFor(bounds, groupCorner)
+        let guides: { x?: { at: number; from: number; to: number }; y?: { at: number; from: number; to: number } } | null = null
+
+        if (e.shiftKey) {
+          const held = multiSelectedIdsRef.current
+          const tolerance = ALIGN_SNAP_PX / groupZoom
+          const reach = ALIGN_NEIGHBOURHOOD_PX / groupZoom
+          const cornerX = pivot.x + (startCorner.x - pivot.x) * factor
+          const cornerY = pivot.y + (startCorner.y - pivot.y) * factor
+
+          let bestX: { at: number; d: number; from: number; to: number } | null = null
+          let bestY: { at: number; d: number; from: number; to: number } | null = null
+
+          for (const other of visibleTracesRef.current) {
+            if (held.has(other.id)) continue
+            const box = traceBoxFor(other, undefined, groupZoom)
+            if (Math.abs(box.cx - center.x) > reach && Math.abs(box.cy - center.y) > reach) continue
+            const xs = box.rotated ? [box.cx] : [box.cx - box.halfW, box.cx, box.cx + box.halfW]
+            const ys = box.rotated ? [box.cy] : [box.cy - box.halfH, box.cy, box.cy + box.halfH]
+            for (const at of xs) {
+              const d = Math.abs(at - cornerX)
+              if (d <= tolerance && (!bestX || d < bestX.d)) {
+                bestX = { at, d, from: box.cy - box.halfH, to: box.cy + box.halfH }
+              }
+            }
+            for (const at of ys) {
+              const d = Math.abs(at - cornerY)
+              if (d <= tolerance && (!bestY || d < bestY.d)) {
+                bestY = { at, d, from: box.cx - box.halfW, to: box.cx + box.halfW }
+              }
+            }
+          }
+
+          // One axis only. A group scale is uniform, so honouring both would
+          // need two different factors and the selection would distort.
+          const spanX = startCorner.x - pivot.x
+          const spanY = startCorner.y - pivot.y
+          const takeX = bestX && (!bestY || bestX.d <= bestY.d) && Math.abs(spanX) > 0.001
+          const takeY = !takeX && bestY && Math.abs(spanY) > 0.001
+
+          if (takeX && bestX) {
+            factor = Math.max(0.01, (bestX.at - pivot.x) / spanX)
+          } else if (takeY && bestY) {
+            factor = Math.max(0.01, (bestY.at - pivot.y) / spanY)
+          }
+
+          const gy1 = pivot.y + (bounds.minY - pivot.y) * factor
+          const gy2 = pivot.y + (bounds.maxY - pivot.y) * factor
+          const gx1 = pivot.x + (bounds.minX - pivot.x) * factor
+          const gx2 = pivot.x + (bounds.maxX - pivot.x) * factor
+          if (takeX && bestX) {
+            guides = { x: { at: bestX.at, from: Math.min(bestX.from, gy1, gy2), to: Math.max(bestX.to, gy1, gy2) } }
+          } else if (takeY && bestY) {
+            guides = { y: { at: bestY.at, from: Math.min(bestY.from, gx1, gx2), to: Math.max(bestY.to, gx1, gx2) } }
+          }
+        }
+        setAlignGuides(guides)
       } else {
         angleDeg = (currentAngle - startAngle) * (180 / Math.PI)
         // A group has no single "current angle" to snap onto -- its members
@@ -2468,7 +2561,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         const dx = px - center.x
         const dy = py - center.y
         if (activeTransformMode === 'group-scale') {
-          return { x: center.x + dx * factor, y: center.y + dy * factor }
+          return { x: pivot.x + (px - pivot.x) * factor, y: pivot.y + (py - pivot.y) * factor }
         }
         return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos }
       }
@@ -3268,7 +3361,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         for (const id of Object.keys(groupStartRef.current.traces)) delete next[id]
         return next
       })
-      groupStartRef.current = { center: { x: 0, y: 0 }, traces: {} }
+      groupStartRef.current = { center: { x: 0, y: 0 }, bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, traces: {} }
     }
 
     isMultiDragActiveRef.current = false
@@ -6289,8 +6382,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     top: `${corner.includes('b') ? boxTop + boxHeight : boxTop}px`,
                     transform: 'translate(-50%, -50%)',
                   }}
-                  onMouseDown={(e) => handleGroupMouseDown(e, 'group-scale')}
-                  onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale')}
+                  onMouseDown={(e) => handleGroupMouseDown(e, 'group-scale', corner)}
+                  onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale', corner)}
                 />
               ))}
               <div

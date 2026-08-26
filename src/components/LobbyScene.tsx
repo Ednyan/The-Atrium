@@ -688,28 +688,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // via a wrapper means every current and future saveAllChanges() call
   // shows the indicator automatically. The name is legacy from when it was
   // autosave-only.
-  const [isAutosaving, setIsAutosaving] = useState(false)
-  const savingStartedAtRef = useRef<number | null>(null)
-  useEffect(() => {
-    // Floor so a save that finishes in a blink doesn't flash the indicator
-    // too fast to read.
-    const MIN_SAVING_INDICATOR_MS = 4000
-    if (isSavingChanges) {
-      savingStartedAtRef.current = Date.now()
-      setIsAutosaving(true)
-      return
-    }
-    if (savingStartedAtRef.current === null) return
-    const elapsed = Date.now() - savingStartedAtRef.current
-    savingStartedAtRef.current = null
-    const remaining = MIN_SAVING_INDICATOR_MS - elapsed
-    if (remaining <= 0) {
-      setIsAutosaving(false)
-      return
-    }
-    const timeout = setTimeout(() => setIsAutosaving(false), remaining)
-    return () => clearTimeout(timeout)
-  }, [isSavingChanges])
+  // Follows the store flag exactly. This used to hold "Saving" for a four
+  // second floor so a quick save stayed readable, which left the button
+  // insisting it was working long after it had finished -- the indicator
+  // outlasting the thing it indicated. The fade below is what keeps a fast
+  // save from flashing past, without lying about when it ended.
+  const isAutosaving = isSavingChanges
   // A save that has just finished, held for a moment so the button can
   // confirm rather than simply vanishing.
   const wasSavingRef = useRef(false)
@@ -751,6 +735,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // than simply vanishing. A control that disappears on success leaves you
   // wondering whether it worked.
   const [justSaved, setJustSaved] = useState(false)
+
+  // The button fades rather than being cut. "Saved" used to vanish the instant
+  // its timer expired, which reads as an interruption rather than a finish --
+  // so it is held mounted for the length of the fade after the last state that
+  // wanted it on screen has gone.
+  const SAVE_FADE_MS = 1000
+  const saveBarActive = hasPendingChanges() || isSavingChanges || justSaved
+  const [saveBarMounted, setSaveBarMounted] = useState(false)
+  const [saveBarShown, setSaveBarShown] = useState(false)
+  useEffect(() => {
+    if (saveBarActive) {
+      setSaveBarMounted(true)
+      // Mounted at zero for one frame before being told to be one. Setting
+      // both in the same paint gives the transition nothing to move between.
+      const frame = requestAnimationFrame(() => setSaveBarShown(true))
+      return () => cancelAnimationFrame(frame)
+    }
+    setSaveBarShown(false)
+    const timer = setTimeout(() => setSaveBarMounted(false), SAVE_FADE_MS)
+    return () => clearTimeout(timer)
+  }, [saveBarActive])
+
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
@@ -3916,8 +3922,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           Three states rather than two. A button that simply vanishes on
           success leaves you wondering whether it worked, so it confirms for a
           moment before it goes. */}
-      {!uiHidden && (hasPendingChanges() || isSavingChanges || isAutosaving || justSaved) && (
-        <div data-hud="true" className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto">
+      {!uiHidden && saveBarMounted && (
+        <div
+          data-hud="true"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto"
+          style={{ opacity: saveBarShown ? 1 : 0, transition: `opacity ${SAVE_FADE_MS}ms ease-out` }}
+        >
           <button
             type="button"
             data-ui-element="true"
@@ -3928,6 +3938,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               clipPath: DONATE_CUT,
               background: justSaved && !isSavingChanges ? 'rgb(var(--c-accent) / 0.35)' : 'rgb(var(--c-accent))',
               color: 'rgb(var(--c-ground))',
+              // Carries the colour change between states instead of cutting to
+              // it. Written inline because the shorthand has to replace the
+              // class's transform-only transition rather than sit beside it.
+              transition: 'background-color 400ms ease, transform 150ms ease',
             }}
           >
             {isSavingChanges || isAutosaving
