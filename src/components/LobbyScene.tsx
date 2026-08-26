@@ -757,6 +757,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     return () => clearTimeout(timer)
   }, [saveBarActive])
 
+  // What the button says and looks like while it is fading out.
+  //
+  // The label is derived from the same state that decides whether to show the
+  // button at all, so when justSaved expired the two changed together: the
+  // fade began and the text flipped back to "Save changes" on the same frame,
+  // leaving it to fade out saying the opposite of what had just happened.
+  // Frozen at its last live value so the fade finishes the sentence it
+  // started.
+  const saveLabel = isSavingChanges
+    ? '◇ Saving…'
+    : justSaved
+      ? '◇ Saved'
+      : `◇ Save changes (${pendingChanges.size + deletedTraces.size})`
+  const saveDim = justSaved && !isSavingChanges
+  const lastSaveLookRef = useRef({ label: saveLabel, dim: saveDim })
+  if (saveBarActive) lastSaveLookRef.current = { label: saveLabel, dim: saveDim }
+  const shownSave = saveBarActive ? { label: saveLabel, dim: saveDim } : lastSaveLookRef.current
+
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
@@ -3936,7 +3954,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             className="px-6 py-2.5 text-xs tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
             style={{
               clipPath: DONATE_CUT,
-              background: justSaved && !isSavingChanges ? 'rgb(var(--c-accent) / 0.35)' : 'rgb(var(--c-accent))',
+              background: shownSave.dim ? 'rgb(var(--c-accent) / 0.35)' : 'rgb(var(--c-accent))',
               color: 'rgb(var(--c-ground))',
               // Carries the colour change between states instead of cutting to
               // it. Written inline because the shorthand has to replace the
@@ -3944,11 +3962,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               transition: 'background-color 400ms ease, transform 150ms ease',
             }}
           >
-            {isSavingChanges || isAutosaving
-              ? '◇ Saving…'
-              : justSaved
-                ? '◇ Saved'
-                : `◇ Save changes (${pendingChanges.size + deletedTraces.size})`}
+            {shownSave.label}
           </button>
         </div>
       )}
