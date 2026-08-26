@@ -5419,6 +5419,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
                   onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
+                  // The grip stands in for the trace while interaction is on,
+                  // so it has to answer a right-click the way the trace body
+                  // would -- otherwise Customize, Move to Group and the rest
+                  // are unreachable for exactly the traces that most need
+                  // them, since the embed swallows the right-click too.
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setSelectedTraceId(trace.id)
+                    setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+                  }}
                 >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
                     <path d="M6 1v10M1 6h10M6 1L4.4 2.6M6 1l1.6 1.6M6 11l-1.6-1.6M6 11l1.6-1.6M1 6l1.6-1.6M1 6l1.6 1.6M11 6L9.4 4.4M11 6L9.4 7.6" />
