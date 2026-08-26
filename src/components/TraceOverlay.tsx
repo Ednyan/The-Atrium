@@ -827,6 +827,48 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [lobbyId, loadGroupLayers])
 
+  // Makes a group and drops the traces straight into it.
+  //
+  // Mirrors LayerPanel's createGroup -- same table, same shape, same z-index
+  // rule of "one above the current top" -- and then reuses moveTracesToGroup
+  // rather than writing a second version of that. Reloads the flyout's own
+  // list on the way out so the new group is there the moment the dialog
+  // closes, which is the whole point of offering this here.
+  const createGroupAndMove = useCallback(async (traceIds: string[], rawName: string) => {
+    const name = rawName.trim()
+    if (!supabase || !lobbyId || !name) return
+
+    const { data: topLayer } = await (supabase
+      .from('layers') as any)
+      .select('z_index')
+      .eq('lobby_id', lobbyId)
+      .order('z_index', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const newZIndex = Math.max(topLayer?.z_index ?? 0, ...groupLayers.map(l => l.zIndex), 0) + 1
+
+    const { data, error } = await (supabase.from('layers') as any).insert({
+      name,
+      z_index: newZIndex,
+      is_group: true,
+      user_id: username,
+      lobby_id: lobbyId,
+    }).select()
+
+    if (error) {
+      console.error('[layers] could not create group:', error)
+      return
+    }
+
+    await loadGroupLayers()
+
+    const created = Array.isArray(data) ? data[0] : data
+    if (created?.id && traceIds.length > 0) {
+      await moveTracesToGroup(traceIds, created.id)
+    }
+  }, [lobbyId, username, groupLayers, loadGroupLayers])
+
   // Reassigns the given traces to a layer group (or Ungrouped when
   // targetLayerId is null), placing them at the top of that group. Mirrors
   // the z-index scheme in LayerPanel/layerZIndex (base = layerZIndex*100,
@@ -858,6 +900,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceIds: string[] } | null>(null)
+  // "New group" from the Move to Group flyout: which traces are going into it,
+  // and the name being typed. Kept here rather than in the Layer panel because
+  // the panel is not necessarily open -- the whole point of the flyout is to
+  // reach groups without it.
+  const [newGroupDialog, setNewGroupDialog] = useState<{ traceIds: string[]; name: string } | null>(null)
+  const [newGroupBusy, setNewGroupBusy] = useState(false)
   const [playingMedia, setPlayingMedia] = useState<Set<string>>(new Set()) // Track traces with playing media
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
   const [imageRetryCount, setImageRetryCount] = useState<Record<string, number>>({}) // Track retry attempts per trace
@@ -5330,6 +5378,76 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               </>
             )}
 
+            {/* Controls for a trace that is currently interactive.
+
+                An embed with Enable Interaction on hands every click to the
+                iframe -- which is the point, and also means the trace can no
+                longer be picked up or, without opening Customize, switched
+                back. So while it is on, it carries the two things it has just
+                given away: a grip to move by, and the switch to turn it off.
+
+                Shown whenever interaction is on, selected or not, because the
+                problem they solve exists whether or not the trace happens to
+                be selected -- an interactive embed you cannot grab is stuck
+                regardless. They disappear the moment it is switched off,
+                since the trace answers the pointer normally again.
+
+                Below the trace, on the same line the crop button uses, and
+                built from the same tokens so the row reads as one set of
+                controls rather than three unrelated widgets. */}
+            {trace.enableInteraction && canEdit && (
+              <div
+                className="absolute z-10 flex items-stretch gap-2 pointer-events-none"
+                style={{
+                  left: `${screenX - (borderWidth / 2)}px`,
+                  top: `${screenY + (borderHeight / 2 + 12)}px`,
+                }}
+              >
+                {/* The grip. Starts the same drag the trace body would, so it
+                    behaves like a handle on the trace rather than a control
+                    of its own -- press and move and the trace comes with it. */}
+                <button
+                  data-trace-element="true"
+                  title="Drag to move"
+                  aria-label="Drag to move"
+                  className="pointer-events-auto flex items-center justify-center px-2 border cursor-move transition-colors"
+                  style={{
+                    color: 'rgb(var(--c-fg) / 0.8)',
+                    background: 'rgb(var(--c-ground) / 0.94)',
+                    borderColor: 'rgb(var(--c-line) / 0.7)',
+                  }}
+                  onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
+                    <path d="M6 1v10M1 6h10M6 1L4.4 2.6M6 1l1.6 1.6M6 11l-1.6-1.6M6 11l1.6-1.6M1 6l1.6-1.6M1 6l1.6 1.6M11 6L9.4 4.4M11 6L9.4 7.6" />
+                  </svg>
+                </button>
+
+                <button
+                  data-trace-element="true"
+                  className="pointer-events-auto text-[10px] font-semibold px-3 py-1.5 border transition-colors tracking-[0.18em] uppercase whitespace-nowrap"
+                  style={{
+                    color: 'rgb(var(--c-fg) / 0.8)',
+                    background: 'rgb(var(--c-ground) / 0.94)',
+                    borderColor: 'rgb(var(--c-line) / 0.7)',
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    updateTraceCustomization(trace.id, { enableInteraction: false })
+                    if (editingTraceRef.current?.id === trace.id) {
+                      setEditingTrace({ ...editingTraceRef.current, enableInteraction: false })
+                    }
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                >
+                  Disable Interaction
+                </button>
+              </div>
+            )}
+
             {/* Crop mode handles (only when crop mode is active) */}
             {isSelected && isCropMode && canEdit && (
               <>
@@ -6294,6 +6412,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           {layer.name}
                         </button>
                       ))}
+                      {/* Below the groups, behind a rule: it is the one entry
+                          here that does not move the trace somewhere that
+                          already exists. */}
+                      <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+                      <button
+                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center gap-2"
+                        onClick={() => {
+                          setNewGroupDialog({ traceIds: targetIds, name: '' })
+                          setContextMenu(null)
+                        }}
+                      >
+                        <span className="text-gray-400 text-[10px]">+</span> New Group…
+                      </button>
                     </div>
                   )}
                 </div>
@@ -8466,6 +8597,81 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       )}
 
       {/* Delete Confirmation Dialog */}
+      {/* Naming a group made from the context menu.
+
+          Same shell as the delete dialog below it -- backdrop, scanlines,
+          corner brackets -- in the app's own colours rather than that one's
+          red, since this creates something. */}
+      {newGroupDialog && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          onClick={() => { if (!newGroupBusy) setNewGroupDialog(null) }}
+        >
+          <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
+            }}
+          />
+
+          <form
+            className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-sm w-full mx-4 relative"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (newGroupBusy || !newGroupDialog.name.trim()) return
+              setNewGroupBusy(true)
+              await createGroupAndMove(newGroupDialog.traceIds, newGroupDialog.name)
+              setNewGroupBusy(false)
+              setNewGroupDialog(null)
+            }}
+          >
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">New Group</h2>
+            </div>
+
+            <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mb-4">
+              {newGroupDialog.traceIds.length > 1
+                ? `${newGroupDialog.traceIds.length} traces will be moved into it.`
+                : 'The selected trace will be moved into it.'}
+            </p>
+
+            <input
+              autoFocus
+              type="text"
+              value={newGroupDialog.name}
+              maxLength={60}
+              onChange={(e) => setNewGroupDialog(d => (d ? { ...d, name: e.target.value } : d))}
+              placeholder="Group name"
+              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors mb-5"
+            />
+
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={newGroupBusy || !newGroupDialog.name.trim()}
+                className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {newGroupBusy ? 'Creating…' : 'Create'}
+              </button>
+              <button
+                type="button"
+                disabled={newGroupBusy}
+                onClick={() => setNewGroupDialog(null)}
+                className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {deleteConfirmDialog && (
         <div
           className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"

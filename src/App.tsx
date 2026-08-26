@@ -298,8 +298,12 @@ function AtriumTransitionOverlay({
   // Which room this crossing happens in.
   const light = useLandingTheme().resolved === 'light'
   const nearCompleteFiredRef = useRef(false)
+  // Worked out once when the zoom begins and kept for the rest of it, so the
+  // scale cannot jump if the window is resized mid-animation.
+  const zoomTargetRef = useRef<number | null>(null)
   useEffect(() => {
     nearCompleteFiredRef.current = false
+    zoomTargetRef.current = null
   }, [videoSrc])
 
   // The video's own footage fades to white in its last ~150ms (a portal
@@ -318,6 +322,56 @@ function AtriumTransitionOverlay({
   // to AtriumFlashOverlay is invisible (both are already solid white).
   const [flashActive, setFlashActive] = useState(false)
   const CROSSFADE_LEAD_SEC = 0.6
+
+  // Growing the last stretch of the entering animation until it covers the
+  // screen.
+  //
+  // The clip is letterboxed inside a 90vw x 62vh box, so its edges sit inside
+  // the page. Its own footage ends by filling the frame with white -- but
+  // "the frame" is that box, not the window, so the moment it whites out you
+  // can see exactly where it stops. Matching the two by timing alone would
+  // mean the box's edge and the video's own fade landing on the same
+  // millisecond, which is not something to rely on.
+  //
+  // So the video is scaled up instead, from the point the portal starts
+  // opening until the end. By the time it is white it is larger than the
+  // window, and the seam is off-screen: the edge you cannot see is the one
+  // that is no longer there.
+  //
+  // The source animation numbers its frames from 121 (see entering_animation/,
+  // 0121.jpg to 0208.jpg), so frame 195 of that timeline is frame 74 of the
+  // encoded clip -- 1.85s into 2.2s at 40fps. Expressed in source numbering
+  // because that is the timeline the animation was authored on and the number
+  // anyone reasoning about it will have.
+  const ZOOM_FROM_SOURCE_FRAME = 195
+  const SOURCE_FIRST_FRAME = 121
+  const SOURCE_FPS = 40
+  const ZOOM_START_SEC = (ZOOM_FROM_SOURCE_FRAME - SOURCE_FIRST_FRAME) / SOURCE_FPS
+
+  const enteringVideoRef = useRef<HTMLVideoElement | null>(null)
+
+  // How much bigger the video has to get before it covers the window.
+  //
+  // Measured rather than assumed: object-contain means the picture inside the
+  // element is only as big as its aspect ratio allows, which is not the
+  // element's own box, and the box itself is a vw/vh expression that changes
+  // with the window. Both are read at the moment the zoom starts.
+  const coverScaleFor = (video: HTMLVideoElement): number => {
+    const rect = video.getBoundingClientRect()
+    if (!rect.width || !rect.height || !video.videoWidth || !video.videoHeight) return 1
+    const aspect = video.videoWidth / video.videoHeight
+
+    let contentW = rect.width
+    let contentH = rect.width / aspect
+    if (contentH > rect.height) {
+      contentH = rect.height
+      contentW = rect.height * aspect
+    }
+
+    // A little past covering, so a rounding error cannot leave a hairline of
+    // page showing along one edge at the exact moment everything is white.
+    return Math.max(window.innerWidth / contentW, window.innerHeight / contentH) * 1.04
+  }
   useEffect(() => {
     setFlashActive(false)
   }, [videoSrc])
@@ -345,9 +399,27 @@ function AtriumTransitionOverlay({
               aria-label={title}
               className="w-[90vw] h-[58vh] sm:h-[62vh] max-h-[760px] object-contain"
             style={light ? { filter: 'invert(1)', mixBlendMode: 'multiply' } : undefined}
+              ref={enteringVideoRef}
               onTimeUpdate={(e) => {
                 const video = e.currentTarget
-                if (nearCompleteFiredRef.current || !video.duration) return
+                if (!video.duration) return
+
+                // The grow. Eased so it starts imperceptibly rather than
+                // snapping into motion, and driven off the video's own clock
+                // so it stays in step if playback stutters.
+                if (video.currentTime >= ZOOM_START_SEC) {
+                  const span = Math.max(0.001, video.duration - ZOOM_START_SEC)
+                  const t = Math.min(1, (video.currentTime - ZOOM_START_SEC) / span)
+                  const eased = t * t * (3 - 2 * t)
+                  if (!zoomTargetRef.current) zoomTargetRef.current = coverScaleFor(video)
+                  const scale = 1 + (zoomTargetRef.current - 1) * eased
+                  video.style.transform = `scale(${scale})`
+                  // Over the title and subtitle it is now large enough to
+                  // reach, so they go under it rather than through it.
+                  video.style.zIndex = '2'
+                }
+
+                if (nearCompleteFiredRef.current) return
                 if (video.currentTime >= video.duration - CROSSFADE_LEAD_SEC) {
                   nearCompleteFiredRef.current = true
                   setFlashActive(true)

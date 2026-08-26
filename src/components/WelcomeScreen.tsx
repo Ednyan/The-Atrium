@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import SupportAppeal from './SupportAppeal'
@@ -28,6 +28,49 @@ interface WelcomeScreenProps {
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const theme = useLandingTheme()
+
+  // Scale the whole menu down rather than let it scroll.
+  //
+  // Everything here is already sized against the viewport (clamp against vh),
+  // which carries it a long way -- but past a point the type cannot shrink any
+  // further without becoming unreadable, and the column started scrolling
+  // instead. A title screen that scrolls does not read as a title screen; it
+  // reads as a web page that did not fit. Games shrink the whole interface and
+  // keep its proportions, so this does that: measure what the content wants,
+  // measure what the window has, and scale by the ratio when it is short.
+  //
+  // Only ever down. Blowing the menu up to fill a large monitor would make it
+  // enormous, and the clamps already grow it as far as it should go.
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [menuScale, setMenuScale] = useState(1)
+
+  useEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+
+    const measure = () => {
+      // scrollHeight is the height the content wants; the parent is the
+      // full-height flex box it is centred in. Measured with the current
+      // scale undone, or each pass would compound the last one.
+      const available = el.parentElement?.clientHeight ?? window.innerHeight
+      const natural = el.scrollHeight
+      if (!natural || !available) return
+      const next = Math.min(1, available / natural)
+      // A hair of tolerance, so a sub-pixel difference does not set off an
+      // endless measure-scale-measure loop.
+      setMenuScale(prev => (Math.abs(prev - next) > 0.005 ? next : prev))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    if (el.parentElement) observer.observe(el.parentElement)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
 
   // Set while the screen is stepping back, just before the browser is asked
   // for. Two screens on the same ground, one receding as the other rises,
@@ -311,7 +354,19 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             (clamp against vh), the whole column scrolls rather than clipping if
             it still doesn't fit, and the actions read as a title-screen menu
             instead of a stack of boxes -- which is most of the height saved. */}
-        <div className="text-center px-8 py-6 max-w-lg w-full relative z-10 max-h-full overflow-y-auto">
+        <div
+          ref={menuRef}
+          className="text-center px-8 py-6 max-w-lg w-full relative z-10"
+          style={{
+            // transform rather than a font-size cascade: it takes the spacing,
+            // the portal loop and the rules with it, so the menu keeps its
+            // proportions instead of just having smaller words in the same
+            // gaps. It also costs no layout -- the browser is only drawing the
+            // same box at a different size.
+            transform: menuScale < 1 ? `scale(${menuScale})` : undefined,
+            transformOrigin: 'center center',
+          }}
+        >
           {/* Title */}
           <div className="space-y-[clamp(0.5rem,1.5vh,1rem)]">
             <div className="flex items-center justify-center gap-4">
