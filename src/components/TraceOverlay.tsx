@@ -2535,7 +2535,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           ? traceBoxFor(activeTrace, {
               x: startTransformRef.current.x + worldDeltaX,
               y: startTransformRef.current.y + worldDeltaY,
-            })
+            }, currentZoom)
           : null
 
         let guides: { x?: { at: number; from: number; to: number }; y?: { at: number; from: number; to: number } } | null = null
@@ -3395,7 +3395,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // looks like it ends -- the eye lines things up against the edges it can
   // see. A rotated trace is aligned by its centre, which is the one point
   // rotation does not move.
-  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }) => {
+  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, zoom = 1) => {
     const size = getTraceSize(trace)
     const transform = getTraceTransform(trace)
     const w = (trace.type === 'shape' ? (trace.width || 200) : size.width * (trace.cropWidth ?? 1))
@@ -3405,10 +3405,28 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const cx = at?.x ?? transform.x
     const cy = at?.y ?? transform.y
     const rotated = (trace.rotation ?? 0) % 360 !== 0
+
+    // The frame sits OUTSIDE the box, so alignment has to include it.
+    //
+    // The bordered container is explicitly boxSizing: 'content-box' -- it
+    // overrides the global border-box on purpose -- so the width above is the
+    // content and the border is drawn beyond it on every side. Aligning
+    // without it lines up the content edges and leaves the visible frames
+    // adrift by exactly the border's thickness, which is what somebody
+    // dragging a trace actually sees.
+    //
+    // Divided by zoom because that border is a flat pixel value in the style
+    // and is never scaled with the camera, so its width in world units shrinks
+    // as you zoom in. Shapes are excluded: their branch draws no border
+    // container at all, only a selection outline that is not part of the
+    // trace.
+    const hasFrame = trace.type !== 'shape' && (trace.showBorder ?? true)
+    const frame = hasFrame ? (trace.borderWidth ?? 2) / (zoom || 1) : 0
+
     return {
       cx, cy,
-      halfW: w / 2,
-      halfH: h / 2,
+      halfW: w / 2 + frame,
+      halfH: h / 2 + frame,
       rotated,
     }
   }, [getTraceSize, getTraceTransform])
@@ -3452,7 +3470,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     let bestY: { delta: number; at: number; otherLeft: number; otherRight: number } | null = null
 
     for (const other of candidates) {
-      const box = traceBoxFor(other)
+      const box = traceBoxFor(other, undefined, zoom)
       if (Math.abs(box.cx - moving.cx) > reach && Math.abs(box.cy - moving.cy) > reach) continue
 
       const otherX: number[] = box.rotated
