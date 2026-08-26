@@ -2915,10 +2915,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         const candidates = visibleTracesRef.current.filter((t: Trace) =>
           t.id !== activeSelectedTraceId && !held.has(t.id))
 
-        // The frame is drawn outside the box and never scales, so it offsets
-        // every edge by a constant -- see traceBoxFor.
+        // The frame is drawn outside the box, so it offsets every edge by a
+        // constant number of world units -- see traceBoxFor.
         const hasFrame = currentTrace.type !== 'shape' && (currentTrace.showBorder ?? true)
-        const frame = hasFrame ? (currentTrace.borderWidth ?? 2) / (currentZoom || 1) : 0
+        const frame = hasFrame ? (currentTrace.borderWidth ?? 2) : 0
 
         const tolerance = ALIGN_SNAP_PX / currentZoom
         const reach = ALIGN_NEIGHBOURHOOD_PX / currentZoom
@@ -3699,7 +3699,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // looks like it ends -- the eye lines things up against the edges it can
   // see. A rotated trace is aligned by its centre, which is the one point
   // rotation does not move.
-  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, zoom = 1) => {
+  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, _zoom = 1) => {
     const size = getTraceSize(trace)
     const transform = getTraceTransform(trace)
     const w = (trace.type === 'shape' ? (trace.width || 200) : size.width * (trace.cropWidth ?? 1))
@@ -3719,13 +3719,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // adrift by exactly the border's thickness, which is what somebody
     // dragging a trace actually sees.
     //
-    // Divided by zoom because that border is a flat pixel value in the style
-    // and is never scaled with the camera, so its width in world units shrinks
-    // as you zoom in. Shapes are excluded: their branch draws no border
+    // Not divided by zoom: the border is drawn at borderWidth * zoom, so it is
+    // a fixed number of WORLD units and the same figure works at every camera
+    // distance. It used to be a flat pixel value -- which is why it appeared
+    // to thicken as you zoomed out -- and this measurement had to divide it
+    // back out. Shapes are excluded: their branch draws no border
     // container at all, only a selection outline that is not part of the
     // trace.
     const hasFrame = trace.type !== 'shape' && (trace.showBorder ?? true)
-    const frame = hasFrame ? (trace.borderWidth ?? 2) / (zoom || 1) : 0
+    const frame = hasFrame ? (trace.borderWidth ?? 2) : 0
 
     return {
       cx, cy,
@@ -5002,7 +5004,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     boxSizing: 'content-box',
                     width: `${borderWidth}px`,
                     height: `${borderHeight}px`,
-                    border: showBorder ? `${displayTrace.borderWidth ?? 2}px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
+                    border: showBorder ? `${(displayTrace.borderWidth ?? 2) * zoom}px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
                     borderRadius: `${displayTrace.borderRadius ?? 0}px`,
                     backgroundColor: showBackground ? (() => {
                       const fc = displayTrace.fillColor || '#191919';
