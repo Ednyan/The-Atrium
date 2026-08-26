@@ -19,7 +19,7 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
   // screen's column, which is a list of rows rather than a row of buttons.
   variant?: 'panel' | 'atrium' | 'menu'
 }) {
-  const { language, languages, setLanguage, followingBrowser } = useTranslation()
+  const { t, language, languages, setLanguage, followingBrowser } = useTranslation()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -52,38 +52,85 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
     setOpen(false)
   }
 
-  // The welcome screen's menu is a column of rows, so the picker is a row that
-  // opens into more rows rather than a button that opens a floating panel.
+  // On the welcome screen the picker is a panel, not a row that unfolds.
+  //
+  // Unfolding pushed every button below it down the column and, with eight
+  // languages, ran the menu off a short window -- the thing the whole screen
+  // was just taught to avoid. A panel is also what Profile Settings does from
+  // the same list, so the two rows in that column now behave alike: press,
+  // choose, and it closes itself.
   if (variant === 'menu') {
     return (
       <>
         <button
           type="button"
-          onClick={() => setOpen(value => !value)}
-          aria-expanded={open}
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
           className={`menu-row ${className}`}
         >
-          <span className="relative z-10">◇ Language · {active.endonym}</span>
+          <span className="relative z-10">◇ {t('welcome.language')}</span>
         </button>
+
         {open && (
-          <div className="panel-in flex flex-col">
-            {languages.map(entry => (
-              <button
-                key={entry.code}
-                type="button"
-                onClick={() => choose(entry.code)}
-                className="menu-row"
-              >
-                <span className={`relative z-10 pl-5 ${entry.code === language ? 'text-nier-strong' : ''}`}>
-                  {entry.code === language ? '◆' : '◦'} {entry.endonym}
-                </span>
-              </button>
-            ))}
-            {!followingBrowser && (
-              <button type="button" onClick={() => choose('browser')} className="menu-row">
-                <span className="relative z-10 pl-5">◦ Use my browser's</span>
-              </button>
-            )}
+          <div
+            className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000] p-4"
+            onClick={() => setOpen(false)}
+          >
+            <div
+              className="bg-nier-blackLight border border-nier-border/40 max-w-xs w-full mx-4 max-h-[90vh] relative flex flex-col"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
+              <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
+              <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
+              <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
+
+              <div className="flex justify-between items-center gap-3 px-6 pt-6 pb-4 shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60 shrink-0" />
+                  <h2 className="text-lg text-white tracking-[0.15em] uppercase truncate">{t('welcome.language')}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  aria-label={t('common.close')}
+                  className="w-8 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="px-6 pb-6 overflow-y-auto flex-1 min-h-0 flex flex-col gap-1">
+                {languages.map(entry => {
+                  const isActive = entry.code === language
+                  return (
+                    <button
+                      key={entry.code}
+                      type="button"
+                      onClick={() => choose(entry.code)}
+                      className={`w-full px-4 py-2.5 text-left text-[11px] tracking-[0.12em] uppercase border transition-colors flex items-center justify-between gap-3 ${
+                        isActive
+                          ? 'text-nier-strong border-nier-border/60 bg-nier-bg/10'
+                          : 'text-nier-bg/80 border-nier-border/25 hover:text-nier-strong hover:border-nier-border/50'
+                      }`}
+                    >
+                      <span>{entry.endonym}</span>
+                      {isActive && <span className="text-[10px]">◇</span>}
+                    </button>
+                  )
+                })}
+
+                {!followingBrowser && (
+                  <button
+                    type="button"
+                    onClick={() => choose('browser')}
+                    className="w-full px-4 py-2.5 text-left text-[11px] tracking-[0.12em] uppercase border border-nier-border/25 text-nier-bg/70 hover:text-nier-strong hover:border-nier-border/50 transition-colors mt-1"
+                  >
+                    {t('welcome.useBrowserLanguage')}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </>
@@ -95,8 +142,8 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
-        title={`Language: ${active.english}`}
-        aria-label={`Language: ${active.english}. Click to change.`}
+        title={`${t('welcome.language')}: ${active.endonym}`}
+        aria-label={`${t('welcome.language')}: ${active.endonym}`}
         aria-expanded={open}
         aria-haspopup="listbox"
         className={variant === 'atrium'
@@ -149,7 +196,7 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
                 onClick={() => choose('browser')}
                 className="w-full px-4 py-2 text-left text-[11px] tracking-[0.12em] uppercase text-nier-bg/70 hover:text-nier-strong hover:bg-nier-bg/5 transition-colors"
               >
-                Use my browser's
+                {t('welcome.useBrowserLanguage')}
               </button>
             </>
           )}

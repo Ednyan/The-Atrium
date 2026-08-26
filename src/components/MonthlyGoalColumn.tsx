@@ -19,6 +19,9 @@ interface MonthlyGoalColumnProps {
   month: MonthlyProgress | null
   onOpen: () => void
   side?: 'left' | 'right'
+  // Shared with the welcome screen's own menu, so the two shrink together
+  // rather than one of them disappearing while the other adapts.
+  scale?: number
 }
 
 // Fixed positions and timings. Randomising them per render means a column that
@@ -31,7 +34,7 @@ const BUBBLES = [
   { left: 12, delay: 4.6, duration: 6.4, size: 2.5 },
 ]
 
-export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: MonthlyGoalColumnProps) {
+export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale = 1 }: MonthlyGoalColumnProps) {
   const { t } = useTranslation()
   // Starts empty and is told to fill one frame later, so the transition has
   // something to travel from. Setting the real height immediately would paint
@@ -54,11 +57,24 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left' }: Mont
     <button
       type="button"
       onClick={onOpen}
-      // Hidden where there is no margin to put it in. On a narrow window the
-      // column it would sit beside is the whole screen.
-      className={`hidden lg:flex fixed top-1/2 -translate-y-1/2 z-20 flex-col items-center gap-4 group ${
+      // Shrinks with the rest of the screen before it gives up.
+      //
+      // This was hidden below lg, which is a WIDTH breakpoint -- so making the
+      // window shorter, where the menu beside it merely scales down, made the
+      // gauge vanish outright. It takes the same scale now and holds on to md,
+      // by which point the centre column really has taken the margin it lives
+      // in.
+      //
+      // translateY is written into the transform rather than left to
+      // -translate-y-1/2: an inline transform replaces the class outright, and
+      // without it the column jumps to the middle of the screen.
+      className={`hidden md:flex fixed top-1/2 z-20 flex-col items-center gap-4 group ${
         side === 'left' ? 'left-10 xl:left-16' : 'right-10 xl:right-16'
       }`}
+      style={{
+        transform: `translateY(-50%) scale(${scale})`,
+        transformOrigin: side === 'left' ? 'left center' : 'right center',
+      }}
       title={t('goal.seeWho')}
     >
       {/* The goal sits at the top, where the column is trying to reach, and

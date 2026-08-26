@@ -288,7 +288,30 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         <MonthlyGoalColumn
           month={contributions.month}
           onOpen={() => openContributors('/welcome')}
+          scale={menuScale}
         />
+
+        {/* Desktop only: the web app is already on the website, so there it
+            would be a button that reloads the page you are looking at. Handed
+            to the system browser rather than opened in the webview, which has
+            no address bar to come back from.
+
+            Up here rather than in the menu because it is the one row that led
+            somewhere outside the app -- and the corner opposite the theme
+            switch was empty, at the same height and in the same shape. */}
+        {isDesktop && (
+          <div className="absolute top-6 left-6 z-30 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openExternalUrl(ATRIUM_WEBSITE)}
+              title={t('welcome.websiteTitle')}
+              className="cut-corner inline-flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+            >
+              {t('welcome.website')} ↗
+            </button>
+          </div>
+        )}
 
         <div className="absolute top-6 right-6 z-30 flex items-center gap-2">
           <ThemeToggle />
@@ -306,7 +329,14 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         <button
           type="button"
           onClick={() => setShowCreator(true)}
-          className="group hidden lg:flex fixed right-10 xl:right-16 top-1/2 -translate-y-1/2 z-20 flex-col items-end text-right"
+          className="group hidden md:flex fixed right-10 xl:right-16 top-1/2 z-20 flex-col items-end text-right"
+          // Same treatment as the gauge opposite: scaled rather than dropped,
+          // with its own centring kept inside the transform so the inline
+          // style does not replace it.
+          style={{
+            transform: `translateY(-50%) scale(${menuScale})`,
+            transformOrigin: 'right center',
+          }}
         >
           <span className="byline flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase">
             <span className="byline-mark w-1.5 h-1.5 rotate-45" />
@@ -519,6 +549,10 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <span className={`absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-300 ${isHovered === 'enter' ? 'opacity-70 translate-x-0' : 'opacity-0 translate-x-2'}`}>]</span>
             </button>
 
+            {/* The order is the order somebody needs them in: the thing
+                they came to change, the thing they came to read, the two that
+                are settings-shaped, then the two that end the session. */}
+
             {/* Settings Button */}
             <button
               onClick={() => setShowSettings(true)}
@@ -528,38 +562,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             >
               <span className="relative z-10">◇ {t('welcome.settings')}</span>
             </button>
-
-            {/* Contributors, on both platforms -- who paid for this is the same
-                question wherever the app is running. */}
-            <button
-              onClick={() => openContributors('/welcome')}
-              onMouseEnter={() => setIsHovered('contributors')}
-              onMouseLeave={() => setIsHovered(null)}
-              className="menu-row"
-            >
-              <span className="relative z-10">◇ {t('welcome.contributors')}</span>
-            </button>
-
-            {/* The language picker, a row after Contributors. It renders
-                nothing until there is more than one language to pick, so it
-                can sit here from the day the plumbing lands. */}
-            <LanguageToggle variant="menu" />
-
-            {/* Desktop only: the web app is already on the website, and this
-                would be a button that reloads the page you are looking at.
-                Handed to the system browser rather than opened in the webview,
-                which has no address bar to get back from. */}
-            {isDesktop && (
-              <button
-                onClick={() => openExternalUrl(ATRIUM_WEBSITE)}
-                onMouseEnter={() => setIsHovered('website')}
-                onMouseLeave={() => setIsHovered(null)}
-                title={t('welcome.websiteTitle')}
-                className="menu-row"
-              >
-                <span className="relative z-10">◇ {t('welcome.website')} ↗</span>
-              </button>
-            )}
 
             {/* About button (desktop only) */}
             {isDesktop && onBackToLanding && (
@@ -572,6 +574,22 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 <span className="relative z-10">◇ {t('welcome.about')}</span>
               </button>
             )}
+
+            {/* The language picker. Renders nothing until there is more than
+                one language to pick, so it can sit here from the day the
+                plumbing lands. */}
+            <LanguageToggle variant="menu" />
+
+            {/* Contributors, on both platforms -- who paid for this is the same
+                question wherever the app is running. */}
+            <button
+              onClick={() => openContributors('/welcome')}
+              onMouseEnter={() => setIsHovered('contributors')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="menu-row"
+            >
+              <span className="relative z-10">◇ {t('welcome.contributors')}</span>
+            </button>
 
             {/* Fullscreen button */}
             <button
