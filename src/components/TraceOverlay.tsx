@@ -2732,6 +2732,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const worldDeltaY = deltaY / currentZoom
       const { width: baseWidth, height: baseHeight } = getTraceSize(currentTrace)
 
+      // What one unit of scale is actually worth on screen.
+      //
+      // getTraceSize returns the UNCROPPED size, but a cropped trace draws at
+      // size * crop * scale -- the same span traceBoxFor measures and the same
+      // one the border is drawn around (see the borderWidth calculation in the
+      // render). Scaling against the uncropped number makes a cropped trace
+      // resize faster than the cursor and drags its anchored edge along with
+      // it; snapping cannot hold an edge that is already drifting.
+      const spanW = baseWidth * (currentTrace.type === 'shape' ? 1 : (currentTrace.cropWidth ?? 1))
+      const spanH = baseHeight * (currentTrace.type === 'shape' ? 1 : (currentTrace.cropHeight ?? 1))
+
       let newScaleX = startScaleX
       let newScaleY = startScaleY
       let localDx = 0
@@ -2746,22 +2757,187 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         const scaleFactor = startDist > 0 ? currentDist / startDist : 1
         newScaleX = Math.max(0.01, startScaleX * scaleFactor)
         newScaleY = Math.max(0.01, startScaleY * scaleFactor)
-
-        const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
-        const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
-        localDx = corner.includes('r') ? widthDelta : -widthDelta
-        localDy = corner.includes('b') ? heightDelta : -heightDelta
       } else if (corner === 'l' || corner === 'r') {
         // Horizontal edge - scale X only
         const sign = corner === 'r' ? 1 : -1
-        newScaleX = Math.max(0.01, startScaleX + (sign * worldDeltaX) / baseWidth)
-        const widthDelta = (baseWidth * newScaleX) / 2 - (baseWidth * startScaleX) / 2
-        localDx = corner === 'r' ? widthDelta : -widthDelta
+        newScaleX = Math.max(0.01, startScaleX + (sign * worldDeltaX) / spanW)
       } else if (corner === 't' || corner === 'b') {
         // Vertical edge - scale Y only
         const sign = corner === 'b' ? 1 : -1
-        newScaleY = Math.max(0.01, startScaleY + (sign * worldDeltaY) / baseHeight)
-        const heightDelta = (baseHeight * newScaleY) / 2 - (baseHeight * startScaleY) / 2
+        newScaleY = Math.max(0.01, startScaleY + (sign * worldDeltaY) / spanH)
+      }
+
+      // Shift lands the edge being dragged on a neighbour's edge.
+      //
+      // The same idea as Shift-dragging a trace, applied to the other half of
+      // a transform: while moving snaps the whole box, resizing snaps the one
+      // edge under the cursor and leaves the anchored edge exactly where it
+      // is. Which means the correction is applied to the SCALE rather than to
+      // a position -- solving for the scale that puts the moving edge on the
+      // target, instead of nudging the box and dragging the anchor with it.
+      //
+      // Rotated traces are left alone. Their edges are not axis-aligned, so
+      // there is no single world coordinate for "the right-hand edge" to snap
+      // to a vertical line.
+      const rotatedForSnap = (currentTrace.rotation ?? 0) % 360 !== 0
+      let resizeGuides: { x?: { at: number; from: number; to: number }; y?: { at: number; from: number; to: number } } | null = null
+
+      if (e.shiftKey && !rotatedForSnap) {
+        const held = multiSelectedIdsRef.current
+        const candidates = visibleTracesRef.current.filter((t: Trace) =>
+          t.id !== activeSelectedTraceId && !held.has(t.id))
+
+        // The frame is drawn outside the box and never scales, so it offsets
+        // every edge by a constant -- see traceBoxFor.
+        const hasFrame = currentTrace.type !== 'shape' && (currentTrace.showBorder ?? true)
+        const frame = hasFrame ? (currentTrace.borderWidth ?? 2) / (currentZoom || 1) : 0
+
+        const tolerance = ALIGN_SNAP_PX / currentZoom
+        const reach = ALIGN_NEIGHBOURHOOD_PX / currentZoom
+        const startHalfW = (spanW * startScaleX) / 2 + frame
+        const startHalfH = (spanH * startScaleY) / 2 + frame
+
+        // The edge that stays put, in world coordinates.
+        const anchorX = corner.includes('l')
+          ? startTransformRef.current.x + startHalfW
+          : startTransformRef.current.x - startHalfW
+        const anchorY = corner.includes('t')
+          ? startTransformRef.current.y + startHalfH
+          : startTransformRef.current.y - startHalfH
+
+        const movesX = corner.includes('l') || corner.includes('r')
+        const movesY = corner.includes('t') || corner.includes('b')
+
+        // Where the dragged edge currently sits, given the scale worked out
+        // above.
+        const edgeX = corner.includes('l')
+          ? anchorX - (spanW * newScaleX + 2 * frame)
+          : anchorX + (spanW * newScaleX + 2 * frame)
+        const edgeY = corner.includes('t')
+          ? anchorY - (spanH * newScaleY + 2 * frame)
+          : anchorY + (spanH * newScaleY + 2 * frame)
+
+        // `guide` is false for a grid match: the grid already draws itself, so
+        // a line on top of one of its own would be noise. `from`/`to` is the
+        // CANDIDATE's extent only -- the moving trace's half is added after the
+        // snap, since resizing is what changes it.
+        let bestX: { at: number; distance: number; from: number; to: number; guide: boolean } | null = null
+        let bestY: { at: number; distance: number; from: number; to: number; guide: boolean } | null = null
+
+        for (const other of candidates) {
+          const box = traceBoxFor(other, undefined, currentZoom)
+          if (Math.abs(box.cx - startTransformRef.current.x) > reach
+            && Math.abs(box.cy - startTransformRef.current.y) > reach) continue
+
+          // A rotated neighbour offers its centre and nothing else, exactly as
+          // it does when dragging -- its edges are not axis-aligned lines.
+          const otherX = box.rotated ? [box.cx] : [box.cx - box.halfW, box.cx, box.cx + box.halfW]
+          const otherY = box.rotated ? [box.cy] : [box.cy - box.halfH, box.cy, box.cy + box.halfH]
+
+          if (movesX) {
+            for (const at of otherX) {
+              const distance = Math.abs(at - edgeX)
+              if (distance > tolerance) continue
+              if (!bestX || distance < bestX.distance) {
+                bestX = { at, distance, guide: true, from: box.cy - box.halfH, to: box.cy + box.halfH }
+              }
+            }
+          }
+
+          if (movesY) {
+            for (const at of otherY) {
+              const distance = Math.abs(at - edgeY)
+              if (distance > tolerance) continue
+              if (!bestY || distance < bestY.distance) {
+                bestY = { at, distance, guide: true, from: box.cx - box.halfW, to: box.cx + box.halfW }
+              }
+            }
+          }
+        }
+
+        // Nothing to align to on an axis: fall back to the grid, the same way
+        // Shift-dragging does. Without this, holding Shift while resizing in an
+        // empty part of the atrium would do nothing at all -- and the modifier
+        // means the same thing in both gestures.
+        const grid = gridLineSpacing && gridLineSpacing > 0 ? gridLineSpacing : GRID_SNAP_FALLBACK
+        if (movesX && !bestX) {
+          const at = Math.round(edgeX / grid) * grid
+          bestX = { at, distance: Math.abs(at - edgeX), guide: false, from: 0, to: 0 }
+        }
+        if (movesY && !bestY) {
+          const at = Math.round(edgeY / grid) * grid
+          bestY = { at, distance: Math.abs(at - edgeY), guide: false, from: 0, to: 0 }
+        }
+
+        // A corner drags both axes at once and has to stay uniform, so only
+        // the closer of the two matches is taken and the other axis follows
+        // it. Picking both would mean two different scale factors and a trace
+        // that changes shape as it snaps.
+        const finalSpan = (axis: 'x' | 'y') => {
+          const near = axis === 'x' ? corner.includes('l') : corner.includes('t')
+          const far = axis === 'x' ? corner.includes('r') : corner.includes('b')
+          const anchor = axis === 'x' ? anchorX : anchorY
+          const length = axis === 'x' ? spanW * newScaleX + 2 * frame : spanH * newScaleY + 2 * frame
+          if (near) return { from: anchor - length, to: anchor }
+          if (far) return { from: anchor, to: anchor + length }
+          // This axis is not being dragged, so it stays where it started.
+          const c = axis === 'x' ? startTransformRef.current.x : startTransformRef.current.y
+          const half = axis === 'x' ? startHalfW : startHalfH
+          return { from: c - half, to: c + half }
+        }
+
+        const preferX = bestX && bestY && bestX.guide !== bestY.guide ? bestX.guide : null
+        const useX = bestX && (!bestY || (preferX ?? bestX.distance <= bestY.distance))
+        const useY = bestY && (!bestX || !(preferX ?? bestX!.distance <= bestY.distance))
+
+        if (movesX && bestX && (!isCorner || useX)) {
+          const width = Math.abs(bestX.at - anchorX) - 2 * frame
+          if (width > 0) {
+            const factor = width / spanW / (newScaleX || 1)
+            newScaleX = Math.max(0.01, width / spanW)
+            if (isCorner) newScaleY = Math.max(0.01, newScaleY * factor)
+            if (bestX.guide) {
+              const own = finalSpan('y')
+              resizeGuides = {
+                ...(resizeGuides ?? {}),
+                x: { at: bestX.at, from: Math.min(bestX.from, own.from), to: Math.max(bestX.to, own.to) },
+              }
+            }
+          }
+        }
+
+        if (movesY && bestY && (!isCorner || useY)) {
+          const height = Math.abs(bestY.at - anchorY) - 2 * frame
+          if (height > 0) {
+            const factor = height / spanH / (newScaleY || 1)
+            newScaleY = Math.max(0.01, height / spanH)
+            if (isCorner) newScaleX = Math.max(0.01, newScaleX * factor)
+            if (bestY.guide) {
+              const own = finalSpan('x')
+              resizeGuides = {
+                ...(resizeGuides ?? {}),
+                y: { at: bestY.at, from: Math.min(bestY.from, own.from), to: Math.max(bestY.to, own.to) },
+              }
+            }
+          }
+        }
+      }
+
+      setAlignGuides(resizeGuides)
+
+      // The centre shift that keeps the anchored edge still, worked out from
+      // the final scales -- so a snapped edge moves the centre by the snapped
+      // amount rather than the raw one.
+      if (isCorner) {
+        const widthDelta = (spanW * newScaleX) / 2 - (spanW * startScaleX) / 2
+        const heightDelta = (spanH * newScaleY) / 2 - (spanH * startScaleY) / 2
+        localDx = corner.includes('r') ? widthDelta : -widthDelta
+        localDy = corner.includes('b') ? heightDelta : -heightDelta
+      } else if (corner === 'l' || corner === 'r') {
+        const widthDelta = (spanW * newScaleX) / 2 - (spanW * startScaleX) / 2
+        localDx = corner === 'r' ? widthDelta : -widthDelta
+      } else if (corner === 't' || corner === 'b') {
+        const heightDelta = (spanH * newScaleY) / 2 - (spanH * startScaleY) / 2
         localDy = corner === 'b' ? heightDelta : -heightDelta
       }
 
