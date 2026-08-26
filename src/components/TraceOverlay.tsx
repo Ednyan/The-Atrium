@@ -223,6 +223,22 @@ const proxyFallbackFor = (url: string) =>
 // the setting existed snaps to the lines it is actually showing.
 const GRID_SNAP_FALLBACK = 50
 
+// How close an edge has to come before it snaps, in SCREEN pixels.
+//
+// Screen rather than world, so it feels the same however far in or out the
+// view is zoomed: a world-space threshold would be impossible to trigger
+// zoomed out and impossible to escape zoomed in.
+const ALIGN_SNAP_PX = 6
+
+// How far away a trace can be and still be worth aligning to, in screen
+// pixels. Anything further is not something the eye is relating the dragged
+// trace to, and letting it snap to something off in the distance reads as the
+// trace catching on nothing.
+const ALIGN_NEIGHBOURHOOD_PX = 1200
+
+// The six lines a box offers on each axis: its two edges and its middle.
+type AlignEdge = { at: number; kind: 'start' | 'middle' | 'end' }
+
 const ROTATION_SNAP_DEGREES = 5
 
 // How close to the viewport edge the cursor has to get before dragging a
@@ -757,6 +773,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // "Select" side flyout. Same open/keep/close trio as the flyouts above it;
   // they are separate pieces of state so hovering one closes the others rather
   // than leaving two open side by side.
+  // The alignment guides currently being shown, in world coordinates. Set
+  // while a trace is being Shift-dragged and cleared when the drag ends.
+  const [alignGuides, setAlignGuides] = useState<{
+    x?: { at: number; from: number; to: number }
+    y?: { at: number; from: number; to: number }
+  } | null>(null)
+
+  // Mirrored for the move handler, which is bound to the document and so
+  // closes over whatever these were when it was attached.
+  const alignGuidesRef = useRef<typeof alignGuides>(null)
+  useEffect(() => { alignGuidesRef.current = alignGuides }, [alignGuides])
+
   const [contextMenuSelectOpen, setContextMenuSelectOpen] = useState(false)
   const [selectFlyoutRect, setSelectFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
   const selectFlyoutCloseTimer = useRef<number | null>(null)
@@ -2497,13 +2525,76 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // same distance, instead of every trace independently collapsing onto
       // the nearest line and destroying the spacing between them.
       if (e.shiftKey && startTransformRef.current) {
-        const grid = gridLineSpacing && gridLineSpacing > 0 ? gridLineSpacing : GRID_SNAP_FALLBACK
-        const targetX = startTransformRef.current.x + worldDeltaX
-        const targetY = startTransformRef.current.y + worldDeltaY
-        const snappedX = Math.round(targetX / grid) * grid
-        const snappedY = Math.round(targetY / grid) * grid
-        worldDeltaX += snappedX - targetX
-        worldDeltaY += snappedY - targetY
+        // Line up with the traces around it first, and with the grid only
+        // when there is nothing to line up with.
+        //
+        // Both live on Shift because they answer the same request -- "put this
+        // somewhere tidy" -- and which one is wanted depends entirely on
+        // whether there is anything nearby. Giving them separate keys would
+        // mean deciding, mid-drag, which kind of tidy was on offer.
+        const activeTrace = tracesRef.current.find(t => t.id === activeSelectedTraceId)
+        const moving = activeTrace
+          ? traceBoxFor(activeTrace, {
+              x: startTransformRef.current.x + worldDeltaX,
+              y: startTransformRef.current.y + worldDeltaY,
+            })
+          : null
+
+        let guides: { x?: { at: number; from: number; to: number }; y?: { at: number; from: number; to: number } } | null = null
+
+        if (moving) {
+          // Everything except the traces travelling with the cursor. Aligning
+          // to something being dragged alongside would be aligning to a
+          // moving target.
+          const held = multiSelectedIdsRef.current
+          const candidates = visibleTracesRef.current.filter((t: Trace) =>
+            t.id !== activeSelectedTraceId && !held.has(t.id))
+
+          const { bestX, bestY } = findAlignment(moving, candidates, currentZoom)
+
+          if (bestX || bestY) {
+            guides = {}
+            if (bestX) {
+              worldDeltaX += bestX.delta
+              guides.x = {
+                at: bestX.at,
+                from: Math.min(bestX.otherTop, moving.cy - moving.halfH),
+                to: Math.max(bestX.otherBottom, moving.cy + moving.halfH),
+              }
+            }
+            if (bestY) {
+              worldDeltaY += bestY.delta
+              guides.y = {
+                at: bestY.at,
+                from: Math.min(bestY.otherLeft, moving.cx - moving.halfW),
+                to: Math.max(bestY.otherRight, moving.cx + moving.halfW),
+              }
+            }
+          }
+        }
+
+        // No neighbour on an axis: fall back to the grid for that axis, by the
+        // trace's top-left corner rather than its centre. A trace whose corner
+        // sits on an intersection sits inside the squares; one whose centre
+        // does straddles four of them, which is not what a grid is for.
+        if (!guides?.x || !guides?.y) {
+          const grid = gridLineSpacing && gridLineSpacing > 0 ? gridLineSpacing : GRID_SNAP_FALLBACK
+          const box = moving ?? { halfW: 0, halfH: 0 }
+
+          if (!guides?.x) {
+            const left = startTransformRef.current.x + worldDeltaX - box.halfW
+            worldDeltaX += Math.round(left / grid) * grid - left
+          }
+          if (!guides?.y) {
+            const top = startTransformRef.current.y + worldDeltaY - box.halfH
+            worldDeltaY += Math.round(top / grid) * grid - top
+          }
+        }
+
+        setAlignGuides(guides)
+      } else if (alignGuidesRef.current) {
+        // Shift released mid-drag: the lines should go with it.
+        setAlignGuides(null)
       }
       
       // Check if we have multi-selected traces to move together
@@ -2858,6 +2949,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // Cleared unconditionally: this runs before every early return below, so
     // the badge can't outlive its drag.
     setRotationReadout(null)
+    // Same for the alignment guides -- they describe a drag in progress, and
+    // there is no longer one.
+    setAlignGuides(null)
 
     // Remove dragging class from body
     document.body.classList.remove('dragging')
@@ -3296,6 +3390,116 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [imageDimensions])
 
+  // The axis-aligned box a trace occupies in world units.
+  //
+  // Rotation is deliberately ignored. Aligning to the corners of a rotated
+  // box means aligning to its bounding box, which is not where the trace
+  // looks like it ends -- the eye lines things up against the edges it can
+  // see. A rotated trace is aligned by its centre, which is the one point
+  // rotation does not move.
+  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }) => {
+    const size = getTraceSize(trace)
+    const transform = getTraceTransform(trace)
+    const w = (trace.type === 'shape' ? (trace.width || 200) : size.width * (trace.cropWidth ?? 1))
+      * ((transform as any).scaleX ?? 1)
+    const h = (trace.type === 'shape' ? (trace.height || 200) : size.height * (trace.cropHeight ?? 1))
+      * ((transform as any).scaleY ?? 1)
+    const cx = at?.x ?? transform.x
+    const cy = at?.y ?? transform.y
+    const rotated = (trace.rotation ?? 0) % 360 !== 0
+    return {
+      cx, cy,
+      halfW: w / 2,
+      halfH: h / 2,
+      rotated,
+    }
+  }, [getTraceSize, getTraceTransform])
+
+  // Finds the closest edge or centre alignment against the traces nearby.
+  //
+  // Six lines per box per axis -- the two edges and the middle -- so nine
+  // pairings each way. Every one that lands within the threshold is a
+  // candidate; the closest wins, and only one per axis. Allowing several on
+  // the same axis would mean snapping to two positions at once, and allowing
+  // none across both would rule out lining a corner up with a corner, which
+  // is most of what this is for.
+  //
+  // The threshold arrives in screen pixels and is converted here, so it means
+  // the same thing at every zoom.
+  const findAlignment = useCallback((
+    moving: { cx: number; cy: number; halfW: number; halfH: number; rotated: boolean },
+    candidates: Trace[],
+    zoom: number,
+  ) => {
+    const tolerance = ALIGN_SNAP_PX / zoom
+    const reach = ALIGN_NEIGHBOURHOOD_PX / zoom
+
+    // A rotated trace is aligned by its centre alone -- see traceBoxFor.
+    const movingX: AlignEdge[] = moving.rotated
+      ? [{ at: moving.cx, kind: 'middle' }]
+      : [
+          { at: moving.cx - moving.halfW, kind: 'start' },
+          { at: moving.cx, kind: 'middle' },
+          { at: moving.cx + moving.halfW, kind: 'end' },
+        ]
+    const movingY: AlignEdge[] = moving.rotated
+      ? [{ at: moving.cy, kind: 'middle' }]
+      : [
+          { at: moving.cy - moving.halfH, kind: 'start' },
+          { at: moving.cy, kind: 'middle' },
+          { at: moving.cy + moving.halfH, kind: 'end' },
+        ]
+
+    let bestX: { delta: number; at: number; otherTop: number; otherBottom: number } | null = null
+    let bestY: { delta: number; at: number; otherLeft: number; otherRight: number } | null = null
+
+    for (const other of candidates) {
+      const box = traceBoxFor(other)
+      if (Math.abs(box.cx - moving.cx) > reach && Math.abs(box.cy - moving.cy) > reach) continue
+
+      const otherX: number[] = box.rotated
+        ? [box.cx]
+        : [box.cx - box.halfW, box.cx, box.cx + box.halfW]
+      const otherY: number[] = box.rotated
+        ? [box.cy]
+        : [box.cy - box.halfH, box.cy, box.cy + box.halfH]
+
+      for (const mine of movingX) {
+        for (const theirs of otherX) {
+          const delta = theirs - mine.at
+          if (Math.abs(delta) > tolerance) continue
+          if (!bestX || Math.abs(delta) < Math.abs(bestX.delta)) {
+            bestX = {
+              delta,
+              at: theirs,
+              otherTop: box.cy - box.halfH,
+              otherBottom: box.cy + box.halfH,
+            }
+          }
+        }
+      }
+
+      for (const mine of movingY) {
+        for (const theirs of otherY) {
+          const delta = theirs - mine.at
+          if (Math.abs(delta) > tolerance) continue
+          if (!bestY || Math.abs(delta) < Math.abs(bestY.delta)) {
+            bestY = {
+              delta,
+              at: theirs,
+              otherLeft: box.cx - box.halfW,
+              otherRight: box.cx + box.halfW,
+            }
+          }
+        }
+      }
+    }
+
+    return { bestX, bestY }
+  }, [traceBoxFor])
+
+
+
   // World-space bounding box across a set of traces, used to place the
   // multi-select group handles and to derive the shared pivot they transform
   // around. Path shapes are measured from their points (their x/y only
@@ -3484,6 +3688,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
              trace.y - halfH <= viewportBottom + buffer
     })
   }, [traces, zoom, worldOffset.x, worldOffset.y, getTraceSize])
+
+  // Same reason as alignGuidesRef: the drag handler needs the current list,
+  // and only the traces near the view are worth testing for alignment.
+  const visibleTracesRef = useRef<Trace[]>([])
+  useEffect(() => { visibleTracesRef.current = visibleTraces }, [visibleTraces])
 
   // Memoize sorted items to avoid re-sorting on every render
   const sortedItems = React.useMemo(() => {
@@ -5937,6 +6146,49 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       {/* Live rotation angle, shown only during a rotate drag. Offset from the
           cursor so it never sits under the pointer, and pointer-events-none so
           it can't intercept the drag it's reporting on. */}
+      {/* The lines showing what a Shift-drag caught.
+
+          Drawn only while one is held, and only along the span the two traces
+          share -- a line running the width of the atrium says "something,
+          somewhere, is aligned"; one that reaches from the trace being moved
+          to the trace it matched says which. That span is computed as the
+          drag happens (see findAlignment's callers) and arrives here in world
+          coordinates, converted to the screen here so the guide sits exactly
+          on the edge it describes at any zoom.
+
+          pointer-events-none throughout: a guide is a statement about the
+          drag, never a thing to catch the cursor mid-drag. */}
+      {alignGuides && (
+        <div className="fixed inset-0 pointer-events-none z-[60]">
+          {alignGuides.x && (
+            <div
+              className="absolute"
+              style={{
+                left: `${alignGuides.x.at * zoom + worldOffset.x}px`,
+                top: `${alignGuides.x.from * zoom + worldOffset.y}px`,
+                height: `${(alignGuides.x.to - alignGuides.x.from) * zoom}px`,
+                width: '1px',
+                background: 'rgb(var(--c-orange))',
+                boxShadow: '0 0 4px rgb(var(--c-orange) / 0.6)',
+              }}
+            />
+          )}
+          {alignGuides.y && (
+            <div
+              className="absolute"
+              style={{
+                left: `${alignGuides.y.from * zoom + worldOffset.x}px`,
+                top: `${alignGuides.y.at * zoom + worldOffset.y}px`,
+                width: `${(alignGuides.y.to - alignGuides.y.from) * zoom}px`,
+                height: '1px',
+                background: 'rgb(var(--c-orange))',
+                boxShadow: '0 0 4px rgb(var(--c-orange) / 0.6)',
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {rotationReadout && (
         <div
           style={{
