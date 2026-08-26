@@ -8,11 +8,6 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
-async function resolveLocalUrl(url: string): Promise<string> {
-  const mod = await import('../lib/localDb')
-  return mod.resolveLocalUrl(url)
-}
-
 // Video and audio stream from the vault rather than being read into memory --
 // see resolveLocalStreamUrl.
 async function resolveLocalStreamUrl(url: string): Promise<string> {
@@ -1125,9 +1120,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           return
         }
         
-        // Local desktop files — resolve to blob URL
+        // Local desktop files. The streaming resolver, so the picture is
+        // fetched by the browser rather than read into JS first -- see
+        // resolveLocalStreamUrl. This only decides what goes in an <img src>;
+        // the export and PDF paths still use the blob resolver.
         if (url.startsWith('local://')) {
-          resolveLocalUrl(url).then(resolvedUrl => {
+          resolveLocalStreamUrl(url).then(resolvedUrl => {
             const img = new Image()
             img.onload = () => {
               if (img.naturalWidth && img.naturalHeight) {

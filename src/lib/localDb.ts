@@ -2173,9 +2173,15 @@ export async function resolveLocalUrl(url: string): Promise<string> {
         pdf: 'application/pdf',
       }
       const mime = mimeMap[ext] || 'application/octet-stream'
-      const blobBytes = new Uint8Array(bytes.byteLength)
-      blobBytes.set(bytes)
-      const blob = new Blob([blobBytes.buffer], { type: mime })
+      // The cast rather than a copy. This built a second Uint8Array and
+      // copied every byte into it, which for the paths still coming through
+      // here -- a PDF being rendered, an atrium being exported -- meant
+      // holding the file twice. The copy was only ever satisfying the type:
+      // Uint8Array's buffer is ArrayBufferLike, which admits SharedArrayBuffer
+      // and so is not a BlobPart. readBinaryFile never returns a shared
+      // buffer, so this is a promise about provenance, not a change in
+      // behaviour.
+      const blob = new Blob([bytes as unknown as BlobPart], { type: mime })
       const blobUrl = URL.createObjectURL(blob)
       resolvedUrlCache.set(url, blobUrl)
       return blobUrl

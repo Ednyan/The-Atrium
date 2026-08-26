@@ -171,14 +171,28 @@ export function useTraces(lobbyId: string | null) {
           // Fetch the real lobby size from Supabase
           fetchLobbySize(traces.length)
 
-          // Desktop: pre-warm the local media blob-URL cache so images/audio/
-          // video are already resolved by the time the atrium becomes visible,
-          // instead of popping in one-by-one after the loading screen ends.
-          const resolveLocalUrl = isDesktop
-            ? (await import('../lib/localDb')).resolveLocalUrl
+          // Desktop: work out the URL for each local file before the atrium
+          // becomes visible, so nothing pops in after the loading screen ends.
+          //
+          // The stream resolver, not the blob one. This used to call
+          // resolveLocalUrl, which reads the whole file over IPC, copies it,
+          // and wraps it in a Blob -- for every image, audio file and video in
+          // the atrium, all at once, awaited before entry. An atrium with a
+          // few videos in it therefore read hundreds of megabytes into memory
+          // before it would open, and did it on the thread that draws the
+          // loading animation: hence an entry that took a long time and looked
+          // frozen while it did. It was fast the second time only because the
+          // resolved URLs were cached, which is the same evidence.
+          //
+          // Asset-protocol URLs cost a path lookup each and read nothing. The
+          // browser fetches the bytes itself, when it needs them, off the main
+          // thread -- and the decode pass below still waits for the images, so
+          // they are ready when the atrium appears exactly as before.
+          const resolveLocalDisplayUrl = isDesktop
+            ? (await import('../lib/localDb')).resolveLocalStreamUrl
             : null
 
-          if (resolveLocalUrl) {
+          if (resolveLocalDisplayUrl) {
             const localUrls = new Set<string>()
             for (const trace of traces) {
               for (const url of [trace.mediaUrl, trace.imageUrl]) {
@@ -186,7 +200,7 @@ export function useTraces(lobbyId: string | null) {
               }
             }
             if (localUrls.size > 0) {
-              await Promise.allSettled(Array.from(localUrls).map(url => resolveLocalUrl(url)))
+              await Promise.allSettled(Array.from(localUrls).map(url => resolveLocalDisplayUrl(url)))
             }
           }
 
@@ -203,8 +217,8 @@ export function useTraces(lobbyId: string | null) {
               if (!raw) continue
               if (raw.startsWith('local://')) {
                 // Already resolved above, so this hits the cache.
-                if (resolveLocalUrl) {
-                  const resolved = await resolveLocalUrl(raw)
+                if (resolveLocalDisplayUrl) {
+                  const resolved = await resolveLocalDisplayUrl(raw)
                   if (resolved) imageUrls.push(resolved)
                 }
               } else {
