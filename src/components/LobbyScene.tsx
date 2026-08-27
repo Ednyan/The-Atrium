@@ -3657,11 +3657,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const storagePath = `${lobbyId}/${fileName}`
 
     if (isDesktop && supabase) {
-      // Desktop: create blob URL instantly, write to disk in background for persistence
-      const blobUrl = URL.createObjectURL(file)
       const localUrl = `local://traces/${storagePath}`
-      // Pre-seed cache so TraceOverlay resolves instantly
-      import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
+
+      // Everything except video and audio gets a blob URL so its trace can
+      // appear before anything has been written.
+      //
+      // Video and audio deliberately do not. A blob URL over a large video
+      // asks the webview to parse the whole thing to find its index -- which,
+      // unless the file has been through a faststart pass, lives at the END --
+      // so it reads most of the file before it can show a single frame. That
+      // read lands on the main thread, at the same moment the vault write is
+      // reading the same file, and it is what made importing a video stutter
+      // long after the import panel had gone. A 69MB PDF through the identical
+      // write path is seamless, which is what ruled the write out.
+      //
+      // So they wait. The trace appears immediately either way; the media
+      // element simply has no source until the copy finishes, at which point
+      // it resolves to the file on disk and streams it properly, seeking to
+      // the index instead of swallowing the file to find it.
+      const isStreamedMedia = file.type.startsWith('video/') || file.type.startsWith('audio/')
+      if (!isStreamedMedia) {
+        const blobUrl = URL.createObjectURL(file)
+        import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
+      }
       // Written in the background so the trace can appear immediately -- but
       // not ignored.
       //

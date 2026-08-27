@@ -5173,7 +5173,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {trace.type === 'video' && trace.mediaUrl && (
                 <video
                   id={`video-${trace.id}`}
-                  src={localMediaUrls[trace.id] || trace.mediaUrl}
+                  // No src until there is a real file to point at. A raw
+                  // local:// URL means nothing to the browser, and handing it
+                  // one only produces a failed element to recover from later.
+                  src={trace.mediaUrl?.startsWith('local://')
+                    ? localMediaUrls[trace.id]
+                    : (localMediaUrls[trace.id] || trace.mediaUrl)}
                   controls={false}
                   className="w-full h-full pointer-events-none select-none"
                   style={{ 
@@ -5218,6 +5223,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     window.setTimeout(() => { try { el.load() } catch { /* gone */ } }, 500)
                   }}
                 />
+              )}
+
+              {/* Still being copied into the vault. Says so, rather than
+                  showing an empty black rectangle that looks like a broken
+                  trace. */}
+              {trace.type === 'video' && trace.mediaUrl?.startsWith('local://') && !localMediaUrls[trace.id] && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none bg-black/50">
+                  <span className="text-[10px] tracking-[0.2em] uppercase text-white/70">Preparing…</span>
+                </div>
               )}
 
               {/* Play, for a video sitting on the canvas.
@@ -5295,7 +5309,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {/* Hidden audio element + custom play button */}
                   <audio
                     id={`audio-${trace.id}`}
-                    src={localMediaUrls[trace.id] || trace.mediaUrl}
+                    // No src until there is a real file to point at. A raw
+                  // local:// URL means nothing to the browser, and handing it
+                  // one only produces a failed element to recover from later.
+                  src={trace.mediaUrl?.startsWith('local://')
+                    ? localMediaUrls[trace.id]
+                    : (localMediaUrls[trace.id] || trace.mediaUrl)}
                     className="hidden"
                     onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
                     onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
