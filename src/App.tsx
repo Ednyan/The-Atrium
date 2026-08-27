@@ -1378,7 +1378,23 @@ function AppInner() {
         // Clear persisted state on logout
         localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
         localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
-        navigate('/')
+
+        // Not on INITIAL_SESSION, which fires on every page load and means
+        // "there is no session" -- not "a session just ended". Navigating
+        // there threw away the URL of anyone arriving signed out, so every
+        // deep link into a page that needs no account landed on the landing
+        // page instead: the contributors wall, and the Pinterest page a
+        // desktop app opens for people who have no account by definition.
+        //
+        // This is the exact mistake the signed-in branch above documents at
+        // length and guards against. It was only ever invisible here because
+        // somebody signed out is usually on the landing page already.
+        //
+        // A real sign-out still leaves, unless the page in hand is one that
+        // never needed the account that just went away.
+        if (event !== 'INITIAL_SESSION' && !ACCOUNT_FREE_ROUTES.has(parseRoute().page)) {
+          navigate('/')
+        }
       }
     })
 
