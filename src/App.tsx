@@ -10,6 +10,7 @@ import DesktopIntro from './components/DesktopIntro'
 import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
 import { contributorsReturnPath, rememberContributorsReturn } from './lib/contributorsRoute'
+import { showToast } from './lib/toast'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
@@ -797,10 +798,14 @@ function AppInner() {
     if (isDesktop || !isAuthenticated) return
     handlePinterestCallback().then((result) => {
       if (!result.handled) return
+      // The app's own toast rather than alert(). A browser dialog is a modal
+      // interruption in someone else's visual language, and it lands at the
+      // end of a flow that has just returned the user to their atrium -- the
+      // last moment to put a grey box over it.
       if (result.success) {
-        alert(result.username ? `Pinterest connected as @${result.username}!` : 'Pinterest connected!')
+        showToast(result.username ? `Pinterest connected as @${result.username}` : 'Pinterest connected')
       } else if (result.error) {
-        alert(`Pinterest: ${result.error}`)
+        showToast(result.error)
       }
     })
   }, [isAuthenticated])

@@ -5,6 +5,7 @@
 // app doesn't have yet.
 
 import { supabase } from './supabase'
+import { showToast } from './toast'
 
 const PINTEREST_AUTHORIZE_URL = 'https://www.pinterest.com/oauth/'
 // Read-only scopes only -- boards/pins for import, plus the account's own
@@ -76,7 +77,7 @@ export function getPinterestRedirectUri(): string {
 
 export function initiatePinterestConnect() {
   if (!CLIENT_ID) {
-    alert('Pinterest integration is not configured yet (missing Client ID).')
+    showToast('Pinterest is not configured on this build yet.')
     return
   }
   const state = crypto.randomUUID()
