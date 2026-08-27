@@ -2356,6 +2356,19 @@ export function preCacheLocalUrl(localUrl: string, blobUrl: string) {
   resolvedUrlCache.set(localUrl, blobUrl)
 }
 
+// The same, for the cache the video and audio resolver actually reads.
+//
+// preCacheLocalUrl seeds resolvedUrlCache, but resolveLocalStreamUrl consults
+// resolvedStreamUrlCache and nothing else -- so a freshly imported video never
+// saw the pre-seeded blob at all. It got an asset URL for a file that was still
+// being written, and played only once the write happened to catch up.
+//
+// Seeding this one instead means the trace plays from the file the user
+// dropped, which is complete and sitting still, from the moment it appears.
+export function preCacheLocalStreamUrl(localUrl: string, blobUrl: string) {
+  resolvedStreamUrlCache.set(localUrl, blobUrl)
+}
+
 // Re-resolve a local:// URL, ignoring what is already cached for it.
 //
 // An import caches a blob URL for the dropped file so the trace can appear
@@ -2369,6 +2382,9 @@ export function preCacheLocalUrl(localUrl: string, blobUrl: string) {
 // to a file that is already on disk.
 export async function refreshLocalUrl(localUrl: string): Promise<string> {
   resolvedUrlCache.delete(localUrl)
+  // Both caches, or the blob seeded at import would be handed back forever and
+  // the vault copy -- the whole point of writing one -- would never be read.
+  resolvedStreamUrlCache.delete(localUrl)
   return resolveLocalStreamUrl(localUrl)
 }
 

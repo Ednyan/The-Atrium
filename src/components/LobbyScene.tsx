@@ -3676,10 +3676,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // it resolves to the file on disk and streams it properly, seeking to
       // the index instead of swallowing the file to find it.
       const isStreamedMedia = file.type.startsWith('video/') || file.type.startsWith('audio/')
-      if (!isStreamedMedia) {
-        const blobUrl = URL.createObjectURL(file)
-        import('../lib/localDb').then(m => m.preCacheLocalUrl(localUrl, blobUrl))
-      }
+      const blobUrl = URL.createObjectURL(file)
+      import('../lib/localDb').then(m => {
+        m.preCacheLocalUrl(localUrl, blobUrl)
+        // Video and audio read from a different cache, and reading the file
+        // the user dropped is what lets them play before the vault copy
+        // exists. It is complete and nothing is writing to it -- unlike the
+        // copy, which is exactly what made pointing at the copy so expensive.
+        if (isStreamedMedia) m.preCacheLocalStreamUrl(localUrl, blobUrl)
+      })
       // Written in the background so the trace can appear immediately -- but
       // not ignored.
       //
@@ -3692,7 +3697,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // invisible while it works; it must not be invisible when it does not.
       // Announced before it starts, so the overlay knows not to point a media
       // element at a file that is only part-way written.
-      window.dispatchEvent(new CustomEvent('atrium:vault-write-start', { detail: { localUrl } }))
+      // `playable` says the original file is already on offer, so the trace
+      // has something complete to read from and does not have to wait. Carried
+      // on the event because the overlay reaches localDb through a lazy import
+      // -- kept lazy so the web build never pulls in Tauri -- and so cannot ask
+      // the cache a synchronous question.
+      window.dispatchEvent(new CustomEvent('atrium:vault-write-start', {
+        detail: { localUrl, playable: isStreamedMedia },
+      }))
 
       void supabase.storage.from('traces').upload(storagePath, file)
         .then(({ error }: { error: any }) => {

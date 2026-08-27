@@ -959,8 +959,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [pendingWrites, setPendingWrites] = useState<Set<string>>(new Set())
   useEffect(() => {
     const onStarted = (event: Event) => {
-      const localUrl = (event as CustomEvent).detail?.localUrl as string | undefined
+      const detail = (event as CustomEvent).detail
+      const localUrl = detail?.localUrl as string | undefined
       if (!localUrl) return
+      // Only held back when there is nothing else to read. An import that
+      // seeded the original file can be played from it straight away: that
+      // file is complete and nothing is writing to it, unlike the copy.
+      if (detail?.playable) return
       setPendingWrites(prev => new Set(prev).add(localUrl))
     }
     const onFinished = (event: Event) => {
