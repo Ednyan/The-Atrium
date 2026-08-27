@@ -602,6 +602,15 @@ const STORAGE_KEYS = {
   SHOW_LANDING: 'lobby_showLanding',
 }
 
+// Pages that mean something to somebody with no account, and so must survive
+// the "not signed in, go to the landing page" reset on boot.
+//
+// The contributors wall and the page Stripe returns to were always in this
+// category -- donating needs no account. The Pinterest link page is the same
+// kind of thing from the other direction: a desktop app sends someone here
+// precisely because they have no account and should not need one.
+const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contributed', 'link-pinterest'])
+
 // Route parsing helper
 function parseRoute(): { page: string; lobbyId?: string } {
   const hash = window.location.hash.slice(1) || '/'
@@ -1198,6 +1207,9 @@ function AppInner() {
                 || urlRoute.page === 'browse'
                 || urlRoute.page === 'contributors'
                 || urlRoute.page === 'contributed'
+                // Someone signed in here can still be linking a desktop app,
+                // and restoring their atrium over the code would lose it.
+                || urlRoute.page === 'link-pinterest'
 
               // A lobby id in the URL still wins -- that IS a request to open
               // that atrium. Only the fallback to the *stored* lobby is
@@ -1253,7 +1265,14 @@ function AppInner() {
         localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
         localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
         setCurrentLobbyId(null)
-        navigate('/')
+        // ...but not the page they asked for, if it is one that never needed
+        // an account. This was an unconditional navigate('/'), which threw
+        // away the URL on every signed-out boot -- so the Pinterest link page
+        // a desktop app opens could never be reached by the people it exists
+        // for, and landed them on the landing page instead.
+        if (!ACCOUNT_FREE_ROUTES.has(parseRoute().page)) {
+          navigate('/')
+        }
         setLoading(false)
       }
     })
