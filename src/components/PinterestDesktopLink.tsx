@@ -25,6 +25,7 @@ export default function PinterestDesktopLink() {
   // before it finishes, so without this it would offer to start again while
   // the previous attempt was still working.
   const [finishing, setFinishing] = useState(() => hasPendingDesktopPinterestFlow())
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const existing = takeDesktopPairingCode()
@@ -80,9 +81,28 @@ export default function PinterestDesktopLink() {
             <p className="text-nier-bg/80 text-[0.85rem] leading-relaxed tracking-wide mb-4">
               Type this into the desktop app, under Profile Settings → Pinterest.
             </p>
-            <div className="border border-nier-border/40 bg-nier-border/10 px-4 py-5 text-center mb-4">
-              <p className="text-nier-strong text-2xl tracking-[0.5em]">{code}</p>
+            <div className="border border-nier-border/40 bg-nier-border/10 px-4 py-5 text-center mb-3">
+              {/* select-all so one click takes the whole code rather than the
+                  word-at-a-time a letter-spaced string otherwise gives. */}
+              <p className="text-nier-strong text-2xl tracking-[0.5em] select-all cursor-text">{code}</p>
             </div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(code)
+                  setCopied(true)
+                  window.setTimeout(() => setCopied(false), 2000)
+                } catch {
+                  // Clipboard access can be refused. The code is selectable
+                  // above, so there is still a way to take it.
+                  setCopied(false)
+                }
+              }}
+              className="w-full py-2 mb-4 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
+            >
+              {copied ? 'Copied' : 'Copy code'}
+            </button>
             <p className="text-nier-bg/60 text-[0.75rem] leading-relaxed tracking-wide">
               It lasts ten minutes and works once. If it expires, come back here and connect again.
             </p>

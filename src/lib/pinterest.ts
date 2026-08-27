@@ -202,7 +202,6 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
     let desktopMode = false
     try {
       desktopMode = sessionStorage.getItem(DESKTOP_MODE_KEY) === '1'
-      sessionStorage.removeItem(DESKTOP_MODE_KEY)
     } catch {
       // Treated as an ordinary connect.
     }
@@ -210,6 +209,19 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
     const { data, error } = await supabase.functions.invoke('pinterest-oauth-exchange', {
       body: { code, redirectUri: getPinterestRedirectUri(), ...(desktopMode ? { mode: 'desktop' } : {}) },
     })
+    // Cleared only now, not when it was read. The link page is already on
+    // screen by this point -- the route is restored before the exchange -- and
+    // it decides whether to show "finishing" or the Connect button by whether
+    // this flag is still set. Clearing it early made the page offer to start
+    // again for the moment before the code arrived.
+    if (desktopMode) {
+      try {
+        sessionStorage.removeItem(DESKTOP_MODE_KEY)
+      } catch {
+        // Nothing readable to clear.
+      }
+    }
+
     if (error || data?.error) {
       return { handled: true, success: false, error: data?.error || error?.message || 'Failed to connect Pinterest.' }
     }

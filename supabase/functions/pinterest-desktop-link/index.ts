@@ -112,19 +112,25 @@ Deno.serve(async (req: Request) => {
         return json({ error: 'That code is not valid any more. Generate a new one.' }, 404)
       }
 
-      // Single use, and burned before the token is minted: a code that fails
-      // to produce a token is still spent.
-      await admin
-        .from('pinterest_desktop_pairings')
-        .delete()
-        .eq('code_hash', await sha256Hex(normalised))
-
-      // Carries whichever owner the pairing had. A standalone pairing makes a
-      // standalone link, and the CHECK constraint refuses anything with both
-      // or neither.
+      // The link is created BEFORE the code is burned, which is the opposite
+      // of what it looks like it should be.
+      //
+      // Deleting the pairing first fires the prune trigger, which removes a
+      // standalone connection the moment nothing references it -- and between
+      // the delete and the insert, nothing does. It deleted the connection
+      // that had just been made, and the insert then failed its foreign key:
+      // "Could not complete the link", from a function that had done
+      // everything right except the order.
+      //
+      // Creating the link first means the trigger always finds a reference and
+      // leaves the connection alone. The cost is that a code whose burn fails
+      // could be redeemed twice; it expires in ten minutes either way, which
+      // is a far smaller problem than destroying the connection.
       const token = randomToken()
       const { error } = await admin.from('pinterest_desktop_links').insert({
         token_hash: await sha256Hex(token),
+        // Carries whichever owner the pairing had. The CHECK constraint
+        // refuses anything claiming both or neither.
         user_id: pairing.standalone_id ? null : pairing.user_id,
         standalone_id: pairing.standalone_id ?? null,
       })
@@ -132,6 +138,12 @@ Deno.serve(async (req: Request) => {
         console.error('[pinterest-desktop-link] could not store link:', error)
         return json({ error: 'Could not complete the link.' }, 500)
       }
+
+      // Single use.
+      await admin
+        .from('pinterest_desktop_pairings')
+        .delete()
+        .eq('code_hash', await sha256Hex(normalised))
 
       return json({ token })
     }
