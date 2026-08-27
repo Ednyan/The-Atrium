@@ -473,18 +473,35 @@ fn append_binary_stream(
 ) -> Result<(), String> {
     use std::io::Write;
 
-    let token = request
-        .headers()
-        .get("x-stream-token")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| "append_binary_stream needs an x-stream-token header".to_string())?;
-
-    let bytes: &[u8] = match request.body() {
+    // The token rides in the payload, not in a header.
+    //
+    // It was a header, which is tidier and worked perfectly in development --
+    // and silently downgraded the body to JSON in a packaged build, where the
+    // IPC takes a different route. Rust then rejected the chunk, the whole
+    // streamed write fell back to reading on the main thread, and a 62MB
+    // import spent eleven seconds blocking the thread that draws the atrium.
+    // That was the stutter, and it only ever appeared in a release build --
+    // the one place there was no inspector to see it.
+    //
+    // A four-byte length and the token in front of the bytes costs one copy
+    // of a chunk, which is a rounding error next to what it replaces. The
+    // path is still named once, at open, so this repeats only the token.
+    let body: &[u8] = match request.body() {
         tauri::ipc::InvokeBody::Raw(body) => body,
         tauri::ipc::InvokeBody::Json(_) => {
             return Err("append_binary_stream needs a raw body".to_string())
         }
     };
+
+    if body.len() < 4 {
+        return Err("chunk is missing its token header".to_string());
+    }
+    let token_len = u32::from_be_bytes([body[0], body[1], body[2], body[3]]) as usize;
+    if body.len() < 4 + token_len {
+        return Err("chunk is truncated".to_string());
+    }
+    let token = std::str::from_utf8(&body[4..4 + token_len]).map_err(|e| e.to_string())?;
+    let bytes = &body[4 + token_len..];
 
     let mut open = state.0.lock().map_err(|e| e.to_string())?;
     let file = open

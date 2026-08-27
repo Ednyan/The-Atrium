@@ -132,6 +132,21 @@ async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
 
 // The path header the two binary write commands share -- see
 // write_binary_file in main.rs.
+// A chunk, addressed to an open stream.
+//
+// The token was a custom IPC header, which worked in development and turned
+// the whole request into JSON in a packaged build -- where Rust rejected it
+// and every write quietly fell back to the blocking main-thread path. Passing
+// no options at all is the shape that has always survived the bundle.
+function streamPayload(token: string, bytes: Uint8Array): Uint8Array {
+  const tokenBytes = new TextEncoder().encode(token)
+  const payload = new Uint8Array(4 + tokenBytes.length + bytes.length)
+  new DataView(payload.buffer).setUint32(0, tokenBytes.length, false)
+  payload.set(tokenBytes, 4)
+  payload.set(bytes, 4 + tokenBytes.length)
+  return payload
+}
+
 function binaryPayload(path: string, bytes: Uint8Array): Uint8Array {
   const pathBytes = new TextEncoder().encode(path)
   const payload = new Uint8Array(4 + pathBytes.length + bytes.length)
@@ -191,9 +206,7 @@ async function streamBlobViaWorker(token: string, blob: Blob): Promise<boolean> 
         }
         if (message?.type !== 'chunk') return
         try {
-          await invoke('append_binary_stream', new Uint8Array(message.buffer), {
-            headers: { 'x-stream-token': token },
-          })
+            await invoke('append_binary_stream', streamPayload(token, new Uint8Array(message.buffer)))
           if (message.last) {
             resolve()
             return
@@ -301,7 +314,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
     try {
       for (let at = 0; at < blob.size; at += WRITE_CHUNK_BYTES) {
         const bytes = new Uint8Array(await blob.slice(at, at + WRITE_CHUNK_BYTES).arrayBuffer())
-        await invoke('append_binary_stream', bytes, { headers: { 'x-stream-token': token } })
+        await invoke('append_binary_stream', streamPayload(token, bytes))
         if (at + WRITE_CHUNK_BYTES < blob.size) {
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
         }
