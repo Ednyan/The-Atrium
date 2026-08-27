@@ -5,6 +5,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
+import { resolveLinkedUserId } from '../_shared/desktopLink.ts'
 
 const PINTEREST_API_BASE = 'https://api.pinterest.com/v5'
 // Refresh a bit before actual expiry so a request never races an
@@ -73,7 +74,12 @@ Deno.serve(async (req: Request) => {
 
   try {
     const admin = createAdminClient()
-    const userId = await getAuthenticatedUserId(req, admin)
+    // A linked desktop install first, then an ordinary signed-in web user.
+    // The desktop app has no JWT to send; the token it sends instead resolves
+    // to the same user id and reaches exactly the same code below, so there is
+    // no second path through this function to keep in step.
+    const userId = (await resolveLinkedUserId(req, admin))
+      ?? (await getAuthenticatedUserId(req, admin))
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Not authenticated' }), {
         status: 401,

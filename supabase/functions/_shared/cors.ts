@@ -5,6 +5,9 @@
 // browser's preflight.
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  // x-atrium-link-token is how the desktop app identifies itself where it has
+  // no JWT to send -- see _shared/desktopLink.ts. Unlisted headers are refused
+  // at the preflight, before the function is ever reached.
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-atrium-link-token',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
