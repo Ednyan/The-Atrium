@@ -11,13 +11,14 @@ import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
 import { contributorsReturnPath, rememberContributorsReturn } from './lib/contributorsRoute'
 import { showToast } from './lib/toast'
+import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
 import { saveAllChanges } from './lib/traceSave'
-import { handlePinterestCallback } from './lib/pinterest'
+import { handlePinterestCallback, hasPendingDesktopPinterestFlow } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
 import { noteAppStarted, recordAppealResponse } from './lib/supportAppeal'
 import { useLandingTheme } from './lib/useLandingTheme'
@@ -624,6 +625,11 @@ function parseRoute(): { page: string; lobbyId?: string } {
     // visit, and so a reload shows the same page instead of a stale banner.
     case '/contributed':
       return { page: 'contributed' }
+    // Where a desktop app sends someone to connect Pinterest. Its own page
+    // because it is reached from another application entirely, with no account
+    // and no atrium behind it.
+    case '/link-pinterest':
+      return { page: 'link-pinterest' }
     // A page rather than a panel: it is a space to move through, and a modal
     // over the welcome screen would have been the wrong shape for that.
     case '/contributors':
@@ -795,9 +801,16 @@ function AppInner() {
   // itself no-ops if the URL doesn't carry OAuth params, so this is cheap to
   // run on every authenticated mount.
   useEffect(() => {
-    if (isDesktop || !isAuthenticated) return
+    if (isDesktop) return
+    // Normally this needs a signed-in user, because the exchange attaches the
+    // connection to their account. A desktop round trip has no account by
+    // design, so the flag it left behind is what says to run anyway.
+    if (!isAuthenticated && !hasPendingDesktopPinterestFlow()) return
     handlePinterestCallback().then((result) => {
       if (!result.handled) return
+      // The link page shows the code itself; a toast here would be announcing
+      // a connection this browser does not have.
+      if (result.desktop) return
       // The app's own toast rather than alert(). A browser dialog is a modal
       // interruption in someone else's visual language, and it lands at the
       // end of a flow that has just returned the user to their atrium -- the
@@ -1543,6 +1556,12 @@ function AppInner() {
   //
   // Returning from checkout lands on that wall rather than on a page of its
   // own: the thanks belongs over the thing being joined, not beside it.
+  // Before the auth gates below: this page is for somebody who may well have
+  // no account, arriving from a desktop app that has no account either.
+  if (currentPage === 'link-pinterest') {
+    return <PinterestDesktopLink />
+  }
+
   if (currentPage === 'contributed' || currentPage === 'contributors') {
     return (
       <>

@@ -5,14 +5,14 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
-import { resolveLinkedUserId } from '../_shared/desktopLink.ts'
+import { ConnectionRef, connectionTable, resolveLinkedConnection } from '../_shared/desktopLink.ts'
 
 const PINTEREST_API_BASE = 'https://api.pinterest.com/v5'
 // Refresh a bit before actual expiry so a request never races an
 // almost-expired token.
 const REFRESH_BUFFER_MS = 60_000
 
-async function refreshAccessToken(admin: any, userId: string, refreshToken: string): Promise<string> {
+async function refreshAccessToken(admin: any, ref: ConnectionRef, refreshToken: string): Promise<string> {
   const clientId = Deno.env.get('PINTEREST_CLIENT_ID')!
   const clientSecret = Deno.env.get('PINTEREST_CLIENT_SECRET')!
   const basicAuth = btoa(`${clientId}:${clientSecret}`)
@@ -37,22 +37,24 @@ async function refreshAccessToken(admin: any, userId: string, refreshToken: stri
   const data = await res.json()
   const expiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString()
 
-  await admin.from('pinterest_connections').update({
+  const target = connectionTable(ref)
+  await admin.from(target.table).update({
     access_token: data.access_token,
     // Pinterest may or may not rotate the refresh token on refresh; keep the
     // old one if a new one isn't returned.
     refresh_token: data.refresh_token ?? refreshToken,
     token_expires_at: expiresAt,
-  }).eq('user_id', userId)
+  }).eq(target.column, target.value)
 
   return data.access_token
 }
 
-async function getValidAccessToken(admin: any, userId: string): Promise<string | null> {
+async function getValidAccessToken(admin: any, ref: ConnectionRef): Promise<string | null> {
+  const source = connectionTable(ref)
   const { data, error } = await admin
-    .from('pinterest_connections')
+    .from(source.table)
     .select('access_token, refresh_token, token_expires_at')
-    .eq('user_id', userId)
+    .eq(source.column, source.value)
     .maybeSingle()
 
   if (error || !data) return null
@@ -61,7 +63,7 @@ async function getValidAccessToken(admin: any, userId: string): Promise<string |
   const isExpiring = expiresAt - Date.now() < REFRESH_BUFFER_MS
 
   if (isExpiring && data.refresh_token) {
-    return await refreshAccessToken(admin, userId, data.refresh_token)
+    return await refreshAccessToken(admin, ref, data.refresh_token)
   }
 
   return data.access_token
@@ -78,16 +80,18 @@ Deno.serve(async (req: Request) => {
     // The desktop app has no JWT to send; the token it sends instead resolves
     // to the same user id and reaches exactly the same code below, so there is
     // no second path through this function to keep in step.
-    const userId = (await resolveLinkedUserId(req, admin))
-      ?? (await getAuthenticatedUserId(req, admin))
-    if (!userId) {
+    const linked = await resolveLinkedConnection(req, admin)
+    const webUserId = linked ? null : await getAuthenticatedUserId(req, admin)
+    const connection: ConnectionRef | null =
+      linked ?? (webUserId ? { kind: 'user', userId: webUserId } : null)
+    if (!connection) {
       return new Response(JSON.stringify({ error: 'Not authenticated' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const accessToken = await getValidAccessToken(admin, userId)
+    const accessToken = await getValidAccessToken(admin, connection)
     if (!accessToken) {
       return new Response(JSON.stringify({ error: 'Pinterest not connected' }), {
         status: 409,

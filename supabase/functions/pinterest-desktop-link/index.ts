@@ -18,29 +18,13 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
-import { resolveLinkedUserId, sha256Hex } from '../_shared/desktopLink.ts'
-
-const PAIRING_TTL_MS = 10 * 60 * 1000
-
-// No I, O, 1 or 0: this gets read off one screen and typed into another, and
-// the pairs people confuse are not worth the two extra bits.
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-const CODE_LENGTH = 8
+import { CODE_LENGTH, PAIRING_TTL_MS, connectionTable, randomPairingCode, resolveLinkedConnection, sha256Hex } from '../_shared/desktopLink.ts'
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
-}
-
-function randomCode(): string {
-  // Rejection-free because the alphabet is exactly 32 long: five bits per
-  // character, taken from bytes without the modulo bias a 26- or 36-character
-  // alphabet would introduce.
-  const bytes = new Uint8Array(CODE_LENGTH)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes).map(b => CODE_ALPHABET[b & 31]).join('')
 }
 
 function randomToken(): string {
@@ -95,7 +79,7 @@ Deno.serve(async (req: Request) => {
       // one on the screen you just walked away from.
       await admin.from('pinterest_desktop_pairings').delete().eq('user_id', userId)
 
-      const plain = randomCode()
+      const plain = randomPairingCode()
       const expiresAt = new Date(Date.now() + PAIRING_TTL_MS).toISOString()
       const { error } = await admin.from('pinterest_desktop_pairings').insert({
         code_hash: await sha256Hex(plain),
@@ -118,7 +102,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: pairing } = await admin
         .from('pinterest_desktop_pairings')
-        .select('user_id, expires_at')
+        .select('user_id, standalone_id, expires_at')
         .eq('code_hash', await sha256Hex(normalised))
         .maybeSingle()
 
@@ -135,10 +119,14 @@ Deno.serve(async (req: Request) => {
         .delete()
         .eq('code_hash', await sha256Hex(normalised))
 
+      // Carries whichever owner the pairing had. A standalone pairing makes a
+      // standalone link, and the CHECK constraint refuses anything with both
+      // or neither.
       const token = randomToken()
       const { error } = await admin.from('pinterest_desktop_links').insert({
         token_hash: await sha256Hex(token),
-        user_id: pairing.user_id,
+        user_id: pairing.standalone_id ? null : pairing.user_id,
+        standalone_id: pairing.standalone_id ?? null,
       })
       if (error) {
         console.error('[pinterest-desktop-link] could not store link:', error)
@@ -153,13 +141,14 @@ Deno.serve(async (req: Request) => {
       // question the desktop app needs before it has anything else: am I still
       // linked, and to whose Pinterest? Revoking on the web makes this return
       // linked:false, which is how the desktop app finds out.
-      const userId = await resolveLinkedUserId(req, admin)
-      if (!userId) return json({ linked: false, connected: false, username: null })
+      const ref = await resolveLinkedConnection(req, admin)
+      if (!ref) return json({ linked: false, connected: false, username: null })
 
+      const source = connectionTable(ref)
       const { data: connection } = await admin
-        .from('pinterest_connections')
+        .from(source.table)
         .select('pinterest_username')
-        .eq('user_id', userId)
+        .eq(source.column, source.value)
         .maybeSingle()
 
       return json({

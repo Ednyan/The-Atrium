@@ -74,20 +74,32 @@ No new secrets needed for this one -- it only uses the already-auto-injected ser
 
 ## Desktop
 
-Desktop does not do its own OAuth. It has no Supabase account to hang a connection on and no https origin for Pinterest to redirect back to, so it borrows a web account's connection instead:
+Desktop does not do its own OAuth: it has no https origin for Pinterest to redirect back to. The browser does the round trip on its behalf, and hands back a code.
 
-1. Web app → Profile Settings → **Link desktop app**. An eight-character code appears.
+**No Atrium account needed** (the usual way):
+
+1. Desktop app → Profile Settings → Pinterest → **Open browser to connect**.
+2. In the browser, press **Connect Pinterest** and approve. An eight-character code appears.
+3. Back in the desktop app, type the code → **Link this app**.
+
+**Or borrow an account that already has Pinterest connected:**
+
+1. Web app → Profile Settings → **Link desktop app**. A code appears.
 2. Desktop app → Profile Settings → Pinterest → type the code → **Link this app**.
 
-The code lasts ten minutes and works once. What the desktop stores afterwards is an opaque link token that means only "read this account's Pinterest boards" -- Pinterest's own tokens never leave the server, and token refresh keeps happening there. Either end can cut it: **Disconnect** in the desktop app hands the token back, and disconnecting Pinterest on the web clears every linked install.
+The code lasts ten minutes and works once. What the desktop stores afterwards is an opaque link token meaning only "read these Pinterest boards" -- Pinterest's own tokens never leave the server, and token refresh keeps happening there.
+
+Revoking differs between the two. An account-linked install is cut off by **Disconnect** in the desktop app, or by disconnecting Pinterest on the web, which clears every linked install at once. An **account-free** connection has no account behind it, so it can only be revoked from the desktop app holding it, or from Pinterest's own connected-apps settings -- there is nowhere to log in and revoke it. Unlinking the last desktop install deletes the stored tokens rather than leaving them unreachable.
 
 Needs the extra migration and function:
 
 ```bash
-# Run in the Supabase SQL Editor:
+# Run in the Supabase SQL Editor, in this order:
 #   supabase/migrations/add_pinterest_desktop_link.sql
+#   supabase/migrations/add_pinterest_standalone_link.sql
 npx supabase functions deploy pinterest-desktop-link
-npx supabase functions deploy pinterest-api   # re-deploy: it now also accepts a link token
+npx supabase functions deploy pinterest-api            # re-deploy: accepts a link token
+npx supabase functions deploy pinterest-oauth-exchange # re-deploy: account-free mode
 ```
 
 Both from the repository root, as above -- `pinterest-api` picks up the shared `_shared/desktopLink.ts` and the widened CORS header, and deploying from elsewhere ships a stale copy that boots and then fails.

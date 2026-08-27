@@ -51,6 +51,12 @@ export function isPinterestConfigured(): boolean {
 // Session storage, for the same reason the contributors page uses it: it
 // describes this visit, and a destination remembered from last week would be
 // worse than the default.
+// Marks an OAuth round trip as belonging to a desktop app rather than to
+// whoever is signed in here. Set before leaving, read on the way back -- the
+// callback lands on a fresh page load with nothing else to tell it apart.
+const DESKTOP_MODE_KEY = 'atrium_pinterest_desktop_mode'
+const DESKTOP_CODE_KEY = 'atrium_pinterest_desktop_code'
+
 const RETURN_KEY = 'atrium_pinterest_return'
 const DEFAULT_RETURN = '#/welcome'
 
@@ -81,6 +87,49 @@ export function getPinterestRedirectUri(): string {
   return window.location.origin + '/'
 }
 
+// Connects Pinterest on behalf of a desktop app, with nobody signed in here.
+//
+// The page this runs on requires no account: the desktop app sent its user to
+// the browser precisely because it has no https origin of its own for Pinterest
+// to return to, and requiring an Atrium login on the way would be asking them
+// to make an account to reach their own boards.
+export function beginDesktopPinterestConnect() {
+  try {
+    sessionStorage.setItem(DESKTOP_MODE_KEY, '1')
+    sessionStorage.removeItem(DESKTOP_CODE_KEY)
+  } catch {
+    // Without storage the callback cannot tell this apart from an ordinary
+    // connect, so stop rather than silently connecting the wrong thing.
+    showToast('This browser is blocking site storage, which this needs.')
+    return
+  }
+  initiatePinterestConnect()
+}
+
+// Whether an OAuth round trip is in flight on a desktop app's behalf. Read
+// without clearing: the callback still has to consume the flag itself, and
+// this only decides whether to run the callback at all on a page where nobody
+// is signed in.
+export function hasPendingDesktopPinterestFlow(): boolean {
+  try {
+    return sessionStorage.getItem(DESKTOP_MODE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+// The code minted for a desktop app, if the last callback produced one.
+// Cleared as it is read: it is shown once, on the screen it returns to.
+export function takeDesktopPairingCode(): string | null {
+  try {
+    const code = sessionStorage.getItem(DESKTOP_CODE_KEY)
+    if (code) sessionStorage.removeItem(DESKTOP_CODE_KEY)
+    return code
+  } catch {
+    return null
+  }
+}
+
 export function initiatePinterestConnect() {
   if (!CLIENT_ID) {
     showToast('Pinterest is not configured on this build yet.')
@@ -106,6 +155,9 @@ export interface PinterestCallbackResult {
   success?: boolean
   username?: string | null
   error?: string
+  // True when this round trip was on behalf of a desktop app: the page shows a
+  // code rather than announcing a connection of its own.
+  desktop?: boolean
 }
 
 // Call once on app boot (see App.tsx). If the URL carries a Pinterest OAuth
@@ -143,13 +195,32 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
   }
 
   try {
+    let desktopMode = false
+    try {
+      desktopMode = sessionStorage.getItem(DESKTOP_MODE_KEY) === '1'
+      sessionStorage.removeItem(DESKTOP_MODE_KEY)
+    } catch {
+      // Treated as an ordinary connect.
+    }
+
     const { data, error } = await supabase.functions.invoke('pinterest-oauth-exchange', {
-      body: { code, redirectUri: getPinterestRedirectUri() },
+      body: { code, redirectUri: getPinterestRedirectUri(), ...(desktopMode ? { mode: 'desktop' } : {}) },
     })
     if (error || data?.error) {
       return { handled: true, success: false, error: data?.error || error?.message || 'Failed to connect Pinterest.' }
     }
-    return { handled: true, success: true, username: data?.username ?? null }
+
+    // A desktop connection belongs to no account, so there is nothing here to
+    // show as "connected" -- what comes back is the code to carry across.
+    if (desktopMode && data?.code) {
+      try {
+        sessionStorage.setItem(DESKTOP_CODE_KEY, data.code)
+      } catch {
+        return { handled: true, success: false, error: 'Could not hold on to the code. Try again.' }
+      }
+    }
+
+    return { handled: true, success: true, username: data?.username ?? null, desktop: desktopMode }
   } catch (err: any) {
     return { handled: true, success: false, error: err?.message || 'Failed to connect Pinterest.' }
   }

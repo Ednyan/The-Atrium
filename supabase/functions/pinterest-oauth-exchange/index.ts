@@ -5,6 +5,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
+import { PAIRING_TTL_MS, randomPairingCode, sha256Hex } from '../_shared/desktopLink.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -13,15 +14,22 @@ Deno.serve(async (req: Request) => {
 
   try {
     const admin = createAdminClient()
-    const userId = await getAuthenticatedUserId(req, admin)
-    if (!userId) {
+    const { code, redirectUri, mode } = await req.json()
+
+    // 'desktop' is deliberately unauthenticated. A desktop-only user has no
+    // Atrium account, and Pinterest never required them to have one -- the
+    // account was only ever involved because the connection table is keyed by
+    // one. This mode stores the connection against nothing and hands back a
+    // pairing code the desktop app trades for a link token.
+    const desktopMode = mode === 'desktop'
+    const userId = desktopMode ? null : await getAuthenticatedUserId(req, admin)
+    if (!desktopMode && !userId) {
       return new Response(JSON.stringify({ error: 'Not authenticated' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const { code, redirectUri } = await req.json()
     if (!code || !redirectUri) {
       return new Response(JSON.stringify({ error: 'Missing code or redirectUri' }), {
         status: 400,
@@ -82,6 +90,50 @@ Deno.serve(async (req: Request) => {
     }
 
     const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString()
+
+    if (desktopMode) {
+      const { data: standalone, error: standaloneError } = await admin
+        .from('pinterest_standalone_connections')
+        .insert({
+          access_token,
+          refresh_token: refresh_token ?? null,
+          token_expires_at: expiresAt,
+          pinterest_username: pinterestUsername,
+        })
+        .select('id')
+        .single()
+
+      if (standaloneError || !standalone) {
+        console.error('[pinterest-oauth-exchange] failed to store connection:', standaloneError)
+        return new Response(JSON.stringify({ error: 'Failed to save connection' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Minted here rather than by pinterest-desktop-link, because this is the
+      // moment the connection exists and there is nobody authenticated to ask
+      // for a code afterwards.
+      const plain = randomPairingCode()
+      const { error: pairingError } = await admin.from('pinterest_desktop_pairings').insert({
+        code_hash: await sha256Hex(plain),
+        standalone_id: standalone.id,
+        expires_at: new Date(Date.now() + PAIRING_TTL_MS).toISOString(),
+      })
+
+      if (pairingError) {
+        console.error('[pinterest-oauth-exchange] failed to create pairing:', pairingError)
+        return new Response(JSON.stringify({ error: 'Failed to prepare the code' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, username: pinterestUsername, code: plain }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     const { error: upsertError } = await admin.from('pinterest_connections').upsert({
       user_id: userId,

@@ -4,6 +4,8 @@ import { useGameStore } from '../store/gameStore'
 import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest, createDesktopPairingCode } from '../lib/pinterest'
 import { redeemPinterestPairingCode } from '../lib/pinterestDesktop'
 import { showToast } from '../lib/toast'
+import { openExternalUrl } from '../lib/openExternal'
+import { ATRIUM_WEBSITE } from '../lib/creatorLinks'
 import { deleteMyAccount } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
@@ -762,7 +764,17 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 ) : isDesktop ? (
                   <div className="space-y-2">
                     <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">
-                      On the website, open Profile Settings and choose <span className="text-nier-strong">Link desktop app</span>. Type the code it shows here.
+                      Connect in your browser, then type the code it gives you here. No Atrium account needed.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openExternalUrl(`${ATRIUM_WEBSITE}/#/link-pinterest`)}
+                      className="w-full py-2 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
+                    >
+                      Open browser to connect ↗
+                    </button>
+                    <p className="text-nier-bg/50 text-[0.75rem] leading-relaxed tracking-wide">
+                      Already have an account with Pinterest connected? Profile Settings on the website has <span className="text-nier-bg/70">Link desktop app</span>, which gives a code too.
                     </p>
                     <input
                       type="text"
