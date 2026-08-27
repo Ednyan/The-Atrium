@@ -3859,6 +3859,47 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     }
   }
 
+  // Images sent in by the browser extension.
+  //
+  // The extension deliberately holds no credentials and uploads nothing. It
+  // knows the address of the image you right-clicked and nothing else; this
+  // tab is already signed in and already knows which atrium is open, so it is
+  // the right place for the work to happen.
+  //
+  // Through a ref because the listener is bound once, while the function it
+  // calls is rebuilt every render and closes over things -- the active layer,
+  // the camera -- that would otherwise be frozen at whatever they were when
+  // the atrium first painted.
+  const insertDroppedTraceRef = useRef(insertDroppedTrace)
+  insertDroppedTraceRef.current = insertDroppedTrace
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      // Only this page, talking to itself. A content script posts into the
+      // page it is running on, so anything arriving from another window or
+      // another origin did not come from the extension.
+      if (event.source !== window) return
+      if (event.origin !== window.location.origin) return
+
+      const data = event.data
+      if (data?.source !== 'atrium-extension' || data.kind !== 'image') return
+      if (typeof data.url !== 'string' || !/^https?:\/\//i.test(data.url)) return
+      if (!canEdit) return
+
+      // Dropped where you are looking, since there is no cursor position to
+      // speak of -- the click happened on a different page entirely.
+      const container = worldContainerRef.current
+      if (!container) return
+      const worldX = (window.innerWidth / 2 - container.x) / (zoomRef.current || 1)
+      const worldY = (window.innerHeight / 2 - container.y) / (zoomRef.current || 1)
+
+      void insertDroppedTraceRef.current('image', 'shared image', data.url, worldX, worldY)
+    }
+
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [canEdit])
+
   return (
     <div
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}

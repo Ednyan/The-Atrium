@@ -143,12 +143,21 @@ function binaryPayload(path: string, bytes: Uint8Array): Uint8Array {
 
 // How much of a file is in memory at once while it is being written.
 //
-// Four megabytes is small enough that no single chunk blocks the atrium long
-// enough to see -- the whole point, since this runs while somebody is still
-// looking at the canvas -- and large enough that the per-call overhead
-// disappears against the work. It was eight, which halved the round trips and
-// doubled the length of each stall.
-const WRITE_CHUNK_BYTES = 4 * 1024 * 1024
+// One megabyte, because this is now the ONLY main-thread work left in a write
+// and it happens on every frame.
+//
+// Reading moved to a worker, so what remains here is handing each chunk to
+// Rust: a copy into the IPC, plus the garbage a buffer that size leaves
+// behind. At four megabytes a frame that was a steady few milliseconds out of
+// sixteen, every frame, for as long as the import ran -- which is exactly what
+// a stuttering cursor is. The video itself played fine; it was the canvas
+// around it that could not keep up.
+//
+// A quarter the size is a quarter the per-frame cost, at the price of four
+// times as many frames to finish. The file takes longer to land, and the trace
+// says "Preparing" for longer, which is the right way round: a wait you can
+// see beats an app that stops responding to the mouse.
+const WRITE_CHUNK_BYTES = 1024 * 1024
 
 // Streams a blob to disk in slices, so peak memory is one chunk rather than
 // the whole file.

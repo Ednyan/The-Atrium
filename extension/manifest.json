@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Send to Atrium",
+  "version": "0.1.0",
+  "description": "Right-click any image on the web and send it straight into your open Digital Atrium.",
+  "permissions": ["contextMenus", "tabs", "notifications"],
+  "host_permissions": ["https://the-atrium.pages.dev/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://the-atrium.pages.dev/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
