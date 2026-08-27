@@ -6,6 +6,12 @@
 
 import { supabase } from './supabase'
 import { showToast } from './toast'
+import { isDesktop } from './supabase'
+import {
+  callPinterestApiAsLinkedDesktop,
+  getDesktopPinterestStatus,
+  unlinkDesktopPinterest,
+} from './pinterestDesktop'
 
 const PINTEREST_AUTHORIZE_URL = 'https://www.pinterest.com/oauth/'
 // Read-only scopes only -- boards/pins for import, plus the account's own
@@ -149,7 +155,20 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
   }
 }
 
+// Mints the short code the desktop app trades for a link token. Web only --
+// this is the half that has to be signed in.
+export async function createDesktopPairingCode(): Promise<{ code: string; expiresInSeconds: number }> {
+  if (!supabase) throw new Error('Not connected to the server.')
+  const { data, error } = await supabase.functions.invoke('pinterest-desktop-link', {
+    body: { action: 'create' },
+  })
+  if (error) throw new Error(error.message || 'Could not create a pairing code.')
+  if (data?.error) throw new Error(data.error)
+  return { code: data.code as string, expiresInSeconds: data.expiresInSeconds as number }
+}
+
 export async function getPinterestConnectionStatus(): Promise<{ connected: boolean; username: string | null }> {
+  if (isDesktop) return getDesktopPinterestStatus()
   if (!supabase) return { connected: false, username: null }
   const { data, error } = await supabase.rpc('get_pinterest_connection_status')
   if (error || !data || data.length === 0) return { connected: false, username: null }
@@ -157,6 +176,10 @@ export async function getPinterestConnectionStatus(): Promise<{ connected: boole
 }
 
 export async function disconnectPinterest(): Promise<void> {
+  // On desktop this severs the link rather than disconnecting Pinterest
+  // itself: the connection belongs to the web account, and one machine
+  // unlinking should not sign the account out everywhere.
+  if (isDesktop) return unlinkDesktopPinterest()
   if (!supabase) return
   await supabase.rpc('disconnect_pinterest')
 }
@@ -181,6 +204,11 @@ export interface PinterestPin {
 }
 
 async function callPinterestApi(body: Record<string, unknown>): Promise<any> {
+  // Desktop has no session to invoke with, and its client shim has no
+  // .functions at all -- calling it would throw a TypeError straight past
+  // every error check in the caller. It presents its link token over plain
+  // fetch instead, and reaches the same Edge Function.
+  if (isDesktop) return callPinterestApiAsLinkedDesktop(body)
   if (!supabase) throw new Error('Not connected to the server.')
   const { data, error } = await supabase.functions.invoke('pinterest-api', { body })
   if (error) throw new Error(error.message || 'Pinterest request failed.')

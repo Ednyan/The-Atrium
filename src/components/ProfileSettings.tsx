@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
-import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
+import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest, createDesktopPairingCode } from '../lib/pinterest'
+import { redeemPinterestPairingCode } from '../lib/pinterestDesktop'
+import { showToast } from '../lib/toast'
 import { deleteMyAccount } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
@@ -45,8 +47,15 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   // support this app doesn't have yet, see src/lib/pinterest.ts)
   const [pinterestConnected, setPinterestConnected] = useState(false)
   const [pinterestUsername, setPinterestUsername] = useState<string | null>(null)
-  const [pinterestStatusLoading, setPinterestStatusLoading] = useState(!isDesktop)
+  const [pinterestStatusLoading, setPinterestStatusLoading] = useState(true)
   const [pinterestDisconnecting, setPinterestDisconnecting] = useState(false)
+  // Web: the code being shown for a desktop app to type in.
+  const [pairingCode, setPairingCode] = useState<string | null>(null)
+  const [pairingBusy, setPairingBusy] = useState(false)
+  // Desktop: the code being typed, on its way to becoming a link.
+  const [linkCodeInput, setLinkCodeInput] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   // Delete-account state -- web only, irreversible, so it's gated behind
   // typing the account's own username as an explicit confirmation.
@@ -80,8 +89,8 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
   useEffect(() => {
     loadProfile()
+    loadPinterestStatus()
     if (!isDesktop) {
-      loadPinterestStatus()
       loadHasPassword()
     }
   }, [])
@@ -101,6 +110,33 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     setPinterestConnected(connected)
     setPinterestUsername(username)
     setPinterestStatusLoading(false)
+  }
+
+  const handleCreatePairingCode = async () => {
+    setPairingBusy(true)
+    try {
+      const { code } = await createDesktopPairingCode()
+      setPairingCode(code)
+    } catch (err: any) {
+      showToast(err?.message || 'Could not create a pairing code.')
+    } finally {
+      setPairingBusy(false)
+    }
+  }
+
+  const handleLinkDesktop = async () => {
+    setLinkBusy(true)
+    setLinkError(null)
+    try {
+      await redeemPinterestPairingCode(linkCodeInput)
+      setLinkCodeInput('')
+      await loadPinterestStatus()
+      showToast('Pinterest linked')
+    } catch (err: any) {
+      setLinkError(err?.message || 'Could not use that code.')
+    } finally {
+      setLinkBusy(false)
+    }
   }
 
   const handleDisconnectPinterest = async () => {
@@ -678,9 +714,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             </>
           )}
 
-          {/* Pinterest Connection - web only (desktop OAuth needs deep-link
-              support this app doesn't have yet) */}
-          {!isDesktop && (
+          {/* Pinterest. On the web this is the OAuth connection itself; on
+              desktop it is a link to a web account that already has one --
+              desktop has no Supabase account to hang a connection on, and no
+              https origin for Pinterest to redirect back to. See
+              add_pinterest_desktop_link.sql. */}
+          {(
             <>
               <div>
                 <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
@@ -693,12 +732,57 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.8rem] leading-relaxed tracking-wide">
                       ✓ Connected{pinterestUsername ? ` as @${pinterestUsername}` : ''}
                     </div>
+                    {!isDesktop && (
+                      <div className="space-y-2">
+                        <button
+                          onClick={handleCreatePairingCode}
+                          disabled={pairingBusy}
+                          className="w-full py-2 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          {pairingBusy ? 'Preparing…' : pairingCode ? 'New code' : 'Link desktop app'}
+                        </button>
+                        {pairingCode && (
+                          <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-3 text-center">
+                            <p className="text-nier-strong text-lg tracking-[0.4em]">{pairingCode}</p>
+                            <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-1">
+                              Type this into the desktop app within ten minutes. It works once.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button
                       onClick={handleDisconnectPinterest}
                       disabled={pinterestDisconnecting}
                       className="w-full py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {pinterestDisconnecting ? t('profile.pinterestDisconnecting') : t('profile.pinterestDisconnect')}
+                    </button>
+                  </div>
+                ) : isDesktop ? (
+                  <div className="space-y-2">
+                    <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">
+                      On the website, open Profile Settings and choose <span className="text-nier-strong">Link desktop app</span>. Type the code it shows here.
+                    </p>
+                    <input
+                      type="text"
+                      value={linkCodeInput}
+                      onChange={(e) => setLinkCodeInput(e.target.value.toUpperCase())}
+                      placeholder="XXXXXXXX"
+                      maxLength={12}
+                      spellCheck={false}
+                      autoComplete="off"
+                      className="w-full px-3 py-2 bg-nier-black border border-nier-border/40 text-nier-bg text-sm tracking-[0.3em] uppercase text-center focus:outline-none focus:border-nier-border/70"
+                    />
+                    {linkError && (
+                      <p className="text-nier-red text-[0.8rem] leading-relaxed tracking-wide">{linkError}</p>
+                    )}
+                    <button
+                      onClick={handleLinkDesktop}
+                      disabled={linkBusy || linkCodeInput.replace(/[^A-Z0-9]/g, '').length < 8}
+                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      {linkBusy ? 'Linking…' : 'Link this app'}
                     </button>
                   </div>
                 ) : (
