@@ -1,7 +1,7 @@
 {
   "name": "the-lobby",
   "private": true,
-  "version": "1.6.15",
+  "version": "1.7.0",
   "type": "module",
   "description": "A 2D collaborative creative space inspired by Habbo Hotel and old MMO chat rooms",
   "author": "The Lobby Contributors",
