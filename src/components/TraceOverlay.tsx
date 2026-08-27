@@ -5219,6 +5219,20 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {trace.type === 'video' && trace.mediaUrl && (
                 <video
                   id={`video-${trace.id}`}
+                  // Enough for the poster frame and the dimensions, and not a
+                  // byte more.
+                  //
+                  // Chromium defaults a <video> with a source to preload
+                  // "auto", so every video trace began pulling its ENTIRE file
+                  // the moment it appeared -- an atrium of videos quietly
+                  // reading gigabytes, and a freshly imported one racing the
+                  // vault write for the same file on the same disk. That is
+                  // the difference between importing a video and importing a
+                  // PDF of the same size: the PDF has no element that helps
+                  // itself to the file before anyone asks. Pressing play still
+                  // loads the rest, at the point somebody has said they want
+                  // it.
+                  preload="metadata"
                   // No src until there is a real file to point at. A raw
                   // local:// URL means nothing to the browser, and handing it
                   // one only produces a failed element to recover from later.
@@ -5355,6 +5369,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {/* Hidden audio element + custom play button */}
                   <audio
                     id={`audio-${trace.id}`}
+                    // Same reasoning as the video above: duration now, the
+                    // rest when somebody presses play.
+                    preload="metadata"
                     // No src until there is a real file to point at. A raw
                   // local:// URL means nothing to the browser, and handing it
                   // one only produces a failed element to recover from later.
