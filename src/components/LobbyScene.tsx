@@ -3882,9 +3882,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (event.origin !== window.location.origin) return
 
       const data = event.data
-      if (data?.source !== 'atrium-extension' || data.kind !== 'image') return
-      if (typeof data.url !== 'string' || !/^https?:\/\//i.test(data.url)) return
+      if (data?.source !== 'atrium-extension') return
       if (!canEdit) return
+
+      // An address is required for the two kinds that point somewhere, and
+      // must be a web one -- the only scheme an <img> or an iframe here is
+      // ever allowed to load.
+      const wantsUrl = data.kind === 'image' || data.kind === 'embed'
+      if (wantsUrl && (typeof data.url !== 'string' || !/^https?:\/\//i.test(data.url))) return
+      if (data.kind === 'text' && typeof data.text !== 'string') return
+      if (!wantsUrl && data.kind !== 'text') return
 
       // Dropped where you are looking, since there is no cursor position to
       // speak of -- the click happened on a different page entirely.
@@ -3893,7 +3900,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const worldX = (window.innerWidth / 2 - container.x) / (zoomRef.current || 1)
       const worldY = (window.innerHeight / 2 - container.y) / (zoomRef.current || 1)
 
-      void insertDroppedTraceRef.current('image', 'shared image', data.url, worldX, worldY)
+      // The same three shapes a drop makes, so an extension trace is not a
+      // different kind of thing once it has landed.
+      if (data.kind === 'text') {
+        void insertDroppedTraceRef.current('text', data.text.slice(0, 5000), undefined, worldX, worldY)
+      } else if (data.kind === 'embed') {
+        void insertDroppedTraceRef.current('embed', data.url, data.url, worldX, worldY)
+      } else {
+        void insertDroppedTraceRef.current('image', 'shared image', data.url, worldX, worldY)
+      }
     }
 
     window.addEventListener('message', onMessage)

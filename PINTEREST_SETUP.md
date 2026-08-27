@@ -18,7 +18,17 @@ Add the App ID to `.env` (already has a placeholder line):
 VITE_PINTEREST_CLIENT_ID=<your App ID>
 ```
 
-This is safe to expose in the built frontend -- it's the public half of OAuth. Redeploy the web app after setting it.
+This is safe to expose in the built frontend -- it's the public half of OAuth.
+
+**`.env` only covers local dev.** Vite inlines `VITE_*` variables at BUILD time, and the deployed site is built by Cloudflare, so the variable has to exist there too:
+
+1. Cloudflare dashboard → **Workers & Pages** → the `the-atrium` project.
+2. **Settings** → **Environment variables** (newer dashboards call it *Variables and secrets*).
+3. Add to **Production**: name `VITE_PINTEREST_CLIENT_ID`, value = your App ID. A plain variable is fine -- it is public by design, not a secret. Add it to **Preview** too if you want preview branches to work.
+4. Save.
+5. **Redeploy.** An existing deployment was built without the variable and will not pick it up: either push a commit, or go to **Deployments** → the latest one → **Retry deployment**.
+
+To confirm it took: open the deployed site and check that Profile Settings shows **Connect Pinterest** rather than complaining the integration is not configured.
 
 ## 3. Database migration
 
