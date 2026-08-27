@@ -7,7 +7,7 @@ One-time setup to make "Connect Pinterest" work. Web only for now.
 1. Go to https://developers.pinterest.com and sign in.
 2. Under **Apps**, create a new app (any name/description).
 3. Open the app's settings. Copy the **App ID** (Client ID) and generate an **App secret** (Client Secret).
-4. Under **Redirect URIs**, add your production URL exactly as the app serves it (e.g. `https://digital-lobby.pages.dev/` or your custom domain). This must match byte-for-byte what `window.location.origin + window.location.pathname` resolves to when a user clicks "Connect Pinterest" -- if unsure, open the deployed app and copy the address bar's URL up to (not including) any `#` hash.
+4. Under **Redirect URIs**, add exactly one value: **`https://the-atrium.pages.dev/`** (with the trailing slash). The app always sends the site root, whatever page you press Connect on, so this is the only URI to register.
 5. Under **Scopes**, request: `boards:read`, `pins:read`, `user_accounts:read`. These are read-only and fall under Pinterest's Trial access tier -- no app review needed for personal use.
 
 ## 2. Frontend: Client ID
@@ -26,11 +26,9 @@ Run `supabase/migrations/add_pinterest_integration.sql` in the Supabase SQL Edit
 
 ## 4. Deploy the Edge Functions
 
-This project has no Edge Functions deployed yet, so the Supabase CLI needs to be linked once:
+The CLI is already linked (other functions in this project are deployed). Run these **from the repository root** -- deploying from anywhere else has previously shipped a function with a stale copy of `_shared`, which fails at boot while the CLI still reports success:
 
 ```bash
-npx supabase login
-npx supabase link --project-ref <your-project-ref>   # found in the Supabase dashboard URL
 npx supabase functions deploy pinterest-oauth-exchange
 npx supabase functions deploy pinterest-api
 ```

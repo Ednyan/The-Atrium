@@ -23,11 +23,18 @@ export function isPinterestConfigured(): boolean {
   return !!CLIENT_ID
 }
 
-// Whatever origin+path is actually serving the app right now. Register this
-// exact value as an allowed Redirect URI in the Pinterest app's settings --
-// Pinterest requires a byte-for-byte match.
+// One fixed URI, so there is one thing to register.
+//
+// This was origin + pathname, which is whatever route the user happened to be
+// on when they pressed Connect -- /welcome, /login, or / -- and Pinterest
+// requires a byte-for-byte match against a registered value. That meant every
+// route somebody might connect from had to be registered separately, and the
+// first one that was not failed with an OAuth error that says nothing useful.
+//
+// The root is safe to come back to because the callback is not route-bound:
+// App.tsx picks up ?code= on mount, wherever the app has landed.
 export function getPinterestRedirectUri(): string {
-  return window.location.origin + window.location.pathname
+  return window.location.origin + '/'
 }
 
 export function initiatePinterestConnect() {
