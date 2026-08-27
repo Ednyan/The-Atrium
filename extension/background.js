@@ -11,6 +11,13 @@ const ATRIUM_ORIGIN = 'https://the-atrium.pages.dev'
 const MENUS = [
   { id: 'send-image', title: 'Send image to atrium', contexts: ['image'] },
   { id: 'send-link', title: 'Send link to atrium', contexts: ['link'] },
+  // The page you are on, as an embed.
+  //
+  // This is as close as an extension can get to "right-click the address bar":
+  // the address bar is browser furniture, not page content, and no extension
+  // can add anything to its menu. Right-clicking the page itself gets the same
+  // address without having to select it first.
+  { id: 'send-page', title: 'Send this page to atrium', contexts: ['page'] },
   { id: 'send-selection-text', title: 'Send selection to atrium as text', contexts: ['selection'] },
   // Offered alongside the text one rather than instead of it: a selected
   // address is often wanted as a live embed, but not always -- sometimes the
@@ -53,6 +60,12 @@ function payloadFor(info) {
         return { error: 'That link does not go anywhere the atrium can reach.' }
       }
       return { kind: 'embed', url: info.linkUrl }
+
+    case 'send-page':
+      if (!isWebUrl(info.pageUrl)) {
+        return { error: 'This page has no web address the atrium can reach.' }
+      }
+      return { kind: 'embed', url: info.pageUrl }
 
     case 'send-selection-text': {
       const text = (info.selectionText || '').trim()

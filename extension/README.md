@@ -43,6 +43,10 @@ account to distribute.
 2. Right-click on any other page:
    - an **image** → *Send image to atrium*
    - a **link** → *Send link to atrium* (arrives as an embed)
+   - the **page itself** → *Send this page to atrium* (also an embed). The
+     address bar cannot be right-clicked into: it is browser furniture, not
+     page content, and no extension can add to its menu. Right-clicking the
+     page gets the same address without selecting anything.
    - a **selection** → *as text*, or *as embed* if what you selected is an
      address
 3. The trace appears in the middle of wherever you are looking.

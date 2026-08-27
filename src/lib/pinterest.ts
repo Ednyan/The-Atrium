@@ -33,6 +33,43 @@ export function isPinterestConfigured(): boolean {
 //
 // The root is safe to come back to because the callback is not route-bound:
 // App.tsx picks up ?code= on mount, wherever the app has landed.
+// Where to put the user back after Pinterest has finished with them.
+//
+// This app routes on the HASH -- an atrium is #/atrium/<id> -- and a fragment
+// never survives an OAuth round trip: it is not sent to the server and not
+// returned in the redirect. So connecting from inside an atrium came back to
+// the bare origin and landed on the landing page, having quietly lost the only
+// part of the URL that said where you were.
+//
+// Session storage, for the same reason the contributors page uses it: it
+// describes this visit, and a destination remembered from last week would be
+// worse than the default.
+const RETURN_KEY = 'atrium_pinterest_return'
+const DEFAULT_RETURN = '#/welcome'
+
+function rememberPinterestReturn() {
+  try {
+    sessionStorage.setItem(RETURN_KEY, window.location.hash || DEFAULT_RETURN)
+  } catch {
+    // Private browsing, or storage disabled. The default is still sensible.
+  }
+}
+
+// Restores the hash and clears it, so a later reload is an ordinary page load
+// rather than a second trip back to wherever this once pointed.
+function restorePinterestReturn() {
+  let target = DEFAULT_RETURN
+  try {
+    target = sessionStorage.getItem(RETURN_KEY) || DEFAULT_RETURN
+    sessionStorage.removeItem(RETURN_KEY)
+  } catch {
+    // Keep the default.
+  }
+  if (window.location.hash !== target) {
+    window.location.hash = target
+  }
+}
+
 export function getPinterestRedirectUri(): string {
   return window.location.origin + '/'
 }
@@ -44,6 +81,7 @@ export function initiatePinterestConnect() {
   }
   const state = crypto.randomUUID()
   sessionStorage.setItem(OAUTH_STATE_KEY, state)
+  rememberPinterestReturn()
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -77,6 +115,11 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
 
   const cleanUrl = window.location.pathname + window.location.hash
   window.history.replaceState({}, '', cleanUrl)
+
+  // Restored before any of the outcomes below, so a refusal or a failed
+  // exchange puts you back where you were too. Being dropped on the landing
+  // page is a poor way to be told something went wrong.
+  restorePinterestReturn()
 
   if (oauthError) {
     return { handled: true, success: false, error: 'Pinterest authorization was cancelled or denied.' }
