@@ -143,10 +143,12 @@ function binaryPayload(path: string, bytes: Uint8Array): Uint8Array {
 
 // How much of a file is in memory at once while it is being written.
 //
-// Eight megabytes is small enough that a huge import costs no more than a
-// small one, and large enough that the per-call overhead disappears against
-// the work -- a 500MB video is 63 round trips, not 500.
-const WRITE_CHUNK_BYTES = 8 * 1024 * 1024
+// Four megabytes is small enough that no single chunk blocks the atrium long
+// enough to see -- the whole point, since this runs while somebody is still
+// looking at the canvas -- and large enough that the per-call overhead
+// disappears against the work. It was eight, which halved the round trips and
+// doubled the length of each stall.
+const WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 
 // Streams a blob to disk in slices, so peak memory is one chunk rather than
 // the whole file.
@@ -160,6 +162,40 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
   if (blob.size <= WRITE_CHUNK_BYTES) {
     await writeBinaryFile(path, new Uint8Array(await blob.arrayBuffer()))
     return
+  }
+
+  // Name the file once, then send nothing but bytes.
+  //
+  // The fallback below prefixes the destination path to every chunk, which
+  // costs a second buffer the size of the chunk to glue them together here
+  // and another to split them apart in Rust -- two whole copies of every
+  // byte, on the thread drawing the atrium, to repeat a path that never
+  // changes. Opening the file once and passing the token in an IPC header
+  // means the raw body is the chunk itself and goes straight to disk.
+  let token: string | null = null
+  try {
+    token = await invoke<string>('open_binary_stream', { path })
+  } catch {
+    // An older binary during an in-place update won't have the command.
+    token = null
+  }
+
+  if (token) {
+    try {
+      for (let at = 0; at < blob.size; at += WRITE_CHUNK_BYTES) {
+        const bytes = new Uint8Array(await blob.slice(at, at + WRITE_CHUNK_BYTES).arrayBuffer())
+        await invoke('append_binary_stream', bytes, { headers: { 'x-stream-token': token } })
+        if (at + WRITE_CHUNK_BYTES < blob.size) {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        }
+      }
+      await invoke('close_binary_stream', { token })
+      return
+    } catch (streamError) {
+      // Close before falling back, or the handle outlives the attempt.
+      await invoke('close_binary_stream', { token }).catch(() => {})
+      console.warn('[vault] streamed write failed, falling back to append:', streamError)
+    }
   }
 
   let offset = 0
@@ -193,8 +229,8 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
     // import finishes: the trace is already on screen from its blob URL, the
     // panel has gone, and the vault write is still going.
     //
-    // One frame per 8MB, so a 200MB video spends about a quarter of a second
-    // more in total and none of it holding the app still.
+    // One frame per chunk, so a 200MB video spends a fraction of a second more
+    // in total and none of it holding the app still.
     if (offset < blob.size) {
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     }

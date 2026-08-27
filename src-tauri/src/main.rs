@@ -427,6 +427,84 @@ fn append_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     file.write_all(&contents).map_err(|e| e.to_string())
 }
 
+// An open file, held between calls, so a streamed import stops paying to
+// describe itself.
+//
+// append_binary_file works, but every chunk carries the destination path in
+// front of the bytes -- which means the front end allocates a second buffer
+// the size of the chunk just to glue the two together, and this side calls
+// .to_vec() to split them apart again. Two full copies of every byte, for a
+// path that does not change between the first chunk and the last. It also
+// reopened the file each time.
+//
+// Naming the file once and handing back a token removes all of it: the token
+// travels in an IPC header, so the raw body IS the chunk and can go straight
+// to disk out of the buffer it arrived in.
+#[derive(Default)]
+struct VaultWrites(std::sync::Mutex<std::collections::HashMap<String, std::fs::File>>);
+
+static VAULT_WRITE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[tauri::command]
+fn open_binary_stream(path: String, state: tauri::State<'_, VaultWrites>) -> Result<String, String> {
+    let file_path = extended_path(PathBuf::from(&path));
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    // create() truncates, so re-importing over an existing path cannot leave
+    // the tail of the old file behind the new one.
+    let file = fs::File::create(file_path).map_err(|e| e.to_string())?;
+    let token = format!(
+        "w{}",
+        VAULT_WRITE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(token.clone(), file);
+    Ok(token)
+}
+
+#[tauri::command]
+fn append_binary_stream(
+    request: tauri::ipc::Request<'_>,
+    state: tauri::State<'_, VaultWrites>,
+) -> Result<(), String> {
+    use std::io::Write;
+
+    let token = request
+        .headers()
+        .get("x-stream-token")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| "append_binary_stream needs an x-stream-token header".to_string())?;
+
+    let bytes: &[u8] = match request.body() {
+        tauri::ipc::InvokeBody::Raw(body) => body,
+        tauri::ipc::InvokeBody::Json(_) => {
+            return Err("append_binary_stream needs a raw body".to_string())
+        }
+    };
+
+    let mut open = state.0.lock().map_err(|e| e.to_string())?;
+    let file = open
+        .get_mut(token)
+        .ok_or_else(|| "no open stream for that token".to_string())?;
+    file.write_all(bytes).map_err(|e| e.to_string())
+}
+
+// Dropping the File is what flushes and closes it. Called on the failure path
+// too, so a partial import cannot leave a handle open for the life of the app.
+#[tauri::command]
+fn close_binary_stream(token: String, state: tauri::State<'_, VaultWrites>) -> Result<(), String> {
+    state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&token);
+    Ok(())
+}
+
 // Returns an ipc::Response rather than a Vec<u8>.
 //
 // Tauri serialises a Vec<u8> return value as a JSON array of numbers -- one
@@ -774,6 +852,7 @@ fn main() {
             }
             Ok(())
         })
+        .manage(VaultWrites::default())
         .invoke_handler(tauri::generate_handler![
             get_app_data_dir,
             get_vault_base_path,
@@ -785,6 +864,9 @@ fn main() {
             write_vault_text_file,
             write_binary_file,
             append_binary_file,
+            open_binary_stream,
+            append_binary_stream,
+            close_binary_stream,
             read_binary_file,
             copy_file_to_path,
             move_path,
