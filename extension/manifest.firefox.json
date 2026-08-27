@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Send to Atrium",
+  "version": "0.1.0",
+  "description": "Right-click any image, link or selection on the web and send it straight into your open Digital Atrium.",
+  "permissions": ["contextMenus", "tabs", "notifications"],
+  "host_permissions": ["https://the-atrium.pages.dev/*"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://the-atrium.pages.dev/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "icon.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "send-to-atrium@the-atrium.pages.dev",
+      "strict_min_version": "115.0"
+    }
+  }
+}

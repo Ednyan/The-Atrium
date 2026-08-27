@@ -5,18 +5,46 @@ already have open.
 
 ## Installing it (unpacked, for your own use)
 
+### Chrome, Edge, Brave, Opera, Vivaldi
+
 1. Open `chrome://extensions` (or `edge://extensions`).
 2. Turn on **Developer mode**.
 3. **Load unpacked**, and pick this `extension/` folder.
 
-Firefox needs its own listing and a slightly different manifest, so this is
-Chrome/Edge for now.
+### Firefox
+
+Firefox's MV3 wants `background.scripts` where Chrome's wants
+`background.service_worker`, and each rejects the other's, so the two need
+different manifests. Everything else is shared:
+
+```bash
+node scripts/pack-extension.mjs
+```
+
+That assembles `build-extension/firefox/`. Then open `about:debugging` → **This
+Firefox** → **Load Temporary Add-on** → pick the `manifest.json` inside it.
+
+"Temporary" is literal: it goes away when Firefox restarts. Making it stick
+means signing through addons.mozilla.org, which is only worth doing if you
+decide to publish it.
+
+Re-run the script after any change to the shared files, or Firefox keeps
+running the old copy.
+
+### Safari
+
+Not supported. It needs converting into an Xcode project and an Apple Developer
+account to distribute.
 
 ## Using it
 
 1. Open <https://the-atrium.pages.dev> and enter an atrium — signed in, with
    edit permission.
-2. Right-click any image on any other page → **Send to web atrium**.
+2. Right-click on any other page:
+   - an **image** → *Send image to atrium*
+   - a **link** → *Send link to atrium* (arrives as an embed)
+   - a **selection** → *as text*, or *as embed* if what you selected is an
+     address
 3. The trace appears in the middle of wherever you are looking.
 
 If more than one atrium tab is open it goes to the one you used most recently.
@@ -41,8 +69,6 @@ the page that made it and means nothing anywhere else.
 
 ## Ideas not built yet
 
-- **Send a link as an embed** — right-click a link or page, get an embed trace.
-- **Send selected text** as a text trace.
 - **Send to desktop atrium** — needs a different road entirely, since an
   extension cannot talk to a native app. See the notes in the conversation: a
   localhost endpoint inside the Tauri app, with a pairing token, is the

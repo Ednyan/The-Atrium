@@ -51,3 +51,4 @@ latest.json
 
 # pdfjs runtime assets, copied from node_modules at build time
 public/pdfjs/
+build-extension/
