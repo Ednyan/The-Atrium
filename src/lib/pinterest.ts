@@ -56,6 +56,10 @@ export function isPinterestConfigured(): boolean {
 // callback lands on a fresh page load with nothing else to tell it apart.
 const DESKTOP_MODE_KEY = 'atrium_pinterest_desktop_mode'
 const DESKTOP_CODE_KEY = 'atrium_pinterest_desktop_code'
+// Announced as well as stored: the page is put back on screen BEFORE the
+// exchange finishes, so it mounts, finds no code yet, and would otherwise sit
+// there having already looked once.
+export const DESKTOP_CODE_EVENT = 'atrium-pinterest-desktop-code'
 
 const RETURN_KEY = 'atrium_pinterest_return'
 const DEFAULT_RETURN = '#/welcome'
@@ -218,6 +222,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
       } catch {
         return { handled: true, success: false, error: 'Could not hold on to the code. Try again.' }
       }
+      window.dispatchEvent(new CustomEvent(DESKTOP_CODE_EVENT, { detail: data.code }))
     }
 
     return { handled: true, success: true, username: data?.username ?? null, desktop: desktopMode }

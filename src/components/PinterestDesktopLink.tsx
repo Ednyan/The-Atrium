@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { beginDesktopPinterestConnect, takeDesktopPairingCode, isPinterestConfigured } from '../lib/pinterest'
+import {
+  DESKTOP_CODE_EVENT,
+  beginDesktopPinterestConnect,
+  hasPendingDesktopPinterestFlow,
+  isPinterestConfigured,
+  takeDesktopPairingCode,
+} from '../lib/pinterest'
 
 // The page a desktop app sends its user to, to connect Pinterest.
 //
@@ -15,9 +21,41 @@ import { beginDesktopPinterestConnect, takeDesktopPairingCode, isPinterestConfig
 // already been typed in somewhere.
 export default function PinterestDesktopLink() {
   const [code, setCode] = useState<string | null>(null)
+  // True while the exchange is still in flight. The page is put back on screen
+  // before it finishes, so without this it would offer to start again while
+  // the previous attempt was still working.
+  const [finishing, setFinishing] = useState(() => hasPendingDesktopPinterestFlow())
 
   useEffect(() => {
-    setCode(takeDesktopPairingCode())
+    const existing = takeDesktopPairingCode()
+    if (existing) {
+      setCode(existing)
+      setFinishing(false)
+      return
+    }
+
+    // Mounted before the code exists, which is the ordinary case coming back
+    // from Pinterest: the route is restored first and the exchange finishes
+    // after. Waiting for the announcement rather than looking once.
+    const onCode = (event: Event) => {
+      setCode((event as CustomEvent).detail as string)
+      setFinishing(false)
+    }
+    window.addEventListener(DESKTOP_CODE_EVENT, onCode)
+
+    // Nothing arrived and nothing is pending: an ordinary visit, not a return
+    // trip. Give up waiting so the button is offered.
+    if (!hasPendingDesktopPinterestFlow()) setFinishing(false)
+
+    // And give up eventually in any case. An exchange that fails says so in a
+    // toast, but the page would otherwise sit on "finishing" for good, which
+    // offers no way forward -- worse than simply showing the button again.
+    const giveUp = window.setTimeout(() => setFinishing(false), 20000)
+
+    return () => {
+      window.clearTimeout(giveUp)
+      window.removeEventListener(DESKTOP_CODE_EVENT, onCode)
+    }
   }, [])
 
   return (
@@ -33,7 +71,11 @@ export default function PinterestDesktopLink() {
           <h1 className="text-lg text-white tracking-[0.15em] uppercase">Link Pinterest</h1>
         </div>
 
-        {code ? (
+        {finishing && !code ? (
+          <p className="text-nier-bg/80 text-[0.85rem] leading-relaxed tracking-wide">
+            Finishing up…
+          </p>
+        ) : code ? (
           <>
             <p className="text-nier-bg/80 text-[0.85rem] leading-relaxed tracking-wide mb-4">
               Type this into the desktop app, under Profile Settings → Pinterest.

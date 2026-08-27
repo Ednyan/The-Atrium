@@ -817,9 +817,15 @@ function AppInner() {
     if (!isAuthenticated && !hasPendingDesktopPinterestFlow()) return
     handlePinterestCallback().then((result) => {
       if (!result.handled) return
-      // The link page shows the code itself; a toast here would be announcing
-      // a connection this browser does not have.
-      if (result.desktop) return
+      // The link page shows the CODE itself -- a success toast here would be
+      // announcing a connection this browser does not have. A failure still
+      // has to be said out loud, though: swallowing it left the page sitting
+      // there looking like nothing had happened, which is precisely what a
+      // failed exchange looks like from the outside.
+      if (result.desktop) {
+        if (!result.success && result.error) showToast(result.error)
+        return
+      }
       // The app's own toast rather than alert(). A browser dialog is a modal
       // interruption in someone else's visual language, and it lands at the
       // end of a flow that has just returned the user to their atrium -- the
