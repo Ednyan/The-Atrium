@@ -1107,10 +1107,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const canEditRef = useRef(canEdit)
   useEffect(() => { canEditRef.current = canEdit }, [canEdit])
 
-  // Check Pinterest connection once per atrium visit, just to decide whether
-  // to show the "Import from Pinterest" button -- web only.
+  // Check the Pinterest connection once per atrium visit, to decide whether to
+  // show the import button. Asked on both platforms now: on desktop the answer
+  // comes from whether this install is linked to a web account that has one.
   useEffect(() => {
-    if (isDesktop) return
     getPinterestConnectionStatus().then(({ connected }) => setPinterestConnected(connected))
   }, [])
 
@@ -4281,7 +4281,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
           </button>
         )}
-        {!isDesktop && canEdit && pinterestConnected && (
+        {canEdit && pinterestConnected && (
           <button
             onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
             className="atrium-btn w-full mt-1 text-left"
@@ -5039,27 +5039,32 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               </button>
             ))}
 
-            {!isDesktop && (
-              <>
-                <div className="border-t border-nier-border/20 mt-1 pt-1">
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
-                    onClick={() => {
-                      const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
-                      setMapContextMenu(null)
-                      if (pinterestConnected) {
-                        setPinterestImportAnchor(anchor)
-                        setShowPinterestImport(true)
-                      } else {
-                        initiatePinterestConnect()
-                      }
-                    }}
-                  >
-                    ◇ Your Pinterest Boards
-                  </button>
-                </div>
-              </>
-            )}
+            {/* Desktop reaches Pinterest through a linked web account rather
+                than its own OAuth, but once linked it imports exactly the
+                same way -- so the entry belongs on both. */}
+            <div className="border-t border-nier-border/20 mt-1 pt-1">
+              <button
+                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                onClick={() => {
+                  const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                  setMapContextMenu(null)
+                  if (pinterestConnected) {
+                    setPinterestImportAnchor(anchor)
+                    setShowPinterestImport(true)
+                  } else if (isDesktop) {
+                    // Sending the webview to Pinterest would strand it there:
+                    // there is no address bar to come back from, and no https
+                    // origin for Pinterest to return to. Linking happens in
+                    // Profile Settings, so say so rather than doing nothing.
+                    showToast('Link Pinterest first — Profile Settings, on the welcome screen')
+                  } else {
+                    initiatePinterestConnect()
+                  }
+                }}
+              >
+                ◇ Your Pinterest Boards
+              </button>
+            </div>
           </div>
         </div>
       )}
