@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallb
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
+import { showToast } from '../lib/toast'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
 // Video and audio stream from the vault rather than being read into memory --
@@ -1965,7 +1966,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
     if (useGameStore.getState().isLobbyFull()) {
       const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-      alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+      showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
       return
     }
 
@@ -1979,7 +1980,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const { data, error } = await (supabase.from('traces') as any).insert(insertRows).select()
 
       if (error) {
-        alert('Failed to duplicate trace: ' + error.message)
+        showToast('Failed to duplicate trace: ' + error.message)
         return
       }
 
@@ -6958,7 +6959,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setContextMenu(null)
                     const result = await convertEmbedToInternalImage(trace.id)
                     if (!result.ok) {
-                      alert(result.error || 'Failed to convert this embed to an image')
+                      showToast(result.error || 'Could not convert this embed to an image')
                     }
                   }}
                 >
@@ -7864,7 +7865,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           e.preventDefault()
                           
                           if (!hasEyeDropperSupport) {
-                            alert('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
+                            showToast('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
                             return
                           }
                           
@@ -8055,7 +8056,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             e.preventDefault()
                             
                             if (!hasEyeDropperSupport) {
-                              alert('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
+                              showToast('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
                               return
                             }
                             

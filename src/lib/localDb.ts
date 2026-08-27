@@ -1972,6 +1972,29 @@ const pendingResolutions = new Map<string, Promise<string>>()
 // check runs against the table after the DELETE, so it sees exactly what
 // survives.
 //
+// Deleting a file the webview has only just let go of.
+//
+// Windows refuses to unlink a file that is still open, and the handle behind a
+// video is released when the webview gets round to it rather than the instant
+// its element disappears. One immediate attempt is therefore a coin toss for
+// exactly the largest files. Three tries over about two seconds turns that into
+// a near certainty, and costs nothing when the first one works -- which it does
+// for everything that was never being streamed.
+async function removeWithRetry(filePath: string): Promise<void> {
+  const delays = [0, 250, 1500]
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) {
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+    }
+    try {
+      await removePath(filePath)
+      return
+    } catch (error) {
+      if (attempt === delays.length - 1) throw error
+    }
+  }
+}
+
 // Never throws into the caller. A file that can't be removed is wasted disk,
 // which is a far better outcome than a delete that appears to fail.
 async function removeOrphanedTraceMedia(deletedRows: any[]): Promise<void> {
@@ -1987,18 +2010,28 @@ async function removeOrphanedTraceMedia(deletedRows: any[]): Promise<void> {
         )
         if (stillUsed.length > 0) continue
 
-        const filePath = await resolveLocalMediaFilePath(url)
-        if (filePath) await removePath(filePath)
-
-        // Drop the cached blob URL too, or the bytes stay in memory for a
-        // file that no longer exists.
+        // Let go of the file BEFORE trying to delete it.
+        //
+        // Video and audio are served to their elements over the asset
+        // protocol, and Windows will not delete a file something still has
+        // open. The element is gone by now -- the trace was removed -- but the
+        // webview can hold the handle a moment longer, which is why videos
+        // specifically survived a delete while images went quietly.
         const cachedUrl = resolvedUrlCache.get(url)
         if (cachedUrl) {
           URL.revokeObjectURL(cachedUrl)
           resolvedUrlCache.delete(url)
         }
-      } catch {
-        // Ignored on purpose -- see above.
+        // The stream cache too, which video and audio actually read from and
+        // which this never touched.
+        resolvedStreamUrlCache.delete(url)
+
+        const filePath = await resolveLocalMediaFilePath(url)
+        if (filePath) await removeWithRetry(filePath)
+      } catch (error) {
+        // Still not fatal -- see above -- but no longer invisible. A file left
+        // behind is wasted disk somebody may eventually wonder about.
+        console.warn('[vault] could not remove media for a deleted trace:', url, error)
       }
     }
 

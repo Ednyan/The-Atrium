@@ -825,7 +825,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     if (!useGameStore.getState().isLobbyFull()) return true
 
     const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-    alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+    showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
     return false
   }
 
@@ -1406,7 +1406,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     if (error) {
       console.error('Failed to create path:', error)
-      alert('Failed to create path: ' + error.message)
+      showToast('Failed to create path: ' + error.message)
       return
     }
 
@@ -1727,7 +1727,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const { data, error } = await (supabase.from('traces') as any).insert(rows).select()
     if (error) {
       console.error('PDF page insert error:', error)
-      alert('Failed to place the pages: ' + error.message)
+      showToast('Failed to place the pages: ' + error.message)
       return
     }
     for (const row of data ?? []) {
@@ -1846,7 +1846,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const { data, error } = await supabase.from('traces').insert(rows as any).select()
       if (error) {
         console.error('Batch embed insert error:', error)
-        alert('Failed to place batch embeds: ' + error.message)
+        showToast('Could not place those embeds: ' + error.message)
         return
       }
       if (data) {
@@ -1885,7 +1885,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const handleConvertAllEmbeds = async () => {
     const embedTraces = useGameStore.getState().traces.filter(t => t.type === 'embed')
     if (embedTraces.length === 0) {
-      alert('No embed traces in this atrium.')
+      showToast('No embed traces in this atrium.')
       return
     }
     setIsConvertingEmbeds(true)
@@ -1901,7 +1901,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       if (converted > 0) {
         await saveAllChanges()
       }
-      alert(`Converted ${converted} embed(s) to internal images.${skipped > 0 ? ` Skipped ${skipped} (not direct images or failed to download).` : ''}`)
+      showToast(`Converted ${converted} embed${converted === 1 ? '' : 's'} to images${skipped > 0 ? ` — skipped ${skipped}` : ''}`)
     } finally {
       setIsConvertingEmbeds(false)
       setConvertEmbedsProgress('')
@@ -1990,7 +1990,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       await kickUser(targetUserId, blacklist)
     } catch (err: any) {
       console.error('Error kicking user:', err)
-      alert(err.message || 'Failed to kick user')
+      showToast(err.message || 'Failed to kick user')
     } finally {
       setIsKicking(false)
       setKickTarget(null)
@@ -4684,7 +4684,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                           // Check lobby size limit before saving drawing
                           if (useGameStore.getState().isLobbyFull()) {
                             const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-                            alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+                            showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
                             setIsSavingDrawing(false)
                             return
                           }
