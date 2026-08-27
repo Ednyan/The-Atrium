@@ -954,6 +954,28 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [canEdit, groupLayers])
 
+  // A vault write finished, so the file it was copying now exists on disk and
+  // the trace should read from there rather than through the blob URL it was
+  // given at import. Re-resolving changes the element's src, which is also
+  // what clears a <video> that failed to load while the write had the thread.
+  useEffect(() => {
+    const onWritten = (event: Event) => {
+      const localUrl = (event as CustomEvent).detail?.localUrl as string | undefined
+      if (!localUrl) return
+      const affected = tracesRef.current.filter(t => t.mediaUrl === localUrl)
+      if (affected.length === 0) return
+      void resolveLocalStreamUrl(localUrl).then(resolved => {
+        setLocalMediaUrls(prev => {
+          const next = { ...prev }
+          for (const t of affected) next[t.id] = resolved
+          return next
+        })
+      }).catch(() => {})
+    }
+    window.addEventListener('atrium:vault-write-complete', onWritten)
+    return () => window.removeEventListener('atrium:vault-write-complete', onWritten)
+  }, [])
+
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
@@ -965,6 +987,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [newGroupDialog, setNewGroupDialog] = useState<{ traceIds: string[]; name: string } | null>(null)
   const [newGroupBusy, setNewGroupBusy] = useState(false)
   const [playingMedia, setPlayingMedia] = useState<Set<string>>(new Set()) // Track traces with playing media
+  // Which videos have already been given their one retry after a failed load.
+  const videoRetriedRef = useRef<Set<string>>(new Set())
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
   const [imageRetryCount, setImageRetryCount] = useState<Record<string, number>>({}) // Track retry attempts per trace
   const processedImageIds = React.useRef<Set<string>>(new Set()) // Track which images have been preflight-tested
@@ -5182,6 +5206,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       next.delete(trace.id)
                       return next
                     })
+                  }}
+                  onError={(e) => {
+                    // A <video> that fails its load stays failed: there is no
+                    // automatic retry, so one bad moment -- an import holding
+                    // the thread, say -- left the trace unplayable for the
+                    // rest of the visit. One retry, once, per trace.
+                    if (videoRetriedRef.current.has(trace.id)) return
+                    videoRetriedRef.current.add(trace.id)
+                    const el = e.currentTarget
+                    window.setTimeout(() => { try { el.load() } catch { /* gone */ } }, 500)
                   }}
                 />
               )}

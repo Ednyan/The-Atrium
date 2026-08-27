@@ -3677,7 +3677,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           if (error) {
             console.error('[vault] failed to write media file:', storagePath, error)
             showToast(`Couldn't save ${file.name} to the vault — it will show as a missing file`)
+            return
           }
+          // Hand the trace the real file now that there is one.
+          //
+          // Until this point it has been reading through a blob URL over the
+          // file the user dropped, which is what let it appear instantly. That
+          // blob is also being read, chunk by chunk, by the write that just
+          // finished -- and a video asked to load while that was happening
+          // could fail outright, with no retry and nothing to say so. It
+          // stayed broken until the atrium was left and re-entered, which
+          // remounts the trace and resolves the URL again from disk.
+          //
+          // Doing that swap here means the element gets a fresh, quiet source
+          // the moment one exists, rather than only on the next visit.
+          void import('../lib/localDb')
+            .then(m => m.refreshLocalUrl(localUrl))
+            .then(() => {
+              window.dispatchEvent(new CustomEvent('atrium:vault-write-complete', {
+                detail: { localUrl },
+              }))
+            })
+            .catch(() => {})
         })
         .catch((err: any) => {
           console.error('[vault] failed to write media file:', storagePath, err)

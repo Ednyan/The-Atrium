@@ -2284,6 +2284,22 @@ export function preCacheLocalUrl(localUrl: string, blobUrl: string) {
   resolvedUrlCache.set(localUrl, blobUrl)
 }
 
+// Re-resolve a local:// URL, ignoring what is already cached for it.
+//
+// An import caches a blob URL for the dropped file so the trace can appear
+// before anything has been written. Once the vault copy lands, that blob is no
+// longer the best answer: the file on disk is, and it can be streamed by the
+// browser instead of held as an object URL over the original.
+//
+// The old blob URL is deliberately NOT revoked. Something may still be reading
+// through it -- a video part-way through buffering, most obviously -- and
+// pulling it out from under a playing element is worse than leaving a handle
+// to a file that is already on disk.
+export async function refreshLocalUrl(localUrl: string): Promise<string> {
+  resolvedUrlCache.delete(localUrl)
+  return resolveLocalStreamUrl(localUrl)
+}
+
 // ---- Export helper to check if running in Tauri ----
 
 export function isTauri(): boolean {
