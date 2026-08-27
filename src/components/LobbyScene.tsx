@@ -3690,11 +3690,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       // is cached in memory, and "Missing file" the next time the atrium was
       // opened. Nothing anywhere said a word. A background write may be
       // invisible while it works; it must not be invisible when it does not.
+      // Announced before it starts, so the overlay knows not to point a media
+      // element at a file that is only part-way written.
+      window.dispatchEvent(new CustomEvent('atrium:vault-write-start', { detail: { localUrl } }))
+
       void supabase.storage.from('traces').upload(storagePath, file)
         .then(({ error }: { error: any }) => {
           if (error) {
             console.error('[vault] failed to write media file:', storagePath, error)
             showToast(`Couldn't save ${file.name} to the vault — it will show as a missing file`)
+            // Still announced as finished. It is not pending any more, and
+            // leaving it pending would strand the trace saying "Preparing"
+            // for the rest of the session rather than showing it is missing.
+            window.dispatchEvent(new CustomEvent('atrium:vault-write-complete', {
+              detail: { localUrl },
+            }))
             return
           }
           // Hand the trace the real file now that there is one.

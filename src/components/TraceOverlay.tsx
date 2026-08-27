@@ -954,6 +954,33 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [canEdit, groupLayers])
 
+  // Which imports are still being copied into the vault. Their media is left
+  // alone until the file is whole -- see the resolver above.
+  const [pendingWrites, setPendingWrites] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    const onStarted = (event: Event) => {
+      const localUrl = (event as CustomEvent).detail?.localUrl as string | undefined
+      if (!localUrl) return
+      setPendingWrites(prev => new Set(prev).add(localUrl))
+    }
+    const onFinished = (event: Event) => {
+      const localUrl = (event as CustomEvent).detail?.localUrl as string | undefined
+      if (!localUrl) return
+      setPendingWrites(prev => {
+        if (!prev.has(localUrl)) return prev
+        const next = new Set(prev)
+        next.delete(localUrl)
+        return next
+      })
+    }
+    window.addEventListener('atrium:vault-write-start', onStarted)
+    window.addEventListener('atrium:vault-write-complete', onFinished)
+    return () => {
+      window.removeEventListener('atrium:vault-write-start', onStarted)
+      window.removeEventListener('atrium:vault-write-complete', onFinished)
+    }
+  }, [])
+
   // A vault write finished, so the file it was copying now exists on disk and
   // the trace should read from there rather than through the blob URL it was
   // given at import. Re-resolving changes the element's src, which is also
@@ -1271,17 +1298,31 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     traces.forEach(trace => {
       if ((trace.type === 'audio' || trace.type === 'video') && trace.mediaUrl?.startsWith('local://')) {
         if (localMediaUrls[trace.id]) return
+        // Not while the file is still being written.
+        //
+        // resolveLocalStreamUrl builds an asset URL out of the path without
+        // asking whether anything is there yet, so a freshly imported video
+        // was handed a URL for a file Rust was still appending to. The webview
+        // then fetched it over and over as it grew underneath -- partial
+        // reads, ranges that could not be satisfied, each failure retried --
+        // against the same file, on the same disk, that the write was busy
+        // with. That is what kept the canvas stuttering for the whole import,
+        // and why it happened for video and not for a PDF of any size: only
+        // video and audio resolve through here.
+        if (pendingWrites.has(trace.mediaUrl)) return
         // Streamed, not read. This is the difference between opening an
         // atrium of videos and waiting for every one of them to be copied
         // into memory first.
         resolveLocalStreamUrl(trace.mediaUrl).then(resolved => {
           setLocalMediaUrls(prev => ({ ...prev, [trace.id]: resolved }))
         }).catch(() => {
-          setLocalMediaUrls(prev => ({ ...prev, [trace.id]: trace.mediaUrl! }))
+          // Deliberately left unset. A local:// URL means nothing to a media
+          // element, so putting one in here only builds a broken element that
+          // something has to recover from later.
         })
       }
     })
-  }, [traces])
+  }, [traces, pendingWrites])
 
   // ESC key to deselect trace and close menus
   useEffect(() => {
