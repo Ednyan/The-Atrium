@@ -215,9 +215,53 @@ async function streamBlobViaWorker(token: string, blob: Blob): Promise<boolean> 
   }
 }
 
+// Measures what a write actually costs the main thread, rather than what it
+// looks like it ought to cost.
+//
+// The stutter during a video import has now survived four fixes aimed at
+// theories -- chunk size, an extra copy, the read moving to a worker, eager
+// buffering -- which is a long enough run to stop guessing. A "long task" is
+// the browser's own name for a turn that blocked longer than 50ms, which is
+// what a dropped frame is made of, so this counts them and how long they held
+// the thread. Both import paths go through here: the drop handler's and the
+// PDF panel's.
+function startWriteProbe(blob: Blob) {
+  const startedAt = performance.now()
+  let longTasks = 0
+  let blockedMs = 0
+  let longest = 0
+
+  let observer: PerformanceObserver | null = null
+  try {
+    observer = new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        longTasks++
+        blockedMs += entry.duration
+        longest = Math.max(longest, entry.duration)
+      }
+    })
+    observer.observe({ entryTypes: ['longtask'] })
+  } catch {
+    // Not supported here. The wall time is still worth having.
+    observer = null
+  }
+
+  return (route: string, chunks: number) => {
+    observer?.disconnect()
+    const wall = performance.now() - startedAt
+    console.log(
+      `[vault] ${(blob.size / 1048576).toFixed(1)}MB via ${route} in ${chunks} chunk(s): ` +
+      `${wall.toFixed(0)}ms wall, ${longTasks} long task(s) holding the thread ` +
+      `${blockedMs.toFixed(0)}ms (longest ${longest.toFixed(0)}ms)`
+    )
+  }
+}
+
 async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
+  const finishProbe = startWriteProbe(blob)
   if (blob.size <= WRITE_CHUNK_BYTES) {
     await writeBinaryFile(path, new Uint8Array(await blob.arrayBuffer()))
+    finishProbe('single write', 1)
     return
   }
 
@@ -243,6 +287,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
     try {
       if (await streamBlobViaWorker(token, blob)) {
         await invoke('close_binary_stream', { token })
+        finishProbe('worker', Math.ceil(blob.size / WRITE_CHUNK_BYTES))
         return
       }
     } catch (workerError) {
@@ -262,6 +307,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
         }
       }
       await invoke('close_binary_stream', { token })
+      finishProbe('stream', Math.ceil(blob.size / WRITE_CHUNK_BYTES))
       return
     } catch (streamError) {
       // Close before falling back, or the handle outlives the attempt.
@@ -307,6 +353,8 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     }
   }
+
+  finishProbe('main-thread append', Math.ceil(blob.size / WRITE_CHUNK_BYTES))
 }
 
 async function readBinaryFile(path: string): Promise<Uint8Array> {
