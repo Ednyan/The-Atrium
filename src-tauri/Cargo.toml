@@ -1,13 +1,18 @@
 [package]
 name = "the-digital-atrium"
-version = "1.6.12"
+version = "1.6.13"
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+# devtools in release builds too. Without it F12 does nothing in a shipped
+# app -- Tauri only enables it automatically for debug builds -- which meant
+# the one place a bug actually reproduced was the one place it could not be
+# looked at. Costs some binary size and lets anyone open the inspector, which
+# is a fair trade for being able to diagnose what users are actually running.
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
