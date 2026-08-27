@@ -158,6 +158,54 @@ const WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 // same instant. Slicing keeps every one of those the size of a chunk. Blob
 // slices are lazy: the bytes are only read when a slice is turned into a
 // buffer, so this never materialises the original either.
+// Drives the worker: it reads, this sends, and the two overlap.
+//
+// Returns false if a worker could not be started at all, so the caller can
+// fall back to reading on this thread rather than failing the import.
+async function streamBlobViaWorker(token: string, blob: Blob): Promise<boolean> {
+  let worker: Worker
+  try {
+    worker = new Worker(new URL('./vaultWriter.worker.ts', import.meta.url), { type: 'module' })
+  } catch (error) {
+    console.warn('[vault] no worker available, reading on the main thread:', error)
+    return false
+  }
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      worker.onerror = event => reject(new Error(event.message || 'vault writer worker failed'))
+      worker.onmessage = async event => {
+        const message = event.data
+        if (message?.type === 'error') {
+          reject(new Error(message.message))
+          return
+        }
+        if (message?.type !== 'chunk') return
+        try {
+          await invoke('append_binary_stream', new Uint8Array(message.buffer), {
+            headers: { 'x-stream-token': token },
+          })
+          if (message.last) {
+            resolve()
+            return
+          }
+          // A frame between chunks. The read is off this thread now, but the
+          // transfer to Rust still happens here, and awaits alone resolve in
+          // microtasks -- which run to exhaustion before the browser paints.
+          await new Promise<void>(done => requestAnimationFrame(() => done()))
+          worker.postMessage({ type: 'more' })
+        } catch (error) {
+          reject(error)
+        }
+      }
+      worker.postMessage({ type: 'start', blob, chunkSize: WRITE_CHUNK_BYTES })
+    })
+    return true
+  } finally {
+    worker.terminate()
+  }
+}
+
 async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
   if (blob.size <= WRITE_CHUNK_BYTES) {
     await writeBinaryFile(path, new Uint8Array(await blob.arrayBuffer()))
@@ -178,6 +226,21 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
   } catch {
     // An older binary during an in-place update won't have the command.
     token = null
+  }
+
+  if (token) {
+    // Preferred path: the bytes are read on a worker thread and only handed
+    // through this one.
+    try {
+      if (await streamBlobViaWorker(token, blob)) {
+        await invoke('close_binary_stream', { token })
+        return
+      }
+    } catch (workerError) {
+      await invoke('close_binary_stream', { token }).catch(() => {})
+      console.warn('[vault] worker write failed, falling back:', workerError)
+      token = null
+    }
   }
 
   if (token) {
