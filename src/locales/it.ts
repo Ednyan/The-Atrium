@@ -348,7 +348,7 @@ const it: Catalogue = {
   'profile.pinterestDisconnect': 'Scollega Pinterest',
   'profile.pinterestDisconnecting': 'Scollegamento...',
   'profile.pinterestUnconfigured': 'L’integrazione con Pinterest non è ancora configurata.',
-  'profile.pinterestNote': "L'integrazione con Pinterest non è ancora completa, attendi i prossimi aggiornamenti.",
+  'profile.pinterestNote': "L'integrazione con Pinterest è ancora in fase di test: fammi sapere se qualcosa non va.",
   'profile.deleteAccount': 'Elimina account',
   'profile.deleteWarning': 'Se confermi questa azione, il tuo account, il tuo profilo e gli atrium che possiedi saranno eliminati definitivamente dal Digital Atrium (versione web). I contenuti che hai creato negli atrium di altre persone resteranno, ma senza alcuna traccia del tuo nome e del tuo profilo. QUESTA AZIONE NON PUÒ ESSERE ANNULLATA.',
   'profile.deleteTypeToConfirm': 'Scrivi *{name}* per confermare',

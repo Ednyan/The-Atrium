@@ -243,18 +243,6 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
   }
 }
 
-// Mints the short code the desktop app trades for a link token. Web only --
-// this is the half that has to be signed in.
-export async function createDesktopPairingCode(): Promise<{ code: string; expiresInSeconds: number }> {
-  if (!supabase) throw new Error('Not connected to the server.')
-  const { data, error } = await supabase.functions.invoke('pinterest-desktop-link', {
-    body: { action: 'create' },
-  })
-  if (error) throw new Error(error.message || 'Could not create a pairing code.')
-  if (data?.error) throw new Error(data.error)
-  return { code: data.code as string, expiresInSeconds: data.expiresInSeconds as number }
-}
-
 export async function getPinterestConnectionStatus(): Promise<{ connected: boolean; username: string | null }> {
   if (isDesktop) return getDesktopPinterestStatus()
   if (!supabase) return { connected: false, username: null }

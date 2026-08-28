@@ -347,7 +347,7 @@ const de: Catalogue = {
   'profile.pinterestDisconnect': 'Pinterest trennen',
   'profile.pinterestDisconnecting': 'Wird getrennt...',
   'profile.pinterestUnconfigured': 'Die Pinterest-Integration ist noch nicht eingerichtet.',
-  'profile.pinterestNote': 'Die Pinterest-Integration ist noch nicht fertig — warte auf künftige Updates.',
+  'profile.pinterestNote': 'Die Pinterest-Integration wird noch getestet — sag Bescheid, wenn etwas nicht stimmt.',
   'profile.deleteAccount': 'Konto löschen',
   'profile.deleteWarning': 'Wenn du diese Aktion bestätigst, werden dein Konto, dein Profil und die Atrien, die dir gehören, dauerhaft aus dem Digital Atrium (Web-Version) gelöscht. Inhalte, die du in Atrien anderer Leute erstellt hast, bleiben bestehen, aber ohne jeden Hinweis auf deinen Namen und dein Profil. DIESE AKTION KANN NICHT RÜCKGÄNGIG GEMACHT WERDEN.',
   'profile.deleteTypeToConfirm': 'Gib *{name}* ein, um zu bestätigen',

@@ -76,20 +76,17 @@ No new secrets needed for this one -- it only uses the already-auto-injected ser
 
 Desktop does not do its own OAuth: it has no https origin for Pinterest to redirect back to. The browser does the round trip on its behalf, and hands back a code.
 
-**No Atrium account needed** (the usual way):
+**No Atrium account needed:**
 
 1. Desktop app → Profile Settings → Pinterest → **Open browser to connect**.
 2. In the browser, press **Connect Pinterest** and approve. An eight-character code appears.
 3. Back in the desktop app, type the code → **Link this app**.
 
-**Or borrow an account that already has Pinterest connected:**
-
-1. Web app → Profile Settings → **Link desktop app**. A code appears.
-2. Desktop app → Profile Settings → Pinterest → type the code → **Link this app**.
+There is deliberately no second route through a signed-in web account. It existed briefly and was two ways to reach the same place, with an account required for one of them and nothing gained by it.
 
 The code lasts ten minutes and works once. What the desktop stores afterwards is an opaque link token meaning only "read these Pinterest boards" -- Pinterest's own tokens never leave the server, and token refresh keeps happening there.
 
-Revoking differs between the two. An account-linked install is cut off by **Disconnect** in the desktop app, or by disconnecting Pinterest on the web, which clears every linked install at once. An **account-free** connection has no account behind it, so it can only be revoked from the desktop app holding it, or from Pinterest's own connected-apps settings -- there is nowhere to log in and revoke it. Unlinking the last desktop install deletes the stored tokens rather than leaving them unreachable.
+Revoking: **Disconnect** in the desktop app, or Pinterest's own connected-apps settings. There is no account behind the connection, so there is nowhere to log in and revoke it -- that is the cost of not requiring one. Unlinking the last desktop install deletes the stored tokens rather than leaving them unreachable.
 
 Needs the extra migration and function:
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
-import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest, createDesktopPairingCode } from '../lib/pinterest'
+import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
 import { redeemPinterestPairingCode } from '../lib/pinterestDesktop'
 import { showToast } from '../lib/toast'
 import { openExternalUrl } from '../lib/openExternal'
@@ -51,9 +51,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [pinterestUsername, setPinterestUsername] = useState<string | null>(null)
   const [pinterestStatusLoading, setPinterestStatusLoading] = useState(true)
   const [pinterestDisconnecting, setPinterestDisconnecting] = useState(false)
-  // Web: the code being shown for a desktop app to type in.
-  const [pairingCode, setPairingCode] = useState<string | null>(null)
-  const [pairingBusy, setPairingBusy] = useState(false)
   // Desktop: the code being typed, on its way to becoming a link.
   const [linkCodeInput, setLinkCodeInput] = useState('')
   const [linkBusy, setLinkBusy] = useState(false)
@@ -112,18 +109,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     setPinterestConnected(connected)
     setPinterestUsername(username)
     setPinterestStatusLoading(false)
-  }
-
-  const handleCreatePairingCode = async () => {
-    setPairingBusy(true)
-    try {
-      const { code } = await createDesktopPairingCode()
-      setPairingCode(code)
-    } catch (err: any) {
-      showToast(err?.message || 'Could not create a pairing code.')
-    } finally {
-      setPairingBusy(false)
-    }
   }
 
   const handleLinkDesktop = async () => {
@@ -734,25 +719,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.8rem] leading-relaxed tracking-wide">
                       ✓ Connected{pinterestUsername ? ` as @${pinterestUsername}` : ''}
                     </div>
-                    {!isDesktop && (
-                      <div className="space-y-2">
-                        <button
-                          onClick={handleCreatePairingCode}
-                          disabled={pairingBusy}
-                          className="w-full py-2 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          {pairingBusy ? 'Preparing…' : pairingCode ? 'New code' : 'Link desktop app'}
-                        </button>
-                        {pairingCode && (
-                          <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-3 text-center">
-                            <p className="text-nier-strong text-lg tracking-[0.4em]">{pairingCode}</p>
-                            <p className="text-nier-bg/70 text-[0.7rem] leading-relaxed tracking-wide mt-1">
-                              Type this into the desktop app within ten minutes. It works once.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
                     <button
                       onClick={handleDisconnectPinterest}
                       disabled={pinterestDisconnecting}
@@ -764,7 +730,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 ) : isDesktop ? (
                   <div className="space-y-2">
                     <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">
-                      Connect in your browser, then type the code it gives you here. No Atrium account needed.
+                      Press the button below to connect Pinterest in your browser. It will show you a code — type it in here to finish. No Atrium account needed.
                     </p>
                     <button
                       type="button"
@@ -773,9 +739,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     >
                       Open browser to connect ↗
                     </button>
-                    <p className="text-nier-bg/50 text-[0.75rem] leading-relaxed tracking-wide">
-                      Already have an account with Pinterest connected? Profile Settings on the website has <span className="text-nier-bg/70">Link desktop app</span>, which gives a code too.
-                    </p>
                     <input
                       type="text"
                       value={linkCodeInput}

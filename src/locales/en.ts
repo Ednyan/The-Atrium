@@ -250,7 +250,7 @@ export const en = {
   'profile.pinterestDisconnect': 'Disconnect Pinterest',
   'profile.pinterestDisconnecting': 'Disconnecting...',
   'profile.pinterestUnconfigured': "Pinterest integration isn't configured yet.",
-  'profile.pinterestNote': "The Pinterest integration isn't finished yet — watch for future updates.",
+  'profile.pinterestNote': "The Pinterest integration is still being tested — let me know if something looks wrong.",
   'profile.deleteAccount': 'Delete Account',
   'profile.deleteWarning': "If you confirm this action, your account, profile and the atriums you own will be permanently deleted from the Digital Atrium (web version). Content you created in other people's atriums will remain, but with no record of your name or profile. THIS ACTION CANNOT BE UNDONE.",
   'profile.deleteTypeToConfirm': 'Type *{name}* to confirm',

@@ -1,23 +1,23 @@
-// Pairs a desktop install with a web account's Pinterest connection.
+// Turns the code a desktop install was shown into a token it can use.
 //
 // The desktop app has no Supabase account and cannot authenticate here, so it
 // needs something to present instead. Rather than hand it Pinterest's tokens --
 // which would put a refresh token on somebody's disk and mean writing refresh
-// a second time -- it is given an opaque link token that means only "act as
-// this user, for Pinterest reads". pinterest-api accepts it in place of a JWT
-// and the Pinterest tokens never leave the server.
+// a second time -- it is given an opaque link token that stands for "read these
+// Pinterest boards" and nothing else. pinterest-api accepts it in place of a
+// JWT, and the Pinterest tokens never leave the server.
 //
-// Two steps, because a code a person retypes has to be short, and a short
-// secret must not live long:
+// The code itself is minted by pinterest-oauth-exchange, at the moment the
+// connection is made, on a page that requires no account. There used to be a
+// second way in -- a signed-in web user could mint a code from their own
+// connection -- which was two routes to the same place and one more thing to
+// keep working. The account-free one covers it.
 //
-//   create  (authenticated) -> an 8-character code, good for ten minutes, once
-//   redeem  (anonymous)     -> trades that code for the long link token
-//
-// Both are stored hashed. The plaintext exists only in the response that
-// carries it and in whatever the user pastes.
+// Codes and tokens are stored hashed. The plaintext exists only in the response
+// that carries it and in whatever the user types.
 
 import { corsHeaders } from '../_shared/cors.ts'
-import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
+import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { CODE_LENGTH, PAIRING_TTL_MS, connectionTable, randomPairingCode, resolveLinkedConnection, sha256Hex } from '../_shared/desktopLink.ts'
 
 function json(body: unknown, status = 200): Response {
@@ -54,45 +54,11 @@ Deno.serve(async (req: Request) => {
     const { action, code } = await req.json()
 
     // Expired pairings are cleared on the way past rather than by a scheduled
-    // job. There is no cron here, and this is the only thing that ever reads
-    // the table.
+    // job. There is no cron here, and nothing else reads the table.
     await admin
       .from('pinterest_desktop_pairings')
       .delete()
       .lt('expires_at', new Date().toISOString())
-
-    if (action === 'create') {
-      const userId = await getAuthenticatedUserId(req, admin)
-      if (!userId) return json({ error: 'Not authenticated' }, 401)
-
-      // Refuse to pair an account with nothing to share. Otherwise the desktop
-      // app accepts a code, reports success, and shows an empty board list --
-      // failure arriving one screen later than the mistake.
-      const { data: connection } = await admin
-        .from('pinterest_connections')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-      if (!connection) return json({ error: 'Pinterest is not connected on this account.' }, 409)
-
-      // One live pairing per user: asking for a new code should invalidate the
-      // one on the screen you just walked away from.
-      await admin.from('pinterest_desktop_pairings').delete().eq('user_id', userId)
-
-      const plain = randomPairingCode()
-      const expiresAt = new Date(Date.now() + PAIRING_TTL_MS).toISOString()
-      const { error } = await admin.from('pinterest_desktop_pairings').insert({
-        code_hash: await sha256Hex(plain),
-        user_id: userId,
-        expires_at: expiresAt,
-      })
-      if (error) {
-        console.error('[pinterest-desktop-link] could not store pairing:', error)
-        return json({ error: 'Could not create a pairing code.' }, 500)
-      }
-
-      return json({ code: plain, expiresAt, expiresInSeconds: PAIRING_TTL_MS / 1000 })
-    }
 
     if (action === 'redeem') {
       // Deliberately unauthenticated: the desktop app has no account to

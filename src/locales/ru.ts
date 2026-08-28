@@ -350,7 +350,7 @@ const ru: Catalogue = {
   'profile.pinterestDisconnect': 'Отключить Pinterest',
   'profile.pinterestDisconnecting': 'Отключение...',
   'profile.pinterestUnconfigured': 'Интеграция с Pinterest пока не настроена.',
-  'profile.pinterestNote': 'Интеграция с Pinterest ещё не завершена — следите за будущими обновлениями.',
+  'profile.pinterestNote': 'Интеграция с Pinterest ещё тестируется — сообщите, если что-то работает не так.',
   'profile.deleteAccount': 'Удалить аккаунт',
   'profile.deleteWarning': 'Если вы подтвердите это действие, ваш аккаунт, профиль и принадлежащие вам атриумы будут безвозвратно удалены из Digital Atrium (веб-версия). Содержимое, созданное вами в атриумах других людей, останется, но без каких-либо упоминаний вашего имени и профиля. ЭТО ДЕЙСТВИЕ НЕЛЬЗЯ ОТМЕНИТЬ.',
   'profile.deleteTypeToConfirm': 'Введите *{name}* для подтверждения',
