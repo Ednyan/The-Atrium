@@ -1938,6 +1938,14 @@ class MockChannel {
     return this
   }
 
+  // Nothing was ever published, so there is nothing to retract -- but the
+  // app calls this now (usePresence, on being kicked), and a method missing
+  // from this shim throws a TypeError rather than returning an error, which
+  // takes down the caller instead of being caught.
+  untrack(): Promise<string> {
+    return Promise.resolve('ok')
+  }
+
   send(_data: any): Promise<string> {
     return Promise.resolve('ok')
   }

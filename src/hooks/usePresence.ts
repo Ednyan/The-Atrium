@@ -92,7 +92,9 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // mode existed.
     ghostRef.current = null
     const ghostPromise = isGhostEntry(lobbyId)
-    ghostPromise.then(value => { ghostRef.current = value })
+    // Only fills in the unknown. A kick arriving before this resolves has
+    // already decided the answer, and the probe must not downgrade it back.
+    ghostPromise.then(value => { if (ghostRef.current === null) ghostRef.current = value })
 
     // Connecting to lobby presence channel
     joinedAtRef.current = Date.now()
@@ -197,6 +199,18 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       })
       .on('broadcast', { event: 'kicked' }, ({ payload }: { payload: any }) => {
         if (payload && payload.targetUserId === userId) {
+          // Stop being present the moment the removal lands, not when the
+          // notice is acknowledged. Leaving is deliberately deferred so the
+          // message can be read -- but until it was clicked, everyone else's
+          // roster still listed somebody who had already been removed, which
+          // is the one thing that panel is telling them is no longer true.
+          //
+          // Untrack retracts what was already published; ghost closes the two
+          // outbound paths that would republish it -- the colour-change
+          // track() and the cursor broadcast. The channel stays subscribed,
+          // so the panel renders and the canvas behind it keeps working.
+          ghostRef.current = true
+          void channel.untrack()
           onKickedRef.current?.(!!payload.blacklisted)
         }
       })
