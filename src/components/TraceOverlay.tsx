@@ -9081,7 +9081,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       {/* Full view modal (also the text-trace preview) */}
       {modalTrace && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="fixed inset-0 bg-nier-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setModalTrace(null)}
         >
           <div
@@ -9097,8 +9097,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 // mismatch just clips a stray pixel instead of popping a
                 // visible scrollbar -- a scrollbar showing at all reads as
                 // broken, a clipped pixel doesn't.
-                ? "bg-gray-900 border p-6 flex flex-col relative overflow-hidden"
-                : "bg-gray-900 border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
+                ? "bg-nier-blackLight border p-6 flex flex-col relative overflow-hidden"
+                : "bg-nier-blackLight border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
             }
             style={{ borderColor: getBorderColor(modalTrace.type) }}
             onClick={(e) => e.stopPropagation()}
@@ -9118,7 +9118,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {modalTrace.type === 'audio' && t('atrium.controls.audioTrace')}
                   {modalTrace.type === 'video' && t('atrium.controls.videoTrace')}
                   {modalTrace.type === 'embed' && t('atrium.controls.embeddedContent')}
-                  {modalTrace.type === 'document' && 'Document'}
+                  {modalTrace.type === 'document' && t('atrium.controls.documentTrace')}
                 </h2>
               </div>
               <button
@@ -9166,7 +9166,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     <div className="flex items-center gap-4">
                       <button
                         type="button"
-                        className="text-nier-bg/70 hover:text-nier-strong text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
+                        className="text-nier-bg/70 hover:text-nier-strong text-lg px-3 py-1 border border-nier-border/60 hover:border-nier-border transition-colors disabled:text-nier-bg/25 disabled:border-nier-border/20 disabled:cursor-not-allowed"
                         disabled={page <= 1}
                         onClick={() => setDocumentPage(prev => ({ ...prev, [modalTrace.id]: Math.max(1, (prev[modalTrace.id] ?? 1) - 1) }))}
                       >
@@ -9177,7 +9177,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       </span>
                       <button
                         type="button"
-                        className="text-nier-bg/70 hover:text-nier-strong text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
+                        className="text-nier-bg/70 hover:text-nier-strong text-lg px-3 py-1 border border-nier-border/60 hover:border-nier-border transition-colors disabled:text-nier-bg/25 disabled:border-nier-border/20 disabled:cursor-not-allowed"
                         disabled={page >= total}
                         onClick={() => setDocumentPage(prev => ({ ...prev, [modalTrace.id]: Math.min(total, (prev[modalTrace.id] ?? 1) + 1) }))}
                       >
@@ -9308,7 +9308,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                 if (!embedUrl) {
                   return (
-                    <div style={{ width: displayWidth, height: displayHeight }} className="flex items-center justify-center bg-gray-800/50">
+                    <div style={{ width: displayWidth, height: displayHeight }} className="flex items-center justify-center bg-nier-black/50">
                       <p className="text-nier-bg/60 text-sm tracking-wider">{t('atrium.customize.invalidEmbed')}</p>
                     </div>
                   )
@@ -9336,7 +9336,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               })()}
 
               {modalTrace.type === 'text' && (
-                <div className="bg-gray-800/50 p-6 selectable-text">
+                <div className="bg-nier-black/50 p-6 selectable-text">
                   <p className="text-nier-strong text-lg whitespace-pre-wrap break-words font-mono">
                     {modalTrace.content}
                   </p>
@@ -9394,7 +9394,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           red, since this creates something. */}
       {newGroupDialog && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="fixed inset-0 bg-nier-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => { if (!newGroupBusy) setNewGroupDialog(null) }}
         >
           <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
@@ -9464,7 +9464,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
       {deleteConfirmDialog && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="fixed inset-0 bg-nier-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setDeleteConfirmDialog(null)}
         >
           {/* Scanline overlay */}

@@ -520,6 +520,7 @@ const fr: Catalogue = {
   'atrium.controls.imageTrace': 'Trace image',
   'atrium.controls.audioTrace': 'Trace audio',
   'atrium.controls.videoTrace': 'Trace vidéo',
+  'atrium.controls.documentTrace': 'Trace document',
   'atrium.controls.embeddedContent': 'Contenu intégré',
   'atrium.controls.addPoints': '+ Ajouter des points',
   'atrium.controls.doneAdding': '✓ Terminé',

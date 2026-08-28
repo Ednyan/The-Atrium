@@ -522,6 +522,7 @@ const it: Catalogue = {
   'atrium.controls.imageTrace': 'Trace immagine',
   'atrium.controls.audioTrace': 'Trace audio',
   'atrium.controls.videoTrace': 'Trace video',
+  'atrium.controls.documentTrace': 'Trace documento',
   'atrium.controls.embeddedContent': 'Contenuto incorporato',
   'atrium.controls.addPoints': '+ Aggiungi punti',
   'atrium.controls.doneAdding': '✓ Fatto',

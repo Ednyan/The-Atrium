@@ -521,6 +521,7 @@ const de: Catalogue = {
   'atrium.controls.imageTrace': 'Bild-Trace',
   'atrium.controls.audioTrace': 'Audio-Trace',
   'atrium.controls.videoTrace': 'Video-Trace',
+  'atrium.controls.documentTrace': 'Dokument-Trace',
   'atrium.controls.embeddedContent': 'Eingebetteter Inhalt',
   'atrium.controls.addPoints': '+ Punkte hinzufügen',
   'atrium.controls.doneAdding': '✓ Fertig',

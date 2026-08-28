@@ -524,6 +524,7 @@ const ru: Catalogue = {
   'atrium.controls.imageTrace': 'Trace-изображение',
   'atrium.controls.audioTrace': 'Аудио-trace',
   'atrium.controls.videoTrace': 'Видео-trace',
+  'atrium.controls.documentTrace': 'Trace-документ',
   'atrium.controls.embeddedContent': 'Встроенное содержимое',
   'atrium.controls.addPoints': '+ Добавить точки',
   'atrium.controls.doneAdding': '✓ Готово',

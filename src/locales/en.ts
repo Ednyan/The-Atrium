@@ -424,6 +424,7 @@ export const en = {
   'atrium.controls.imageTrace': 'Image Trace',
   'atrium.controls.audioTrace': 'Audio Trace',
   'atrium.controls.videoTrace': 'Video Trace',
+  'atrium.controls.documentTrace': 'Document Trace',
   'atrium.controls.embeddedContent': 'Embedded Content',
   'atrium.controls.addPoints': '+ Add Points',
   'atrium.controls.doneAdding': '✓ Done Adding',

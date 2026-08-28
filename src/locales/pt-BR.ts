@@ -522,6 +522,7 @@ const ptBR: Catalogue = {
   'atrium.controls.imageTrace': 'Trace de imagem',
   'atrium.controls.audioTrace': 'Trace de áudio',
   'atrium.controls.videoTrace': 'Trace de vídeo',
+  'atrium.controls.documentTrace': 'Trace de documento',
   'atrium.controls.embeddedContent': 'Conteúdo incorporado',
   'atrium.controls.addPoints': '+ Adicionar pontos',
   'atrium.controls.doneAdding': '✓ Concluído',
