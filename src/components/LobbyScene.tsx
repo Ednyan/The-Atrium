@@ -21,6 +21,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { copyLobbyId } from '../lib/clipboard'
 import { showToast } from '../lib/toast'
+import { useTranslation } from '../lib/i18n'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
@@ -396,6 +397,7 @@ interface LobbySceneProps {
 }
 
 export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const worldContainerRef = useRef<Container | null>(null)
@@ -5208,9 +5210,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div
           className="flex items-center justify-between gap-3 cursor-pointer select-none h-[1.375rem] leading-none"
           onClick={() => setControlsMinimized(!controlsMinimized)}
-          title={controlsMinimized ? 'Open' : 'Close'}
+          title={controlsMinimized ? t('common.open') : t('common.close')}
         >
-          <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Controls</p>
+          <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.controls.title')}</p>
           <span
             className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
             style={{ display: 'inline-block', transform: controlsMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
@@ -5220,30 +5222,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         {!controlsMinimized && (
           <div className="panel-in space-y-1 mt-2">
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Leave Trace : "T"
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Freehand Draw : "D"
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Edit Trace : Right Click It
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Multi-select : Shift + Click Traces
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Undo / Redo : Ctrl+Z / Ctrl+Shift+Z
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Copy / Paste : Ctrl+C / Ctrl+V
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Delete Selected : Delete Key
-            </p>
-            <p className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-              <span className="text-nier-bg/80">◇</span> Save Changes : Ctrl+S
-            </p>
+            {/* One row per shortcut, from a list, because eight copies of the
+                same paragraph differing only in their text is eight places to
+                get the class list slightly wrong. */}
+            {([
+              'atrium.controls.leaveTrace',
+              'atrium.controls.draw',
+              'atrium.controls.editTrace',
+              'atrium.controls.multiSelect',
+              'atrium.controls.undoRedo',
+              'atrium.controls.copyPaste',
+              'atrium.controls.deleteSelected',
+              'atrium.controls.saveChanges',
+            ] as const).map(key => (
+              <p key={key} className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+                <span className="text-nier-bg/80">◇</span> {t(key)}
+              </p>
+            ))}
           </div>
         )}
       </div>
