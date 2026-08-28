@@ -357,7 +357,7 @@ const it: Catalogue = {
   'profile.pinterestLinking': 'Collegamento…',
   'profile.pinterestLinkedToast': 'Pinterest collegato',
   'profile.pinterestCodeFailed': 'Impossibile usare questo codice.',
-  'welcome.pinterest': 'Pinterest',
+  'welcome.pinterest': 'Connessione Pinterest',
   'profile.deleteAccount': 'Elimina account',
   'profile.deleteWarning': 'Se confermi questa azione, il tuo account, il tuo profilo e gli atrium che possiedi saranno eliminati definitivamente dal Digital Atrium (versione web). I contenuti che hai creato negli atrium di altre persone resteranno, ma senza alcuna traccia del tuo nome e del tuo profilo. QUESTA AZIONE NON PUÒ ESSERE ANNULLATA.',
   'profile.deleteTypeToConfirm': 'Scrivi *{name}* per confermare',

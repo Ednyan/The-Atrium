@@ -576,12 +576,13 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               onMouseLeave={() => setIsHovered(null)}
               className="menu-row"
             >
-              <span className="relative z-10 inline-flex items-center gap-2">
-                <span className="text-gray-400 text-[10px]">◇</span>
-                {t('welcome.pinterest')}
-                {/* At the end, so the diamonds down the left stay in a column
-                    -- the row's rhythm comes from that alignment. */}
-                <PinterestMark className="w-3 h-3 opacity-70" />
+              {/* The diamond is plain text here, exactly as in every other
+                  row. Giving it its own smaller, greyer span made it a
+                  different mark from the ones above and below it -- the column
+                  only reads as a column while they match. */}
+              <span className="relative z-10">
+                ◇ {t('welcome.pinterest')}{' '}
+                <PinterestMark className="inline-block w-3 h-3 align-[-0.15em] opacity-70" />
               </span>
             </button>
 

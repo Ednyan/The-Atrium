@@ -355,7 +355,7 @@ const fr: Catalogue = {
   'profile.pinterestLinking': 'Liaison…',
   'profile.pinterestLinkedToast': 'Pinterest connecté',
   'profile.pinterestCodeFailed': "Impossible d'utiliser ce code.",
-  'welcome.pinterest': 'Pinterest',
+  'welcome.pinterest': 'Connexion Pinterest',
   'profile.deleteAccount': 'Supprimer le compte',
   'profile.deleteWarning': "Si vous confirmez cette action, votre compte, votre profil et les atriums que vous possédez seront définitivement supprimés du Digital Atrium (version web). Le contenu que vous avez créé dans les atriums d'autres personnes restera, mais sans aucune trace de votre nom ni de votre profil. CETTE ACTION EST IRRÉVERSIBLE.",
   'profile.deleteTypeToConfirm': 'Tapez *{name}* pour confirmer',

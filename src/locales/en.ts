@@ -259,7 +259,7 @@ export const en = {
   'profile.pinterestLinking': 'Linking…',
   'profile.pinterestLinkedToast': 'Pinterest linked',
   'profile.pinterestCodeFailed': 'Could not use that code.',
-  'welcome.pinterest': 'Pinterest',
+  'welcome.pinterest': 'Pinterest Connection',
   'profile.deleteAccount': 'Delete Account',
   'profile.deleteWarning': "If you confirm this action, your account, profile and the atriums you own will be permanently deleted from the Digital Atrium (web version). Content you created in other people's atriums will remain, but with no record of your name or profile. THIS ACTION CANNOT BE UNDONE.",
   'profile.deleteTypeToConfirm': 'Type *{name}* to confirm',

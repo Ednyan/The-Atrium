@@ -360,7 +360,7 @@ const ptPT: Catalogue = {
   'profile.pinterestLinking': 'A ligar…',
   'profile.pinterestLinkedToast': 'Pinterest ligado',
   'profile.pinterestCodeFailed': 'Não foi possível usar esse código.',
-  'welcome.pinterest': 'Pinterest',
+  'welcome.pinterest': 'Ligação Pinterest',
   'profile.deleteAccount': 'Eliminar conta',
   'profile.deleteWarning': 'Se confirmar esta ação, a sua conta, perfil e atriums que possui serão eliminados do Digital Atrium (versão web) permanentemente. O conteúdo que criou em atriums de outras pessoas permanecerá, mas sem qualquer registo do seu nome e perfil. ESTA AÇÃO NÃO PODE SER REVERTIDA.',
   'profile.deleteTypeToConfirm': 'Escreva *{name}* para confirmar',
