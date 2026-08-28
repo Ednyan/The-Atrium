@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
+import { useTranslation } from '../lib/i18n'
 import type { Layer } from '../types/database'
 import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
@@ -86,6 +87,7 @@ interface LayerPanelProps {
 }
 
 export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
+  const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
   const [layers, setLayers] = useState<Layer[]>([])
@@ -1045,11 +1047,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       <div className="bg-nier-black border-b border-nier-border/40 p-3 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
-          <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">Layers</h2>
+          <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">{t('atrium.layers.title')}</h2>
           {isReordering && (
             <span
               className="w-3 h-3 border border-nier-border/50 border-t-white rounded-full animate-spin"
-              title="Updating order…"
+              title={t('atrium.layers.updatingOrder')}
             />
           )}
         </div>
@@ -1058,7 +1060,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           <button
             onClick={createGroup}
             className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
-            title="Create new group"
+            title={t('atrium.layers.createGroup')}
           >
             + Group
           </button>
@@ -1142,7 +1144,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       onDragStart={(e) => handleLayerDragStart(e, layer.id)}
                       onDragEnd={handleLayerDragEnd}
                       onClick={(e) => e.stopPropagation()}
-                      title="Drag to reorder"
+                      title={t('atrium.layers.dragReorder')}
                     >
                       {Array.from({ length: 6 }).map((_, i) => (
                         <span
@@ -1179,7 +1181,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   >
                     <span
                       className={`text-xs ${isHardSelected ? 'text-amber-400' : 'text-nier-bg/70'} hover:text-amber-300`}
-                      title="Select all traces in this group"
+                      title={t('atrium.layers.selectGroup')}
                       onClick={(e) => {
                         e.stopPropagation()
                         if (isGroupFullySelected) {
@@ -1195,7 +1197,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     <span className="text-nier-strong text-xs tracking-wide">{layer.name}</span>
                     <span className="text-nier-bg/80 text-xs">({layerTraces.length})</span>
                     {isActiveLayer && (
-                      <span className={`text-xs tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
+                      <span className={`text-xs tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>{t('atrium.layers.target')}</span>
                     )}
                   </div>
                 </div>
@@ -1228,7 +1230,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   <button
                     onClick={(e) => openRowMenu(e, 'group', layer.id)}
                     className="text-nier-bg/70 hover:text-nier-strong text-xs px-2 py-1"
-                    title="More actions (or right-click the group)"
+                    title={t('atrium.layers.moreActions')}
                   >
                     ⋯
                   </button>
@@ -1265,7 +1267,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             onDragStart={(e) => { e.stopPropagation(); handleTraceDragStart(e, trace.id) }}
                             onDragEnd={handleTraceDragEnd}
                             onClick={(e) => e.stopPropagation()}
-                            title="Drag to reorder"
+                            title={t('atrium.layers.dragReorder')}
                           >
                             {Array.from({ length: 6 }).map((_, i) => (
                               <span
@@ -1286,7 +1288,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         <span className="text-nier-strong/80 truncate tracking-wide">
                           {trace.content.substring(0, 20) || 'Untitled'}
                         </span>
-                        {trace.illuminate && <span className="text-yellow-400 text-xs" title="Emits light">★</span>}
+                        {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
                       </div>
                       <div className="flex items-center gap-1">
                         <button
@@ -1296,7 +1298,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                           }}
                           disabled={layerTraces.findIndex(t => t.id === trace.id) === 0}
                           className={`text-xs px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                          title="Move up in group"
+                          title={t('atrium.layers.moveUpInGroup')}
                         >
                           ▲
                         </button>
@@ -1307,7 +1309,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                           }}
                           disabled={layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1}
                           className={`text-xs px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                          title="Move down in group"
+                          title={t('atrium.layers.moveDownInGroup')}
                         >
                           ▼
                         </button>
@@ -1317,7 +1319,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             onGoToTrace?.(trace.id)
                           }}
                           className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
-                          title="Go to trace"
+                          title={t('atrium.layers.goToTrace')}
                         >
                           →
                         </button>
@@ -1331,7 +1333,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             }
                           }}
                           className="text-nier-bg/80 hover:text-nier-bg/80 text-xs px-1.5 py-0.5"
-                          title="Remove from group"
+                          title={t('atrium.layers.removeFromGroup')}
                         >
                           ↗
                         </button>
@@ -1341,7 +1343,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             doDeleteTrace(trace.id)
                           }}
                           className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
-                          title="Delete trace"
+                          title={t('atrium.layers.deleteTrace')}
                         >
                           ×
                         </button>
@@ -1378,7 +1380,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <div className="flex items-center gap-2 mb-2">
                   <span
                     className={`text-xs cursor-pointer ${isUngroupedFullySelected ? 'text-amber-400' : 'text-nier-bg/70'} hover:text-amber-300`}
-                    title="Select all ungrouped traces"
+                    title={t('atrium.layers.selectUngrouped')}
                     onClick={(e) => {
                       e.stopPropagation()
                       if (isUngroupedFullySelected) {
@@ -1393,13 +1395,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   </span>
                   <span
                     className="text-nier-bg/70 text-xs tracking-[0.15em] uppercase cursor-pointer hover:text-gray-200"
-                    title="Set 'Ungrouped' as the target for new traces"
+                    title={t('atrium.layers.setUngroupedTarget')}
                     onClick={() => onSetActiveLayer?.(null)}
                   >
-                    Ungrouped
+                    {t('atrium.layers.ungrouped')}
                   </span>
                   {!activeLayerId && (
-                    <span className={`text-xs tracking-wider uppercase ${isUngroupedFullySelected ? 'text-amber-400' : 'text-blue-400'}`}>Target</span>
+                    <span className={`text-xs tracking-wider uppercase ${isUngroupedFullySelected ? 'text-amber-400' : 'text-blue-400'}`}>{t('atrium.layers.target')}</span>
                   )}
                 </div>
               )
@@ -1432,7 +1434,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         onDragStart={(e) => { e.stopPropagation(); handleTraceDragStart(e, trace.id) }}
                         onDragEnd={handleTraceDragEnd}
                         onClick={(e) => e.stopPropagation()}
-                        title="Drag to reorder"
+                        title={t('atrium.layers.dragReorder')}
                       >
                         {Array.from({ length: 6 }).map((_, i) => (
                           <span
@@ -1453,7 +1455,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     <span className="text-nier-strong/80 truncate tracking-wide">
                       {trace.content.substring(0, 20) || 'Untitled'}
                     </span>
-                    {trace.illuminate && <span className="text-yellow-400 text-xs" title="Emits light">★</span>}
+                    {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -1463,7 +1465,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       }}
                       disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === 0}
                       className={`text-xs px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                      title="Move up"
+                      title={t('atrium.layers.moveUp')}
                     >
                       ▲
                     </button>
@@ -1474,7 +1476,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       }}
                       disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1}
                       className={`text-xs px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                      title="Move down"
+                      title={t('atrium.layers.moveDown')}
                     >
                       ▼
                     </button>
@@ -1484,7 +1486,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         onGoToTrace?.(trace.id)
                       }}
                       className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
-                      title="Go to trace"
+                      title={t('atrium.layers.goToTrace')}
                     >
                       →
                     </button>
@@ -1496,7 +1498,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         doDeleteTrace(trace.id)
                       }}
                       className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
-                      title="Delete trace"
+                      title={t('atrium.layers.deleteTrace')}
                     >
                       ×
                     </button>
@@ -1549,7 +1551,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <MenuItem label="Duplicate Group" onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
                 <MenuItem label="Rename" onClick={() => renameGroup(rowMenu.id, layer!.name)} />
                 <MenuItem
-                  label={isExpanded ? 'Collapse' : 'Expand'}
+                  label={isExpanded ? t('atrium.layers.collapse') : t('atrium.layers.expand')}
                   onClick={() => toggleGroup(rowMenu.id)}
                 />
                 <MenuItem
@@ -1603,9 +1605,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <MenuItem label="Select" onClick={() => onSelectTrace?.(rowMenu.id)} />
                 <MenuItem label="Go to Trace" onClick={() => onGoToTrace?.(rowMenu.id)} />
                 <MenuItem
-                  label={trace!.isLocked ? 'Unlock' : 'Lock'}
+                  label={trace!.isLocked ? t('atrium.layers.unlock') : t('atrium.layers.lock')}
                   onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
-                  hint={trace!.isLocked ? 'Allow selecting/dragging on the canvas' : 'Prevent selecting/dragging on the canvas'}
+                  hint={trace!.isLocked ? t('atrium.layers.allowInteract') : t('atrium.layers.preventInteract')}
                 />
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 {/* Inline flyout rather than a hover submenu -- the panel is
@@ -1615,12 +1617,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={(e) => { e.stopPropagation(); setMoveToGroupOpen(o => !o) }}
                   className="w-full text-left px-3 py-1.5 text-sm tracking-wider text-nier-strong hover:bg-nier-blackLight flex items-center justify-between"
                 >
-                  Move to Group <span className="text-nier-bg/80">{moveToGroupOpen ? '▾' : '▸'}</span>
+                  {t('atrium.layers.moveToGroup')} <span className="text-nier-bg/80">{moveToGroupOpen ? '▾' : '▸'}</span>
                 </button>
                 {moveToGroupOpen && (
                   <div className="max-h-40 overflow-y-auto border-y border-nier-border/30 my-1 bg-nier-black/60">
                     {layers.length === 0 && (
-                      <div className="px-4 py-1.5 text-xs text-nier-bg/80 italic">No groups yet</div>
+                      <div className="px-4 py-1.5 text-xs text-nier-bg/80 italic">{t('atrium.layers.noGroups')}</div>
                     )}
                     {layers.map(l => (
                       <button
@@ -1661,7 +1663,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             {dialogMode === 'delete' ? (
               <>
                 <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-4">
-                  Delete this group and all traces inside it?
+                  {t('atrium.layers.deleteGroupConfirm')}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -1671,20 +1673,20 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                     className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    Delete
+                    {t('common.delete')}
                   </button>
                   <button
                     onClick={() => setDialogMode(null)}
                     className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-3">
-                  {dialogMode === 'create' ? 'New Group Name' : 'Rename Group'}
+                  {dialogMode === 'create' ? t('atrium.layers.newGroupTitle') : t('atrium.layers.renameGroupTitle')}
                 </p>
                 <input
                   autoFocus
@@ -1700,7 +1702,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     if (e.key === 'Escape') setDialogMode(null)
                   }}
                   className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-3 focus:border-nier-bg focus:outline-none tracking-wider"
-                  placeholder="Group name..."
+                  placeholder={t('atrium.layers.groupNamePlaceholder')}
                 />
                 <div className="flex gap-2">
                   <button
@@ -1713,13 +1715,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                     className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    {dialogMode === 'create' ? 'Create' : 'Rename'}
+                    {dialogMode === 'create' ? t('common.create') : t('atrium.layers.rename')}
                   </button>
                   <button
                     onClick={() => setDialogMode(null)}
                     className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </>

@@ -4447,7 +4447,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         className="atrium-btn fixed bottom-36 right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
-        {showLayerPanel ? 'Close' : 'Layers'}
+        {showLayerPanel ? t('common.close') : t('atrium.layers.title')}
       </button>
 
       {/* Locations Button -- directly below Layers (both open panels);
