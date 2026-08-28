@@ -4,7 +4,7 @@ import type { TranslationKey } from '../locales/en'
 import RichText from './RichText'
 
 const REPO = 'Ednyan/The-Atrium'
-const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
+export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
 
 interface Build {
   os: 'Windows' | 'macOS' | 'Linux'
