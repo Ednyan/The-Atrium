@@ -20,6 +20,7 @@ const it: Catalogue = {
   'common.delete': 'Elimina',
   'common.confirm': 'Conferma',
   'common.loading': 'Caricamento',
+  'common.initializing': 'Inizializzazione',
   'common.pleaseWait': 'Attendi un momento',
   'common.copy': 'Copia',
   'common.copied': 'Copiato',

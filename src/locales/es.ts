@@ -16,6 +16,7 @@ const es: Catalogue = {
   'common.delete': 'Eliminar',
   'common.confirm': 'Confirmar',
   'common.loading': 'Cargando',
+  'common.initializing': 'Iniciando',
   'common.pleaseWait': 'Espera un momento',
   'common.copy': 'Copiar',
   'common.copied': 'Copiado',

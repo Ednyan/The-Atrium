@@ -19,6 +19,7 @@ const de: Catalogue = {
   'common.delete': 'Löschen',
   'common.confirm': 'Bestätigen',
   'common.loading': 'Lädt',
+  'common.initializing': 'Wird gestartet',
   'common.pleaseWait': 'Einen Moment bitte',
   'common.copy': 'Kopieren',
   'common.copied': 'Kopiert',

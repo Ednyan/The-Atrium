@@ -18,6 +18,7 @@ const fr: Catalogue = {
   'common.delete': 'Supprimer',
   'common.confirm': 'Confirmer',
   'common.loading': 'Chargement',
+  'common.initializing': 'Initialisation',
   'common.pleaseWait': 'Veuillez patienter',
   'common.copy': 'Copier',
   'common.copied': 'Copié',

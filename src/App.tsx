@@ -1545,17 +1545,17 @@ function AppInner() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
+      <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
         <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
-          <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Initializing</p>
-          <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-            <div className="h-full bg-white/80 animate-nier-slide" />
+          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-nier-border/60" />
+          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-border/60" />
+          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-border/60" />
+          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-border/60" />
+          <p className="text-nier-strong text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">{t('common.initializing')}</p>
+          <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/10 overflow-hidden mx-auto">
+            <div className="h-full bg-nier-bg/80 animate-nier-slide" />
           </div>
-          <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+          <p className="text-nier-bg/60 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ {t('common.pleaseWait')}</p>
         </div>
       </div>
     )
@@ -1623,11 +1623,11 @@ function AppInner() {
     // In desktop mode, never show auth/landing (auto-auth handles it)
     if (isDesktop) {
       return (
-        <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
+        <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
           <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-            <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Initializing</p>
-            <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-              <div className="h-full bg-white/80 animate-nier-slide" />
+            <p className="text-nier-strong text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">{t('common.initializing')}</p>
+            <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/10 overflow-hidden mx-auto">
+              <div className="h-full bg-nier-bg/80 animate-nier-slide" />
             </div>
           </div>
         </div>
@@ -1673,17 +1673,17 @@ function AppInner() {
     // Already authenticated, go to welcome
     setTimeout(() => navigate('/welcome'), 0)
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
+      <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
         <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
+          <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-nier-border/60" />
+          <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-border/60" />
+          <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-border/60" />
+          <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-border/60" />
           <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Redirecting</p>
-          <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-            <div className="h-full bg-white/80 animate-nier-slide" />
+          <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/10 overflow-hidden mx-auto">
+            <div className="h-full bg-nier-bg/80 animate-nier-slide" />
           </div>
-          <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+          <p className="text-nier-bg/60 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ {t('common.pleaseWait')}</p>
         </div>
       </div>
     )
@@ -1831,17 +1831,17 @@ function AppInner() {
   // Default - no valid route, go to welcome
   setTimeout(() => navigate('/welcome'), 0)
   return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center font-mono px-4">
+    <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
       <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">
-        <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-white/40" />
-        <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-white/40" />
-        <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-white/40" />
-        <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-white/40" />
+        <div className="absolute top-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-l border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-border/60" />
         <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading</p>
-        <div className="w-[40vw] sm:w-48 h-[3px] bg-white/10 overflow-hidden mx-auto">
-          <div className="h-full bg-white/80 animate-nier-slide" />
+        <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/10 overflow-hidden mx-auto">
+          <div className="h-full bg-nier-bg/80 animate-nier-slide" />
         </div>
-        <p className="text-gray-500 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ Please wait</p>
+        <p className="text-nier-bg/60 text-[clamp(7px,1.8vw,10px)] tracking-[0.2em] uppercase mt-3 text-center">◇ {t('common.pleaseWait')}</p>
       </div>
     </div>
   )

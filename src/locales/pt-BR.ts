@@ -20,6 +20,7 @@ const ptBR: Catalogue = {
   'common.delete': 'Excluir',
   'common.confirm': 'Confirmar',
   'common.loading': 'Carregando',
+  'common.initializing': 'Inicializando',
   'common.pleaseWait': 'Aguarde um momento',
   'common.copy': 'Copiar',
   'common.copied': 'Copiado',

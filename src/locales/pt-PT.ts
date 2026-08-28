@@ -23,6 +23,7 @@ const ptPT: Catalogue = {
   'common.delete': 'Eliminar',
   'common.confirm': 'Confirmar',
   'common.loading': 'A carregar',
+  'common.initializing': 'A iniciar',
   'common.pleaseWait': 'Aguarde um momento',
   'common.copy': 'Copiar',
   'common.copied': 'Copiado',

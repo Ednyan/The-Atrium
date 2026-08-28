@@ -24,6 +24,7 @@ export const en = {
   'common.delete': 'Delete',
   'common.confirm': 'Confirm',
   'common.loading': 'Loading',
+  'common.initializing': 'Initializing',
   'common.pleaseWait': 'Please wait',
   'common.copy': 'Copy',
   'common.copied': 'Copied',

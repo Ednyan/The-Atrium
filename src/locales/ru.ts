@@ -22,6 +22,7 @@ const ru: Catalogue = {
   'common.delete': 'Удалить',
   'common.confirm': 'Подтвердить',
   'common.loading': 'Загрузка',
+  'common.initializing': 'Запуск',
   'common.pleaseWait': 'Пожалуйста, подождите',
   'common.copy': 'Копировать',
   'common.copied': 'Скопировано',
