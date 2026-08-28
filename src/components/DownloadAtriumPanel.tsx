@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
 import { downloadAtrium } from '../lib/atriumDownload'
+import { useTranslation } from '../lib/i18n'
+import type { TranslationKey } from '../locales/en'
 
 export interface DownloadableAtrium {
   id: string
@@ -15,10 +17,10 @@ interface DownloadAtriumPanelProps {
   onClose: () => void
 }
 
-const ACCESS_LABEL: Record<DownloadableAtrium['access'], string> = {
-  owner: 'Owned',
-  admin: 'Admin',
-  public: 'Public',
+const ACCESS_LABEL: Record<DownloadableAtrium['access'], TranslationKey> = {
+  owner: 'transfer.access.owned',
+  admin: 'transfer.access.admin',
+  public: 'transfer.access.public',
 }
 
 // Picks an atrium to download as a .atrium.json for the desktop app. Sits
@@ -26,6 +28,7 @@ const ACCESS_LABEL: Record<DownloadableAtrium['access'], string> = {
 // are in one place, rather than the download hiding inside an atrium the
 // user has to enter first.
 export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtriumPanelProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [status, setStatus] = useState('')
@@ -47,13 +50,13 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
     if (busyId) return
     setBusyId(atrium.id)
     setError('')
-    setStatus('Preparing...')
+    setStatus(t('transfer.download.preparing'))
     try {
       const result = await downloadAtrium(atrium.id, setStatus)
-      setStatus(`✓ "${atrium.name}" — ${result.traceCount} traces, ${result.layerCount} layers, ${result.locationCount} locations (${result.sizeMB} MB)`)
+      setStatus('✓ ' + t('transfer.download.done', { name: atrium.name, traces: result.traceCount, layers: result.layerCount, locations: result.locationCount, size: result.sizeMB }))
     } catch (err: any) {
       console.error('Atrium download failed:', err)
-      setError(err?.message || 'Download failed')
+      setError(err?.message || t('transfer.download.failed'))
       setStatus('')
     } finally {
       setBusyId(null)
@@ -75,7 +78,7 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-3">
               <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-              <h2 className="text-nier-bg tracking-[0.15em] uppercase text-sm">Download Atrium</h2>
+              <h2 className="text-nier-bg tracking-[0.15em] uppercase text-sm">{t('transfer.download.title')}</h2>
             </div>
             <button
               onClick={onClose}
@@ -85,14 +88,14 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
             </button>
           </div>
           <p className="text-nier-bg/70 text-[10px] tracking-[0.1em] uppercase ml-5 mb-4">
-            Save as a file you can import into the desktop app
+            {t('transfer.download.subtitle')}
           </p>
 
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, owner or ID..."
+            placeholder={t('transfer.download.search')}
             className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
           />
         </div>
@@ -100,7 +103,7 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
         <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-2">
           {filtered.length === 0 && (
             <p className="text-nier-bg/70 text-xs tracking-wider text-center py-8">
-              {atriums.length === 0 ? 'No atriums available to download.' : 'Nothing matches that search.'}
+              {atriums.length === 0 ? t('transfer.download.none') : t('transfer.download.noMatch')}
             </p>
           )}
           {filtered.map(atrium => (
@@ -112,7 +115,7 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
                 <div className="flex items-center gap-2">
                   <span className="text-nier-bg text-xs tracking-wide truncate">{atrium.name}</span>
                   <span className="text-[8px] tracking-[0.15em] uppercase px-1.5 py-px border border-nier-border/30 text-nier-bg/75 shrink-0">
-                    {ACCESS_LABEL[atrium.access]}
+                    {t(ACCESS_LABEL[atrium.access])}
                   </span>
                 </div>
                 <div className="text-nier-bg/70 text-[9px] tracking-wider mt-1 truncate">
@@ -124,7 +127,7 @@ export default function DownloadAtriumPanel({ atriums, onClose }: DownloadAtrium
                 disabled={!!busyId}
                 className="px-3 py-1.5 border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
               >
-                {busyId === atrium.id ? '...' : '↓ Download'}
+                {busyId === atrium.id ? '…' : `↓ ${t('transfer.download.action')}`}
               </button>
             </div>
           ))}

@@ -858,7 +858,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     {person.monthlyActive && person.monthlyEur ? ` + €${person.monthlyEur} / month` : ''}
                   </span>
                   <span className="text-xs tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
-                    {person.monthlyActive ? `since ${formatDate(person.since)}` : formatDate(person.since)}
+                    {person.monthlyActive ? t('contrib.since', { date: formatDate(person.since) }) : formatDate(person.since)}
                   </span>
                 </div>
               </div>
@@ -918,7 +918,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           style={{ borderColor: 'rgba(255,97,97,0.5)', background: 'rgba(255,97,97,0.08)' }}
         >
           <span className="text-xs tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
-            Preview — {seeded.length} false donations, visible only to you
+            {t('contrib.previewBanner', { count: seeded.length })}
           </span>
         </div>
       )}

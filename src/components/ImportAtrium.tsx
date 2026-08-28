@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useTranslation, pluralCategory } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 
 interface ImportAtriumProps {
@@ -58,6 +59,7 @@ interface AtriumExport {
 }
 
 export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<'select' | 'preview' | 'importing' | 'done' | 'error'>('select')
   const [parsed, setParsed] = useState<AtriumExport | null>(null)
   const [atriumName, setAtriumName] = useState('')
@@ -87,7 +89,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       const data = JSON.parse(text) as AtriumExport
 
       if (!data.lobby || !data.traces || !Array.isArray(data.traces)) {
-        setError('Invalid file format. Expected an atrium export file.')
+        setError(t('transfer.import.badFormat'))
         return
       }
 
@@ -96,7 +98,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // spreads and `||`/`??` fallbacks, so there's no real reason to hard-
       // reject anything except a genuinely unrecognized/future format.
       if (typeof data.version !== 'number' || data.version < 1 || data.version > 3) {
-        setError('Unsupported export version. Please use a newer desktop app to export.')
+        setError(t('transfer.import.badVersion'))
         return
       }
 
@@ -104,7 +106,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       setAtriumName(data.lobby.name)
       setStatus('preview')
     } catch {
-      setError('Failed to parse file. Make sure it is a valid .json atrium export.')
+      setError(t('transfer.import.parseFailed'))
     }
   }
 
@@ -112,7 +114,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
     if (!parsed || !supabase) return
 
     if (atriumName.length < 3) {
-      setError('Atrium name must be at least 3 characters')
+      setError(t('transfer.import.nameTooShort'))
       return
     }
 
@@ -121,23 +123,23 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      if (!user) throw new Error(t('transfer.import.notAuthenticated'))
 
       if (!isDesktop) {
-        setProgress('Checking atrium limit...')
+        setProgress(t('transfer.import.checkingLimit'))
         const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
           p_user_id: user.id
         })
 
         if (count != null && count >= 3) {
-          setError('You already have 3 atriums. Delete one before importing.')
+          setError(t('transfer.import.atCap'))
           setStatus('preview')
           return
         }
       }
 
       // Create the lobby
-      setProgress('Creating atrium...')
+      setProgress(t('transfer.import.creating'))
       const { data: lobby, error: lobbyErr } = await (supabase
         .from('lobbies') as any)
         .insert({
@@ -157,7 +159,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // Create layers and build ID mapping
       const layerIdMap: Record<string, string> = {}
       if (parsed.layers.length > 0) {
-        setProgress('Importing layers...')
+        setProgress(t('transfer.import.layers'))
         for (const layer of parsed.layers) {
           const { data: inserted, error: layerErr } = await (supabase
             .from('layers') as any)
@@ -179,7 +181,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       }
 
       // Import traces
-      setProgress('Importing traces...')
+      setProgress(t('transfer.import.traces'))
       let imported = 0
       // Imported, but without their file. Counted apart from `imported` so an
       // import that lost media can't report itself as having gone fine.
@@ -363,7 +365,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           imported++
         }
         if ((imported + failed) % 10 === 0 || imported + failed === total) {
-          setProgress(`Importing traces... ${imported + failed}/${total}`)
+          setProgress(t('transfer.import.tracesProgress', { done: imported + failed, total }))
         }
       }
 
@@ -371,7 +373,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // failure here costs the saved views but not the atrium's contents.
       let locationsImported = 0
       if (parsed.locations && parsed.locations.length > 0) {
-        setProgress('Importing locations...')
+        setProgress(t('transfer.import.locations'))
         const rows = parsed.locations.map((loc, index) => ({
           lobby_id: lobbyId,
           name: loc.name,
@@ -398,29 +400,30 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       }
 
       setStatus('done')
-      const summary = [`${imported} traces`]
-      if (mediaMissing > 0) summary.push(`${mediaMissing} without their files`)
-      if (failed > 0) summary.push(`${failed} failed`)
-      if (locationsImported > 0) summary.push(`${locationsImported} locations`)
-      setProgress(`Imported "${atriumName}" — ${summary.join(', ')}, ${Object.keys(layerIdMap).length} layers`)
+      const summary = [t('transfer.import.summaryTraces', { count: imported })]
+      if (mediaMissing > 0) summary.push(t('transfer.import.summaryNoFiles', { count: mediaMissing }))
+      if (failed > 0) summary.push(t('transfer.import.summaryFailed', { count: failed }))
+      if (locationsImported > 0) summary.push(t('transfer.import.summaryLocations', { count: locationsImported }))
+      setProgress(t('transfer.import.done', { name: atriumName, summary: summary.join(', '), layers: Object.keys(layerIdMap).length }))
 
       // Surfaced, not buried: anything dropped or skipped means data didn't
       // make the trip, and a loss the user can't see is one they can't report.
       const notices: string[] = []
       if (failed > 0 && firstFailure) {
-        notices.push(`${failed} trace${failed === 1 ? '' : 's'} could not be imported: ${firstFailure}`)
+        notices.push(t('transfer.import.noticeFailed', { count: failed, reason: firstFailure }))
       }
       if (mediaMissing > 0) {
         const shown = missingNames.slice(0, MISSING_NAMES_SHOWN)
         const rest = missingNames.length - shown.length
-        notices.push(
-          `${mediaMissing} trace${mediaMissing === 1 ? '' : 's'} came in without ${mediaMissing === 1 ? 'its file' : 'their files'}` +
-          (firstMissingReason ? ` — ${firstMissingReason}` : '') +
-          `. ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. They kept their place on the canvas and show as "Missing file".`,
-        )
+        notices.push(t('transfer.import.noticeMissing', {
+          count: mediaMissing,
+          reason: firstMissingReason ? ` — ${firstMissingReason}` : '',
+          names: shown.join(', '),
+          more: rest > 0 ? t('transfer.import.noticeMore', { count: rest }) : '',
+        }))
       }
       if (droppedColumns.size > 0) {
-        notices.push(`This database has no ${[...droppedColumns].join(', ')} column, so those values were dropped.`)
+        notices.push(t('transfer.import.noticeColumns', { columns: [...droppedColumns].join(', ') }))
       }
       setNotice(notices.join(' '))
     } catch (e: any) {
@@ -449,13 +452,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">Import Atrium</h3>
+          <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('transfer.import.title')}</h3>
         </div>
 
         {status === 'select' && (
           <>
             <p className="text-nier-bg/80 text-xs tracking-wide mb-4 leading-relaxed">
-              Import an atrium exported from the desktop app. Max file size: 10 MB.
+              {t('transfer.import.intro')}
             </p>
             <input
               ref={fileRef}
@@ -468,7 +471,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               onClick={() => fileRef.current?.click()}
               className="w-full py-3 border border-dashed border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors mb-4"
             >
-              ◇ Choose .json File
+              ◇ {t('transfer.import.choose')}
             </button>
           </>
         )}
@@ -476,33 +479,35 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         {status === 'preview' && parsed && (
           <>
             <div className="bg-nier-black border border-nier-border/20 p-4 mb-4 space-y-2">
-              <div className="text-[10px] text-nier-bg/75 tracking-wider uppercase">Preview</div>
+              <div className="text-[10px] text-nier-bg/75 tracking-wider uppercase">{t('transfer.import.preview')}</div>
               <div className="text-nier-bg text-sm tracking-wide">{parsed.lobby.name}</div>
               <div className="flex gap-4 text-[10px] text-nier-bg/70 tracking-wider">
-                <span>{traceCount} traces</span>
-                <span>{layerCount} layers</span>
-                {(parsed.locations?.length ?? 0) > 0 && <span>{parsed.locations!.length} locations</span>}
-                {mediaCount > 0 && <span>{mediaCount} media files</span>}
+                <span>{t('transfer.import.counts', { traces: traceCount, layers: layerCount })}</span>
+                {(parsed.locations?.length ?? 0) > 0 && <span>{t('transfer.import.locationCount', { count: parsed.locations!.length })}</span>}
+                {mediaCount > 0 && <span>{t('transfer.import.mediaCount', { count: mediaCount })}</span>}
                 <span>{fileSizeMB} MB</span>
               </div>
               <div className="text-[9px] text-nier-bg/70 tracking-wider">
-                Exported {new Date(parsed.exportedAt).toLocaleDateString()}
+                {t('transfer.import.exportedOn', { date: new Date(parsed.exportedAt).toLocaleDateString() })}
               </div>
               {localOnlyCount > 0 && (
                 <div className="text-[9px] text-nier-red/70 tracking-wider">
-                  {localOnlyCount} trace{localOnlyCount === 1 ? '' : 's'} reference local files on the source machine.
-                  They&apos;ll come in without those files, keeping their place on the canvas.
+                  {t(({
+                    one: 'transfer.import.localOnly.one',
+                    few: 'transfer.import.localOnly.few',
+                    many: 'transfer.import.localOnly.many',
+                  } as const)[pluralCategory(localOnlyCount)], { count: localOnlyCount })}
                 </div>
               )}
             </div>
 
             <div className="mb-4">
-              <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+              <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">{t('transfer.import.atriumName')}</label>
               <input
                 type="text"
                 value={atriumName}
                 onChange={(e) => setAtriumName(e.target.value)}
-                placeholder="Name for the imported atrium"
+                placeholder={t('transfer.import.namePlaceholder')}
                 className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 maxLength={50}
               />
@@ -519,7 +524,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               </p>
             )}
             <p className="text-nier-bg/70 text-[10px] tracking-wider">
-              You can now enter the atrium from the browser.
+              {t('transfer.import.canEnter')}
             </p>
           </div>
         )}
@@ -549,14 +554,14 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
             disabled={status === 'importing'}
           >
-            {status === 'done' ? 'Close' : 'Cancel'}
+            {status === 'done' ? t('common.close') : t('common.cancel')}
           </button>
           {status === 'preview' && (
             <button
               onClick={handleImport}
               className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
-              ◇ Import
+              ◇ {t('transfer.import.action')}
             </button>
           )}
           {status === 'error' && (
@@ -564,7 +569,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               onClick={() => { setStatus('select'); setError(''); setProgress(''); setNotice(''); setParsed(null); }}
               className="flex-1 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
-              ◇ Try Again
+              ◇ {t('transfer.import.tryAgain')}
             </button>
           )}
         </div>

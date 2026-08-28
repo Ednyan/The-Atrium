@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import {
   SEED_PRESETS,
@@ -55,6 +56,7 @@ const toDateInput = (iso: string) => {
 }
 
 export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged, onPlayThanks }: NameApprovalPanelProps) {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -85,7 +87,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
     })
 
     const result = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(result?.error || 'Request failed')
+    if (!response.ok) throw new Error(result?.error || t('names.requestFailed'))
     return result
   }
 
@@ -104,7 +106,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
     try {
       const result = await work()
       if (result?.refundError) setError(`Refund failed: ${result.refundError}`)
-      else if (result?.refunded) setNotice('Rejected, and the contribution was refunded.')
+      else if (result?.refunded) setNotice(t('names.rejectedAndRefunded'))
       load()
     } catch (e: any) {
       setError(e.message)
@@ -143,15 +145,15 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
   const collisionFor = (entry: Entry): string | null => {
     const trimmed = entry.display_name.trim()
     if (exactWall.has(trimmed)) {
-      return `"${trimmed}" is already on the wall. Approving this merges the two into one trace with both amounts added together.`
+      return t('names.warn.exact', { name: trimmed })
     }
 
     const near = looseWall.get(fold(entry.display_name))
-    if (near) return `Nearly identical to "${near}", already on the wall.`
+    if (near) return t('names.warn.near', { name: near })
 
     // Two still waiting, which is the same collision one step earlier.
     const twin = waiting.find(other => other.id !== entry.id && fold(other.display_name) === fold(entry.display_name))
-    if (twin) return 'Another contribution is waiting under this same name.'
+    if (twin) return t('names.warn.twin')
 
     return null
   }
@@ -166,29 +168,29 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">Contributor Names</h3>
+          <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('names.title')}</h3>
         </div>
 
-        {entries === null && <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">Loading…</p>}
+        {entries === null && <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">{t('common.loading')}…</p>}
 
         {/* Waiting on a decision */}
         {entries !== null && (
           <>
-            <SectionHeading label="Waiting" count={waiting.length} />
+            <SectionHeading label={t('names.section.waiting')} count={waiting.length} />
             {waiting.length === 0 && (
-              <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase mb-4">Nothing waiting.</p>
+              <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase mb-4">{t('names.nothingWaiting')}</p>
             )}
             <div className="space-y-2 mb-5">
               {waiting.map(entry => (
                 <Row key={entry.id} entry={entry} warning={collisionFor(entry)}>
                   <Action
-                    label="Approve"
+                    label={t('names.action.approve')}
                     primary
                     disabled={busyId === entry.id}
                     onClick={() => run(entry.id, () => call('approve', { id: entry.id }))}
                   />
-                  <Action label="Write" disabled={busyId === entry.id} onClick={() => setMessaging(entry)} />
-                  <Action label="Reject" disabled={busyId === entry.id} onClick={() => setRejecting(entry)} />
+                  <Action label={t('names.action.write')} disabled={busyId === entry.id} onClick={() => setMessaging(entry)} />
+                  <Action label={t('names.action.reject')} disabled={busyId === entry.id} onClick={() => setRejecting(entry)} />
                 </Row>
               ))}
             </div>
@@ -198,17 +200,17 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
         {/* On the wall */}
         {shown.length > 0 && (
           <>
-            <SectionHeading label="On the wall" count={shown.length} />
+            <SectionHeading label={t('names.section.onWall')} count={shown.length} />
             <div className="space-y-2 mb-5">
               {shown.map(entry => (
                 <Row key={entry.id} entry={entry}>
                   <Action
-                    label={entry.hidden ? 'Unhide' : 'Hide'}
+                    label={entry.hidden ? t('names.action.unhide') : t('names.action.hide')}
                     disabled={busyId === entry.id}
                     onClick={() => run(entry.id, () => call(entry.hidden ? 'unhide' : 'hide', { id: entry.id }))}
                   />
-                  <Action label="Edit" disabled={busyId === entry.id} onClick={() => setEditing(entry)} />
-                  <Action label="Delete" danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
+                  <Action label={t('names.action.edit')} disabled={busyId === entry.id} onClick={() => setEditing(entry)} />
+                  <Action label={t('common.delete')} danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
                 </Row>
               ))}
             </div>
@@ -218,11 +220,11 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
         {/* Refunded: a record, not a decision */}
         {refunded.length > 0 && (
           <>
-            <SectionHeading label="Refunded" count={refunded.length} />
+            <SectionHeading label={t('names.section.refunded')} count={refunded.length} />
             <div className="space-y-2 mb-5">
               {refunded.map(entry => (
                 <Row key={entry.id} entry={entry}>
-                  <Action label="Delete" danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
+                  <Action label={t('common.delete')} danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
                 </Row>
               ))}
             </div>
@@ -233,15 +235,15 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
         {decidedAll.length > 0 && (
           <>
             <SectionHeading
-              label="Rejected"
-              count={decidedAll.length > DECIDED_SHOWN ? `${DECIDED_SHOWN} of ${decidedAll.length}` : decidedAll.length}
+              label={t('names.section.rejected')}
+              count={decidedAll.length > DECIDED_SHOWN ? t('names.countOf', { shown: DECIDED_SHOWN, total: decidedAll.length }) : decidedAll.length}
             />
             <div className="space-y-1">
               {decided.map(entry => (
                 <div key={entry.id} className="flex items-center justify-between gap-3 text-[10px]">
                   <span className="text-nier-bg/80 truncate">{entry.display_name}</span>
                   <span className="text-nier-bg/70 shrink-0">
-                    {entry.refunded ? 'Rejected · refunded' : 'Rejected'}
+                    {entry.refunded ? t('names.rejectedRefunded') : t('names.section.rejected')}
                   </span>
                 </div>
               ))}
@@ -270,13 +272,11 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
             these, and Clear removes them completely. */}
         <div className="mt-6 pt-4 border-t border-nier-border/20">
           <SectionHeading
-            label="Preview"
-            count={seededCount > 0 ? `${seededCount} false` : ''}
+            label={t('names.section.preview')}
+            count={seededCount > 0 ? t('names.falseCount', { count: seededCount }) : ''}
           />
           <p className="text-nier-bg/70 text-[9px] tracking-wider leading-relaxed mb-3">
-            Fills the wall with false donations across every rank, so the layout
-            can be judged with a crowd on it. Local to this browser, marked as
-            false on every trace, and invisible to everyone else.
+            {t('names.seedHint')}
           </p>
           <div className="flex gap-2">
             {SEED_PRESETS.map(count => (
@@ -293,9 +293,9 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
               type="button"
               onClick={onPlayThanks}
               className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-              title="Watch the thank-you a contributor sees"
+              title={t('names.thanksHint')}
             >
-              ♥ Thanks
+              ♥ {t('names.thanks')}
             </button>
             <button
               type="button"
@@ -304,7 +304,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
               className="flex-1 py-2 border text-[10px] tracking-[0.15em] uppercase transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               style={{ borderColor: 'rgba(255,97,97,0.4)', color: '#FF6161' }}
             >
-              Clear
+              {t('names.clear')}
             </button>
           </div>
         </div>
@@ -314,7 +314,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
           onClick={onClose}
           className="w-full mt-5 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
-          Close
+          {t('common.close')}
         </button>
       </div>
 
@@ -327,7 +327,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
             setMessaging(null)
             run(target.id, async () => {
               await call('message', { id: target.id, message: text })
-              setNotice('Message sent.')
+              setNotice(t('names.messageSent'))
             })
           }}
         />
@@ -383,6 +383,7 @@ function SectionHeading({ label, count }: { label: string; count: number | strin
 }
 
 function Row({ entry, children, warning }: { entry: Entry; children: React.ReactNode; warning?: string | null }) {
+  const { t } = useTranslation()
   return (
     <div
       className="bg-nier-black border p-3"
@@ -396,7 +397,7 @@ function Row({ entry, children, warning }: { entry: Entry; children: React.React
           {entry.refunded && <span className="text-red-400/80 text-[9px] uppercase tracking-wider ml-2">refunded</span>}
         </div>
         <div className="text-[9px] text-nier-bg/70 tracking-wider uppercase mt-1">
-          €{euros(entry.settled_eur_cents)} · {entry.kind === 'monthly' ? 'Monthly' : 'One-off'} · {formatDate(entry.created_at)}
+          €{euros(entry.settled_eur_cents)} · {entry.kind === 'monthly' ? t('names.kind.monthly') : t('names.kind.oneOff')} · {formatDate(entry.created_at)}
         </div>
       </div>
       <div className="flex gap-2 shrink-0">{children}</div>
@@ -450,6 +451,7 @@ function MessageDialog({ entry, onCancel, onSend }: {
   onCancel: () => void
   onSend: (message: string) => void
 }) {
+  const { t } = useTranslation()
   const [message, setMessage] = useState('')
 
   // The message that gets written over and over, offered rather than retyped.
@@ -463,34 +465,32 @@ function MessageDialog({ entry, onCancel, onSend }: {
   ].join('\n')
 
   return (
-    <Dialog title="Write to this contributor" onCancel={onCancel}>
+    <Dialog title={t('names.write.title')} onCancel={onCancel}>
       <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-4">
         <span className="text-nier-bg">{entry.display_name}</span> — €{euros(entry.settled_eur_cents)},{' '}
         {formatDate(entry.created_at)}
       </p>
 
       <div className="flex items-center justify-between mb-2 gap-3">
-        <label className="text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase">Message</label>
+        <label className="text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase">{t('names.write.message')}</label>
         <button
           type="button"
           onClick={() => setMessage(nameTaken)}
           className="text-nier-bg/70 hover:text-nier-bg text-[9px] tracking-[0.15em] uppercase transition-colors"
         >
-          ◇ Name already taken
+          ◇ {t('names.write.nameTaken')}
         </button>
       </div>
       <textarea
         value={message}
         onChange={e => setMessage(e.target.value)}
         rows={8}
-        placeholder="Written to the contributor, so write it to them."
+        placeholder={t('names.write.placeholder')}
         className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
       />
 
       <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
-        Sent to the address Stripe collected for this payment — the only one there is,
-        since donating needs no account. Replies reach thedigitalatrium@gmail.com.
-        Nothing about the name is decided by sending this; the row stays waiting.
+        {t('names.write.note')}
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2 mt-5">
@@ -500,7 +500,7 @@ function MessageDialog({ entry, onCancel, onSend }: {
           disabled={message.trim().length === 0}
           className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          Send
+          {t('names.write.send')}
         </button>
         <button
           type="button"
@@ -519,29 +519,29 @@ function RejectDialog({ entry, onCancel, onSend }: {
   onCancel: () => void
   onSend: (reason: string, refund: boolean) => void
 }) {
+  const { t } = useTranslation()
   const [reason, setReason] = useState('')
 
   return (
-    <Dialog title="Reject this name" onCancel={onCancel}>
+    <Dialog title={t('names.reject.title')} onCancel={onCancel}>
       <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-4">
         <span className="text-nier-bg">{entry.display_name}</span> — €{euros(entry.settled_eur_cents)},{' '}
         {formatDate(entry.created_at)}
       </p>
 
       <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
-        Why it can't be shown
+        {t('names.reject.why')}
       </label>
       <textarea
         value={reason}
         onChange={e => setReason(e.target.value)}
         rows={4}
-        placeholder="Written to the contributor, so write it to them."
+        placeholder={t('names.write.placeholder')}
         className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
       />
 
       <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
-        Emailed to the address Stripe collected. Their contribution still counts unless
-        you refund it.
+        {t('names.reject.note')}
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2 mt-5">
@@ -550,7 +550,7 @@ function RejectDialog({ entry, onCancel, onSend }: {
           onClick={() => onSend(reason.trim(), false)}
           className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
         >
-          Send
+          {t('names.write.send')}
         </button>
         <button
           type="button"
@@ -558,7 +558,7 @@ function RejectDialog({ entry, onCancel, onSend }: {
           disabled={entry.refunded}
           className="flex-1 py-3 border border-red-500/50 text-red-400 text-[10px] tracking-[0.15em] uppercase hover:border-red-500/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {entry.refunded ? 'Already refunded' : 'Send & refund'}
+          {entry.refunded ? t('names.reject.alreadyRefunded') : t('names.reject.sendAndRefund')}
         </button>
       </div>
     </Dialog>
@@ -570,20 +570,21 @@ function EditDialog({ entry, onCancel, onSave }: {
   onCancel: () => void
   onSave: (patch: { displayName: string; amountEur: number; createdAt: string }) => void
 }) {
+  const { t } = useTranslation()
   const [displayName, setDisplayName] = useState(entry.display_name ?? '')
   const [amount, setAmount] = useState(String(euros(entry.settled_eur_cents)))
   const [date, setDate] = useState(toDateInput(entry.created_at))
 
   return (
-    <Dialog title="Edit contribution" onCancel={onCancel}>
-      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Name</label>
+    <Dialog title={t('names.edit.title')} onCancel={onCancel}>
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">{t('names.edit.name')}</label>
       <input
         value={displayName}
         onChange={e => setDisplayName(e.target.value)}
         className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide focus:border-nier-border/60 transition-colors mb-4"
       />
 
-      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Amount (€)</label>
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">{t('names.edit.amount')}</label>
       <input
         value={amount}
         onChange={e => setAmount(e.target.value)}
@@ -591,7 +592,7 @@ function EditDialog({ entry, onCancel, onSave }: {
         className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide focus:border-nier-border/60 transition-colors mb-4"
       />
 
-      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">Date</label>
+      <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">{t('names.edit.date')}</label>
       <input
         type="date"
         value={date}
@@ -600,8 +601,7 @@ function EditDialog({ entry, onCancel, onSave }: {
       />
 
       <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
-        Changes what this app shows, not what Stripe recorded. Editing an amount makes
-        the bar disagree with the money that actually arrived.
+        {t('names.edit.note')}
       </p>
 
       <button
@@ -609,7 +609,7 @@ function EditDialog({ entry, onCancel, onSave }: {
         onClick={() => onSave({ displayName, amountEur: Number(amount.replace(',', '.')), createdAt: date })}
         className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
       >
-        Save
+        {t('common.save')}
       </button>
     </Dialog>
   )
@@ -620,19 +620,18 @@ function ConfirmDelete({ entry, onCancel, onConfirm }: {
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const { t } = useTranslation()
   return (
-    <Dialog title="Delete this contribution" onCancel={onCancel}>
+    <Dialog title={t('names.delete.title')} onCancel={onCancel}>
       <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed">
         <span className="text-nier-bg">{entry.display_name}</span> — €{euros(entry.settled_eur_cents)},{' '}
         {formatDate(entry.created_at)}
       </p>
       <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mt-3">
-        This removes the row from the database entirely: off the wall, and out of the
-        totals. It cannot be undone from here, and no money moves — Stripe keeps its own
-        record either way.
+        {t('names.delete.body')}
       </p>
       <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
-        To take a name down without losing the contribution, use Hide.
+        {t('names.delete.hideInstead')}
       </p>
 
       <div className="flex gap-2 mt-5">
@@ -641,14 +640,14 @@ function ConfirmDelete({ entry, onCancel, onConfirm }: {
           onClick={onCancel}
           className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:text-nier-bg transition-colors"
         >
-          Keep it
+          {t('names.delete.keep')}
         </button>
         <button
           type="button"
           onClick={onConfirm}
           className="flex-1 py-3 bg-red-900/40 border border-red-500/60 text-red-300 text-[10px] tracking-[0.15em] uppercase hover:bg-red-900/60 transition-colors"
         >
-          Delete permanently
+          {t('names.delete.confirm')}
         </button>
       </div>
     </Dialog>
@@ -660,6 +659,7 @@ function Dialog({ title, children, onCancel }: {
   children: React.ReactNode
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000400]" data-ui-element>
       <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative max-h-[85vh] overflow-y-auto">
@@ -678,7 +678,7 @@ function Dialog({ title, children, onCancel }: {
           onClick={onCancel}
           className="w-full mt-3 py-2 text-nier-bg/70 text-[10px] tracking-[0.15em] uppercase hover:text-nier-bg transition-colors"
         >
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     </div>
