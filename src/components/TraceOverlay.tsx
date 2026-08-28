@@ -6875,7 +6875,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 setContextMenu(null)
               }}
             >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? 'Unlock' : 'Lock'}
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
             </button>
             <button
               className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
@@ -6887,7 +6887,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 setContextMenu(null)
               }}
             >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? 'Enable Clicks' : 'Ignore Clicks'}
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? t('atrium.menu.enableClicks') : t('atrium.menu.ignoreClicks')}
             </button>
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
             {/* Transformations submenu -- opens as a side flyout on hover,
@@ -7238,7 +7238,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               <span className="text-red-500 text-[10px]">◇</span>
               {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
                 ? t('atrium.menu.deleteSelected', { count: multiSelectedIds.size })
-                : 'Delete'}
+                : t('common.delete')}
             </button>
           </div>
 
@@ -9421,7 +9421,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
             <div className="flex items-center gap-3 mb-4">
               <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">New Group</h2>
+              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.menu.newGroupTitle')}</h2>
             </div>
 
             <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mb-4">

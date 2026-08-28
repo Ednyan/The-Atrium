@@ -4976,7 +4976,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                         void handlePasteImageAt(anchor.x, anchor.y)
                       }}
                     >
-                      ◇ Paste Image
+                      ◇ {t('atrium.canvas.pasteImage')}
                     </button>
                   )}
                   {canPasteEmbed && (
@@ -4987,7 +4987,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                         void handlePasteEmbedAt(anchor.x, anchor.y)
                       }}
                     >
-                      ◇ Paste as Embed
+                      ◇ {t('atrium.canvas.pasteEmbed')}
                     </button>
                   )}
                 </div>
@@ -4995,17 +4995,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             })()}
 
             <div className="px-3 py-1.5 text-nier-bg/70 text-[11px] tracking-[0.2em] uppercase select-none">
-              Place Trace
+              {t('atrium.canvas.placeTrace')}
             </div>
             {([
-              { label: '◇ Text', type: 'text' as const, shape: undefined },
-              { label: '◇ Embed', type: 'embed' as const, shape: undefined },
-              { label: '◇ Shape', type: 'shape' as const, shape: 'rectangle' as const },
-              { label: '~ Path', type: 'shape' as const, shape: 'path' as const },
+              { label: `◇ ${t('atrium.trace.type.text')}`, type: 'text' as const, shape: undefined },
+              { label: `◇ ${t('atrium.trace.type.embed')}`, type: 'embed' as const, shape: undefined },
+              { label: `◇ ${t('atrium.trace.type.shape')}`, type: 'shape' as const, shape: 'rectangle' as const },
+              { label: `~ ${t('atrium.trace.shape.path')}`, type: 'shape' as const, shape: 'path' as const },
               ...(isDesktop ? [
-                { label: '◇ Image', type: 'image' as const, shape: undefined },
-                { label: '◇ Sound', type: 'audio' as const, shape: undefined },
-                { label: '◇ PDF', type: 'document' as const, shape: undefined },
+                { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
+                { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
+                { label: `◇ ${t('atrium.trace.type.document')}`, type: 'document' as const, shape: undefined },
               ] : []),
             ]).map((item) => (
               <button
@@ -5064,7 +5064,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   }
                 }}
               >
-                ◇ Your Pinterest Boards
+                ◇ {t('atrium.canvas.pinterestBoards')}
               </button>
             </div>
           </div>
