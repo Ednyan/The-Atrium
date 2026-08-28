@@ -374,6 +374,8 @@ const de: Catalogue = {
   'atrium.draw.hint': 'Klicken und ziehen zum Zeichnen • E schaltet den Radierer um • Beim Speichern wird es ein Trace',
   'common.create': 'Erstellen',
   'atrium.layers.title': 'Ebenen',
+  'atrium.layers.addGroup': 'Gruppe',
+  'atrium.layers.groupRowHint': 'Ziehe den Griff, um Gruppen umzusortieren. Klicke auf den Pfeil zum Auf- und Zuklappen. Klicke auf den Namen, um diese Gruppe als Ziel für neue Traces festzulegen. Klicke auf die Raute, um alle Traces dieser Gruppe auszuwählen.',
   'atrium.layers.target': 'Ziel',
   'atrium.layers.ungrouped': 'Ohne Gruppe',
   'atrium.layers.noGroups': 'Noch keine Gruppen',

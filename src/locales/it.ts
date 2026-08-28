@@ -375,6 +375,8 @@ const it: Catalogue = {
   'atrium.draw.hint': 'Clicca e trascina per disegnare • E attiva la gomma • Salvando diventa un trace',
   'common.create': 'Crea',
   'atrium.layers.title': 'Livelli',
+  'atrium.layers.addGroup': 'Gruppo',
+  'atrium.layers.groupRowHint': 'Trascina la maniglia per riordinare i gruppi. Clicca sulla freccia per espandere/comprimere. Clicca sul nome per impostare questo gruppo come destinazione dei nuovi traces. Clicca sul rombo per selezionare tutti i traces di questo gruppo.',
   'atrium.layers.target': 'Destinazione',
   'atrium.layers.ungrouped': 'Senza gruppo',
   'atrium.layers.noGroups': 'Nessun gruppo',

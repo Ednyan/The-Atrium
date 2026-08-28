@@ -277,6 +277,8 @@ export const en = {
   'atrium.draw.hint': 'Click and drag to draw • E to toggle eraser • Saving places it as a trace',
   'common.create': 'Create',
   'atrium.layers.title': 'Layers',
+  'atrium.layers.addGroup': 'Group',
+  'atrium.layers.groupRowHint': 'Drag the grip to reorder groups. Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group.',
   'atrium.layers.target': 'Target',
   'atrium.layers.ungrouped': 'Ungrouped',
   'atrium.layers.noGroups': 'No groups yet',

@@ -377,6 +377,8 @@ const ru: Catalogue = {
   'atrium.draw.hint': 'Нажмите и тяните, чтобы рисовать • E переключает ластик • При сохранении станет trace',
   'common.create': 'Создать',
   'atrium.layers.title': 'Слои',
+  'atrium.layers.addGroup': 'Группа',
+  'atrium.layers.groupRowHint': 'Перетащите за ручку, чтобы изменить порядок групп. Нажмите на стрелку, чтобы свернуть или развернуть. Нажмите на название, чтобы сделать группу целью для новых traces. Нажмите на ромб, чтобы выбрать все traces этой группы.',
   'atrium.layers.target': 'Цель',
   'atrium.layers.ungrouped': 'Без группы',
   'atrium.layers.noGroups': 'Групп пока нет',

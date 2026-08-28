@@ -373,6 +373,8 @@ const fr: Catalogue = {
   'atrium.draw.hint': "Cliquez et faites glisser pour dessiner • E bascule la gomme • À l'enregistrement, devient un trace",
   'common.create': 'Créer',
   'atrium.layers.title': 'Calques',
+  'atrium.layers.addGroup': 'Groupe',
+  'atrium.layers.groupRowHint': 'Faites glisser la poignée pour réordonner les groupes. Cliquez sur la flèche pour développer/réduire. Cliquez sur le nom pour définir ce groupe comme cible des nouveaux traces. Cliquez sur le losange pour sélectionner tous les traces de ce groupe.',
   'atrium.layers.target': 'Cible',
   'atrium.layers.ungrouped': 'Sans groupe',
   'atrium.layers.noGroups': 'Aucun groupe pour le moment',

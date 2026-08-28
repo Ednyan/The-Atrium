@@ -375,6 +375,8 @@ const ptBR: Catalogue = {
   'atrium.draw.hint': 'Clique e arraste para desenhar • E alterna a borracha • Ao salvar, vira um trace',
   'common.create': 'Criar',
   'atrium.layers.title': 'Camadas',
+  'atrium.layers.addGroup': 'Grupo',
+  'atrium.layers.groupRowHint': 'Arraste a alça para reordenar os grupos. Clique na seta para expandir/recolher. Clique no nome para definir este grupo como destino dos novos traces. Clique no losango para selecionar todos os traces deste grupo.',
   'atrium.layers.target': 'Destino',
   'atrium.layers.ungrouped': 'Sem grupo',
   'atrium.layers.noGroups': 'Ainda sem grupos',

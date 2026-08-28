@@ -378,6 +378,8 @@ const ptPT: Catalogue = {
   'atrium.draw.hint': 'Clique e arraste para desenhar • E alterna a borracha • Ao guardar, fica um trace',
   'common.create': 'Criar',
   'atrium.layers.title': 'Camadas',
+  'atrium.layers.addGroup': 'Grupo',
+  'atrium.layers.groupRowHint': 'Arraste a pega para reordenar os grupos. Clique na seta para expandir/recolher. Clique no nome para definir este grupo como destino dos novos traces. Clique no losango para selecionar todos os traces deste grupo.',
   'atrium.layers.target': 'Destino',
   'atrium.layers.ungrouped': 'Sem grupo',
   'atrium.layers.noGroups': 'Ainda sem grupos',

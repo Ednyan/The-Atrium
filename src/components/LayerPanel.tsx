@@ -1062,7 +1062,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
             title={t('atrium.layers.createGroup')}
           >
-            + Group
+            + {t('atrium.layers.addGroup')}
           </button>
           )}
           <button
@@ -1128,7 +1128,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               >
                 <div
                   className="flex items-center gap-1 flex-1"
-                  title="Drag the grip to reorder groups. Click the arrow to expand/collapse. Click the name to set this group as the target for new traces. Click the diamond icon to select all traces in this group."
+                  title={t('atrium.layers.groupRowHint')}
                 >
                   {canEdit && (
                     // Drawn from divs, not a font glyph (a braille-pattern

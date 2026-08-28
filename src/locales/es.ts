@@ -371,6 +371,8 @@ const es: Catalogue = {
   'atrium.draw.hint': 'Haz clic y arrastra para dibujar • E alterna el borrador • Al guardar, queda como trace',
   'common.create': 'Crear',
   'atrium.layers.title': 'Capas',
+  'atrium.layers.addGroup': 'Grupo',
+  'atrium.layers.groupRowHint': 'Arrastra el asa para reordenar los grupos. Haz clic en la flecha para expandir/contraer. Haz clic en el nombre para definir este grupo como destino de los nuevos traces. Haz clic en el rombo para seleccionar todos los traces de este grupo.',
   'atrium.layers.target': 'Destino',
   'atrium.layers.ungrouped': 'Sin grupo',
   'atrium.layers.noGroups': 'Aún no hay grupos',
