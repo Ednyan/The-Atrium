@@ -5310,14 +5310,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {trace.type === 'video' && trace.mediaUrl && (
                 <div className="trace-video-control absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
                   <button
-                    className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
+                    // No backdrop-filter, which is what made this go soft.
+                    //
+                    // A backdrop blur puts the element on its own composited
+                    // layer holding a rasterised copy of what is behind it.
+                    // Scaling the trace resizes the video underneath without
+                    // invalidating that layer, so the blur kept being stretched
+                    // from the size it was first drawn at -- and snapped back
+                    // only when something forced a repaint, which is why
+                    // clicking it fixed it.
+                    //
+                    // The atrium's own buttons are flat, cut-cornered and
+                    // lettered rather than glassy and pill-shaped, so this now
+                    // reads as part of the same interface instead of borrowed
+                    // from another one.
+                    className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
                     style={{
-                      background: playingMedia.has(trace.id)
-                        ? 'rgb(var(--c-line) / 0.25)'
-                        : 'rgb(var(--c-fg) / 0.08)',
-                      color: playingMedia.has(trace.id) ? 'rgb(var(--c-fg))' : 'rgb(var(--c-fg) / 0.65)',
-                      border: `1px solid rgb(var(--c-fg) / ${playingMedia.has(trace.id) ? 0.45 : 0.2})`,
-                      backdropFilter: 'blur(8px)',
+                      color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
+                      backgroundColor: 'rgb(var(--c-ground) / 0.94)',
+                      border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
                     }}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -5385,14 +5396,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
                   />
                   <button
-                    className="pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-medium tracking-wider uppercase transition-all duration-200"
+                    // Matches the video control above, and takes its colours
+                    // from the theme tokens rather than the fixed greys it had,
+                    // which stayed the same shade whatever the atrium was set
+                    // to.
+                    className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
                     style={{
-                      background: playingMedia.has(trace.id)
-                        ? 'rgba(181, 181, 181, 0.25)'
-                        : 'rgba(203, 203, 203,0.08)',
-                      color: playingMedia.has(trace.id) ? '#cbcbcb' : 'rgba(203, 203, 203,0.65)',
-                      border: `1px solid ${playingMedia.has(trace.id) ? 'rgba(181, 181, 181,0.45)' : 'rgba(203, 203, 203,0.2)'}`,
-                      backdropFilter: 'blur(8px)',
+                      color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
+                      backgroundColor: 'rgb(var(--c-ground) / 0.94)',
+                      border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
                     }}
                     onClick={(e) => {
                       e.stopPropagation()
