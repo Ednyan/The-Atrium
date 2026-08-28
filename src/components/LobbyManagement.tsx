@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby, LobbyAccessList, Profile } from '../types/database'
+import { useTranslation } from '../lib/i18n'
 
 // Web autosaves hit the shared Supabase project, so keep a floor high enough
 // to not be abusable; desktop autosaves only touch the local SQLite file, so
@@ -17,6 +18,7 @@ interface LobbyManagementProps {
 }
 
 export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyManagementProps) {
+  const { t } = useTranslation()
   const [lobbyName, setLobbyName] = useState(lobby.name)
   const [password, setPassword] = useState('')
   const [showPasswordField, setShowPasswordField] = useState(false)
@@ -81,7 +83,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
         .in('id', lobby.adminUserIds) as any)
 
       if (error) throw error
-      setAdmins((data || []).map((p: any) => ({ userId: p.id, username: p.username || 'Unknown' })))
+      setAdmins((data || []).map((p: any) => ({ userId: p.id, username: p.username || t('atrium.manage.unknownUser') })))
     } catch (err) {
       console.error('Error loading admins:', err)
     }
@@ -148,7 +150,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
         listType: item.list_type,
         addedAt: item.added_at,
         addedBy: item.added_by,
-        username: profile?.username || 'Unknown',
+        username: profile?.username || t('atrium.manage.unknownUser'),
       }
     }))
 
@@ -209,7 +211,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       return true
     } catch (err: any) {
       console.error('Error updating lobby:', err)
-      setError(err.message || 'Failed to update lobby')
+      setError(err.message || t('atrium.manage.updateFailed'))
       return false
     }
   }
@@ -219,7 +221,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      if (!user) throw new Error(t('atrium.manage.notAuthenticated'))
 
       // A user can't be both whitelisted and blacklisted at once -- drop
       // them from the other list first so adding here is a clean move.
@@ -251,7 +253,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       setSearchResults([])
     } catch (err: any) {
       console.error('Error adding to list:', err)
-      setError(err.message || 'Failed to add user')
+      setError(err.message || t('atrium.manage.addFailed'))
     }
   }
 
@@ -276,7 +278,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       onUpdate()
     } catch (err: any) {
       console.error('Error promoting admin:', err)
-      setError(err.message || 'Failed to promote user')
+      setError(err.message || t('atrium.manage.promoteFailed'))
     }
   }
 
@@ -295,7 +297,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       onUpdate()
     } catch (err: any) {
       console.error('Error demoting admin:', err)
-      setError(err.message || 'Failed to demote user')
+      setError(err.message || t('atrium.manage.demoteFailed'))
     }
   }
 
@@ -313,7 +315,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       loadAccessLists()
     } catch (err: any) {
       console.error('Error removing from list:', err)
-      setError(err.message || 'Failed to remove user')
+      setError(err.message || t('atrium.manage.removeFailed'))
     }
   }
 
@@ -335,7 +337,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       onClose()
     } catch (err: any) {
       console.error('Error transferring ownership:', err)
-      setError(err.message || 'Failed to transfer ownership')
+      setError(err.message || t('atrium.manage.transferFailed'))
       setTransferTargetUserId(null)
       setTransferTargetUsername(null)
     } finally {
@@ -363,7 +365,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-              <h2 className="text-lg text-white tracking-[0.15em] uppercase">Manage Atrium</h2>
+              <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase">{t('atrium.manage.title')}</h2>
             </div>
             <button
               onClick={requestClose}
@@ -389,7 +391,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
-            Settings
+            {t('atrium.manage.settings')}
           </button>
           <button
             onClick={() => setActiveTab('whitelist')}
@@ -399,7 +401,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
-            Whitelist ({whitelist.length})
+            {t('atrium.manage.whitelistTab', { count: whitelist.length })}
           </button>
           <button
             onClick={() => setActiveTab('blacklist')}
@@ -409,7 +411,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
-            Blacklist ({blacklist.length})
+            {t('atrium.manage.blacklistTab', { count: blacklist.length })}
           </button>
           <button
             onClick={() => setActiveTab('editors')}
@@ -419,7 +421,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
             }`}
           >
-            Editors ({editors.length})
+            {t('atrium.manage.editorsTab', { count: editors.length })}
           </button>
           {isOwner && (
             <button
@@ -430,7 +432,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
               }`}
             >
-              Admins ({admins.length})
+              {t('atrium.manage.adminsTab', { count: admins.length })}
             </button>
           )}
         </div>
@@ -440,7 +442,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
           {activeTab === 'settings' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Atrium Name</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.atriumName')}</label>
                 <input
                   type="text"
                   value={lobbyName}
@@ -451,13 +453,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               </div>
 
               <div>
-                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Password</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.password')}</label>
                 {!showPasswordField ? (
                   <button
                     onClick={() => setShowPasswordField(true)}
                     className="w-full py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
-                    {hasPassword ? 'Change Password' : 'Set Password'}
+                    {hasPassword ? t('atrium.manage.changePassword') : t('atrium.manage.setPassword')}
                   </button>
                 ) : (
                   <>
@@ -466,7 +468,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={hasPassword ? 'New password (leave empty to remove)' : 'New password...'}
+                      placeholder={hasPassword ? t('atrium.manage.newPasswordRemove') : t('atrium.manage.newPassword')}
                       className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                     />
                     <button
@@ -476,12 +478,12 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                       }}
                       className="w-full mt-2 py-1.5 border border-nier-border/20 text-nier-bg/75 text-xs tracking-[0.15em] uppercase hover:text-nier-bg hover:border-nier-border/50 transition-colors"
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                     <p className="text-nier-bg/70 text-xs tracking-wider mt-2">
                       {hasPassword
-                        ? 'Leave empty and save to remove the password entirely.'
-                        : 'Takes effect once you save settings below.'}
+                        ? t('atrium.manage.passwordRemoveHint')
+                        : t('atrium.manage.passwordApplyHint')}
                     </p>
                   </>
                 )}
@@ -500,7 +502,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   className="hidden"
                 />
                 <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                  Public (visible in atrium browser)
+                  {t('atrium.manage.public')}
                 </span>
               </label>
 
@@ -518,17 +520,17 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                     className="hidden"
                   />
                   <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                    Autosave
+                    {t('atrium.manage.autosave')}
                   </span>
                 </label>
                 <p className="text-nier-bg/70 text-xs tracking-wider mt-1">
-                  Periodically saves everyone's pending changes in this atrium
+                  {t('atrium.manage.autosaveHint')}
                 </p>
 
                 {autosaveEnabled && (
                   <div className="mt-3">
                     <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">
-                      Save Every: {Math.floor(autosaveIntervalSeconds / 60)}m {autosaveIntervalSeconds % 60}s
+                      {t('atrium.manage.saveEvery', { minutes: Math.floor(autosaveIntervalSeconds / 60), seconds: autosaveIntervalSeconds % 60 })}
                     </label>
                     <input
                       type="range"
@@ -545,13 +547,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
               <div className="pt-2 border-t border-nier-border/20">
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">
-                  Editing Permissions
+                  {t('atrium.manage.editPermissions')}
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
                   {([
-                    { value: 'all', label: 'All' },
-                    { value: 'none', label: 'None' },
-                    { value: 'selected', label: 'Selected' },
+                    { value: 'all', label: t('atrium.manage.permAll') },
+                    { value: 'none', label: t('atrium.manage.permNone') },
+                    { value: 'selected', label: t('atrium.manage.permSelected') },
                   ] as const).map(option => (
                     <button
                       key={option.value}
@@ -568,9 +570,9 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   ))}
                 </div>
                 <p className="text-nier-bg/70 text-xs tracking-wider mt-1">
-                  {editPermissionMode === 'all' && 'Anyone who can access this atrium can create/edit/delete traces.'}
-                  {editPermissionMode === 'none' && 'Only the owner and admins can create/edit/delete traces.'}
-                  {editPermissionMode === 'selected' && 'Only the owner, admins, and users on the Editors list can create/edit/delete traces.'}
+                  {editPermissionMode === 'all' && t('atrium.manage.permAllHint')}
+                  {editPermissionMode === 'none' && t('atrium.manage.permNoneHint')}
+                  {editPermissionMode === 'selected' && t('atrium.manage.permSelectedHint')}
                 </p>
               </div>
             </div>
@@ -578,31 +580,31 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
           {(activeTab === 'whitelist' || activeTab === 'blacklist' || activeTab === 'editors') && (() => {
             const currentList = activeTab === 'whitelist' ? whitelist : activeTab === 'blacklist' ? blacklist : editors
-            const listLabel = activeTab === 'whitelist' ? 'Whitelisted Users' : activeTab === 'blacklist' ? 'Blacklisted Users' : 'Editors'
+            const listLabel = activeTab === 'whitelist' ? t('atrium.manage.whitelistedUsers') : activeTab === 'blacklist' ? t('atrium.manage.blacklistedUsers') : t('atrium.manage.editors')
             return (
             <div className="space-y-4">
               {activeTab === 'editors' && (
                 <p className="text-nier-bg/70 text-xs tracking-wider">
-                  Only takes effect while Editing Permissions above is set to "Selected". Owner and admins can always edit regardless of this list.
+                  {t('atrium.manage.editorsNote')}
                 </p>
               )}
               {/* Search Users */}
               <div>
-                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Add User</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.addUser')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
-                    placeholder="Search username..."
+                    placeholder={t('atrium.manage.searchUsername')}
                     className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
                   <button
                     onClick={searchUsers}
                     className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                   >
-                    Search
+                    {t('atrium.manage.search')}
                   </button>
                 </div>
 
@@ -619,7 +621,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                           onClick={() => addToList(user.id, activeTab === 'editors' ? 'editor' : activeTab)}
                           className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
-                          Add
+                          {t('atrium.manage.add')}
                         </button>
                       </div>
                     ))}
@@ -637,7 +639,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 </div>
                 <div className="space-y-2">
                   {currentList.length === 0 ? (
-                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">No users in this list</div>
+                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">{t('atrium.manage.noUsers')}</div>
                   ) : (
                     currentList.map(entry => (
                       <div
@@ -649,7 +651,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                           onClick={() => removeFromList(entry.id)}
                           className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
-                          Remove
+                          {t('atrium.manage.remove')}
                         </button>
                       </div>
                     ))
@@ -666,28 +668,26 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   says it. Explaining what a power does after somebody has
                   already handed it out is the wrong order. */}
               <p className="text-nier-bg/75 text-xs leading-relaxed">
-                Admins can change every atrium setting and manage the whitelist and
-                blacklist. Only the owner can add or remove an admin, or hand the
-                atrium over to somebody else.
+                {t('atrium.manage.adminsNote')}
               </p>
 
               {/* Search Users */}
               <div>
-                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">Add User</label>
+                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.addUser')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
-                    placeholder="Search username..."
+                    placeholder={t('atrium.manage.searchUsername')}
                     className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
                   <button
                     onClick={searchUsers}
                     className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                   >
-                    Search
+                    {t('atrium.manage.search')}
                   </button>
                 </div>
 
@@ -704,7 +704,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                           onClick={() => promoteToAdmin(user.id)}
                           className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                         >
-                          Add
+                          {t('atrium.manage.add')}
                         </button>
                       </div>
                     ))}
@@ -716,13 +716,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
-                    Admins
+                    {t('atrium.manage.admins')}
                   </span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
                 <div className="space-y-2">
                   {admins.length === 0 ? (
-                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">No admins yet</div>
+                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">{t('atrium.manage.noAdmins')}</div>
                   ) : (
                     admins.map(entry => (
                       <div
@@ -734,17 +734,17 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                           <button
                             onClick={() => {
                               setTransferTargetUserId(entry.userId)
-                              setTransferTargetUsername(entry.username || 'this user')
+                              setTransferTargetUsername(entry.username || t('atrium.manage.thisUser'))
                             }}
                             className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
                           >
-                            Make Owner
+                            {t('atrium.manage.makeOwner')}
                           </button>
                           <button
                             onClick={() => demoteAdmin(entry.userId)}
                             className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                           >
-                            Demote
+                            {t('atrium.manage.demote')}
                           </button>
                         </div>
                       </div>
@@ -764,11 +764,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
             onClick={updateLobbySettings}
             className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
           >
-            Save Settings
+            {t('atrium.manage.saveSettings')}
           </button>
           {settingsSaved && (
             <div className="mt-2 border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-xs tracking-wider">
-              ✓ Atrium settings updated
+              ✓ {t('atrium.manage.settingsSaved')}
             </div>
           )}
         </div>
@@ -783,11 +783,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
 
-            <h3 className="text-white text-sm tracking-[0.15em] uppercase mb-3 text-center">
-              <span className="text-nier-bg/75 mr-2">◇</span>Unsaved Changes
+            <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase mb-3 text-center">
+              <span className="text-nier-bg/75 mr-2">◇</span>{t('atrium.manage.unsavedTitle')}
             </h3>
             <p className="text-nier-bg/80 text-xs tracking-wider text-center mb-6">
-              You have unsaved changes to this atrium's settings. Save before closing?
+              {t('atrium.manage.unsavedBody')}
             </p>
 
             <div className="flex flex-col gap-2">
@@ -798,7 +798,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 }}
                 className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
-                Save and Close
+                {t('atrium.manage.saveAndClose')}
               </button>
               <button
                 onClick={() => {
@@ -807,13 +807,13 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 }}
                 className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60"
               >
-                Discard Changes
+                {t('atrium.manage.discardChanges')}
               </button>
               <button
                 onClick={() => setShowCloseConfirm(false)}
                 className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-bg/80 text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -829,11 +829,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
 
-            <h3 className="text-white text-sm tracking-[0.15em] uppercase mb-3 text-center">
-              <span className="text-nier-bg/75 mr-2">◇</span>Transfer Ownership
+            <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase mb-3 text-center">
+              <span className="text-nier-bg/75 mr-2">◇</span>{t('atrium.manage.transferTitle')}
             </h3>
             <p className="text-nier-bg/80 text-xs tracking-wider text-center mb-6">
-              Make <span className="text-nier-bg">{transferTargetUsername}</span> the owner of this atrium? You will be demoted to admin and can no longer manage admins or transfer ownership back yourself.
+              {t('atrium.manage.transferBody', { name: transferTargetUsername ?? '' })}
             </p>
 
             <div className="flex flex-col gap-2">
@@ -842,7 +842,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 disabled={isTransferring}
                 className="w-full bg-nier-red/80 hover:bg-nier-red text-white text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-red/60 disabled:opacity-50"
               >
-                {isTransferring ? 'Transferring...' : 'Transfer Ownership'}
+                {isTransferring ? t('atrium.manage.transferring') : t('atrium.manage.transferTitle')}
               </button>
               <button
                 onClick={() => {
@@ -852,7 +852,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 disabled={isTransferring}
                 className="w-full border border-nier-border/30 hover:border-nier-border/60 text-nier-bg/80 text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
