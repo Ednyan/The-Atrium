@@ -1,4 +1,5 @@
 import PinterestMark from './PinterestMark'
+import { useTranslation, pluralCategory } from '../lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -113,6 +114,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
 }
 
 export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, initialPdfFile, onOpenPinterestImport, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
+  const { t } = useTranslation()
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'>(initialType || 'text')
@@ -155,7 +157,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setPdfPageCount(0)
     if (!selected) return
 
-    setPdfBusy('Reading document...')
+    setPdfBusy(t('atrium.trace.readingDocument'))
     try {
       const buffer = await selected.arrayBuffer()
       const { getPdfInfo } = await import('../lib/pdf')
@@ -174,7 +176,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       setPdfRows(Math.ceil(count / columns))
     } catch {
       setPdfBusy('')
-      alert('That file could not be read as a PDF.')
+      alert(t('atrium.trace.pdfUnreadable'))
       setFile(null)
       return
     }
@@ -346,7 +348,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         } catch (err) {
           console.error('PDF render failed:', err)
           setPdfBusy('')
-          alert('Could not render that PDF.')
+          alert(t('atrium.trace.pdfRenderFailed'))
         } finally {
           setIsSubmitting(false)
         }
@@ -620,14 +622,14 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
       <div className="flex items-center gap-3 mb-6">
         <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-        <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Leave a Trace</h2>
+        <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.trace.title')}</h2>
       </div>
 
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
           {/* Trace Type Selector */}
           <div>
             <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-3">
-              Content Type
+              {t('atrium.trace.contentType')}
             </label>
             {/* Fixed three across. Desktop has six types, which lands as a
                 tidy 3x2; web has three and fills one row. Letting the column
@@ -647,12 +649,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                       : 'bg-nier-black border border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
                   }`}
                 >
-                  {type === 'text' && '◇ Text'}
-                  {type === 'embed' && '◇ Embed'}
-                  {type === 'shape' && '◇ Shape'}
-                  {type === 'image' && '◇ Image'}
-                  {type === 'audio' && '◇ Audio'}
-                  {type === 'document' && '◇ PDF'}
+                  {type === 'text' && `◇ ${t('atrium.trace.type.text')}`}
+                  {type === 'embed' && `◇ ${t('atrium.trace.type.embed')}`}
+                  {type === 'shape' && `◇ ${t('atrium.trace.type.shape')}`}
+                  {type === 'image' && `◇ ${t('atrium.trace.type.image')}`}
+                  {type === 'audio' && `◇ ${t('atrium.trace.type.audio')}`}
+                  {type === 'document' && `◇ ${t('atrium.trace.type.document')}`}
                 </button>
               ))}
             </div>
@@ -667,7 +669,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 className="mt-2 w-full px-3 py-2 text-[10px] tracking-wider uppercase bg-nier-black border border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg transition-all inline-flex items-center justify-center gap-2"
               >
                 <PinterestMark className="w-3 h-3 opacity-70" />
-                Import Pinterest Boards
+                {t('atrium.trace.importPinterest')}
               </button>
             )}
           </div>
@@ -676,12 +678,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {traceType === 'text' && (
             <div>
               <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                Your message
+                {t('atrium.trace.yourMessage')}
               </label>
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Share a thought, memory, or feeling..."
+                placeholder={t('atrium.trace.messagePlaceholder')}
                 maxLength={256}
                 rows={4}
                 className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
@@ -698,7 +700,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <div className="space-y-4">
               <div>
                 <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                  Choose a PDF
+                  {t('atrium.trace.choosePdf')}
                 </label>
                 {/* The native input is hidden and driven by the button below.
                     Its own "No file chosen" label is written by the browser
@@ -718,7 +720,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   onClick={() => pdfInputRef.current?.click()}
                   className="w-full py-3 border border-dashed border-nier-border/40 text-nier-strong text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
-                  ◇ {file ? 'Choose a different PDF' : 'Choose a PDF'}
+                  ◇ {file ? t('atrium.trace.chooseAnotherPdf') : t('atrium.trace.choosePdf')}
                 </button>
                 {pdfBusy && (
                   <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mt-1.5">{pdfBusy}</p>
@@ -744,12 +746,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 <>
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      Place as
+                      {t('atrium.trace.placeAs')}
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       {([
-                        { value: 'pages' as const, label: 'One trace per page' },
-                        { value: 'single' as const, label: 'Single, with arrows' },
+                        { value: 'pages' as const, label: t('atrium.trace.onePerPage') },
+                        { value: 'single' as const, label: t('atrium.trace.singleWithArrows') },
                       ]).map(option => (
                         <button
                           key={option.value}
@@ -767,8 +769,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     </div>
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                       {pdfMode === 'pages'
-                        ? 'Every page becomes its own image trace, so pages can be rearranged and annotated separately.'
-                        : 'One trace showing a page at a time, with arrows to move through it.'}
+                        ? t('atrium.trace.onePerPageHint')
+                        : t('atrium.trace.singleWithArrowsHint')}
                     </p>
                   </div>
 
@@ -779,7 +781,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                       </label>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mb-1">Columns</label>
+                          <label className="block text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mb-1">{t('atrium.trace.columns')}</label>
                           <input
                             type="number"
                             min={1}
@@ -790,7 +792,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                           />
                         </div>
                         <div>
-                          <label className="block text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mb-1">Rows</label>
+                          <label className="block text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mb-1">{t('atrium.trace.rows')}</label>
                           <input
                             type="number"
                             min={1}
@@ -802,7 +804,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                         </div>
                       </div>
                       <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                        Pages run left to right, in order.
+                        {t('atrium.trace.pagesOrder')}
                         {pdfColumns * pdfRows < pdfPageCount && (
                           <> That fits {pdfColumns * pdfRows} of {pdfPageCount} — the rest continue in further rows.</>
                         )}
@@ -869,7 +871,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase">
-                  {batchMode ? 'Batch Links' : 'Embed URL or HTML Code'}
+                  {batchMode ? t('atrium.trace.batchLinks') : t('atrium.trace.embedUrl')}
                 </label>
                 {onCreateBatchEmbeds && (
                   <button
@@ -880,9 +882,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                         ? 'bg-nier-bg text-nier-black'
                         : 'bg-nier-black border border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
                     }`}
-                    title="Paste multiple links (one per line) and place them all at once"
+                    title="{t('atrium.trace.batchHint')}"
                   >
-                    ◇ Batch Placement
+                    {t('atrium.trace.batchPlacement')}
                   </button>
                 )}
               </div>
@@ -938,13 +940,13 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     autoFocus
                   />
                   <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mt-1.5">
-                    ◇ Direct URL or ◇ Paste full embed code
+                    {t('atrium.trace.embedHint')}
                   </p>
                   <input
                     type="text"
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
-                    placeholder="Optional description..."
+                    placeholder={t('atrium.trace.descriptionPlaceholder')}
                     maxLength={100}
                     className="w-full px-4 py-2 mt-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
@@ -958,7 +960,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
             <div className="space-y-4">
               {/* Shape Type */}
               <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Shape Type</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.shapeType')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                     <button
@@ -975,7 +977,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                       {type === 'circle' && '○'}
                       {type === 'triangle' && '△'}
                       {type === 'path' && '~'}
-                      {' '}{type}
+                      {' '}{t(`atrium.trace.shape.${type}` as const)}
                     </button>
                   ))}
                 </div>
@@ -983,7 +985,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
               {/* Color Picker */}
               <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Color</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.colour')}</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="color"
@@ -1022,7 +1024,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {shapeType !== 'path' && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Width (px)</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.width')}</label>
                   {/* No maximum.
                       1000px capped the spinner and marked anything larger as
                       invalid, which made a shape meant to sit behind a whole
@@ -1041,7 +1043,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   />
                 </div>
                 <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Height (px)</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.height')}</label>
                   <input
                     type="number"
                     min="1"
@@ -1054,7 +1056,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               )}
               {shapeType === 'path' && (
                 <p className="text-nier-bg/70 text-[9px] tracking-wider uppercase">
-                  ◇ Click "Start Path" below, then click the canvas to place points. Enter or "Done Adding" finishes it; Escape cancels.
+                  {t('atrium.trace.pathHint')}
                 </p>
               )}
 
@@ -1078,12 +1080,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
               {/* Optional Label */}
               <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Label (optional)</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.labelOptional')}</label>
                 <input
                   type="text"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Shape label..."
+                  placeholder={t('atrium.trace.shapeLabelPlaceholder')}
                   maxLength={50}
                   className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 />
@@ -1094,7 +1096,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {/* Location Info */}
           <div className="bg-nier-black border border-nier-border/20 p-4">
             <p className="text-nier-bg/75 text-[9px] tracking-[0.15em] uppercase mb-2">
-              ◇ Placement Location
+              {t('atrium.trace.placementLocation')}
             </p>
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rotate-45 bg-nier-bg animate-pulse" />
@@ -1103,7 +1105,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               </p>
             </div>
             <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 uppercase">
-              Click on the map to choose placement
+              {t('atrium.trace.clickMap')}
             </p>
           </div>
 
@@ -1114,7 +1116,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               onClick={onClose}
               className="flex-1 py-3 border border-nier-border/30 text-nier-strong text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -1127,7 +1129,19 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               }
               className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {lobbyFull ? '◇ Atrium Full' : isSubmitting ? '◇ Saving...' : (traceType === 'shape' && shapeType === 'path') ? 'Start Path' : (traceType === 'embed' && batchMode) ? `Place ${batchValidUrls.length} Embed${batchValidUrls.length === 1 ? '' : 's'}` : 'Leave Trace'}
+              {lobbyFull
+                ? `◇ ${t('atrium.trace.atriumFull')}`
+                : isSubmitting
+                  ? `◇ ${t('atrium.trace.saving')}`
+                  : (traceType === 'shape' && shapeType === 'path')
+                    ? t('atrium.trace.startPath')
+                    : (traceType === 'embed' && batchMode)
+                      ? t(({
+                          one: 'atrium.trace.placeEmbeds.one',
+                          few: 'atrium.trace.placeEmbeds.few',
+                          many: 'atrium.trace.placeEmbeds.many',
+                        } as const)[pluralCategory(batchValidUrls.length)], { count: batchValidUrls.length })
+                      : t('atrium.trace.submit')}
             </button>
           </div>
       </form>

@@ -4435,7 +4435,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         data-active={!isFull}
       >
         <span className="opacity-60 mr-2">◇</span>
-        {isFull ? 'Atrium Full' : showTracePanel ? 'Close' : 'Leave Trace'}
+        {isFull ? t('atrium.trace.atriumFull') : showTracePanel ? t('common.close') : t('atrium.trace.submit')}
       </button>
         )
       })()}
