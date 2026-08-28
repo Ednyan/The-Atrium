@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby } from '../types/database'
 import { WHITE_ROOM } from '../lib/atriumThemePresets'
+import { useTranslation } from '../lib/i18n'
+import type { TranslationKey } from '../locales/en'
 
 interface ThemeSettings {
   gridColor?: string
@@ -30,10 +32,10 @@ interface ThemeCustomizationProps {
   onUpdate: () => void
 }
 
-const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSettings }> = [
+const THEME_PRESETS: Array<{ nameKey: string; descKey: string; values: ThemeSettings }> = [
   {
-    name: 'Soft Sepia',
-    description: 'Warm and calm NieR-like ambience',
+    nameKey: 'atrium.theme.presetSepia',
+    descKey: 'atrium.theme.presetSepiaDesc',
     values: {
       gridColor: '#9c9681',
       gridOpacity: 0.24,
@@ -52,8 +54,8 @@ const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSet
     },
   },
   {
-    name: 'Technical',
-    description: 'Cold scanning-room look',
+    nameKey: 'atrium.theme.presetTechnical',
+    descKey: 'atrium.theme.presetTechnicalDesc',
     values: {
       gridColor: '#6f8a7d',
       gridOpacity: 0.3,
@@ -75,13 +77,14 @@ const THEME_PRESETS: Array<{ name: string; description: string; values: ThemeSet
     // Replaced the old "Archive" preset (dusty dark monochrome). A bright
     // gallery: near-white walls, faint grey grid, sparse dark particles so
     // they read against the light ground.
-    name: 'White Room',
-    description: 'A bright, empty gallery',
+    nameKey: 'atrium.theme.presetWhiteRoom',
+    descKey: 'atrium.theme.presetWhiteRoomDesc',
     values: WHITE_ROOM as ThemeSettings,
   },
 ]
 
 export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizationProps) {
+  const { t } = useTranslation()
   const [settings, setSettings] = useState<ThemeSettings>({
     gridColor: '#3b82f6',
     gridOpacity: 0.2,
@@ -140,7 +143,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
       if (error) {
         console.error('Failed to save theme settings:', error)
-        setSaveError(error.message || 'Failed to save')
+        setSaveError(error.message || t('atrium.theme.saveFailed'))
         return
       }
 
@@ -155,7 +158,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
     } catch (err: any) {
       setIsSaving(false)
       console.error('Error saving theme settings:', err)
-      setSaveError(err.message || 'Unexpected error saving theme')
+      setSaveError(err.message || t('atrium.theme.saveError'))
     }
   }
 
@@ -236,7 +239,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
         <div className="sticky top-0 bg-nier-blackLight border-b border-nier-border/20 px-6 py-4 flex justify-between items-center z-10">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h2 className="text-lg text-white tracking-[0.15em] uppercase">Customize Theme</h2>
+            <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase">{t('atrium.theme.title')}</h2>
           </div>
           <button
             onClick={onClose}
@@ -252,7 +255,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           <div className="space-y-3">
             <div className="flex items-baseline gap-3 mb-3">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Presets</span>
+              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.presets')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -260,7 +263,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 const active = isPresetActive(preset.values)
                 return (
                   <button
-                    key={preset.name}
+                    key={preset.nameKey}
                     type="button"
                     onClick={() => applyThemePreset(preset.values)}
                     className={`text-left border px-3 py-2 transition-colors ${
@@ -269,8 +272,8 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                         : 'border-nier-border/30 bg-nier-black text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
                     }`}
                   >
-                    <div className="text-xs tracking-[0.13em] uppercase">{preset.name}</div>
-                    <div className="text-xs tracking-wide opacity-75 mt-1">{preset.description}</div>
+                    <div className="text-xs tracking-[0.13em] uppercase">{t(preset.nameKey as TranslationKey)}</div>
+                    <div className="text-xs tracking-wide opacity-75 mt-1">{t(preset.descKey as TranslationKey)}</div>
                   </button>
                 )
               })}
@@ -281,7 +284,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           <div className="space-y-3">
             <div className="flex items-baseline gap-3 mb-3">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">The grid</span>
+              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.theGrid')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
 
@@ -299,12 +302,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 className="hidden"
               />
               <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                Show grid
+                {t('atrium.theme.showGrid')}
               </span>
             </label>
 
             <div className="space-y-2">
-              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Colour</label>
+              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.colour')}</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
@@ -324,7 +327,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
             <div className="space-y-2">
               <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                Grid Opacity: {((settings.gridOpacity ?? 0.2) * 100).toFixed(0)}%
+                {t('atrium.theme.gridOpacity', { value: ((settings.gridOpacity ?? 0.2) * 100).toFixed(0) })}
               </label>
               <input
                 type="range"
@@ -339,7 +342,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
 
             <div className="space-y-2">
               <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                Grid Size: {settings.gridLineSpacing ?? 50}px
+                {t('atrium.theme.gridSize', { value: settings.gridLineSpacing ?? 50 })}
               </label>
               <input
                 type="range"
@@ -351,7 +354,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 className="w-full accent-nier-bg"
               />
               <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-                How far apart the lines are. Holding Shift while dragging a trace snaps it to them.
+                {t('atrium.theme.gridSizeHint')}
               </p>
             </div>
           </div>
@@ -360,12 +363,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           <div className="space-y-3">
             <div className="flex items-baseline gap-3 mb-3">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">The room</span>
+              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.theRoom')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             
             <div className="space-y-2">
-              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Colour</label>
+              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.colour')}</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
@@ -387,7 +390,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           {/* Drifting particles */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Drifting particles</span>
+              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.driftingParticles')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             
@@ -405,14 +408,14 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 className="hidden"
               />
               <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                Enable floating particles
+                {t('atrium.theme.enableParticles')}
               </span>
             </label>
 
             {settings.particlesEnabled && (
               <div className="space-y-3 ml-1">
                 <div className="space-y-2">
-                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Colour</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.colour')}</label>
                   <div className="flex gap-2 items-center">
                     <input
                       type="color"
@@ -447,7 +450,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 
                 <div className="space-y-2">
                   <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                    Particle Density: {(settings.particleDensity ?? 1.0).toFixed(1)}x
+                    {t('atrium.theme.particleDensity', { value: (settings.particleDensity ?? 1.0).toFixed(1) })}
                   </label>
                   <input
                     type="range"
@@ -458,7 +461,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     onChange={(e) => setSettings({ ...settings, particleDensity: parseFloat(e.target.value) })}
                     className="w-full accent-nier-bg"
                   />
-                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Number of floating particles (0.1 = very few, 3.0 = many)</p>
+                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">{t('atrium.theme.particleDensityHint')}</p>
                 </div>
               </div>
             )}
@@ -468,7 +471,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           <div className="space-y-3">
             <div className="flex items-baseline gap-3 mb-3">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">04</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">On the ground</span>
+              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.onTheGround')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             
@@ -486,7 +489,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 className="hidden"
               />
               <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                Enable ground elements
+                {t('atrium.theme.enableGround')}
               </span>
             </label>
 
@@ -494,14 +497,14 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
               <div className="space-y-3 ml-1">
                 <div className="space-y-2">
                   <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                    Ground Element URLs
+                    {t('atrium.theme.groundUrls')}
                   </label>
                   <div className="border border-nier-border/20 bg-nier-black/50 p-2 mb-2">
                     <p className="text-nier-bg/75 text-xs tracking-wider">
-                      ◇ Most image URLs work, including Pinterest, Google Images, and Reddit.
+                      ◇ {t('atrium.theme.groundUrlsHint')}
                     </p>
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1">
-                      ◦ Failed images are automatically retried through a proxy.
+                      ◦ {t('atrium.theme.groundRetryHint')}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -517,11 +520,11 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onClick={addGroundUrl}
                       className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                     >
-                      Add
+                      {t('atrium.theme.add')}
                     </button>
                     {isDesktop && (
                       <label className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors cursor-pointer flex items-center">
-                        Browse
+                        {t('atrium.theme.browse')}
                         <input
                           type="file"
                           accept="image/*"
@@ -565,12 +568,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   ◇ Upload to <a href="https://imgur.com" target="_blank" rel="noopener noreferrer" className="text-nier-bg/75 hover:text-nier-bg transition-colors">imgur.com</a> for free hosting, or use /public/themes/ground/
                 </p>
                 <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-                  ◦ PNG with transparency works best. JPG also supported.
+                  ◦ {t('atrium.theme.pngHint')}
                 </p>
 
                 {/* Scale Controls */}
                 <div className="space-y-3 mt-4 pt-4 border-t border-nier-border/20">
-                  <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Appearance</span>
+                  <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.appearance')}</span>
                   
                   <div className="space-y-2">
                     <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
@@ -588,7 +591,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">Arrangement</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.arrangement')}</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2 cursor-pointer group">
                         <div className={`w-3 h-3 border transition-colors ${
@@ -601,7 +604,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                           onChange={() => setSettings({ ...settings, groundPatternMode: 'grid' })}
                           className="hidden"
                         />
-                        <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">Grid</span>
+                        <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">{t('atrium.theme.grid')}</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer group">
                         <div className={`w-3 h-3 border transition-colors ${
@@ -614,17 +617,17 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                           onChange={() => setSettings({ ...settings, groundPatternMode: 'random' })}
                           className="hidden"
                         />
-                        <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">Random</span>
+                        <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">{t('atrium.theme.random')}</span>
                       </label>
                     </div>
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Grid = uniform spacing, Random = organic placement</p>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">{t('atrium.theme.arrangementHint')}</p>
                   </div>
                   
                   {/* Grid Spacing Control (only show in grid mode) */}
                   {(settings.groundPatternMode === 'grid' || !settings.groundPatternMode) && (
                     <div className="space-y-2">
                       <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                        Element Spacing: {settings.gridSpacing || 100}px
+                        {t('atrium.theme.elementSpacing', { value: settings.gridSpacing || 100 })}
                       </label>
                       <input
                         type="range"
@@ -635,7 +638,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                         onChange={(e) => setSettings({ ...settings, gridSpacing: parseInt(e.target.value) })}
                         className="w-full accent-nier-bg"
                       />
-                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Distance between grid elements (smaller = denser)</p>
+                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">{t('atrium.theme.elementSpacingHint')}</p>
                     </div>
                   )}
 
@@ -654,18 +657,18 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                         className="hidden"
                       />
                       <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                        Cover entire view
+                        {t('atrium.theme.coverView')}
                       </span>
                     </label>
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-                      On = elements fill the whole visible canvas. Off = they only appear around your cursor and traces, leaving the rest bare.
+                      {t('atrium.theme.coverViewHint')}
                     </p>
                   </div>
 
 
                   <div className="space-y-2">
                     <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                      Base Scale: {(settings.groundElementScale ?? 0.0625).toFixed(4)} ({Math.round((settings.groundElementScale ?? 0.0625) * 100)}%)
+                      {t('atrium.theme.baseScale', { value: (settings.groundElementScale ?? 0.0625).toFixed(4), percent: Math.round((settings.groundElementScale ?? 0.0625) * 100) })}
                     </label>
                     <input
                       type="range"
@@ -676,12 +679,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onChange={(e) => setSettings({ ...settings, groundElementScale: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Controls the average size of ground elements</p>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">{t('atrium.theme.baseScaleHint')}</p>
                   </div>
 
                   <div className="space-y-2">
                     <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                      Scale Variation: +{(settings.groundElementScaleRange ?? 0.025).toFixed(4)} ({Math.round((settings.groundElementScaleRange ?? 0.025) * 100)}%)
+                      {t('atrium.theme.scaleVariation', { value: (settings.groundElementScaleRange ?? 0.025).toFixed(4), percent: Math.round((settings.groundElementScaleRange ?? 0.025) * 100) })}
                     </label>
                     <input
                       type="range"
@@ -692,12 +695,12 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                       onChange={(e) => setSettings({ ...settings, groundElementScaleRange: parseFloat(e.target.value) })}
                       className="w-full accent-nier-bg"
                     />
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">Random size variation added to base scale (0 = all same size)</p>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">{t('atrium.theme.scaleVariationHint')}</p>
                   </div>
 
                   <div className="space-y-2">
                     <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                      Density: {(settings.groundElementDensity ?? 0.5).toFixed(2)}
+                      {t('atrium.theme.density', { value: (settings.groundElementDensity ?? 0.5).toFixed(2) })}
                     </label>
                     <input
                       type="range"
@@ -710,8 +713,8 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                     />
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
                       {settings.groundPatternMode === 'random'
-                        ? 'How many ground elements appear (0 = off, 3.0 = dense)'
-                        : 'In Grid mode this only toggles elements on/off (0 = off) — use Grid Spacing above to control how many appear, so the checker pattern stays even.'}
+                        ? t('atrium.theme.densityRandomHint')
+                        : t('atrium.theme.densityGridHint')}
                     </p>
                   </div>
                 </div>
@@ -736,14 +739,14 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             onClick={onClose}
             className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={saveThemeSettings}
             disabled={isSaving}
             className="px-6 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? 'Saving...' : 'Save Theme'}
+            {isSaving ? t('atrium.theme.saving') : t('atrium.theme.saveTheme')}
           </button>
         </div>
         </div>
