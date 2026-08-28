@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
@@ -22,6 +23,7 @@ interface PinterestImportPanelProps {
 type Step = 'boards' | 'pins-loading' | 'confirm' | 'importing' | 'done' | 'error'
 
 export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, packingShape, activeLayerId }: PinterestImportPanelProps) {
+  const { t } = useTranslation()
   const { userId, username, traces, addTrace } = useGameStore()
   const [step, setStep] = useState<Step>('boards')
   const [boards, setBoards] = useState<PinterestBoard[]>([])
@@ -153,7 +155,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
         <div className="flex justify-between items-center px-6 py-4 border-b border-nier-border/20">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h2 className="text-lg text-white tracking-[0.15em] uppercase">Import from Pinterest</h2>
+            <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase">{t('atrium.pinterest.importTitle')}</h2>
           </div>
           {step !== 'importing' && (
             <button
@@ -169,7 +171,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
           {step === 'boards' && (
             <>
               {boardsLoading ? (
-                <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">Loading your boards...</p>
+                <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">{t('atrium.pinterest.loadingBoards')}</p>
               ) : boards.length === 0 ? (
                 <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">No boards found on this Pinterest account.</p>
               ) : (

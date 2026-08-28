@@ -340,6 +340,8 @@ export const en = {
   'atrium.trace.rows': 'Rows',
   'atrium.trace.columns': 'Columns',
   'atrium.trace.pagesOrder': 'Pages run left to right, in order.',
+  'atrium.pinterest.importTitle': 'Import from Pinterest',
+  'atrium.pinterest.loadingBoards': 'Loading your boards...',
   'atrium.menu.customize': 'Customize',
   'atrium.menu.copyText': 'Copy Text',
   'atrium.menu.copyEmbedLink': 'Copy Embed Link',

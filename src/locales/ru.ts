@@ -440,6 +440,8 @@ const ru: Catalogue = {
   'atrium.trace.rows': 'Строки',
   'atrium.trace.columns': 'Столбцы',
   'atrium.trace.pagesOrder': 'Страницы идут слева направо, по порядку.',
+  'atrium.pinterest.importTitle': 'Импорт из Pinterest',
+  'atrium.pinterest.loadingBoards': 'Загрузка ваших досок...',
   'atrium.menu.customize': 'Настроить',
   'atrium.menu.copyText': 'Копировать текст',
   'atrium.menu.copyEmbedLink': 'Копировать ссылку встраивания',

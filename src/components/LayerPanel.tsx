@@ -1059,7 +1059,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
           {canEdit && (
           <button
             onClick={createGroup}
-            className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
+            className="atrium-chip px-3 py-1 text-xs tracking-wider uppercase"
             title={t('atrium.layers.createGroup')}
           >
             + {t('atrium.layers.addGroup')}

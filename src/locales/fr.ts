@@ -436,6 +436,8 @@ const fr: Catalogue = {
   'atrium.trace.rows': 'Lignes',
   'atrium.trace.columns': 'Colonnes',
   'atrium.trace.pagesOrder': 'Les pages vont de gauche à droite, dans l’ordre.',
+  'atrium.pinterest.importTitle': 'Importer depuis Pinterest',
+  'atrium.pinterest.loadingBoards': 'Chargement de vos tableaux...',
   'atrium.menu.customize': 'Personnaliser',
   'atrium.menu.copyText': 'Copier le texte',
   'atrium.menu.copyEmbedLink': 'Copier le lien de l’embed',

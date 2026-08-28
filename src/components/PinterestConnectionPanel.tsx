@@ -85,7 +85,7 @@ export default function PinterestConnectionPanel({ onClose }: { onClose: () => v
         <div className="flex justify-between items-center gap-3 px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <PinterestMark className="w-4 h-4 shrink-0 text-nier-bg/80" />
-            <h2 className="text-lg text-white tracking-[0.15em] uppercase truncate">
+            <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase truncate">
               {t('profile.pinterest')}
             </h2>
           </div>

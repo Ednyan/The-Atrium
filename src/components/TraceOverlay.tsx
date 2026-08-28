@@ -5119,7 +5119,22 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     overflow: 'hidden',
                   }}
                 >
-                  {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && <div className="trace-nier-type-badge">{getTraceTypeLabel(trace.type)}</div>}
+                  {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && (
+                    <div
+                      className="trace-nier-type-badge"
+                      // Its font size, padding and inset all come from CSS in
+                      // flat pixels, so one transform scales the lot rather
+                      // than overriding each of them here.
+                      style={{
+                        left: `${6 * zoom}px`,
+                        top: `${6 * zoom}px`,
+                        transform: `scale(${zoom})`,
+                        transformOrigin: 'top left',
+                      }}
+                    >
+                      {getTraceTypeLabel(trace.type)}
+                    </div>
+                  )}
                   {showBorder && (
                     <>
                       <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
@@ -5148,14 +5163,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   const isLocal = rawUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
                   // For local:// URLs, wait for resolved blob URL before rendering
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
                   // A successful resolve always hands back a blob: URL, so one
                   // that is still local:// means the file couldn't be read --
                   // deleted from the vault by hand, or restored from a folder
                   // it never travelled with. Said plainly rather than left as a
                   // broken image, since the trace keeps its place and the user
                   // needs to know why it's empty.
-                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
+                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
                   return (
                 <img
                   src={resolvedSrc || rawUrl}
@@ -5211,7 +5226,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
                   <span className="text-4xl mb-2">🖼️</span>
                   {showDescription && trace.content && (
-                    <p className="text-xs text-white/60 text-center">
+                    <p className="text-xs text-nier-strong/60 text-center">
                       {trace.content}
                     </p>
                   )}
@@ -5293,7 +5308,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   trace. */}
               {trace.type === 'video' && trace.mediaUrl?.startsWith('local://') && !localMediaUrls[trace.id] && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none bg-black/50">
-                  <span className="text-[10px] tracking-[0.2em] uppercase text-white/70">Preparing…</span>
+                  <span className="text-[10px] tracking-[0.2em] uppercase text-nier-strong/70">Preparing…</span>
                 </div>
               )}
 
@@ -5423,7 +5438,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     {playingMedia.has(trace.id) ? 'Pause' : 'Play'}
                   </button>
                   {showDescription && trace.content && (
-                    <p className="text-[10px] text-white/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
+                    <p className="text-[10px] text-nier-strong/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
                       {trace.content}
                     </p>
                   )}
@@ -5536,10 +5551,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 if (isDirectImage && !failedImages.has(trace.id)) {
                   const isLocal = trace.mediaUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
                   // Still local:// after resolving means the file is gone --
                   // see the image branch above.
-                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-white/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
+                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
                   // Render as image, not iframe
                   return (
                     <img
@@ -5616,11 +5631,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           draggable={false}
                         />
                       )}
-                      <p className="text-white/80 text-xs text-center line-clamp-2">
+                      <p className="text-nier-strong/80 text-xs text-center line-clamp-2">
                         {trace.content || 'View source'}
                       </p>
                       {hostname && (
-                        <p className="text-white/70 text-[9px] tracking-wider uppercase">{hostname}</p>
+                        <p className="text-nier-strong/70 text-[9px] tracking-wider uppercase">{hostname}</p>
                       )}
                     </a>
                   )
@@ -5631,7 +5646,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 if (!embedUrl) {
                   return (
                     <div className="w-full h-full flex items-center justify-center bg-black/50">
-                      <p className="text-white/60 text-sm">Invalid embed code</p>
+                      <p className="text-nier-strong/60 text-sm">Invalid embed code</p>
                     </div>
                   )
                 }
@@ -6039,8 +6054,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-all hover:scale-105 tracking-[0.18em] uppercase"
                   style={{
                     left: `${screenX}px`,
-                    top: `${screenY + (borderHeight / 2 + 30)}px`,
-                    transform: 'translate(-50%, 0)',
+                    top: `${screenY + (borderHeight / 2 + 30 * zoom)}px`,
+                    // Centred first, then scaled, so it stays under the middle
+                    // of the trace at any zoom.
+                    transform: `translate(-50%, 0) scale(${zoom})`,
+                    transformOrigin: 'top center',
                     // Tokens, like the type badge. Every colour here was a
                     // literal of the dark palette, so in light mode the button
                     // came out dark-on-dark. Inline styles take
@@ -6084,9 +6102,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             {trace.enableInteraction && canEdit && (
               <div
                 className="absolute z-10 flex items-stretch gap-2 pointer-events-none"
+                // Scaled with the camera, like the frame around the trace.
+                //
+                // Everything in here is sized in flat pixels -- the padding,
+                // the type, the gap -- so at a distance the controls loomed
+                // over a small trace and up close they shrank to nothing
+                // beside a large one. The trace grows with the zoom; the
+                // things attached to it have to grow with it too, which is the
+                // same fix the border needed.
                 style={{
                   left: `${screenX - (borderWidth / 2)}px`,
-                  top: `${screenY + (borderHeight / 2 + 12)}px`,
+                  top: `${screenY + (borderHeight / 2 + 12 * zoom)}px`,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'top left',
                 }}
               >
                 {/* The grip. Starts the same drag the trace body would, so it
@@ -6717,7 +6745,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           {/* Menu */}
           <div
             ref={contextMenuRef}
-            className="fixed bg-black border border-gray-500 shadow-2xl py-1 z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
+            className="fixed bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
             style={{ left: `${contextMenuPos.x}px`, top: `${contextMenuPos.y}px` }}
           >
             {/* Corner brackets */}
@@ -6728,7 +6756,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             
             {!editingWholeSelection && (
               <button
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                 onClick={() => {
                   const trace = traces.find(t => t.id === contextMenu.traceId)
                   if (trace) setEditingTrace(trace)
@@ -6736,19 +6764,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   setContextMenu(null)
                 }}
               >
-                <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.customize')}
+                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.customize')}
               </button>
             )}
             {editingWholeSelection && (
               <button
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                 onClick={() => {
                   setEditingTrace(null)
                   setShowBatchEditPanel(true)
                   setContextMenu(null)
                 }}
               >
-                <span className="text-gray-400 text-[10px]">◇</span> Batch Edit ({multiSelectedIds.size})
+                <span className="text-nier-bg/60 text-[10px]">◇</span> Batch Edit ({multiSelectedIds.size})
               </button>
             )}
             {editingWholeSelection && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
@@ -6758,15 +6786,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 onMouseLeave={scheduleCloseReorganizeFlyout}
               >
                 <button
-                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   title="Re-pack the selected traces around their current center using the batch placement algorithm"
                 >
-                  <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})</span>
-                  <span className="text-gray-300 text-[9px]">▶</span>
+                  <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})</span>
+                  <span className="text-nier-bg/70 text-[9px]">▶</span>
                 </button>
                 {contextMenuReorganizeOpen && reorganizeFlyoutRect && (
                   <div
-                    className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                    className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                     style={
                       contextMenuFlyoutOnLeft
                         ? { top: reorganizeFlyoutRect.top, right: window.innerWidth - reorganizeFlyoutRect.left + 1 }
@@ -6776,14 +6804,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     onMouseLeave={scheduleCloseReorganizeFlyout}
                   >
                     <button
-                      className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                      className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                       onClick={() => reorganizeSelectedTraces('square')}
                       title={t('atrium.menu.packRectangle')}
                     >
                       Square
                     </button>
                     <button
-                      className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                      className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                       onClick={() => reorganizeSelectedTraces('circle')}
                       title={t('atrium.menu.packCluster')}
                     >
@@ -6798,7 +6826,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               if (!trace || trace.type !== 'text') return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(trace.content)
@@ -6808,7 +6836,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.copyText')}
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.copyText')}
                 </button>
               )
             })()}
@@ -6823,7 +6851,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               if (!link) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(link)
@@ -6833,12 +6861,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.copyEmbedLink')}
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.copyEmbedLink')}
                 </button>
               )
             })()}
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
@@ -6847,10 +6875,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 setContextMenu(null)
               }}
             >
-              <span className="text-gray-400 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? 'Unlock' : 'Lock'}
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? 'Unlock' : 'Lock'}
             </button>
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
@@ -6859,7 +6887,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 setContextMenu(null)
               }}
             >
-              <span className="text-gray-400 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? 'Enable Clicks' : 'Ignore Clicks'}
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? 'Enable Clicks' : 'Ignore Clicks'}
             </button>
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
             {/* Transformations submenu -- opens as a side flyout on hover,
@@ -6871,14 +6899,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               onMouseLeave={scheduleCloseTransformFlyout}
             >
               <button
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
               >
-                <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.transformations')}</span>
-                <span className="text-gray-300 text-[9px]">▶</span>
+                <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.transformations')}</span>
+                <span className="text-nier-bg/70 text-[9px]">▶</span>
               </button>
               {contextMenuTransformOpen && transformFlyoutRect && (
                 <div
-                  className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                  className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                   style={
                     contextMenuFlyoutOnLeft
                       ? { top: transformFlyoutRect.top, right: window.innerWidth - transformFlyoutRect.left + 1 }
@@ -6888,7 +6916,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   onMouseLeave={scheduleCloseTransformFlyout}
                 >
                   <button
-                    className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                    className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -6905,7 +6933,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     {t('atrium.menu.resetCropping')}
                   </button>
                   <button
-                    className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                    className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -6923,7 +6951,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     {t('atrium.menu.resetAspect')}
                   </button>
                   <button
-                    className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                    className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -6940,7 +6968,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     return (
                       <>
                         <button
-                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                          className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                           onClick={() => {
                             updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
                             setContextMenu(null)
@@ -6949,7 +6977,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           {t('atrium.menu.flipHorizontal')}
                         </button>
                         <button
-                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                          className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                           onClick={() => {
                             updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
                             setContextMenu(null)
@@ -6968,7 +6996,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               if (!isDesktop || !trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                   onClick={async () => {
                     setContextMenu(null)
                     const result = await convertEmbedToInternalImage(trace.id)
@@ -6977,7 +7005,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }
                   }}
                 >
-                  <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.convertToImage')}
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.convertToImage')}
                 </button>
               )
             })()}
@@ -7002,10 +7030,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   onMouseLeave={scheduleCloseGroupFlyout}
                 >
                   <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                    className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   >
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.moveToGroup')}</span>
-                    <span className="text-gray-300 text-[9px]">▶</span>
+                    <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.moveToGroup')}</span>
+                    <span className="text-nier-bg/70 text-[9px]">▶</span>
                   </button>
                   {contextMenuGroupOpen && groupFlyoutRect && (
                     <div
@@ -7016,7 +7044,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       // scrolled while one over the gap between rows zoomed
                       // the canvas behind the open menu.
                       data-ui-element="true"
-                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain"
+                      className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain"
                       style={{
                         ...(contextMenuFlyoutOnLeft
                           ? { top: groupFlyoutRect.top, right: window.innerWidth - groupFlyoutRect.left + 1 }
@@ -7035,18 +7063,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           trace somewhere that already exists. */}
                       <button
                         data-group-row
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center gap-2"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center gap-2"
                         onClick={() => {
                           setNewGroupDialog({ traceIds: targetIds, name: '' })
                           setContextMenu(null)
                         }}
                       >
-                        <span className="text-gray-400 text-[10px]">+</span> New Group…
+                        <span className="text-nier-bg/60 text-[10px]">+</span> New Group…
                       </button>
                       <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
                       <button
                         data-group-row
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
                         disabled={currentLayerId === null}
                         onClick={() => { moveTracesToGroup(targetIds, null); setContextMenu(null) }}
                       >
@@ -7054,13 +7082,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         Ungrouped
                       </button>
                       {groupLayers.length === 0 && (
-                        <span className="px-4 py-2 text-gray-300 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
+                        <span className="px-4 py-2 text-nier-bg/70 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
                       )}
                       {groupLayers.map(layer => (
                         <button
                           key={layer.id}
                           data-group-row
-                          className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
                           disabled={currentLayerId === layer.id}
                           onClick={() => { moveTracesToGroup(targetIds, layer.id); setContextMenu(null) }}
                         >
@@ -7088,14 +7116,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   onMouseLeave={scheduleCloseMoveFlyout}
                 >
                   <button
-                    className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                    className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   >
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.moveLayer')}</span>
-                    <span className="text-gray-300 text-[9px]">▶</span>
+                    <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.moveLayer')}</span>
+                    <span className="text-nier-bg/70 text-[9px]">▶</span>
                   </button>
                   {contextMenuMoveOpen && moveFlyoutRect && (
                     <div
-                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                      className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
                           ? { top: moveFlyoutRect.top, right: window.innerWidth - moveFlyoutRect.left + 1 }
@@ -7105,25 +7133,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onMouseLeave={scheduleCloseMoveFlyout}
                     >
                       <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceOneStep(trace.id, 'up')}
                       >
                         {t('atrium.menu.moveUp')}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceOneStep(trace.id, 'down')}
                       >
                         {t('atrium.menu.moveDown')}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
                       >
                         {t('atrium.menu.moveTopOfGroup')}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
                       >
                         {t('atrium.menu.moveBottomOfGroup')}
@@ -7151,13 +7179,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   onMouseEnter={openSelectFlyout}
                   onMouseLeave={scheduleCloseSelectFlyout}
                 >
-                  <button className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('common.select')}</span>
-                    <span className="text-gray-300 text-[9px]">▶</span>
+                  <button className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
+                    <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('common.select')}</span>
+                    <span className="text-nier-bg/70 text-[9px]">▶</span>
                   </button>
                   {contextMenuSelectOpen && selectFlyoutRect && (
                     <div
-                      className="fixed w-max flex flex-col bg-black border border-gray-500 shadow-2xl py-1 z-[10000101]"
+                      className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
                           ? { top: selectFlyoutRect.top, right: window.innerWidth - selectFlyoutRect.left + 1 }
@@ -7167,7 +7195,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onMouseLeave={scheduleCloseSelectFlyout}
                     >
                       <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => {
                           setMultiSelectedIds(new Set(inGroup.map(t => t.id)))
                           setSelectedTraceId(trace.id)
@@ -7177,7 +7205,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         {t('atrium.menu.selectGroup', { count: inGroup.length })}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => {
                           setMultiSelectedIds(new Set(traces.map(t => t.id)))
                           setSelectedTraceId(trace.id)
@@ -7193,12 +7221,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             })()}
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
             <button
-              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 duplicateTrace(contextMenu.traceId)
               }}
             >
-              <span className="text-gray-400 text-[10px]">◇</span> {t('common.duplicate')}
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {t('common.duplicate')}
             </button>
             <button
               className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
@@ -7811,7 +7839,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
                           pathCreationMode
                             ? 'bg-nier-bg text-nier-black border-nier-bg'
-                            : 'bg-transparent text-white border-gray-600 hover:border-gray-400'
+                            : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
                         }`}
                       >
                         {pathCreationMode ? '✓ Done Adding' : '+ Add Points'}
@@ -9075,15 +9103,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
             
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-1.5 h-1.5 rotate-45 border border-gray-500" />
-                <h2 className="text-white text-sm tracking-[0.15em] uppercase font-mono">
+                <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+                <h2 className="text-nier-strong text-sm tracking-[0.15em] uppercase font-mono">
                   {modalTrace.type === 'text' && 'Text Trace'}
                   {modalTrace.type === 'image' && 'Image Trace'}
                   {modalTrace.type === 'audio' && 'Audio Trace'}
@@ -9094,7 +9122,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               </div>
               <button
                 onClick={() => setModalTrace(null)}
-                className="text-gray-400 hover:text-white text-lg transition-colors"
+                className="text-nier-bg/60 hover:text-nier-strong text-lg transition-colors"
               >
                 ✕
               </button>
@@ -9137,18 +9165,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     <div className="flex items-center gap-4">
                       <button
                         type="button"
-                        className="text-gray-300 hover:text-white text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
+                        className="text-nier-bg/70 hover:text-nier-strong text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
                         disabled={page <= 1}
                         onClick={() => setDocumentPage(prev => ({ ...prev, [modalTrace.id]: Math.max(1, (prev[modalTrace.id] ?? 1) - 1) }))}
                       >
                         ◀
                       </button>
-                      <span className="text-gray-300 text-xs tracking-[0.15em] uppercase tabular-nums">
+                      <span className="text-nier-bg/70 text-xs tracking-[0.15em] uppercase tabular-nums">
                         Page {page} / {total}
                       </span>
                       <button
                         type="button"
-                        className="text-gray-300 hover:text-white text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
+                        className="text-nier-bg/70 hover:text-nier-strong text-lg px-3 py-1 border border-gray-600 hover:border-gray-400 transition-colors disabled:text-gray-700 disabled:border-gray-800 disabled:cursor-not-allowed"
                         disabled={page >= total}
                         onClick={() => setDocumentPage(prev => ({ ...prev, [modalTrace.id]: Math.min(total, (prev[modalTrace.id] ?? 1) + 1) }))}
                       >
@@ -9280,7 +9308,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 if (!embedUrl) {
                   return (
                     <div style={{ width: displayWidth, height: displayHeight }} className="flex items-center justify-center bg-gray-800/50">
-                      <p className="text-gray-400 text-sm tracking-wider">Invalid embed code</p>
+                      <p className="text-nier-bg/60 text-sm tracking-wider">Invalid embed code</p>
                     </div>
                   )
                 }
@@ -9308,7 +9336,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
               {modalTrace.type === 'text' && (
                 <div className="bg-gray-800/50 p-6 selectable-text">
-                  <p className="text-white text-lg whitespace-pre-wrap break-words font-mono">
+                  <p className="text-nier-strong text-lg whitespace-pre-wrap break-words font-mono">
                     {modalTrace.content}
                   </p>
                   <button
@@ -9321,7 +9349,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         // Ignore clipboard access failures
                       }
                     }}
-                    className="mt-4 px-4 py-2 border border-gray-500 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-gray-700 transition-colors"
+                    className="mt-4 px-4 py-2 border border-nier-border/60 text-nier-strong text-[10px] tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors"
                   >
                     {copiedModalText ? '✓ Copied' : '◇ Copy Text'}
                   </button>
@@ -9332,14 +9360,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             {/* Caption/Description */}
             {modalTrace.content && modalTrace.type !== 'text' && (
               <div className="mb-4">
-                <p className="text-gray-400 text-sm italic">
+                <p className="text-nier-bg/60 text-sm italic">
                   "{modalTrace.content}"
                 </p>
               </div>
             )}
 
             {/* Metadata */}
-            <div className="flex justify-between items-center text-[10px] text-gray-400 tracking-wider uppercase font-mono">
+            <div className="flex justify-between items-center text-[10px] text-nier-bg/60 tracking-wider uppercase font-mono">
               <span>@{modalTrace.username}</span>
               <span>
                 ({Math.round(modalTrace.x)}, {Math.round(modalTrace.y)})
@@ -9461,16 +9489,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 {deleteConfirmDialog.traceIds.length > 1 ? `Delete ${deleteConfirmDialog.traceIds.length} Traces` : 'Delete Trace'}
               </h2>
             </div>
-            <p className="text-white mb-6 text-sm tracking-wide">
+            <p className="text-nier-strong mb-6 text-sm tracking-wide">
               {deleteConfirmDialog.traceIds.length > 1
                 ? `Are you sure you want to delete these ${deleteConfirmDialog.traceIds.length} traces? This can be undone with Ctrl+Z, but only until you save.`
                 : 'Are you sure you want to delete this trace? This can be undone with Ctrl+Z, but only until you save.'}
             </p>
-            <p className="text-gray-400 text-[10px] tracking-wider uppercase mb-6">
-              ◇ Tip: Press <kbd className="px-2 py-1 bg-gray-800 border border-gray-600 text-gray-300 text-[9px] tracking-wider">Delete</kbd> key for quick deletion
+            <p className="text-nier-bg/60 text-[10px] tracking-wider uppercase mb-6">
+              ◇ Tip: Press <kbd className="px-2 py-1 bg-gray-800 border border-gray-600 text-nier-bg/70 text-[9px] tracking-wider">Delete</kbd> key for quick deletion
             </p>
             
-            <label className="flex items-center gap-3 text-gray-400 text-xs mb-6 cursor-pointer group">
+            <label className="flex items-center gap-3 text-nier-bg/60 text-xs mb-6 cursor-pointer group">
               <div className="w-4 h-4 border border-gray-600 flex items-center justify-center group-hover:border-gray-400">
                 <input
                   type="checkbox"
@@ -9486,7 +9514,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-3 border border-gray-600 text-gray-400 text-[10px] tracking-[0.15em] uppercase hover:border-gray-400 hover:text-white transition-colors"
+                className="flex-1 py-3 border border-gray-600 text-nier-bg/60 text-[10px] tracking-[0.15em] uppercase hover:border-gray-400 hover:text-nier-strong transition-colors"
                 onClick={() => setDeleteConfirmDialog(null)}
               >
                 Cancel

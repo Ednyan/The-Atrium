@@ -88,7 +88,7 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
               <div className="flex justify-between items-center gap-3 px-6 pt-6 pb-4 shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60 shrink-0" />
-                  <h2 className="text-lg text-white tracking-[0.15em] uppercase truncate">{t('welcome.language')}</h2>
+                  <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase truncate">{t('welcome.language')}</h2>
                 </div>
                 <button
                   type="button"

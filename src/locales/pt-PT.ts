@@ -441,6 +441,8 @@ const ptPT: Catalogue = {
   'atrium.trace.rows': 'Linhas',
   'atrium.trace.columns': 'Colunas',
   'atrium.trace.pagesOrder': 'As páginas seguem da esquerda para a direita, por ordem.',
+  'atrium.pinterest.importTitle': 'Importar do Pinterest',
+  'atrium.pinterest.loadingBoards': 'A carregar os seus quadros...',
   'atrium.menu.customize': 'Personalizar',
   'atrium.menu.copyText': 'Copiar texto',
   'atrium.menu.copyEmbedLink': 'Copiar link do embed',

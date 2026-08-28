@@ -168,7 +168,7 @@ export default function LocationsPanel({
           {canEdit && (
             <button
               onClick={() => { setDialogMode('create'); setDialogInput(''); setDialogTargetId(null) }}
-              className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
+              className="atrium-chip px-3 py-1 text-xs tracking-wider uppercase"
               title={t('atrium.locations.saveViewHint')}
             >
               + {t('atrium.locations.saveView')}

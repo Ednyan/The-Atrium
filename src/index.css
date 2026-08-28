@@ -213,6 +213,18 @@ img {
   user-select: none;
 }
 
+/* A small filled button, inverted against its surface in either theme. */
+.atrium-chip {
+  color: rgb(var(--c-ground));
+  background-color: rgb(var(--c-fg));
+  border: 1px solid rgb(var(--c-line) / 0.4);
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.atrium-chip:hover {
+  background-color: rgb(var(--c-strong));
+  border-color: rgb(var(--c-line) / 0.7);
+}
+
 /* Nier-style scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
