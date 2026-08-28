@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
-import { useTranslation } from '../lib/i18n'
+import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { Layer } from '../types/database'
 import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
@@ -1209,7 +1209,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                     disabled={!canMoveUp}
                     className={`text-xs px-2 py-1 ${canMoveUp ? 'text-nier-bg/70 hover:text-nier-strong cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
-                    title={canMoveUp ? "Move up" : "Already at top"}
+                    title={canMoveUp ? t('atrium.layers.moveUp') : t('atrium.layers.alreadyAtTop')}
                   >
                     ▲
                   </button>
@@ -1220,7 +1220,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                     disabled={!canMoveDown}
                     className={`text-xs px-2 py-1 ${canMoveDown ? 'text-nier-bg/70 hover:text-nier-strong cursor-pointer' : 'text-gray-700 cursor-not-allowed'}`}
-                    title={canMoveDown ? "Move down" : "Already at bottom"}
+                    title={canMoveDown ? t('atrium.layers.moveDown') : t('atrium.layers.alreadyAtBottom')}
                   >
                     ▼
                   </button>
@@ -1286,7 +1286,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                           {trace.type === 'embed' && '⬡'}
                         </span>
                         <span className="text-nier-strong/80 truncate tracking-wide">
-                          {trace.content.substring(0, 20) || 'Untitled'}
+                          {trace.content.substring(0, 20) || t('atrium.layers.untitled')}
                         </span>
                         {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
                       </div>
@@ -1453,7 +1453,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       {trace.type === 'embed' && '⬡'}
                     </span>
                     <span className="text-nier-strong/80 truncate tracking-wide">
-                      {trace.content.substring(0, 20) || 'Untitled'}
+                      {trace.content.substring(0, 20) || t('atrium.layers.untitled')}
                     </span>
                     {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
                   </div>
@@ -1543,19 +1543,19 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             onClick={closeRowMenu}
           >
             <div className="px-3 py-1 text-xs tracking-[0.15em] uppercase text-nier-bg/80 truncate border-b border-nier-border/30 mb-1">
-              {isGroup ? layer!.name : (trace!.content.substring(0, 18) || 'Untitled')}
+              {isGroup ? layer!.name : (trace!.content.substring(0, 18) || t('atrium.layers.untitled'))}
             </div>
 
             {isGroup ? (
               <>
-                <MenuItem label="Duplicate Group" onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
-                <MenuItem label="Rename" onClick={() => renameGroup(rowMenu.id, layer!.name)} />
+                <MenuItem label={t('atrium.layers.duplicateGroup')} onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
+                <MenuItem label={t('atrium.layers.rename')} onClick={() => renameGroup(rowMenu.id, layer!.name)} />
                 <MenuItem
                   label={isExpanded ? t('atrium.layers.collapse') : t('atrium.layers.expand')}
                   onClick={() => toggleGroup(rowMenu.id)}
                 />
                 <MenuItem
-                  label="Select All Traces"
+                  label={t('atrium.layers.selectAllTraces')}
                   onClick={() => {
                     onSelectGroupTraces?.(groupTraces.map(t => t.id))
                     onSetActiveLayer?.(rowMenu.id)
@@ -1563,47 +1563,51 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem
-                  label="Go to Group"
+                  label={t('atrium.layers.goToGroup')}
                   onClick={() => onGoToTraces?.(groupTraces.map(t => t.id))}
                   disabled={groupTraces.length === 0}
-                  hint="Frame the camera on everything in this group"
+                  hint={t('atrium.layers.goToGroupHint')}
                 />
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
-                  label="Ungroup All"
+                  label={t('atrium.layers.ungroupAll')}
                   onClick={() => moveTracesToLayer(groupTraces.map(t => t.id), null)}
                   disabled={groupTraces.length === 0}
-                  hint="Move every trace out to Ungrouped, keeping the group"
+                  hint={t('atrium.layers.ungroupAllHint')}
                 />
                 <MenuItem
-                  label="Lock All"
+                  label={t('atrium.layers.lockAll')}
                   onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, true)) }}
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem
-                  label="Unlock All"
+                  label={t('atrium.layers.unlockAll')}
                   onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, false)) }}
                   disabled={groupTraces.length === 0}
                 />
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
-                  label="Delete Group Only"
+                  label={t('atrium.layers.deleteGroupOnly')}
                   onClick={() => doDeleteGroupKeepTraces(rowMenu.id)}
                   danger
-                  hint="Traces move to Ungrouped"
+                  hint={t('atrium.layers.deleteGroupOnlyHint')}
                 />
                 <MenuItem
-                  label={`Delete + ${groupTraces.length} Trace${groupTraces.length === 1 ? '' : 's'}`}
+                  label={t(({
+                    one: 'atrium.layers.deleteWithTraces.one',
+                    few: 'atrium.layers.deleteWithTraces.few',
+                    many: 'atrium.layers.deleteWithTraces.many',
+                  } as const)[pluralCategory(groupTraces.length)], { count: groupTraces.length })}
                   onClick={() => deleteGroup(rowMenu.id)}
                   danger
-                  hint="Deletes the group and everything inside it"
+                  hint={t('atrium.layers.deleteWithTracesHint')}
                 />
               </>
             ) : (
               <>
-                <MenuItem label="Duplicate" onClick={() => duplicateSingleTrace(rowMenu.id)} busy={isBusy} />
-                <MenuItem label="Select" onClick={() => onSelectTrace?.(rowMenu.id)} />
-                <MenuItem label="Go to Trace" onClick={() => onGoToTrace?.(rowMenu.id)} />
+                <MenuItem label={t('common.duplicate')} onClick={() => duplicateSingleTrace(rowMenu.id)} busy={isBusy} />
+                <MenuItem label={t('common.select')} onClick={() => onSelectTrace?.(rowMenu.id)} />
+                <MenuItem label={t('atrium.layers.goToTrace')} onClick={() => onGoToTrace?.(rowMenu.id)} />
                 <MenuItem
                   label={trace!.isLocked ? t('atrium.layers.unlock') : t('atrium.layers.lock')}
                   onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
@@ -1638,13 +1642,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 )}
                 {trace!.layerId && (
                   <MenuItem
-                    label="Ungroup"
+                    label={t('atrium.layers.ungroup')}
                     onClick={() => moveTraceToLayer(rowMenu.id, null)}
-                    hint="Move this trace out to Ungrouped"
+                    hint={t('atrium.layers.ungroupHint')}
                   />
                 )}
                 <div className="h-[1px] bg-nier-blackLight my-1" />
-                <MenuItem label="Delete" onClick={() => doDeleteTrace(rowMenu.id)} danger />
+                <MenuItem label={t('common.delete')} onClick={() => doDeleteTrace(rowMenu.id)} danger />
               </>
             )}
           </div>
