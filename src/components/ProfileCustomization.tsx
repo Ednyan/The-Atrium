@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
+import { useTranslation } from '../lib/i18n'
 import {
   DEFAULT_ZOOM_SENSITIVITY,
   MIN_ZOOM_SENSITIVITY,
@@ -39,6 +40,7 @@ const PRESET_COLORS = [
 ]
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
+  const { t } = useTranslation()
   const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
@@ -139,7 +141,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     }
 
     if (displayName.length < 1 || displayName.length > 30) {
-      setError('Name must be 1-30 characters')
+      setError(t('atrium.profile.nameLength'))
       setLoading(false)
       return
     }
@@ -185,7 +187,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         onClose()
       }, 1000)
     } catch (err: any) {
-      setError(err.message || 'Failed to update profile')
+      setError(err.message || t('atrium.profile.updateFailed'))
     } finally {
       setLoading(false)
     }
@@ -230,7 +232,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         <div className="flex justify-between items-center mb-5">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h3 className="text-lg text-white tracking-[0.15em] uppercase">Profile</h3>
+            <h3 className="text-lg text-nier-strong tracking-[0.15em] uppercase">{t('atrium.profile.title')}</h3>
           </div>
           <button
             onClick={onClose}
@@ -245,7 +247,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">
-                {isDesktop ? 'Username' : 'Display Name'}
+                {isDesktop ? t('atrium.profile.username') : t('atrium.profile.displayName')}
               </span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
@@ -254,7 +256,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-              placeholder={isDesktop ? 'Your username' : 'Your display name'}
+              placeholder={isDesktop ? t('atrium.profile.yourUsername') : t('atrium.profile.yourDisplayName')}
               maxLength={30}
               disabled={!isDesktop && !canChangeName}
             />
@@ -269,7 +271,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* How you work */}
           <div className="flex items-baseline gap-3 pt-2">
             <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">How you work</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.howYouWork')}</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
@@ -295,12 +297,12 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Shape for batch placement */}
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              Shape for batch placement
+              {t('atrium.profile.batchShape')}
             </label>
             <div className="flex gap-2">
               {(['square', 'circle'] as const).map(shape => (
                 <button
-                  key={shape}
+                  key={shape === 'square' ? t('atrium.profile.shapeSquare') : t('atrium.profile.shapeCircle')}
                   type="button"
                   onClick={() => handlePackingShapeChange(shape)}
                   className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
@@ -309,20 +311,19 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                       : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
                   }`}
                 >
-                  {shape}
+                  {shape === 'square' ? t('atrium.profile.shapeSquare') : t('atrium.profile.shapeCircle')}
                 </button>
               ))}
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              How dropping or pasting several files at once gets arranged, in every atrium.
-              Reorganize Selected asks for a shape each time and ignores this.
+              {t('atrium.profile.batchShapeHint')}
             </p>
           </div>
 
           {/* Color Picker */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">Your cursor</span>
+              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.profile.yourCursor')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
             </div>
             <div className="grid grid-cols-6 gap-2 mb-2">
@@ -346,26 +347,26 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
                 type="color"
                 value={selectedColor}
                 onChange={(e) => setSelectedColor(e.target.value)}
-                title="Any other colour"
+                title={t('atrium.profile.anyOtherColour')}
                 className="w-full h-10 border-2 border-nier-border/30 hover:border-nier-border/60 bg-nier-black cursor-pointer"
               />
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-              How other people see you pointing, in every atrium.
+              {t('atrium.profile.cursorHint')}
             </p>
           </div>
 
           {/* Moving around */}
           <div className="flex items-baseline gap-3 pt-2">
             <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Moving around</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.movingAround')}</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
           {/* Zoom Sensitivity */}
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              Zoom speed: {zoomSensitivity.toFixed(2)}
+              {t('atrium.profile.zoomSpeed', { value: zoomSensitivity.toFixed(2) })}
             </label>
             <input
               type="range"
@@ -377,14 +378,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               className="w-full accent-nier-bg"
             />
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              How far a notch of the wheel, or a pinch, moves you.
+              {t('atrium.profile.zoomHint')}
             </p>
           </div>
 
           {/* What you see */}
           <div className="flex items-baseline gap-3 pt-2">
             <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">What you see</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.whatYouSee')}</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
@@ -392,7 +393,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center justify-between">
               <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                Point to off-screen traces
+                {t('atrium.profile.pointOffscreen')}
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -417,7 +418,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center justify-between">
               <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                Label each trace's type
+                {t('atrium.profile.labelTraceType')}
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -434,7 +435,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </label>
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              Always show each trace's type without needing to select it
+              {t('atrium.profile.labelTraceTypeHint')}
             </p>
           </div>
 
@@ -442,7 +443,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center justify-between">
               <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                Fade traces near the edge
+                {t('atrium.profile.fadeEdge')}
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -459,14 +460,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </label>
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              Softly fade traces out as they leave the edge of your view
+              {t('atrium.profile.fadeEdgeHint')}
             </p>
           </div>
 
           {/* People in the room */}
           <div className="flex items-baseline gap-3 pt-2">
             <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">04</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">People in the room</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.peopleInRoom')}</span>
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
@@ -474,7 +475,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center justify-between">
               <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                Hide My Name Tag
+                {t('atrium.profile.hideMyNameTag')}
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -491,7 +492,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </label>
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              Hide your own username label above your cursor
+              {t('atrium.profile.hideMyNameTagHint')}
             </p>
           </div>
 
@@ -499,7 +500,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center justify-between">
               <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                Hide Others' Name Tags
+                {t('atrium.profile.hideOtherNameTags')}
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -516,7 +517,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </label>
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              Hide username labels above other users' cursors
+              {t('atrium.profile.hideOtherNameTagsHint')}
             </p>
           </div>
 
@@ -524,7 +525,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           <div>
             <div className="flex items-center justify-between">
               <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                Hide Others' Cursors
+                {t('atrium.profile.hideOtherCursors')}
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
@@ -541,7 +542,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </label>
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              Completely hide other users' cursor indicators
+              {t('atrium.profile.hideOtherCursorsHint')}
             </p>
           </div>
 
@@ -554,7 +555,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
 
           {success && (
             <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-xs tracking-wider">
-              ✓ Profile updated
+              ✓ {t('atrium.profile.updated')}
             </div>
           )}
 
@@ -564,7 +565,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             disabled={loading}
             className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            {loading ? 'Saving...' : 'Save Changes'}
+            {loading ? t('atrium.profile.saving') : t('atrium.profile.saveChanges')}
           </button>
         </form>
         </div>
