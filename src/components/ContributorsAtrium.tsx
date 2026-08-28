@@ -403,7 +403,6 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // and vanished instantly, which reads as two different doors.
   const [leaving, setLeaving] = useState(false)
   const closeWithTransition = () => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onClose(); return }
     setLeaving(true)
     setTimeout(onClose, 210)
   }

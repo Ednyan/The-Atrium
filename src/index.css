@@ -1,3 +1,15 @@
+/* No prefers-reduced-motion branches anywhere in this app, by decision.
+   The motion is part of what the landing page is, and it was judged mild
+   enough to keep for everyone -- so a machine with animations switched off in
+   the OS sees the same page as every other machine.
+
+   Written down because the absence is the unusual thing: the setting is an
+   accessibility preference, and stripping the guards was a choice rather than
+   an oversight. Restoring them means putting back a @media block beside each
+   animation here, the two matchMedia checks in LandingPage, the freeze in
+   LandingDemos, and the transition skips in ContributorsAtrium, HeartRush,
+   LobbyScene and WelcomeScreen. */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -612,13 +624,6 @@ body.dragging * {
   animation: donate-heartbeat 1.6s ease-in-out infinite;
 }
 
-/* An animation nobody can turn off is one they have to sit through. */
-@media (prefers-reduced-motion: reduce) {
-  .donate-heart { animation: none !important; opacity: 0 !important; }
-  .donate-btn:hover .donate-heartbeat,
-  .donate-btn:focus-visible .donate-heartbeat { animation: none !important; }
-}
-
 /* Bubbles rising through the monthly gauge.
    Clipped by the fill they live inside, so they vanish at the surface rather
    than at an arbitrary height. Slow and small: this is a gauge, not an
@@ -628,10 +633,6 @@ body.dragging * {
   12%  { opacity: 0.9; }
   85%  { opacity: 0.5; }
   100% { transform: translateY(-260px) scale(1); opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .goal-bubble { animation: none !important; opacity: 0 !important; }
 }
 
 /* Hide UI, inside an atrium.
@@ -728,10 +729,6 @@ body.dragging * {
 }
 .panel-in-right { animation: panel-in-right 200ms cubic-bezier(0.22, 1, 0.36, 1); }
 
-@media (prefers-reduced-motion: reduce) {
-  .panel-in, .panel-in-right { animation: none; }
-}
-
 /* A colour input that actually shows its colour.
    Tailwind's reset makes every input transparent, which on a native colour
    control leaves a bordered rectangle with nothing in it -- the swatch is a
@@ -783,11 +780,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   animation: name-sheen 2200ms cubic-bezier(0.4, 0, 0.2, 1) 500ms both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .name-rule, .name-sheen { animation: none; }
-  .name-sheen { color: rgb(var(--c-strong)); background-image: none; }
-}
-
 /* Going one layer in.
    The welcome screen settles back and dims as the browser rises over it, so
    the two read as one place at two depths rather than as two pages swapped.
@@ -804,10 +796,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .screen-rise { animation: screen-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-@media (prefers-reduced-motion: reduce) {
-  .screen-recede, .screen-rise { animation: none; }
-}
 
 /* Anything that arrives over what you were already looking at.
 
@@ -826,11 +814,6 @@ input[type='color']::-moz-color-swatch { border: none; }
 }
 .modal-backdrop { animation: backdrop-in 140ms ease-out both; }
 .modal-backdrop > * { animation: modal-in 220ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both; }
-
-@media (prefers-reduced-motion: reduce) {
-  .modal-backdrop, .modal-backdrop > * { animation: none; }
-}
-
 
 /* The app's orange, as text.
    #FF8A3D is a fill everywhere else -- the Donate button, with dark type on
@@ -998,11 +981,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   box-shadow: 0 0 18px rgba(255, 138, 61, 0.35);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .donate-card-left, .donate-card-right { animation: none; }
-  .donate-bubble { transition: none; }
-}
-
 /* The play/pause control on a video trace, shown only under the pointer.
 
    A canvas full of videos was a canvas full of little grey pills -- chrome
@@ -1023,10 +1001,6 @@ input[type='color']::-moz-color-swatch { border: none; }
 [data-trace-element="true"]:hover .trace-video-control,
 [data-trace-element="true"]:focus-within .trace-video-control {
   opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .trace-video-control { transition: none; }
 }
 
 /* The question mark beside "optional", and what it says.
@@ -1111,10 +1085,6 @@ input[type='color']::-moz-color-swatch { border: none; }
 .name-field[data-typing='true'] .name-bubble {
   opacity: 0 !important;
   transform: translateY(4px) !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .name-bubble { transition: none; }
 }
 
 /* A row that would rather scroll than shove its neighbours.

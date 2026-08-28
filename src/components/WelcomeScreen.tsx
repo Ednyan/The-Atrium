@@ -368,7 +368,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
           // screen.
           <button
             onClick={() => {
-              if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onBackToLanding(); return }
               setLeaving(true)
               setTimeout(onBackToLanding, 210)
             }}
@@ -531,7 +530,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                 every committing action wears. */}
             <button
               onClick={() => {
-                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onEnter(); return }
                 setLeaving(true)
                 // Long enough for the recede to be seen, short enough that
                 // nobody waits for it. The browser's own rise covers the rest.

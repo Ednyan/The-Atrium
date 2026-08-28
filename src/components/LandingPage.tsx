@@ -13,7 +13,7 @@ import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
-import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo, DemoMotionStyles } from './LandingDemos'
+import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo } from './LandingDemos'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -541,12 +541,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   // pick its own depth, at a real magnitude, for no render cost.
   //
   // Coalesced into a single rAF so a burst of pointer events can't write style
-  // more than once a frame, and skipped entirely for people who ask for reduced
-  // motion.
+  // more than once a frame.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     let frame = 0
     const handleMouseMove = (e: MouseEvent) => {
@@ -571,10 +569,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   // Reveals each section as it scrolls into view. A long page where everything
   // is simply already there is the main reason it reads as static.
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      document.querySelectorAll('[data-reveal]').forEach(n => n.classList.add('is-revealed'))
-      return
-    }
     const observer = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
@@ -1596,18 +1590,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           transform: translateY(0);
         }
 
-        /* Honour the OS setting: no reveal offset, no breathing, no parallax
-           transitions. The observer also marks everything revealed up front so
-           content can never be left invisible. */
-        @media (prefers-reduced-motion: reduce) {
-          [data-reveal] {
-            opacity: 1;
-            transform: none;
-            transition: none;
-          }
-        }
       `}</style>
-      <DemoMotionStyles />
     </div>
   )
 }

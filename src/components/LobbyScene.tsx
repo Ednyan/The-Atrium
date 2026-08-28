@@ -728,7 +728,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const [leaving, setLeaving] = useState(false)
 
   const leaveWithTransition = useCallback(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onLeaveLobby(); return }
     setLeaving(true)
     setTimeout(onLeaveLobby, 210)
   }, [onLeaveLobby])

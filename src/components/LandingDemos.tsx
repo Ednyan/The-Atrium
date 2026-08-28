@@ -1,7 +1,6 @@
 // Animated show-don't-tell vignettes for the landing page. Pure HTML/CSS --
 // no timers, no rAF loops: every scene is CSS keyframes, so an off-screen
-// or backgrounded page costs nothing and prefers-reduced-motion can freeze
-// the lot into a readable still with one media query.
+// or backgrounded page costs nothing.
 //
 // Each scene is a tiny diorama built from the app's own visual vocabulary
 // (bracket-framed trace cards, diamond cursors with name tags, the grid) so
@@ -513,22 +512,3 @@ export function ExploreDemo() {
   )
 }
 
-// Shared reduced-motion freeze for every scene above: a single class on each
-// container, one media query, and the dioramas become readable stills.
-export function DemoMotionStyles() {
-  return (
-    <style>{`
-      @media (prefers-reduced-motion: reduce) {
-        .landing-demo *, .landing-demo { animation: none !important; }
-        /* The cycle demo's layers all start invisible; show only the first
-           (the sibling selector re-hides the ones after it). */
-        .landing-demo [style*="ldCycle"] { opacity: 1 !important; }
-        .landing-demo [style*="ldCycle"] ~ [style*="ldCycle"] { opacity: 0 !important; }
-        /* Pop-in/creation layers also start invisible; freeze them shown. */
-        .landing-demo [style*="ldPop"], .landing-demo [style*="ldCreateCard"] { opacity: 1 !important; transform: none !important; }
-        .landing-demo [style*="ldCreateLine1"] { width: 80% !important; }
-        .landing-demo [style*="ldCreateLine2"] { width: 55% !important; }
-      }
-    `}</style>
-  )
-}

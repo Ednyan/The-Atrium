@@ -206,13 +206,6 @@ export default function HeartRush({ color, onFilled }: HeartRushProps) {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    // A fall cannot be "turned off" the way a transition can, so anyone who
-    // asked for reduced motion gets the end of it immediately.
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      onFilledRef.current()
-      return
-    }
-
     const ctx = canvas.getContext('2d')
     if (!ctx) { onFilledRef.current(); return }
 
