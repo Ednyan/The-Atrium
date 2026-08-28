@@ -1712,7 +1712,20 @@ class LocalStorage {
             const segments = path.split('/').filter(Boolean)
             // Straight into the atrium's own folder -- there is no longer a
             // separate runtime copy to write first and mirror afterwards.
-            filePath = await getAtriumMediaFilePath(bucket, segments)
+            const atriumPath = await getAtriumMediaFilePath(bucket, segments)
+            if (!atriumPath) {
+              // Says so, because this is how a file ends up in _runtime -- the
+              // one place the vault's own README promises files are not. It
+              // means the atrium's name could not be resolved from its id,
+              // which should not happen inside an atrium that is open, and
+              // leaves the file somewhere the mirror then copies it FROM,
+              // putting every byte on disk twice.
+              console.warn(
+                '[vault] no atrium folder for this media; falling back to _runtime.',
+                { lobbyId: segments[0], haveDb: !!db },
+              )
+            }
+            filePath = atriumPath
               ?? await getResolvedRuntimeMediaFilePath(bucket, segments)
               ?? await joinPathSegments(mediaBasePath, [bucket, path])
           } else {

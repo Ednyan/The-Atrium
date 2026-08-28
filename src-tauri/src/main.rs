@@ -205,7 +205,11 @@ fn prepare_live_database(app: tauri::AppHandle) -> Result<String, String> {
 
     let target_database = live_database_path(&base_path);
     fs::create_dir_all(live_runtime_dir(&base_path)).map_err(|e| e.to_string())?;
-    fs::create_dir_all(live_media_dir(&base_path)).map_err(|e| e.to_string())?;
+    // _runtime/media is deliberately NOT created. Media has lived in each
+    // atrium's own folder since media was consolidated, and creating this on
+    // every start meant the folder the migration had just removed reappeared
+    // immediately -- looking exactly like the duplication coming back. Nothing
+    // writes here any more; anything that did creates its own parents.
     // Best effort: a missing note is not a reason to refuse to start.
     let _ = write_runtime_readme(&base_path);
 
@@ -636,6 +640,9 @@ fn consolidate_runtime_media(app: tauri::AppHandle) -> Result<String, String> {
     let mut moved = 0u32;
     let mut already_present = 0u32;
     let mut left_alone = 0u32;
+    // Files that could not be moved this time -- locked, most often. Counted
+    // rather than fatal, and retried on the next start.
+    let mut skipped = 0u32;
 
     for entry in fs::read_dir(&traces_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -659,7 +666,7 @@ fn consolidate_runtime_media(app: tauri::AppHandle) -> Result<String, String> {
             .join("traces")
             .join(&lobby_id);
 
-        move_tree_into(&source_dir, &destination_dir, &mut moved, &mut already_present)?;
+        move_tree_into(&source_dir, &destination_dir, &mut moved, &mut already_present, &mut skipped)?;
 
         // Only if everything inside was accounted for.
         let _ = fs::remove_dir(&source_dir);
@@ -671,15 +678,26 @@ fn consolidate_runtime_media(app: tauri::AppHandle) -> Result<String, String> {
     let _ = fs::remove_dir(live_media_dir(&base_path));
 
     Ok(format!(
-        "moved {moved}, already in place {already_present}, left alone {left_alone}"
+        "moved {moved}, already in place {already_present}, left alone {left_alone}, could not move {skipped}"
     ))
 }
 
+// One file it cannot move must not stop the rest.
+//
+// This used to return Err on the first failure, and a single locked file --
+// a video the webview still had open, most likely -- aborted the whole
+// migration. Everything behind it stayed in _runtime, which is why files from
+// months back were still sitting there after dozens of restarts, each one
+// reporting a failure nobody was reading.
+//
+// A file that cannot be moved is counted and left alone. It stays readable
+// where it is, and the next start tries again.
 fn move_tree_into(
     source_dir: &std::path::Path,
     destination_dir: &std::path::Path,
     moved: &mut u32,
     already_present: &mut u32,
+    skipped: &mut u32,
 ) -> Result<(), String> {
     for entry in fs::read_dir(source_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -688,25 +706,34 @@ fn move_tree_into(
 
         if source.is_dir() {
             // Rendered PDF pages live in a folder per trace, so this recurses.
-            move_tree_into(&source, &destination, moved, already_present)?;
+            move_tree_into(&source, &destination, moved, already_present, skipped)?;
             let _ = fs::remove_dir(&source);
             continue;
         }
 
         if destination.exists() {
-            // The mirror copy is already there and is the one being kept.
-            fs::remove_file(&source).map_err(|e| e.to_string())?;
+            // The copy in the atrium's folder is the one being kept.
+            if fs::remove_file(&source).is_err() {
+                *skipped += 1;
+                continue;
+            }
             *already_present += 1;
             continue;
         }
 
-        fs::create_dir_all(destination_dir).map_err(|e| e.to_string())?;
+        if fs::create_dir_all(destination_dir).is_err() {
+            *skipped += 1;
+            continue;
+        }
+
         // A rename is instant within a volume, which this always is -- both
         // paths are inside the vault. Copy-then-delete covers the case where
-        // it isn't, rather than failing the whole migration.
+        // it isn't.
         if fs::rename(&source, &destination).is_err() {
-            fs::copy(&source, &destination).map_err(|e| e.to_string())?;
-            fs::remove_file(&source).map_err(|e| e.to_string())?;
+            if fs::copy(&source, &destination).is_err() || fs::remove_file(&source).is_err() {
+                *skipped += 1;
+                continue;
+            }
         }
         *moved += 1;
     }
