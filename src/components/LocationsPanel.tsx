@@ -161,7 +161,7 @@ export default function LocationsPanel({
       <div className="bg-nier-black border-b border-nier-border/40 p-3 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
-          <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">Locations</h2>
+          <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">{t('atrium.locations.title')}</h2>
           {dirty && <span className="text-amber-400 text-[11px] tracking-wider uppercase" title={t('atrium.locations.unsavedChanges')}>● {t('atrium.locations.unsaved')}</span>}
         </div>
         <div className="flex gap-2">
@@ -181,7 +181,7 @@ export default function LocationsPanel({
       {/* Presentation mode toggle */}
       <div className="bg-nier-black/60 border-b border-nier-border/30 px-3 py-2 flex items-center justify-between">
         <div className="flex flex-col">
-          <span className="text-nier-bg/80 text-xs tracking-wider uppercase">Presentation Mode</span>
+          <span className="text-nier-bg/80 text-xs tracking-wider uppercase">{t('atrium.locations.presentationMode')}</span>
           <span className="text-nier-bg/80 text-[11px] tracking-wide">← / → keys to move between locations</span>
         </div>
         <button
@@ -265,7 +265,7 @@ export default function LocationsPanel({
                       }`}
                       title={loc.isLocked
                         ? t('atrium.locations.lockedHint')
-                        : 'Set this location to the current camera view'}
+                        : t('atrium.locations.setToCurrent')}
                     >
                       <LocationIcon name="capture" />
                     </button>
@@ -335,7 +335,7 @@ export default function LocationsPanel({
 
             {dialogMode === 'delete' ? (
               <>
-                <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-4">Delete this location?</p>
+                <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-4">{t('atrium.locations.deleteConfirm')}</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => { if (dialogTargetId) onDelete(dialogTargetId); setDialogMode(null) }}
@@ -343,7 +343,7 @@ export default function LocationsPanel({
                   >
                     {t('common.delete')}
                   </button>
-                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">Cancel</button>
+                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">{t('common.cancel')}</button>
                 </div>
               </>
             ) : (
@@ -380,7 +380,7 @@ export default function LocationsPanel({
                   >
                     {dialogMode === 'create' ? t('common.save') : t('common.rename')}
                   </button>
-                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">Cancel</button>
+                  <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">{t('common.cancel')}</button>
                 </div>
               </>
             )}
