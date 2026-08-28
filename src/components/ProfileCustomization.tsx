@@ -263,7 +263,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             
             {!isDesktop && !canChangeName && (
               <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-                ◇ Can change in {daysUntilChange} days
+                ◇ {t('atrium.profile.canChangeIn', { days: daysUntilChange })}
               </p>
             )}
           </div>

@@ -8805,7 +8805,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">
-                          Text ({textTraces.length})
+                          {t('atrium.controls.textCount', { count: textTraces.length })}
                         </span>
                         <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
                       </div>
@@ -9172,7 +9172,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         ◀
                       </button>
                       <span className="text-nier-bg/70 text-xs tracking-[0.15em] uppercase tabular-nums">
-                        Page {page} / {total}
+                        {t('atrium.controls.pageOf', { page, total })}
                       </span>
                       <button
                         type="button"

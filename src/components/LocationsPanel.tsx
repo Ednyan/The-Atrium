@@ -193,7 +193,7 @@ export default function LocationsPanel({
               : 'bg-nier-black border-nier-border/40 text-nier-bg/80 hover:border-nier-bg hover:text-nier-strong disabled:opacity-30 disabled:cursor-not-allowed'
           }`}
         >
-          {presentationMode ? 'On' : 'Off'}
+          {presentationMode ? t('common.on') : t('common.off')}
         </button>
       </div>
 

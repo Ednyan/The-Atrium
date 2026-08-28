@@ -1,4 +1,5 @@
 import PinterestMark from './PinterestMark'
+import type { TranslationKey } from '../locales/en'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -820,7 +821,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {(traceType === 'image' || traceType === 'audio' || traceType === 'video') && (
             <div className="space-y-3">
               <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                Upload {traceType}
+                {t('atrium.trace.uploadType', { type: t(`atrium.trace.type.${traceType}` as TranslationKey) })}
               </label>
               {/* Multiple selection allowed: picking a folder of images one at
                   a time, closing and reopening this panel between each, was
