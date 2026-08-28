@@ -4479,7 +4479,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         data-active={isDrawingMode}
       >
         <span className="opacity-60 mr-2">✎</span>
-        {isDrawingMode ? 'Exit Draw' : 'Draw'}
+        {isDrawingMode ? t('atrium.draw.exit') : t('atrium.draw.button')}
       </button>
       )}
 

@@ -361,6 +361,7 @@ const ptBR: Catalogue = {
   'atrium.controls.saveChanges': 'Salvar alterações : Ctrl+S',
   'common.undo': 'Desfazer',
   'common.clear': 'Limpar',
+  'atrium.draw.button': 'Desenhar',
   'atrium.draw.title': 'Desenho livre',
   'atrium.draw.brush': 'Pincel',
   'atrium.draw.eraser': 'Borracha',

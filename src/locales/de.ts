@@ -360,6 +360,7 @@ const de: Catalogue = {
   'atrium.controls.saveChanges': 'Änderungen speichern : Strg+S',
   'common.undo': 'Rückgängig',
   'common.clear': 'Löschen',
+  'atrium.draw.button': 'Zeichnen',
   'atrium.draw.title': 'Freihandzeichnen',
   'atrium.draw.brush': 'Pinsel',
   'atrium.draw.eraser': 'Radierer',

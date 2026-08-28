@@ -363,6 +363,7 @@ const ru: Catalogue = {
   'atrium.controls.saveChanges': 'Сохранить изменения : Ctrl+S',
   'common.undo': 'Отменить',
   'common.clear': 'Очистить',
+  'atrium.draw.button': 'Рисовать',
   'atrium.draw.title': 'Свободное рисование',
   'atrium.draw.brush': 'Кисть',
   'atrium.draw.eraser': 'Ластик',

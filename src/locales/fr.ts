@@ -359,6 +359,7 @@ const fr: Catalogue = {
   'atrium.controls.saveChanges': 'Enregistrer les modifications : Ctrl+S',
   'common.undo': 'Annuler',
   'common.clear': 'Effacer',
+  'atrium.draw.button': 'Dessiner',
   'atrium.draw.title': 'Dessin libre',
   'atrium.draw.brush': 'Pinceau',
   'atrium.draw.eraser': 'Gomme',

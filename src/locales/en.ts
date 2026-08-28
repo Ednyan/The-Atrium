@@ -263,6 +263,7 @@ export const en = {
   'atrium.controls.saveChanges': 'Save Changes : Ctrl+S',
   'common.undo': 'Undo',
   'common.clear': 'Clear',
+  'atrium.draw.button': 'Draw',
   'atrium.draw.title': 'Freehand Draw',
   'atrium.draw.brush': 'Brush',
   'atrium.draw.eraser': 'Eraser',
