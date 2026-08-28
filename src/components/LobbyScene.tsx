@@ -768,10 +768,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // Frozen at its last live value so the fade finishes the sentence it
   // started.
   const saveLabel = isSavingChanges
-    ? '◇ Saving…'
+    ? `◇ ${t('atrium.hud.saving')}`
     : justSaved
-      ? '◇ Saved'
-      : `◇ Save changes (${pendingChanges.size + deletedTraces.size})`
+      ? `◇ ${t('atrium.hud.saved')}`
+      : `◇ ${t('atrium.hud.saveChanges', { count: pendingChanges.size + deletedTraces.size })}`
   const saveDim = justSaved && !isSavingChanges
   const lastSaveLookRef = useRef({ label: saveLabel, dim: saveDim })
   if (saveBarActive) lastSaveLookRef.current = { label: saveLabel, dim: saveDim }
@@ -1895,7 +1895,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     let skipped = 0
     try {
       for (let i = 0; i < embedTraces.length; i++) {
-        setConvertEmbedsProgress(`Converting ${i + 1}/${embedTraces.length}...`)
+        setConvertEmbedsProgress(t('atrium.hud.converting', { done: i + 1, total: embedTraces.length }))
         const result = await convertEmbedToInternalImage(embedTraces[i].id)
         if (result.ok) converted++
         else skipped++
@@ -4015,11 +4015,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
 
               <p className="text-nier-strong text-xs tracking-[0.2em] uppercase font-mono mb-3">
-                {/* English, like every other string in this file. The
-                    atrium interior has not been through the catalogue yet
-                    (see TraceOverlay/LobbyScene in the i18n notes), and half
-                    a translated panel is worse than a consistent one. */}
-                ◇ Importing
+                ◇ {t('atrium.hud.importing')}
               </p>
               <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden mb-2">
                 <div
@@ -4098,18 +4094,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               data-ui-element="true"
               onClick={toggleFullscreen}
               className="atrium-btn"
-              title={isFullscreen ? 'Leave fullscreen' : 'Fullscreen'}
+              title={isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen')}
             >
-              ◇ {isFullscreen ? 'Windowed' : 'Fullscreen'}
+              ◇ {isFullscreen ? t('atrium.hud.windowed') : t('atrium.hud.fullscreen')}
             </button>
             <button
               type="button"
               data-ui-element="true"
               onClick={() => setUiHidden(true)}
               className="atrium-btn"
-              title="Hide the interface"
+              title={t('atrium.hud.hideInterface')}
             >
-              ◇ Hide UI
+              ◇ {t('atrium.hud.hideUi')}
             </button>
             <ThemeToggle variant="atrium" />
           </>
@@ -4130,9 +4126,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             borderColor: uiHidden ? undefined : 'rgb(var(--c-danger) / 0.55)',
             color: uiHidden ? undefined : 'rgb(var(--c-danger))',
           }}
-          title={uiHidden ? 'Show the interface' : 'Leave this atrium'}
+          title={uiHidden ? t('atrium.hud.showInterface') : t('atrium.hud.leaveThisAtrium')}
         >
-          {uiHidden ? '◇ Show UI' : '◇ Leave Atrium'}
+          {uiHidden ? `◇ ${t('atrium.hud.showUi')}` : `◇ ${t('atrium.hud.leaveAtrium')}`}
         </button>
       </div>
 
@@ -4165,7 +4161,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             {/* A readout, not a button. It was both, which meant the one
                 thing on this panel that only ever reports something also
                 opened a panel when clicked. The list has its own row below. */}
-            <div className="flex items-center gap-1 px-1 py-0.5 -mx-1" title="People here now">
+            <div className="flex items-center gap-1 px-1 py-0.5 -mx-1" title={t('atrium.hud.peopleHere')}>
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--c-emerald))' }} />
               <span className="text-[11px] tabular-nums" style={{ color: 'rgb(var(--c-emerald))' }}>{onlinePlayerCount}</span>
             </div>
@@ -4187,7 +4183,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           >
             <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-nier-strong text-xs tracking-wide truncate">{username} (you)</span>
+                <span className="text-nier-strong text-xs tracking-wide truncate">{username} {t('atrium.hud.you')}</span>
                 <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
               </div>
               {Object.values(otherUsers).map(user => (
@@ -4199,13 +4195,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                       onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
                       className="text-red-500 hover:text-red-400 text-xs tracking-wider uppercase transition-colors flex-shrink-0"
                     >
-                      Kick
+                      {t('atrium.hud.kick')}
                     </button>
                   )}
                 </div>
               ))}
               {Object.keys(otherUsers).length === 0 && (
-                <p className="text-nier-bg/70 text-xs tracking-wide">No one else is here</p>
+                <p className="text-nier-bg/70 text-xs tracking-wide">{t('atrium.hud.noOneElse')}</p>
               )}
             </div>
           </div>
@@ -4214,7 +4210,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <div className="panel-in">
         {currentLobby && (
           <p className="text-nier-bg/80 text-[11px] tracking-wider truncate">
-            {currentLobby.name} {isLobbyOwner && '(Owner)'}{!isLobbyOwner && isLobbyAdmin && '(Admin)'}
+            {currentLobby.name} {isLobbyOwner && t('atrium.hud.owner')}{!isLobbyOwner && isLobbyAdmin && t('atrium.hud.admin')}
           </p>
         )}
         <p className="text-nier-bg/80 text-[11px] tracking-wider">
@@ -4232,16 +4228,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 }}
                 disabled={isDiscarding || isSavingChanges}
                 className="flex-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-red-900/40 border-red-500/60 hover:border-red-400 text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Revert all unsaved changes to the last saved state"
+                title={t('atrium.hud.discardHint')}
               >
-                {isDiscarding ? 'Discarding…' : 'Confirm Discard'}
+                {isDiscarding ? t('atrium.hud.discarding') : t('atrium.hud.confirmDiscard')}
               </button>
               <button
                 onClick={() => setShowDiscardConfirm(false)}
                 disabled={isDiscarding}
                 className="flex-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-nier-blackLight border-nier-border/40 hover:border-nier-bg text-nier-strong disabled:opacity-40"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           ) : (
@@ -4249,9 +4245,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               onClick={() => setShowDiscardConfirm(true)}
               disabled={isSavingChanges}
               className="w-full mt-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-nier-blackLight border-nier-border/40 hover:border-red-400 text-nier-bg/80 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Revert all unsaved changes to the last saved state"
+              title={t('atrium.hud.discardHint')}
             >
-              Don't Save
+              {t('atrium.hud.dontSave')}
             </button>
           )
         )}
@@ -4261,7 +4257,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
               onClick={() => setShowLobbyManagement(true)}
               className="atrium-btn flex-1"
             >
-              Manage
+              {t('atrium.hud.manage')}
             </button>
           )}
         </div>
@@ -4270,7 +4266,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             onClick={() => copyLobbyId(currentLobby.id)}
             className="atrium-btn w-full mt-1 text-center"
           >
-            Copy Atrium ID
+            {t('atrium.hud.copyAtriumId')}
           </button>
         )}
         {isDesktop && (
@@ -4278,25 +4274,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             onClick={handleConvertAllEmbeds}
             disabled={isConvertingEmbeds}
             className="atrium-btn w-full mt-1 text-center disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Convert every embed trace in this atrium into an internal image"
+            title={t('atrium.hud.convertEmbedsHint')}
           >
-            {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
+            {isConvertingEmbeds ? convertEmbedsProgress || t('atrium.hud.convertingPlain') : t('atrium.hud.convertEmbeds')}
           </button>
         )}
         {canEdit && pinterestConnected && (
           <button
             onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
             className="atrium-btn w-full mt-1 text-center"
-            title="Import a Pinterest board's pins as traces"
+            title={t('atrium.hud.importPinterestHint')}
           >
-            Import from Pinterest
+            {t('atrium.hud.importPinterest')}
           </button>
         )}
         <button
           onClick={() => setShowProfileCustomization(true)}
           className="atrium-btn w-full mt-1 text-center"
         >
-          Profile
+          {t('atrium.hud.profile')}
         </button>
         <button
           onClick={() => {
@@ -4307,14 +4303,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           }}
           className="atrium-btn w-full mt-1 text-center"
         >
-          Recenter
+          {t('atrium.hud.recenter')}
         </button>
         {(isLobbyOwner || isLobbyAdmin) && (
           <button
             onClick={() => setShowThemeCustomization(true)}
             className="atrium-btn w-full mt-1 text-center"
           >
-            Theme
+            {t('atrium.hud.theme')}
           </button>
         )}
         {/* The list of people here, given its own row. The green readout above
@@ -4324,13 +4320,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           className="atrium-btn w-full mt-1 text-center"
           data-active={showOnlineUsersList}
         >
-          Online ({onlinePlayerCount})
+          {t('atrium.hud.online', { count: onlinePlayerCount })}
         </button>
         <button
           onClick={() => setShowReportForm(true)}
           className="atrium-btn w-full mt-1 text-center"
         >
-          Report a Problem
+          {t('atrium.hud.reportProblem')}
         </button>
           </div>
         )}
@@ -4388,12 +4384,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 className="text-green-400 text-xs font-mono tracking-[0.12em] uppercase"
                 style={{ textShadow: HUD_TEXT_OUTLINE }}
               >
-                {multiSelectedTraceIds.length} traces selected
+                {t('atrium.hud.tracesSelected', { count: multiSelectedTraceIds.length })}
               </p>
             )}
-            <div className="pointer-events-auto flex items-center gap-2 bg-nier-black/90 border border-nier-border/40 px-3 py-2" title={isDesktop ? `${sizeMB.toFixed(2)}MB used` : `${sizeMB.toFixed(2)}MB / ${limitMB}MB used`}>
+            <div className="pointer-events-auto flex items-center gap-2 bg-nier-black/90 border border-nier-border/40 px-3 py-2" title={isDesktop ? t('atrium.hud.usageUsed', { size: sizeMB.toFixed(2) }) : t('atrium.hud.usageOf', { size: sizeMB.toFixed(2), limit: limitMB })}>
               <span className={`text-xs font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-nier-bg/70'}`}>
-                Usage
+                {t('atrium.hud.usage')}
               </span>
               {!isDesktop && (
               <div className="w-20 h-2 bg-nier-blackLight border border-nier-border/30 overflow-hidden">
@@ -5348,10 +5344,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
             <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-nier-bg/70 mr-2">◇</span>Unsaved Changes
+              <span className="text-nier-bg/70 mr-2">◇</span>{t('atrium.dialog.unsavedTitle')}
             </h3>
             <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
-              You have {useGameStore.getState().pendingChanges.size + useGameStore.getState().deletedTraces.size} unsaved change(s). Are you sure you want to leave?
+              {t('atrium.dialog.unsavedBody', { count: useGameStore.getState().pendingChanges.size + useGameStore.getState().deletedTraces.size })}
             </p>
 
             <div className="flex flex-col gap-2">
@@ -5369,9 +5365,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                   setShowLeaveDialog(false)
                   leaveWithTransition()
                 }}
-                className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+                className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
               >
-                ◇ Save and Leave
+                ◇ {t('atrium.dialog.saveAndLeave')}
               </button>
               <button
                 onClick={() => {
@@ -5381,13 +5377,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 }}
                 className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
               >
-                Yes, Leave Without Saving
+                {t('atrium.dialog.leaveWithoutSaving')}
               </button>
               <button
                 onClick={() => setShowLeaveDialog(false)}
                 className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40"
               >
-                Return to Atrium
+                {t('atrium.dialog.returnToAtrium')}
               </button>
             </div>
           </div>
@@ -5418,31 +5414,31 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
             <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
               <span className={`mr-2 ${kickedNotice.blacklisted ? 'text-red-500' : 'text-nier-bg/70'}`}>◇</span>
-              {kickedNotice.blacklisted ? 'Removed & Blacklisted' : 'Removed From Atrium'}
+              {kickedNotice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')}
             </h3>
 
             <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
               {kickedNotice.blacklisted
-                ? 'An administrator has removed you from this atrium and blocked you from returning.'
-                : 'An administrator has removed you from this atrium.'}
+                ? t('atrium.dialog.removedBlacklistedBody')
+                : t('atrium.dialog.removedBody')}
             </p>
             {kickedNotice.blacklisted && (
               <p className="text-red-400/70 text-xs font-mono tracking-wider text-center mb-6">
-                You will not be able to rejoin.
+                {t('atrium.dialog.cannotRejoin')}
               </p>
             )}
             {!kickedNotice.blacklisted && (
               <p className="text-nier-bg/80 text-xs font-mono tracking-wider text-center mb-6">
-                You may rejoin if you're allowed back in.
+                {t('atrium.dialog.mayRejoin')}
               </p>
             )}
 
             <button
               onClick={() => { setKickedNotice(null); leaveWithTransition() }}
               autoFocus
-              className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+              className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
             >
-              Leave Atrium
+              {t('atrium.hud.leaveAtrium')}
             </button>
           </div>
         </div>
@@ -5465,33 +5461,33 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
             <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-nier-bg/70 mr-2">◇</span>Kick User
+              <span className="text-nier-bg/70 mr-2">◇</span>{t('atrium.dialog.kickTitle')}
             </h3>
             <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
-              Remove <span className="text-nier-strong">{kickTarget.username}</span> from this atrium?
+              {t('atrium.dialog.kickPre')} <span className="text-nier-strong">{kickTarget.username}</span> {t('atrium.dialog.kickPost')}
             </p>
 
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => executeKick(kickTarget.userId, false)}
                 disabled={isKicking}
-                className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
+                className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all disabled:opacity-50"
               >
-                {isKicking ? 'Kicking...' : 'Kick'}
+                {isKicking ? t('atrium.dialog.kicking') : t('atrium.hud.kick')}
               </button>
               <button
                 onClick={() => executeKick(kickTarget.userId, true)}
                 disabled={isKicking}
                 className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600 disabled:opacity-50"
               >
-                {isKicking ? 'Kicking...' : 'Kick + Blacklist'}
+                {isKicking ? t('atrium.dialog.kicking') : t('atrium.dialog.kickBlacklist')}
               </button>
               <button
                 onClick={() => setKickTarget(null)}
                 disabled={isKicking}
                 className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40 disabled:opacity-50"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -5515,10 +5511,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
             <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-nier-bg/70 mr-2">◇</span>Local Files Not Supported
+              <span className="text-nier-bg/70 mr-2">◇</span>{t('atrium.dialog.localFilesTitle')}
             </h3>
             <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
-              Importing files from your computer isn't available in the web version yet. Get the desktop app to drag in images, audio, and video files directly.
+              {t('atrium.dialog.localFilesBody')}
             </p>
 
             <div className="flex flex-col gap-2">
@@ -5526,15 +5522,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 href="https://example.com/download"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full bg-white hover:bg-nier-bg text-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all text-center"
+                className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all text-center"
               >
-                ◇ Get the Desktop App
+                ◇ {t('atrium.dialog.getDesktopApp')}
               </a>
               <button
                 onClick={() => setShowLocalFileBlockedDialog(false)}
                 className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>
