@@ -54,7 +54,9 @@ const FEEL: Record<TracePreset['id'], RoomFeel> = {
     groundElementDensity: 0.8,
   },
   markerboard: {
-    gridOpacity: 0.3,
+    // Its grid is pure black, where the other two are mid-tones, so the same
+    // number reads far heavier here. A tenth is a ruled line on a board.
+    gridOpacity: 0.1,
     particleOpacity: 0.65,
     particleDensity: 1,
     groundParticleOpacity: 0.68,
