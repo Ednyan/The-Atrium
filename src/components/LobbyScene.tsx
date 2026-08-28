@@ -4505,7 +4505,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
               <div className="flex flex-col items-stretch gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">Freehand Draw</p>
+                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.draw.title')}</p>
                 </div>
 
                 <>
@@ -4516,25 +4516,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     onClick={() => setIsEraserMode(false)}
                     className={`px-3 py-1 text-xs tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
                   >
-                    ✎ Brush
+                    ✎ {t('atrium.draw.brush')}
                   </button>
                   <button
                     onClick={() => setIsEraserMode(true)}
                     className={`px-3 py-1 text-xs tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
                   >
-                    ◻ Eraser
+                    ◻ {t('atrium.draw.eraser')}
                   </button>
                 </div>
 
                 {/* Color picker - only shown in brush mode */}
                 {!isEraserMode && (
                   <div className="flex items-center gap-2">
-                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">Colour</span>
+                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.colour')}</span>
                     <input
                       type="color"
                       value={drawingColor}
                       onChange={(e) => setDrawingColor(e.target.value)}
-                      title="Any colour"
+                      title={t('atrium.draw.anyColour')}
                       className="atrium-swatch flex-1 h-7 cursor-pointer border border-nier-border/40"
                     />
                   </div>
@@ -4542,7 +4542,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
                 {/* Stroke width */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{isEraserMode ? 'Size' : 'Width'}</span>
+                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')}</span>
                   <input
                     type="range"
                     min="1"
@@ -4556,7 +4556,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
                 {/* Smoothing */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">Smooth</span>
+                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.smooth')}</span>
                   <input
                     type="range"
                     min="0"
@@ -4601,7 +4601,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     onClick={() => setCompletedStrokes(prev => prev.slice(0, -1))}
                     className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
                   >
-                    Undo
+                    {t('common.undo')}
                   </button>
                 )}
 
@@ -4614,7 +4614,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     }}
                     className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
                   >
-                    Clear
+                    {t('common.clear')}
                   </button>
                 )}
 
@@ -4757,7 +4757,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     }}
                     className="bg-white hover:bg-nier-bg text-black px-4 py-1 text-xs tracking-wider uppercase transition-all border border-nier-bg font-bold"
                   >
-                    {isSavingDrawing ? '...' : `⎙ Print (${completedStrokes.length})`}
+                    {isSavingDrawing ? '...' : `⎙ ${t('atrium.draw.print')} (${completedStrokes.length})`}
                   </button>
                 )}
 
@@ -4774,12 +4774,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     color: 'rgb(var(--c-danger))',
                   }}
                 >
-                  Exit drawing
+                  {t('atrium.draw.exit')}
                 </button>
                 </>
 
               </div>
-              <p className="text-nier-bg/80 text-[11px] tracking-wider mt-1 text-center">Click and drag to draw • E to toggle eraser • "Print" saves as image</p>
+              <p className="text-nier-bg/80 text-[11px] tracking-wider mt-1 text-center">{t('atrium.draw.hint')}</p>
             </div>
           </div>
 
