@@ -525,7 +525,22 @@ async function migrateTraceLocalMediaUrl(currentUrl: string, lobbyId: string): P
   if (!fileName) return currentUrl
 
   const desiredUrl = buildLobbyScopedLocalUrl(parsed.bucket, lobbyId, fileName)
-  const desiredPath = await getResolvedRuntimeMediaFilePath(parsed.bucket, [lobbyId, fileName])
+  // The atrium's own folder, which is where media lives.
+  //
+  // This asked for the _runtime path, from when _runtime WAS where media
+  // lived. After consolidation moved media into each atrium's folder, this
+  // kept running on every start and moved it all straight back -- so startup
+  // did three things in a row that undid each other: the migration in Rust
+  // moved _runtime into the atrium folders and deleted the sources, this moved
+  // them back out, and the vault sync then copied them into the atrium folders
+  // again to restore the mirror. Every file ended up in both places, every
+  // launch, with timestamps preserved by the rename so nothing looked new.
+  //
+  // Pointing it at the atrium folder makes it pull the same way as everything
+  // else: a file already there is left alone, and one still in _runtime is
+  // brought in rather than pushed back out.
+  const desiredPath = await getAtriumMediaFilePath(parsed.bucket, [lobbyId, fileName])
+    ?? await getResolvedRuntimeMediaFilePath(parsed.bucket, [lobbyId, fileName])
   if (!desiredPath) return currentUrl
 
   if (await vaultPathExists(desiredPath)) {
@@ -559,7 +574,14 @@ async function migrateTraceLocalMediaUrl(currentUrl: string, lobbyId: string): P
   return currentUrl
 }
 
-async function migrateLegacyLocalMediaToRuntime(): Promise<void> {
+// Brings old media under its atrium's folder and gives its trace a
+// lobby-scoped local:// URL.
+//
+// Named migrateLegacyLocalMediaToRuntime until the destination stopped being
+// _runtime. The name outlasted the behaviour by long enough to describe the
+// bug rather than the intent, which is most of why it went unread while it
+// re-duplicated the vault on every start.
+async function migrateLegacyLocalMediaIntoAtriumFolders(): Promise<void> {
   if (!db) return
 
   const traceRows = await db.select<any[]>(
@@ -1256,7 +1278,7 @@ export async function initLocalDb(): Promise<void> {
     )
   }
 
-  await migrateLegacyLocalMediaToRuntime()
+  await migrateLegacyLocalMediaIntoAtriumFolders()
 
   void syncAllLobbiesToVault()
 }
