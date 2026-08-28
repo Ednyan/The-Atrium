@@ -1,10 +1,9 @@
 // The three looks a trace can be given, and which one is currently in force.
 //
-// They are the three atrium themes, worn by a trace: each takes its border
-// from that theme's grid colour and its fill from that theme's background.
-// A trace in a Soft Sepia atrium is then made of the room it is standing in,
-// which is what a house style ought to mean -- and it leaves one set of three
-// names to learn instead of two.
+// These three colour pairs are the app's palette. The atrium themes of the
+// same names are built from them -- see atriumThemePresets -- so a trace
+// wearing Abyss and a room wearing Abyss are made of the same two colours,
+// and there is one set of three names to learn rather than two.
 //
 // Choosing a preset while editing one trace sets the house style for that
 // atrium: every trace made afterwards arrives wearing it, until somebody picks
@@ -16,54 +15,63 @@
 // with different habits, and neither should be overwriting the other's.
 
 import { resolveThemeNow } from './useLandingTheme'
-import { SOFT_SEPIA, TECHNICAL, WHITE_ROOM } from './atriumThemePresets'
 
 export interface TracePreset {
-  id: 'sepia' | 'technical' | 'whiteRoom'
+  id: 'sepia' | 'abyss' | 'markerboard'
   labelKey: string
+  descKey: string
   border: string
   fill: string
   text: string
 }
 
-// Perceived lightness of a #rrggbb, 0..1. Only used to decide which way round
-// the text should go, so the cheap sRGB weighting is enough.
-function lightness(hex: string): number {
-  const h = hex.replace('#', '')
-  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16)
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255
-}
-
-// Derived rather than written out, so the presets cannot drift from the
-// atrium themes they are named after, and so the text stays readable if
-// those palettes are ever retuned.
-function fromTheme(
-  id: TracePreset['id'],
-  labelKey: string,
-  theme: { gridColor: string; backgroundColor: string },
-): TracePreset {
-  return {
-    id,
-    labelKey,
-    border: theme.gridColor,
-    fill: theme.backgroundColor,
-    text: lightness(theme.backgroundColor) > 0.55 ? '#000000' : '#ffffff',
-  }
-}
-
 export const TRACE_PRESETS: TracePreset[] = [
-  fromTheme('sepia', 'atrium.theme.presetSepia', SOFT_SEPIA),
-  fromTheme('technical', 'atrium.theme.presetTechnical', TECHNICAL),
-  fromTheme('whiteRoom', 'atrium.theme.presetWhiteRoom', WHITE_ROOM),
+  {
+    id: 'sepia',
+    labelKey: 'atrium.theme.presetSepia',
+    descKey: 'atrium.theme.presetSepiaDesc',
+    border: '#9c9374',
+    fill: '#b9b39d',
+    text: '#000000',
+  },
+  {
+    id: 'abyss',
+    labelKey: 'atrium.theme.presetAbyss',
+    descKey: 'atrium.theme.presetAbyssDesc',
+    border: '#5f7485',
+    fill: '#141414',
+    text: '#ffffff',
+  },
+  {
+    id: 'markerboard',
+    labelKey: 'atrium.theme.presetMarkerboard',
+    descKey: 'atrium.theme.presetMarkerboardDesc',
+    border: '#000000',
+    fill: '#eae8e1',
+    text: '#000000',
+  },
 ]
 
-// The two ids that existed before the presets became the atrium themes.
-// Somebody who had settled on Markerboard meant "the light one" and somebody
-// on Abyss meant "the dark one", so that is what they keep.
+// Which one a bright interface and a dark interface start in. Two of the
+// three are bright, so this is a choice rather than something to read off
+// the colours: the plain board when the room is light, the dark one when it
+// is dark. Soft Sepia is a look somebody picks, not one they are handed.
+export const DEFAULT_PRESET: Record<'light' | 'dark', TracePreset['id']> = {
+  light: 'markerboard',
+  dark: 'abyss',
+}
+
+export function defaultPresetFor(light: boolean): TracePreset {
+  const id = DEFAULT_PRESET[light ? 'light' : 'dark']
+  return TRACE_PRESETS.find(preset => preset.id === id) ?? TRACE_PRESETS[0]
+}
+
+// Briefly -- one commit -- the presets were named after two atrium themes
+// that no longer exist. Anybody who chose in that window keeps what they
+// picked: the dark one, or the bright one.
 const LEGACY_IDS: Record<string, TracePreset['id']> = {
-  abyss: 'technical',
-  markerboard: 'whiteRoom',
+  technical: 'abyss',
+  whiteRoom: 'markerboard',
 }
 
 const key = (lobbyId: string) => `atrium_trace_preset_${lobbyId}`
@@ -93,11 +101,5 @@ export function currentTracePreset(lobbyId: string): TracePreset {
   const chosen = TRACE_PRESETS.find(preset => preset.id === wanted)
   if (chosen) return chosen
 
-  // Picked by what the fill actually is rather than by position, so
-  // reordering the list cannot quietly invert this.
-  const light = resolveThemeNow() === 'light'
-  return (
-    TRACE_PRESETS.find(preset => (lightness(preset.fill) > 0.55) === light) ??
-    TRACE_PRESETS[0]
-  )
+  return defaultPresetFor(resolveThemeNow() === 'light')
 }

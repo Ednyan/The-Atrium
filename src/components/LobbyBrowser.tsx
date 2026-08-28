@@ -11,7 +11,7 @@ import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
-import { SOFT_SEPIA, WHITE_ROOM } from '../lib/atriumThemePresets'
+import { startingAtriumTheme } from '../lib/atriumThemePresets'
 import { resolveThemeNow } from '../lib/useLandingTheme'
 import { openContributors } from '../lib/contributorsRoute'
 import { useTranslation } from '../lib/i18n'
@@ -436,7 +436,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       // A bright room for somebody working in a bright interface, and a dark
       // one otherwise. Only the starting point -- the theme is editable from
       // inside the atrium, and this decides nothing that cannot be changed.
-      const startingTheme = resolveThemeNow() === 'light' ? WHITE_ROOM : SOFT_SEPIA
+      const startingTheme = startingAtriumTheme(resolveThemeNow() === 'light')
 
       const { data, error } = await (supabase!
         .from('lobbies') as any)

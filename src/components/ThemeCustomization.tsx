@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby } from '../types/database'
-import { SOFT_SEPIA, TECHNICAL, WHITE_ROOM } from '../lib/atriumThemePresets'
+import { ATRIUM_THEMES } from '../lib/atriumThemePresets'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 
@@ -32,23 +32,8 @@ interface ThemeCustomizationProps {
   onUpdate: () => void
 }
 
-const THEME_PRESETS: Array<{ nameKey: string; descKey: string; values: ThemeSettings }> = [
-  {
-    nameKey: 'atrium.theme.presetSepia',
-    descKey: 'atrium.theme.presetSepiaDesc',
-    values: SOFT_SEPIA as ThemeSettings,
-  },
-  {
-    nameKey: 'atrium.theme.presetTechnical',
-    descKey: 'atrium.theme.presetTechnicalDesc',
-    values: TECHNICAL as ThemeSettings,
-  },
-  {
-    nameKey: 'atrium.theme.presetWhiteRoom',
-    descKey: 'atrium.theme.presetWhiteRoomDesc',
-    values: WHITE_ROOM as ThemeSettings,
-  },
-]
+const THEME_PRESETS: Array<{ nameKey: string; descKey: string; values: ThemeSettings }> =
+  ATRIUM_THEMES as Array<{ nameKey: string; descKey: string; values: ThemeSettings }>
 
 export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizationProps) {
   const { t } = useTranslation()
