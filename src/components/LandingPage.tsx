@@ -18,6 +18,8 @@ import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, Creat
 interface LandingPageProps {
   onGetStarted: () => void
   isAuthenticated?: boolean
+  // Which section to open on, from the route. Absent means the top.
+  section?: string
 }
 
 interface Section {
@@ -501,7 +503,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
   )
 }
 
-export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, isAuthenticated, section }: LandingPageProps) {
   const { t } = useTranslation()
   const theme = useLandingTheme()
   const [showDonate, setShowDonate] = useState(false)
@@ -633,7 +635,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
   // which is underneath the sticky bar -- so every jump hid its own heading
   // behind the thing you clicked. Scroll the container by hand instead, with
   // the bar's height taken off.
-  const scrollToSection = (index: number) => {
+  const scrollToSection = (index: number, behavior: ScrollBehavior = 'smooth') => {
     const target = sectionRefs.current[index]
     const container = containerRef.current
     if (!target || !container) return
@@ -642,8 +644,24 @@ export default function LandingPage({ onGetStarted, isAuthenticated }: LandingPa
       container.getBoundingClientRect().top +
       container.scrollTop -
       NAV_HEIGHT
-    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    container.scrollTo({ top: Math.max(0, top), behavior })
   }
+
+  // Opened at a section rather than at the top, when the route named one.
+  //
+  // Instant, not smooth: sliding through the whole page on load reads as the
+  // page having been scrolled by somebody else. Measured twice because the
+  // sections above carry images and a video, and the first measurement is
+  // taken before they have settled into their final heights.
+  useEffect(() => {
+    if (!section) return
+    const index = sectionIndex(section)
+    if (index < 0) return
+
+    const frame = requestAnimationFrame(() => scrollToSection(index, 'auto'))
+    const correction = setTimeout(() => scrollToSection(index, 'auto'), 400)
+    return () => { cancelAnimationFrame(frame); clearTimeout(correction) }
+  }, [section])
 
   // The bar's Donate opens the panel and moves the page under it.
   //

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RELEASES_URL } from './DesktopAppSection'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -5520,7 +5519,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
             <div className="flex flex-col gap-2">
               <a
-                href={RELEASES_URL}
+                href="#/desktop"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all text-center"

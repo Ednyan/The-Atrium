@@ -613,7 +613,7 @@ const STORAGE_KEYS = {
 const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contributed', 'link-pinterest'])
 
 // Route parsing helper
-function parseRoute(): { page: string; lobbyId?: string } {
+function parseRoute(): { page: string; lobbyId?: string; section?: string } {
   const hash = window.location.hash.slice(1) || '/'
   
   if (hash.startsWith('/atrium/')) {
@@ -644,6 +644,15 @@ function parseRoute(): { page: string; lobbyId?: string } {
     // over the welcome screen would have been the wrong shape for that.
     case '/contributors':
       return { page: 'contributors' }
+    // The landing page, opened at one of its sections. Reached from the
+    // atrium's "local files not supported" panel, in a new tab, so somebody
+    // mid-canvas is shown the desktop app without their own page moving.
+    //
+    // A named route rather than a bare "#desktop" anchor: the hash is the
+    // router's, so an anchor would only land here by falling through to the
+    // default, and would break the day a real /desktop route is added.
+    case '/desktop':
+      return { page: 'landing', section: 'desktop' }
     default:
       return { page: 'landing' }
   }
@@ -1644,7 +1653,7 @@ function AppInner() {
       )
     }
     // Default to landing page for unauthenticated users
-    return <LandingPage onGetStarted={handleLandingGetStarted} />
+    return <LandingPage onGetStarted={handleLandingGetStarted} section={route.section} />
   }
 
   // Authenticated user routing
@@ -1667,7 +1676,7 @@ function AppInner() {
 
   // Allow authenticated users to see landing page (for logout/info)
   if (currentPage === 'landing') {
-    return <LandingPage onGetStarted={() => navigate('/welcome')} isAuthenticated={true} />
+    return <LandingPage onGetStarted={() => navigate('/welcome')} isAuthenticated={true} section={route.section} />
   }
   
   if (currentPage === 'login') {
