@@ -12,6 +12,7 @@ const es: Catalogue = {
   'common.cancel': 'Cancelar',
   'common.save': 'Guardar',
   'common.close': 'Cerrar',
+  'common.okay': 'De acuerdo',
   'common.back': 'Atrás',
   'common.delete': 'Eliminar',
   'common.confirm': 'Confirmar',

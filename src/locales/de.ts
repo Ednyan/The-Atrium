@@ -15,6 +15,7 @@ const de: Catalogue = {
   'common.cancel': 'Abbrechen',
   'common.save': 'Speichern',
   'common.close': 'Schließen',
+  'common.okay': 'Alles klar',
   'common.back': 'Zurück',
   'common.delete': 'Löschen',
   'common.confirm': 'Bestätigen',

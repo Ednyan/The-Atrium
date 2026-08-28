@@ -394,9 +394,12 @@ const isEditableTarget = (target: EventTarget | null) => {
 interface LobbySceneProps {
   lobbyId: string
   onLeaveLobby: () => void
+  // Raised when this user is removed by an admin. The notice belongs to
+  // whatever screen comes after the atrium, not to the atrium being left.
+  onKicked: (blacklisted: boolean) => void
 }
 
-export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
+export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySceneProps) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
@@ -731,6 +734,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     setLeaving(true)
     setTimeout(onLeaveLobby, 210)
   }, [onLeaveLobby])
+
+  // handleKicked is defined further down, before this callback exists. A ref
+  // keeps the two in the order the file reads best without a forward use.
+  const leaveWithTransitionRef = useRef(leaveWithTransition)
+  useEffect(() => { leaveWithTransitionRef.current = leaveWithTransition }, [leaveWithTransition])
 
   // Held for a moment after a save finishes, so the button can confirm rather
   // than simply vanishing. A control that disappears on success leaves you
@@ -1943,15 +1951,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   // App.tsx, so they're already in the store (and local media pre-resolved
   // on desktop) by the time this scene mounts, instead of popping in after
   // the atrium-entry loading screen finishes.
-  // Shown as a panel rather than an alert(): leaving is deferred until the
-  // user acknowledges it, so the message can't be dismissed by reflex before
-  // it's read -- and on desktop alert() renders as a native Windows dialog,
-  // which is jarring on the way out of an atrium.
-  const [kickedNotice, setKickedNotice] = useState<{ blacklisted: boolean } | null>(null)
-
+  // Removed means removed: leave at once, and explain on the other side.
+  //
+  // This used to hold the notice over the canvas and defer leaving until it
+  // was acknowledged, which left somebody sitting in a room they had been
+  // thrown out of -- still in everyone's roster, because presence only goes
+  // when the client actually goes. Retracting it early depended on the
+  // kicked client cooperating; walking out does not.
   const handleKicked = useCallback((blacklisted: boolean) => {
-    setKickedNotice({ blacklisted })
-  }, [])
+    onKicked(blacklisted)
+    leaveWithTransitionRef.current()
+  }, [onKicked])
   // Drives the "Hidden" HUD line only -- usePresence resolves this
   // independently for its own purposes (both share one cached round-trip).
   //
@@ -5389,59 +5399,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         </div>
         )
       })()}
-
-      {/* You were kicked. Deliberately has no backdrop dismiss and no close
-          "x": the only way out is Leave Atrium, since staying isn't an
-          option -- the panel is telling you what already happened. */}
-      {kickedNotice && (
-        <div className="fixed inset-0 z-[10000200] bg-nier-black/80 flex items-center justify-center pointer-events-auto">
-          <div
-            className={`bg-nier-black border p-6 relative ${kickedNotice.blacklisted ? 'border-red-600' : 'border-nier-border/50'}`}
-            style={{ maxWidth: '360px' }}
-          >
-            {(() => {
-              const corner = kickedNotice.blacklisted ? 'border-red-600' : 'border-nier-border/50'
-              return (
-                <>
-                  <div className={`absolute top-0 left-0 w-4 h-4 border-l border-t ${corner} pointer-events-none`} />
-                  <div className={`absolute top-0 right-0 w-4 h-4 border-r border-t ${corner} pointer-events-none`} />
-                  <div className={`absolute bottom-0 left-0 w-4 h-4 border-l border-b ${corner} pointer-events-none`} />
-                  <div className={`absolute bottom-0 right-0 w-4 h-4 border-r border-b ${corner} pointer-events-none`} />
-                </>
-              )
-            })()}
-
-            <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className={`mr-2 ${kickedNotice.blacklisted ? 'text-red-500' : 'text-nier-bg/70'}`}>◇</span>
-              {kickedNotice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')}
-            </h3>
-
-            <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
-              {kickedNotice.blacklisted
-                ? t('atrium.dialog.removedBlacklistedBody')
-                : t('atrium.dialog.removedBody')}
-            </p>
-            {kickedNotice.blacklisted && (
-              <p className="text-red-400/70 text-xs font-mono tracking-wider text-center mb-6">
-                {t('atrium.dialog.cannotRejoin')}
-              </p>
-            )}
-            {!kickedNotice.blacklisted && (
-              <p className="text-nier-bg/80 text-xs font-mono tracking-wider text-center mb-6">
-                {t('atrium.dialog.mayRejoin')}
-              </p>
-            )}
-
-            <button
-              onClick={() => { setKickedNotice(null); leaveWithTransition() }}
-              autoFocus
-              className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
-            >
-              {t('atrium.hud.leaveAtrium')}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Kick User Confirmation */}
       {kickTarget && (

@@ -19,6 +19,7 @@ const ptPT: Catalogue = {
   'common.cancel': 'Cancelar',
   'common.save': 'Guardar',
   'common.close': 'Fechar',
+  'common.okay': 'Está bem',
   'common.back': 'Voltar',
   'common.delete': 'Eliminar',
   'common.confirm': 'Confirmar',

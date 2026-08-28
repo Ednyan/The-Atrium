@@ -16,6 +16,7 @@ const ptBR: Catalogue = {
   'common.cancel': 'Cancelar',
   'common.save': 'Salvar',
   'common.close': 'Fechar',
+  'common.okay': 'Ok',
   'common.back': 'Voltar',
   'common.delete': 'Excluir',
   'common.confirm': 'Confirmar',

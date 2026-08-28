@@ -16,6 +16,7 @@ const it: Catalogue = {
   'common.cancel': 'Annulla',
   'common.save': 'Salva',
   'common.close': 'Chiudi',
+  'common.okay': 'Va bene',
   'common.back': 'Indietro',
   'common.delete': 'Elimina',
   'common.confirm': 'Conferma',

@@ -18,6 +18,7 @@ const ru: Catalogue = {
   'common.cancel': 'Отмена',
   'common.save': 'Сохранить',
   'common.close': 'Закрыть',
+  'common.okay': 'Хорошо',
   'common.back': 'Назад',
   'common.delete': 'Удалить',
   'common.confirm': 'Подтвердить',

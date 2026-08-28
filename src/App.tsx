@@ -669,6 +669,64 @@ function navigate(path: string) {
   }
 }
 
+// What you see after being removed from an atrium.
+//
+// It lives out here, not in the atrium, because being removed takes you out
+// of the atrium at once -- staying to read a notice meant staying in the
+// room's roster, which is exactly what the notice says is no longer true.
+// So this arrives over the atrium browser, and its button only dismisses it:
+// the leaving already happened.
+function KickedNotice({ notice, onDismiss }: {
+  notice: { blacklisted: boolean } | null
+  onDismiss: () => void
+}) {
+  const { t } = useTranslation()
+  if (!notice) return null
+
+  const corner = notice.blacklisted ? 'border-red-600' : 'border-nier-border/50'
+  return (
+    <div className="fixed inset-0 z-[10000200] bg-nier-black/80 flex items-center justify-center pointer-events-auto">
+      <div
+        className={`bg-nier-blackLight border p-6 relative ${notice.blacklisted ? 'border-red-600' : 'border-nier-border/50'}`}
+        style={{ maxWidth: '360px' }}
+      >
+        <div className={`absolute top-0 left-0 w-4 h-4 border-l border-t ${corner} pointer-events-none`} />
+        <div className={`absolute top-0 right-0 w-4 h-4 border-r border-t ${corner} pointer-events-none`} />
+        <div className={`absolute bottom-0 left-0 w-4 h-4 border-l border-b ${corner} pointer-events-none`} />
+        <div className={`absolute bottom-0 right-0 w-4 h-4 border-r border-b ${corner} pointer-events-none`} />
+
+        <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+          <span className={`mr-2 ${notice.blacklisted ? 'text-red-500' : 'text-nier-bg/70'}`}>◇</span>
+          {notice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')}
+        </h3>
+
+        <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
+          {notice.blacklisted
+            ? t('atrium.dialog.removedBlacklistedBody')
+            : t('atrium.dialog.removedBody')}
+        </p>
+        {notice.blacklisted ? (
+          <p className="text-red-400/70 text-xs font-mono tracking-wider text-center mb-6">
+            {t('atrium.dialog.cannotRejoin')}
+          </p>
+        ) : (
+          <p className="text-nier-bg/80 text-xs font-mono tracking-wider text-center mb-6">
+            {t('atrium.dialog.mayRejoin')}
+          </p>
+        )}
+
+        <button
+          onClick={onDismiss}
+          autoFocus
+          className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+        >
+          {t('common.okay')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AppInner() {
   const { t } = useTranslation()
   const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
@@ -1528,6 +1586,11 @@ function AppInner() {
     }
   }
 
+  // Somebody removed from an atrium is taken out of it immediately, so the
+  // notice explaining why has to outlive the screen they were removed from.
+  // It renders over whatever comes next -- the atrium browser.
+  const [kickedNotice, setKickedNotice] = useState<{ blacklisted: boolean } | null>(null)
+
   const handleLeaveLobby = async () => {
     // Clear active_lobby_id in database so player count updates correctly
     if (supabase) {
@@ -1706,10 +1769,13 @@ function AppInner() {
   
   if (currentPage === 'browse') {
     return (
-      <LobbyBrowser
-        onJoinLobby={handleJoinLobby}
-        onClose={() => navigate('/welcome')}
-      />
+      <>
+        <LobbyBrowser
+          onJoinLobby={handleJoinLobby}
+          onClose={() => navigate('/welcome')}
+        />
+        <KickedNotice notice={kickedNotice} onDismiss={() => setKickedNotice(null)} />
+      </>
     )
   }
   
@@ -1820,7 +1886,7 @@ function AppInner() {
       // cinematic -- opening an atrium any other way has nothing to fade from.
       return (
         <>
-          <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} />
+          <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted) => setKickedNotice({ blacklisted })} />
           {transitionLobbyId === route.lobbyId && <AtriumRevealOverlay />}
         </>
       )
