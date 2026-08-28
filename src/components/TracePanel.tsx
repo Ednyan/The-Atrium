@@ -1,3 +1,4 @@
+import PinterestMark from './PinterestMark'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -65,6 +66,9 @@ interface TracePanelProps {
   // A PDF dropped onto the canvas, so the panel opens with it already loaded
   // rather than asking the user to pick the file they just dropped.
   initialPdfFile?: File | null
+  // Absent unless Pinterest is connected, which is what decides whether the
+  // button below the type grid appears at all.
+  onOpenPinterestImport?: () => void
   // Shape placement is two-way with the canvas: dragging out a rectangle
   // there sets these fields, and typing in them redraws the preview. The
   // panel owns neither -- LobbyScene holds the draft rect, since it also owns
@@ -108,7 +112,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, initialPdfFile, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, initialPdfFile, onOpenPinterestImport, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
   const [traceType, setTraceType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'>(initialType || 'text')
@@ -652,6 +656,20 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 </button>
               ))}
             </div>
+
+            {/* Across all three, because it is not a content type -- it opens
+                a different panel rather than changing what this one builds.
+                Sharing a row with Text and Shape would say otherwise. */}
+            {onOpenPinterestImport && (
+              <button
+                type="button"
+                onClick={onOpenPinterestImport}
+                className="mt-2 w-full px-3 py-2 text-[10px] tracking-wider uppercase bg-nier-black border border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg transition-all inline-flex items-center justify-center gap-2"
+              >
+                <PinterestMark className="w-3 h-3 opacity-70" />
+                Import Pinterest Boards
+              </button>
+            )}
           </div>
 
           {/* Text Content */}

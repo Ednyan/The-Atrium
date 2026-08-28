@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
+import PinterestConnectionPanel from './PinterestConnectionPanel'
+import PinterestMark from './PinterestMark'
 import SupportAppeal from './SupportAppeal'
 import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
@@ -27,6 +29,7 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
+  const [showPinterest, setShowPinterest] = useState(false)
   const theme = useLandingTheme()
 
   // Scale the whole menu down rather than let it scroll.
@@ -563,6 +566,25 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
               <span className="relative z-10">◇ {t('welcome.settings')}</span>
             </button>
 
+            {/* Pinterest, between the settings and the reading.
+                It sat inside Profile Settings, several scrolls down among the
+                username and the cursor colour -- a reasonable place for a
+                setting and a poor one for a feature nobody knows is there. */}
+            <button
+              onClick={() => setShowPinterest(true)}
+              onMouseEnter={() => setIsHovered('pinterest')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="menu-row"
+            >
+              <span className="relative z-10 inline-flex items-center gap-2">
+                <span className="text-gray-400 text-[10px]">◇</span>
+                {t('welcome.pinterest')}
+                {/* At the end, so the diamonds down the left stay in a column
+                    -- the row's rhythm comes from that alignment. */}
+                <PinterestMark className="w-3 h-3 opacity-70" />
+              </span>
+            </button>
+
             {/* About button (desktop only) */}
             {isDesktop && onBackToLanding && (
               <button
@@ -657,6 +679,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
         `}</style>
       </div>
 
+      {showPinterest && <PinterestConnectionPanel onClose={() => setShowPinterest(false)} />}
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
 

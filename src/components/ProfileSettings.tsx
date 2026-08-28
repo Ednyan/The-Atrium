@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
-import { isPinterestConfigured, initiatePinterestConnect, getPinterestConnectionStatus, disconnectPinterest } from '../lib/pinterest'
-import { redeemPinterestPairingCode } from '../lib/pinterestDesktop'
-import { showToast } from '../lib/toast'
-import { openExternalUrl } from '../lib/openExternal'
-import { ATRIUM_WEBSITE } from '../lib/creatorLinks'
 import { deleteMyAccount } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
@@ -45,17 +40,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState(false)
 
-  // Pinterest connection state -- web only (desktop OAuth needs deep-link
-  // support this app doesn't have yet, see src/lib/pinterest.ts)
-  const [pinterestConnected, setPinterestConnected] = useState(false)
-  const [pinterestUsername, setPinterestUsername] = useState<string | null>(null)
-  const [pinterestStatusLoading, setPinterestStatusLoading] = useState(true)
-  const [pinterestDisconnecting, setPinterestDisconnecting] = useState(false)
-  // Desktop: the code being typed, on its way to becoming a link.
-  const [linkCodeInput, setLinkCodeInput] = useState('')
-  const [linkBusy, setLinkBusy] = useState(false)
-  const [linkError, setLinkError] = useState<string | null>(null)
-
   // Delete-account state -- web only, irreversible, so it's gated behind
   // typing the account's own username as an explicit confirmation.
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -88,7 +72,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
   useEffect(() => {
     loadProfile()
-    loadPinterestStatus()
     if (!isDesktop) {
       loadHasPassword()
     }
@@ -100,40 +83,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     const identities = data?.user?.identities ?? []
     if (identities.length > 0) {
       setHasPassword(identities.some((identity: { provider: string }) => identity.provider === 'email'))
-    }
-  }
-
-  const loadPinterestStatus = async () => {
-    setPinterestStatusLoading(true)
-    const { connected, username } = await getPinterestConnectionStatus()
-    setPinterestConnected(connected)
-    setPinterestUsername(username)
-    setPinterestStatusLoading(false)
-  }
-
-  const handleLinkDesktop = async () => {
-    setLinkBusy(true)
-    setLinkError(null)
-    try {
-      await redeemPinterestPairingCode(linkCodeInput)
-      setLinkCodeInput('')
-      await loadPinterestStatus()
-      showToast('Pinterest linked')
-    } catch (err: any) {
-      setLinkError(err?.message || 'Could not use that code.')
-    } finally {
-      setLinkBusy(false)
-    }
-  }
-
-  const handleDisconnectPinterest = async () => {
-    setPinterestDisconnecting(true)
-    try {
-      await disconnectPinterest()
-      setPinterestConnected(false)
-      setPinterestUsername(null)
-    } finally {
-      setPinterestDisconnecting(false)
     }
   }
 
@@ -695,90 +644,6 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     </button>
                   </form>
                 )}
-              </div>
-
-              <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
-            </>
-          )}
-
-          {/* Pinterest. On the web this is the OAuth connection itself; on
-              desktop it is a link to a web account that already has one --
-              desktop has no Supabase account to hang a connection on, and no
-              https origin for Pinterest to redirect back to. See
-              add_pinterest_desktop_link.sql. */}
-          {(
-            <>
-              <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                  {t('profile.pinterest')}
-                </label>
-                {pinterestStatusLoading ? (
-                  <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">{t('profile.pinterestChecking')}</p>
-                ) : pinterestConnected ? (
-                  <div className="space-y-2">
-                    <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-[0.8rem] leading-relaxed tracking-wide">
-                      ✓ Connected{pinterestUsername ? ` as @${pinterestUsername}` : ''}
-                    </div>
-                    <button
-                      onClick={handleDisconnectPinterest}
-                      disabled={pinterestDisconnecting}
-                      className="w-full py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {pinterestDisconnecting ? t('profile.pinterestDisconnecting') : t('profile.pinterestDisconnect')}
-                    </button>
-                  </div>
-                ) : isDesktop ? (
-                  <div className="space-y-2">
-                    <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">
-                      Press the button below to connect Pinterest in your browser. It will show you a code — type it in here to finish. No Atrium account needed.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => openExternalUrl(`${ATRIUM_WEBSITE}/#/link-pinterest`)}
-                      className="w-full py-2 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
-                    >
-                      Open browser to connect ↗
-                    </button>
-                    <input
-                      type="text"
-                      value={linkCodeInput}
-                      onChange={(e) => setLinkCodeInput(e.target.value.toUpperCase())}
-                      placeholder="XXXXXXXX"
-                      maxLength={12}
-                      spellCheck={false}
-                      autoComplete="off"
-                      className="w-full px-3 py-2 bg-nier-black border border-nier-border/40 text-nier-bg text-sm tracking-[0.3em] uppercase text-center focus:outline-none focus:border-nier-border/70"
-                    />
-                    {linkError && (
-                      <p className="text-nier-red text-[0.8rem] leading-relaxed tracking-wide">{linkError}</p>
-                    )}
-                    <button
-                      onClick={handleLinkDesktop}
-                      disabled={linkBusy || linkCodeInput.replace(/[^A-Z0-9]/g, '').length < 8}
-                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {linkBusy ? 'Linking…' : 'Link this app'}
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      onClick={initiatePinterestConnect}
-                      disabled={!isPinterestConfigured()}
-                      className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      {t('profile.pinterestConnect')}
-                    </button>
-                    {/* "The integration isn't configured yet" used to sit
-                        here, directly above "the integration isn't finished
-                        yet" -- two sentences saying the same thing to the
-                        same person, and the one below covers it. The key
-                        stays in the catalogue; only this instance is gone. */}
-                  </>
-                )}
-                <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mt-2">
-                  {t('profile.pinterestNote')}
-                </p>
               </div>
 
               <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />

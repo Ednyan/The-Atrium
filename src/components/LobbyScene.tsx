@@ -5078,6 +5078,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onCreateFileBatch={handleCreateFileBatch}
           onCreatePdfPages={handleCreatePdfPages}
           initialPdfFile={pendingPdfFile}
+          onOpenPinterestImport={pinterestConnected ? () => {
+            // The trace panel closes as the board picker opens, so the two
+            // read as one panel giving way to another rather than stacking.
+            // Both share .modal-backdrop, so the swap animates the same way
+            // whether it starts here or from the canvas menu.
+            setShowTracePanel(false)
+            setPinterestImportAnchor(clickedTracePosition)
+            setShowPinterestImport(true)
+          } : undefined}
           tracePosition={clickedTracePosition}
           lobbyId={lobbyId}
           initialType={tracePanelInitialType}
