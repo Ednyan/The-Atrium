@@ -4757,7 +4757,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     }}
                     className="bg-white hover:bg-nier-bg text-black px-4 py-1 text-xs tracking-wider uppercase transition-all border border-nier-bg font-bold"
                   >
-                    {isSavingDrawing ? '...' : `⎙ ${t('atrium.draw.print')} (${completedStrokes.length})`}
+                    {isSavingDrawing ? '...' : `✓ ${t('atrium.draw.save')} (${completedStrokes.length})`}
                   </button>
                 )}
 
