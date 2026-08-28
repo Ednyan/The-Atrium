@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from '../lib/i18n'
 import {
   getDatabaseIntegrityError,
   listVaultMirrors,
@@ -28,6 +29,7 @@ function formatMissingList(names: string[]): string {
 // damaged database meant losing traces that were, in fact, sitting on disk the
 // whole time.
 export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecoveryPanelProps) {
+  const { t } = useTranslation()
   const [mirrors, setMirrors] = useState<VaultMirror[] | null>(null)
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
@@ -77,29 +79,28 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">Restore From Vault</h3>
+          <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('desktop.vault.title')}</h3>
         </div>
 
         {integrityError && (
           <div className="bg-red-900/20 border border-red-500/40 p-3 mb-4">
-            <p className="text-red-400 text-[10px] tracking-wider uppercase mb-1">Database damaged</p>
+            <p className="text-red-400 text-[10px] tracking-wider uppercase mb-1">{t('desktop.vault.damaged')}</p>
             <p className="text-red-300/80 text-[10px] tracking-wide leading-relaxed">
-              {integrityError}. Atriums below can be rebuilt from their vault copies.
+              {t('desktop.vault.damagedBody', { detail: integrityError })}
             </p>
           </div>
         )}
 
         <p className="text-nier-bg/80 text-xs tracking-wide mb-4 leading-relaxed">
-          Every atrium is mirrored in your vault as a folder with its own files. Anything
-          missing from the app can be rebuilt from here.
+          {t('desktop.vault.intro')}
         </p>
 
         {mirrors === null && (
-          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">Reading vault…</p>
+          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">{t('desktop.vault.reading')}</p>
         )}
 
         {mirrors?.length === 0 && (
-          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">No atrium copies found.</p>
+          <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">{t('desktop.vault.none')}</p>
         )}
 
         <div className="space-y-2">
@@ -111,14 +112,13 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
               <div className="min-w-0">
                 <div className="text-nier-bg text-sm tracking-wide truncate">{mirror.lobbyName}</div>
                 <div className="flex gap-3 mt-1 text-[9px] text-nier-bg/70 tracking-wider uppercase">
-                  <span>{mirror.traceCount} traces</span>
-                  <span>{mirror.layerCount} layers</span>
+                  <span>{t('desktop.vault.counts', { traces: mirror.traceCount, layers: mirror.layerCount })}</span>
                   {mirror.syncedAt && <span>{new Date(mirror.syncedAt).toLocaleDateString()}</span>}
                 </div>
                 {/* The distinction that matters: one of these is a recovery,
                     the other would be a duplicate. */}
                 <div className={`text-[9px] tracking-wider uppercase mt-1 ${mirror.missingFromDatabase ? 'text-amber-400' : 'text-nier-bg/70'}`}>
-                  {mirror.missingFromDatabase ? 'Missing from the app' : 'Already in the app — restores as a copy'}
+                  {mirror.missingFromDatabase ? t('desktop.vault.missingFromApp') : t('desktop.vault.alreadyPresent')}
                 </div>
               </div>
               <button
@@ -127,7 +127,7 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
                 disabled={busyPath !== null}
                 className="px-3 py-2 border border-nier-border/40 text-nier-bg text-[10px] tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
               >
-                {busyPath === mirror.snapshotPath ? 'Restoring…' : 'Restore'}
+                {busyPath === mirror.snapshotPath ? t('desktop.vault.restoring') : t('desktop.vault.restore')}
               </button>
             </div>
           ))}
@@ -152,7 +152,7 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
           onClick={onClose}
           className="w-full mt-5 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
         >
-          Close
+          {t('common.close')}
         </button>
       </div>
     </div>

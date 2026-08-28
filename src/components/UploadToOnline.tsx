@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { localClient } from '../lib/localDb'
+import { useTranslation } from '../lib/i18n'
 
 interface UploadToOnlineProps {
   onClose: () => void
 }
 
 export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
+  const { t } = useTranslation()
   const [supabaseUrl, setSupabaseUrl] = useState('')
   const [supabaseKey, setSupabaseKey] = useState('')
   const [email, setEmail] = useState('')
@@ -17,17 +19,17 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
 
   const handleUpload = async () => {
     if (!supabaseUrl || !supabaseKey) {
-      setError('Please enter your Supabase URL and anon key')
+      setError(t('desktop.upload.needKeys'))
       return
     }
     if (!email || !password) {
-      setError('Please enter your online account credentials')
+      setError(t('desktop.upload.needAccount'))
       return
     }
 
     setError('')
     setStatus('auth')
-    setProgress('Authenticating with online server...')
+    setProgress(t('desktop.upload.authenticating'))
 
     try {
       // Create a temporary Supabase client for upload
@@ -36,7 +38,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
       // Authenticate
       const { data: authData, error: authError } = await remote.auth.signInWithPassword({ email, password })
       if (authError || !authData.user) {
-        setError(`Authentication failed: ${authError?.message || 'Unknown error'}`)
+        setError(t('desktop.upload.authFailed', { message: authError?.message || t('desktop.upload.unknownError') }))
         setStatus('credentials')
         return
       }
@@ -45,7 +47,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
       setStatus('uploading')
 
       // 1. Upload lobbies
-      setProgress('Uploading atriums...')
+      setProgress(t('desktop.upload.atriums'))
       const { data: localLobbies } = await localClient.from('lobbies').select('*')
 
       const lobbyIdMap: Record<string, string> = {}
@@ -75,7 +77,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
       }
 
       // 2. Upload layers
-      setProgress('Uploading layers...')
+      setProgress(t('desktop.upload.layers'))
       const { data: localLayers } = await localClient.from('layers').select('*')
       
       const layerIdMap: Record<string, string> = {}
@@ -112,7 +114,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
       }
 
       // 3. Upload traces
-      setProgress('Uploading traces...')
+      setProgress(t('desktop.upload.traces'))
       const { data: localTraces } = await localClient.from('traces').select('*')
 
       if (localTraces?.length) {
@@ -204,12 +206,12 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             console.error('Trace upload error:', traceErr)
           }
           uploaded++
-          setProgress(`Uploading traces... ${uploaded}/${localTraces.length}`)
+          setProgress(t('desktop.upload.tracesProgress', { done: uploaded, total: localTraces.length }))
         }
       }
 
       setStatus('done')
-      setProgress(`Upload complete! ${Object.keys(lobbyIdMap).length} atriums, ${Object.keys(layerIdMap).length} layers, ${localTraces?.length || 0} traces uploaded.`)
+      setProgress(t('desktop.upload.complete', { atriums: Object.keys(lobbyIdMap).length, layers: Object.keys(layerIdMap).length, traces: localTraces?.length || 0 }))
 
     } catch (e: any) {
       setError(e.message || String(e))
@@ -227,17 +229,17 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
         <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-white/40" />
 
         <h2 className="text-nier-bg text-sm tracking-[0.25em] uppercase mb-6 text-center">
-          Upload to Online
+          {t('desktop.upload.title')}
         </h2>
 
         {status === 'done' ? (
           <div className="text-center">
             <p className="text-green-400 text-xs tracking-wider mb-4">{progress}</p>
             <p className="text-nier-bg/75 text-[10px] tracking-wider mb-6">
-              Note: Local files (images/audio stored on this PC) were not uploaded. Their frames appear as empty placeholders online.
+              {t('desktop.upload.localNote')}
             </p>
             <button onClick={onClose} className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-strong transition-colors">
-              Close
+              {t('common.close')}
             </button>
           </div>
         ) : (
@@ -266,7 +268,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
                 />
               </div>
               <div className="border-t border-nier-border/20 pt-3">
-                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">Email</label>
+                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">{t('desktop.upload.email')}</label>
                 <input
                   type="email"
                   value={email}
@@ -276,7 +278,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
                 />
               </div>
               <div>
-                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">Password</label>
+                <label className="text-nier-bg/75 text-[9px] tracking-wider uppercase block mb-1">{t('desktop.upload.password')}</label>
                 <input
                   type="password"
                   value={password}
@@ -301,19 +303,19 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
                 className="flex-1 px-4 py-2 border border-nier-border/30 text-nier-bg/75 text-[10px] tracking-wider uppercase hover:bg-nier-border/10 transition-colors"
                 disabled={status === 'uploading' || status === 'auth'}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleUpload}
                 className="flex-1 px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-wider uppercase hover:bg-nier-strong transition-colors disabled:opacity-50"
                 disabled={status === 'uploading' || status === 'auth'}
               >
-                {status === 'uploading' || status === 'auth' ? 'Uploading...' : 'Upload'}
+                {status === 'uploading' || status === 'auth' ? t('desktop.upload.uploading') : t('desktop.upload.action')}
               </button>
             </div>
 
             <p className="text-nier-bg/70 text-[8px] tracking-wider mt-4 text-center">
-              Local files (images/audio on this PC) will appear as empty placeholders online.
+              {t('desktop.upload.localHint')}
             </p>
           </>
         )}

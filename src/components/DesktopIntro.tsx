@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import PortalLoop from './PortalLoop'
+import { useTranslation } from '../lib/i18n'
 
 interface DesktopIntroProps {
   onDone: () => void
@@ -35,6 +36,7 @@ const T_DONE = T_CLEAR + BACKDROP_OUT_MS
 type Phase = 'lead' | 'portal' | 'title' | 'out' | 'clear'
 
 export default function DesktopIntro({ onDone }: DesktopIntroProps) {
+  const { t } = useTranslation()
   const [phase, setPhase] = useState<Phase>('lead')
 
   useEffect(() => {
@@ -158,7 +160,7 @@ export default function DesktopIntro({ onDone }: DesktopIntroProps) {
           transition: 'opacity 700ms ease-out',
         }}
       >
-        Press any key to skip
+        {t('desktop.intro.skip')}
       </span>
     </div>
   )

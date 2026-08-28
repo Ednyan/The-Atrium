@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { isDesktop } from '../lib/supabase'
+import { useTranslation } from '../lib/i18n'
 
 // How often to re-check once the app is running. The check is a single small
 // HTTPS request for a JSON manifest, so hourly is cheap; it also fails
@@ -23,6 +24,7 @@ interface PendingUpdate {
 // plugin doesn't exist there. Every import of the Tauri modules is dynamic
 // for the same reason -- a static import would pull them into the web bundle.
 export default function UpdateChecker() {
+  const { t } = useTranslation()
   const [pending, setPending] = useState<PendingUpdate | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [progress, setProgress] = useState(0)
@@ -106,38 +108,38 @@ export default function UpdateChecker() {
 
   return (
     <div className="fixed bottom-4 right-4 z-[10000500] font-mono pointer-events-auto">
-      <div className="bg-black border-2 border-white p-4 w-72 relative shadow-2xl">
-        <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-white pointer-events-none" />
-        <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-white pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-white pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-white pointer-events-none" />
+      <div className="bg-nier-black border-2 border-nier-bg p-4 w-72 relative shadow-2xl">
+        <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-bg pointer-events-none" />
+        <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-bg pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-bg pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-bg pointer-events-none" />
 
-        <p className="text-white text-[11px] tracking-[0.15em] uppercase mb-1">
-          <span className="text-gray-400 mr-1.5">◇</span>Update Available
+        <p className="text-nier-strong text-[11px] tracking-[0.15em] uppercase mb-1">
+          <span className="text-nier-bg/60 mr-1.5">◇</span>{t('desktop.update.available')}
         </p>
-        <p className="text-gray-400 text-[10px] tracking-wider mb-3">
-          Version {pending.version}
+        <p className="text-nier-bg/60 text-[10px] tracking-wider mb-3">
+          {t('desktop.update.version', { version: pending.version })}
         </p>
 
         {pending.notes && phase === 'available' && (
-          <p className="text-gray-300 text-[9px] tracking-wide mb-3 max-h-16 overflow-y-auto whitespace-pre-line">
+          <p className="text-nier-bg/70 text-[9px] tracking-wide mb-3 max-h-16 overflow-y-auto whitespace-pre-line">
             {pending.notes}
           </p>
         )}
 
         {phase === 'downloading' && (
           <div className="mb-3">
-            <div className="h-1 bg-gray-800 border border-gray-700 overflow-hidden">
-              <div className="h-full bg-white/80 transition-all duration-200" style={{ width: `${progress}%` }} />
+            <div className="h-1 bg-nier-blackLight border border-nier-border/40 overflow-hidden">
+              <div className="h-full bg-nier-bg/80 transition-all duration-200" style={{ width: `${progress}%` }} />
             </div>
-            <p className="text-gray-300 text-[9px] tracking-wider mt-1">
-              {progress > 0 ? `Downloading ${progress}%` : 'Starting download...'}
+            <p className="text-nier-bg/70 text-[9px] tracking-wider mt-1">
+              {progress > 0 ? t('desktop.update.downloading', { percent: progress }) : t('desktop.update.starting')}
             </p>
           </div>
         )}
 
         {phase === 'ready' && (
-          <p className="text-gray-400 text-[9px] tracking-wider mb-3">Restarting...</p>
+          <p className="text-nier-bg/60 text-[9px] tracking-wider mb-3">{t('desktop.update.restarting')}</p>
         )}
 
         {phase === 'error' && (
@@ -150,15 +152,15 @@ export default function UpdateChecker() {
           <div className="flex gap-2">
             <button
               onClick={install}
-              className="flex-1 bg-white hover:bg-gray-200 text-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+              className="flex-1 bg-nier-bg hover:bg-nier-strong text-nier-black py-1.5 text-[10px] tracking-wider uppercase transition-colors"
             >
-              {phase === 'error' ? 'Retry' : 'Update Now'}
+              {phase === 'error' ? t('desktop.update.retry') : t('desktop.update.now')}
             </button>
             <button
               onClick={() => setDismissed(true)}
-              className="flex-1 border border-gray-600 hover:border-white text-white py-1.5 text-[10px] tracking-wider uppercase transition-colors"
+              className="flex-1 border border-nier-border/60 hover:border-nier-bg text-nier-bg py-1.5 text-[10px] tracking-wider uppercase transition-colors"
             >
-              Later
+              {t('desktop.update.later')}
             </button>
           </div>
         )}

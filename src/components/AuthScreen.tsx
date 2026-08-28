@@ -198,7 +198,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
       }
     } catch (err: any) {
       console.error('Signup error:', err)
-      setError(err.message || 'Failed to sign up')
+      setError(err.message || t('auth.error.signUpFailed'))
     } finally {
       setLoading(false)
     }
@@ -219,7 +219,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
       if (oauthError) throw oauthError
     } catch (err: any) {
       console.error('Google sign-in error:', err)
-      setError(err?.message || 'Failed to start Google sign-in')
+      setError(err?.message || t('auth.error.googleFailed'))
       setLoading(false)
     }
   }
@@ -249,11 +249,11 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
 
         if (profileError) {
           console.error('Profile lookup error:', profileError)
-          throw new Error('Failed to look up username')
+          throw new Error(t('auth.error.usernameLookup'))
         }
 
         if (!profile) {
-          throw new Error('Username not found')
+          throw new Error(t('auth.error.usernameNotFound'))
         }
 
         loginEmail = profile.email
@@ -279,7 +279,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to log in')
+      setError(err.message || t('auth.error.logInFailed'))
     } finally {
       setLoading(false)
     }
@@ -311,7 +311,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
 
       setResetEmailSent(true)
     } catch (err: any) {
-      setError(err.message || 'Failed to send reset email')
+      setError(err.message || t('auth.error.resetEmailFailed'))
     } finally {
       setLoading(false)
     }

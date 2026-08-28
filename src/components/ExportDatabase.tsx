@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { localClient, resolveLocalUrl } from '../lib/localDb'
+import { useTranslation } from '../lib/i18n'
 
 interface ExportDatabaseProps {
   onClose: () => void
@@ -32,6 +33,7 @@ function parseThemeSettings(value: unknown): Record<string, any> | null {
 }
 
 export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<'select' | 'exporting' | 'done' | 'error'>('select')
   const [lobbies, setLobbies] = useState<LocalLobby[]>([])
   const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null)
@@ -56,7 +58,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
 
     try {
       // Get traces for this lobby
-      setProgress('Reading traces...')
+      setProgress(t('desktop.export.readingTraces'))
       const { data: traces } = await localClient.from('traces').select('*').eq('lobby_id', selectedLobbyId)
       const lobbyTraces = (traces || []) as any[]
 
@@ -67,14 +69,14 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       }
 
       // Get referenced layers, scoped to this atrium
-      setProgress('Reading layers...')
+      setProgress(t('desktop.export.readingLayers'))
       const { data: lobbyLayers } = await localClient.from('layers').select('*').eq('lobby_id', selectedLobbyId)
       const layers = (lobbyLayers || []).filter((l: any) => layerIds.has(l.id))
 
       // Saved camera views -- see the note in lib/atriumDownload.ts. Kept in
       // step with the web export so a file from either side carries the same
       // things.
-      setProgress('Reading locations...')
+      setProgress(t('desktop.export.readingLocations'))
       const { data: locationRows } = await localClient
         .from('lobby_locations')
         .select('*')
@@ -83,7 +85,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       const locations = (locationRows || []) as any[]
 
       // Embed local:// media as base64 data URLs
-      setProgress('Embedding media files...')
+      setProgress(t('desktop.export.embedding'))
       let embedded = 0
       for (const trace of lobbyTraces) {
         if (trace.media_url?.startsWith('local://')) {
@@ -92,7 +94,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
             if (dataUrl !== trace.media_url) {
               trace.media_url = dataUrl
               embedded++
-              setProgress(`Embedding media files... ${embedded}`)
+              setProgress(t('desktop.export.embeddingCount', { count: embedded }))
             }
           } catch { /* leave as-is if file missing */ }
         }
@@ -148,7 +150,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       const sizeMB = (new Blob([jsonString]).size / (1024 * 1024)).toFixed(1)
 
       // Use Tauri dialog to pick save location
-      setProgress(`Saving file (${sizeMB} MB)...`)
+      setProgress(t('desktop.export.saving', { size: sizeMB }))
       const { save } = await import('@tauri-apps/plugin-dialog')
       const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
@@ -168,7 +170,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       await writeTextFile(filePath, jsonString)
 
       setStatus('done')
-      setProgress(`Exported "${lobby.name}" — ${lobbyTraces.length} traces, ${layers.length} layers, ${locations.length} locations (${sizeMB} MB)`)
+      setProgress(t('desktop.export.done', { name: lobby.name, traces: lobbyTraces.length, layers: layers.length, locations: locations.length, size: sizeMB }))
     } catch (e: any) {
       setError(e.message || String(e))
       setStatus('error')
@@ -194,17 +196,17 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
 
         <div className="flex items-center gap-3 mb-6">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Export Atrium</h2>
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('desktop.export.title')}</h2>
         </div>
 
         {status === 'select' && (
           <>
             <p className="text-nier-bg/80 text-xs tracking-wide mb-4 leading-relaxed">
-              Choose an atrium to export. The file can be imported on the web version.
+              {t('desktop.export.intro')}
             </p>
 
             {lobbies.length === 0 ? (
-              <p className="text-nier-bg/70 text-xs tracking-wide mb-6">No atriums found.</p>
+              <p className="text-nier-bg/70 text-xs tracking-wide mb-6">{t('desktop.export.none')}</p>
             ) : (
               <div className="space-y-2 mb-6 max-h-48 overflow-y-auto">
                 {lobbies.map(lobby => (
@@ -219,7 +221,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
                   >
                     <div className="text-xs tracking-wide">{lobby.name}</div>
                     <div className="text-[9px] tracking-wider text-nier-bg/70 mt-1">
-                      Created {new Date(lobby.created_at).toLocaleDateString()}
+                      {t('desktop.export.created', { date: new Date(lobby.created_at).toLocaleDateString() })}
                     </div>
                   </button>
                 ))}
@@ -246,7 +248,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
             onClick={onClose}
             className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
           >
-            {status === 'done' ? 'Close' : 'Cancel'}
+            {status === 'done' ? t('common.close') : t('common.cancel')}
           </button>
           {status === 'select' && (
             <button
@@ -255,7 +257,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
               disabled={!selectedLobbyId}
               className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              ◇ Export {selectedLobby ? `"${selectedLobby.name}"` : ''}
+              ◇ {t('desktop.export.action')} {selectedLobby ? `"${selectedLobby.name}"` : ''}
             </button>
           )}
           {status === 'error' && (
@@ -264,7 +266,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
               onClick={() => { setStatus('select'); setError(''); setProgress(''); }}
               className="flex-1 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
             >
-              ◇ Try Again
+              ◇ {t('desktop.export.tryAgain')}
             </button>
           )}
         </div>

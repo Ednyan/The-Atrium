@@ -482,7 +482,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
                     type="button"
                     onClick={() => { setNameDraft(username); setEditingName(true) }}
                     className="group flex items-center gap-3"
-                    title="Click to rename"
+                    title={t('welcome.clickToRename')}
                   >
                     <span className="text-nier-bg/40 group-hover:text-nier-bg/70 text-[0.7em] transition-colors">◇</span>
                     <span className="name-sheen text-[clamp(1.3rem,3.4vh,2rem)] tracking-[0.14em] uppercase leading-none">

@@ -504,6 +504,7 @@ const HOLD_INDICATOR_DELAY_MS = 1200
 const HOLD_INDICATOR_FADE_MS = 500
 
 function AtriumWhiteHold({ finishing, onFinished }: { finishing: boolean; onFinished: () => void }) {
+  const { t } = useTranslation()
   const [shown, setShown] = useState(false)
 
   useEffect(() => {
@@ -540,7 +541,7 @@ function AtriumWhiteHold({ finishing, onFinished }: { finishing: boolean; onFini
             small. The mark carries the pulse and is softer, since it says the
             same thing without having to be read. */}
         <div className="w-1.5 h-1.5 rotate-45 border border-nier-black/55 animate-nier-pulse" />
-        <span className="text-nier-black/65 text-[9px] tracking-[0.3em] uppercase">Entering</span>
+        <span className="text-nier-black/65 text-[9px] tracking-[0.3em] uppercase">{t('app.entering')}</span>
       </div>
     </div>
   )
@@ -1679,7 +1680,7 @@ function AppInner() {
           <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-border/60" />
           <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-border/60" />
           <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-border/60" />
-          <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Redirecting</p>
+          <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">{t('app.redirecting')}</p>
           <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/10 overflow-hidden mx-auto">
             <div className="h-full bg-nier-bg/80 animate-nier-slide" />
           </div>
@@ -1837,7 +1838,7 @@ function AppInner() {
         <div className="absolute top-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-t border-r border-nier-border/60" />
         <div className="absolute bottom-0 left-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-l border-nier-border/60" />
         <div className="absolute bottom-0 right-0 w-[2vw] sm:w-4 h-[2vw] sm:h-4 border-b border-r border-nier-border/60" />
-        <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">Loading</p>
+        <p className="text-white text-[clamp(9px,2.5vw,13px)] tracking-[0.25em] uppercase mb-4 text-center">{t('app.loading')}</p>
         <div className="w-[40vw] sm:w-48 h-[3px] bg-nier-bg/10 overflow-hidden mx-auto">
           <div className="h-full bg-nier-bg/80 animate-nier-slide" />
         </div>
@@ -1857,6 +1858,7 @@ function AppInner() {
 const CLOSE_PROMPT_SHOWN_EVENT = 'digital-atrium-close-prompt-shown'
 
 function CloseSaveDialog() {
+  const { t } = useTranslation()
   const [showCloseSaveDialog, setShowCloseSaveDialog] = useState(false)
   const closeUnlistenRef = useRef<(() => void) | null>(null)
 
@@ -1904,18 +1906,18 @@ function CloseSaveDialog() {
 
   return (
     <div className="fixed inset-0 z-[10003] bg-black/70 flex items-center justify-center pointer-events-auto">
-      <div className="bg-gray-900 border border-gray-500 p-6 relative" style={{ maxWidth: '260px' }}>
+      <div className="bg-nier-blackLight border border-nier-border/50 p-6 relative" style={{ maxWidth: '260px' }}>
         {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-gray-500 pointer-events-none" />
-        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-gray-500 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-gray-500 pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-gray-500 pointer-events-none" />
+        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/50 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/50 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/50 pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
-        <h3 className="text-white font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-          <span className="text-gray-400 mr-2">◇</span>Unsaved Changes
+        <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
+          <span className="text-nier-bg/60 mr-2">◇</span>{t('desktop.close.title')}
         </h3>
-        <p className="text-gray-400 text-xs font-mono tracking-wider text-center mb-6">
-          You have unsaved changes. Save before closing?
+        <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
+          {t('desktop.close.body')}
         </p>
 
         <div className="flex flex-col gap-2">
@@ -1932,9 +1934,9 @@ function CloseSaveDialog() {
               const { getCurrentWindow } = await import('@tauri-apps/api/window')
               getCurrentWindow().close()
             }}
-            className="w-full bg-white hover:bg-gray-200 text-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+            className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
           >
-            ◇ Save and Close
+            ◇ {t('desktop.close.saveAndClose')}
           </button>
           <button
             onClick={async () => {
@@ -1945,13 +1947,13 @@ function CloseSaveDialog() {
             }}
             className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
           >
-            Don't Save
+            {t('desktop.close.dontSave')}
           </button>
           <button
             onClick={() => setShowCloseSaveDialog(false)}
-            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-gray-600"
+            className="w-full bg-nier-blackLight hover:bg-nier-bg/10 text-nier-bg/80 font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/60"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
         </div>
       </div>
