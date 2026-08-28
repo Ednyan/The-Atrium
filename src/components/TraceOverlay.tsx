@@ -5163,7 +5163,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   const isLocal = rawUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
                   // For local:// URLs, wait for resolved blob URL before rendering
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
                   // A successful resolve always hands back a blob: URL, so one
                   // that is still local:// means the file couldn't be read --
                   // deleted from the vault by hand, or restored from a folder
@@ -5308,7 +5308,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   trace. */}
               {trace.type === 'video' && trace.mediaUrl?.startsWith('local://') && !localMediaUrls[trace.id] && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none bg-black/50">
-                  <span className="text-[10px] tracking-[0.2em] uppercase text-nier-strong/70">Preparing…</span>
+                  <span className="text-[10px] tracking-[0.2em] uppercase text-nier-strong/70">{t('atrium.customize.preparing')}</span>
                 </div>
               )}
 
@@ -5551,7 +5551,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 if (isDirectImage && !failedImages.has(trace.id)) {
                   const isLocal = trace.mediaUrl.startsWith('local://')
                   const resolvedSrc = imageProxySources[trace.id]
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Loading...</span></div>
+                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
                   // Still local:// after resolving means the file is gone --
                   // see the image branch above.
                   if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
@@ -5646,7 +5646,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 if (!embedUrl) {
                   return (
                     <div className="w-full h-full flex items-center justify-center bg-black/50">
-                      <p className="text-nier-strong/60 text-sm">Invalid embed code</p>
+                      <p className="text-nier-strong/60 text-sm">{t('atrium.customize.invalidEmbed')}</p>
                     </div>
                   )
                 }
@@ -6122,8 +6122,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     of its own -- press and move and the trace comes with it. */}
                 <button
                   data-trace-element="true"
-                  title="Drag to move"
-                  aria-label="Drag to move"
+                  title={t('atrium.customize.dragToMove')}
+                  aria-label={t('atrium.customize.dragToMove')}
                   className="pointer-events-auto flex items-center justify-center px-2 border cursor-move transition-colors"
                   style={{
                     color: 'rgb(var(--c-fg) / 0.8)',
@@ -6787,7 +6787,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               >
                 <button
                   className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
-                  title="Re-pack the selected traces around their current center using the batch placement algorithm"
+                  title={t('atrium.customize.repackHint')}
                 >
                   <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})</span>
                   <span className="text-nier-bg/70 text-[9px]">▶</span>
@@ -6808,14 +6808,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onClick={() => reorganizeSelectedTraces('square')}
                       title={t('atrium.menu.packRectangle')}
                     >
-                      Square
+                      {t('atrium.customize.square')}
                     </button>
                     <button
                       className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                       onClick={() => reorganizeSelectedTraces('circle')}
                       title={t('atrium.menu.packCluster')}
                     >
-                      Circle
+                      {t('atrium.customize.circle')}
                     </button>
                   </div>
                 )}
@@ -7069,7 +7069,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           setContextMenu(null)
                         }}
                       >
-                        <span className="text-nier-bg/60 text-[10px]">+</span> New Group…
+                        <span className="text-nier-bg/60 text-[10px]">+</span> {t('atrium.menu.newGroup')}
                       </button>
                       <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
                       <button
@@ -7079,10 +7079,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         onClick={() => { moveTracesToGroup(targetIds, null); setContextMenu(null) }}
                       >
                         {currentLayerId === null && <span className="text-emerald-400 text-[9px]">✓</span>}
-                        Ungrouped
+                        {t('atrium.layers.ungrouped')}
                       </button>
                       {groupLayers.length === 0 && (
-                        <span className="px-4 py-2 text-nier-bg/70 text-[10px] tracking-wider uppercase whitespace-nowrap">No groups yet</span>
+                        <span className="px-4 py-2 text-nier-bg/70 text-[10px] tracking-wider uppercase whitespace-nowrap">{t('atrium.layers.noGroups')}</span>
                       )}
                       {groupLayers.map(layer => (
                         <button
@@ -7273,18 +7273,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             
             <div className="flex items-center gap-3 mb-6">
               <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Customize Trace</h2>
+              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.customize.title')}</h2>
             </div>
             
             <div className="space-y-5">
               <div className="flex items-baseline gap-3 pt-1">
-                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Content</span>
+                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.content')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
 
               {editingTrace.type === 'text' && (
                 <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Content</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textContent')}</label>
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
@@ -7301,7 +7301,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       updateTraceCustomization(editingTrace.id, { content: e.target.value, width: textSize.width, height: textSize.height })
                     }}
                     className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    placeholder="Your message..."
+                    placeholder={t('atrium.customize.messagePlaceholder')}
                     rows={4}
                     maxLength={256}
                   />
@@ -7312,7 +7312,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {editingTrace.type === 'embed' && (
                 <>
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Embed URL or HTML</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.embedUrl')}</label>
                     <textarea
                       value={editingTrace.mediaUrl ?? ''}
                       onChange={(e) => {
@@ -7323,16 +7323,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder="URL or <iframe src='...'></iframe>"
+                      placeholder={t('atrium.customize.embedUrlPlaceholder')}
                       rows={4}
                     />
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      Direct URL or full embed code
+                      {t('atrium.customize.embedHint')}
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Description / Title</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.descriptionTitle')}</label>
                     <textarea
                       value={editingTrace.content ?? ''}
                       onChange={(e) => {
@@ -7343,7 +7343,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         updateTraceCustomization(editingTrace.id, { content: e.target.value })
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder="Optional description..."
+                      placeholder={t('atrium.trace.descriptionPlaceholder')}
                       rows={3}
                       maxLength={256}
                     />
@@ -7355,7 +7355,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {/* Description/Caption for Media Traces */}
               {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
                 <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Description / Caption</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.descriptionCaption')}</label>
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
@@ -7366,7 +7366,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       updateTraceCustomization(editingTrace.id, { content: e.target.value })
                     }}
                     className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    placeholder="Optional description..."
+                    placeholder={t('atrium.trace.descriptionPlaceholder')}
                     rows={3}
                     maxLength={256}
                   />
@@ -7376,7 +7376,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {/* Shape Label */}
               {editingTrace.type === 'shape' && (
                 <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Label (optional)</label>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.labelOptional')}</label>
                   <input
                     type="text"
                     value={editingTrace.content || ''}
@@ -7387,7 +7387,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     onBlur={(e) => {
                       updateTraceCustomization(editingTrace.id, { content: e.target.value })
                     }}
-                    placeholder="Shape label..."
+                    placeholder={t('atrium.trace.shapeLabelPlaceholder')}
                     maxLength={50}
                     className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
                   />
@@ -7418,7 +7418,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       }}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title="Left-clicking this trace opens the link below">Clickable</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.clickableHint')}>{t('atrium.customize.clickable')}</span>
                   </label>
 
                   {/* The destination, shown only once Clickable is on so the
@@ -7438,7 +7438,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       />
                       {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
                         <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
-                          Needs to be a full http:// or https:// address.
+                          {t('atrium.customize.needsFullUrl')}
                         </p>
                       )}
                     </div>
@@ -7451,12 +7451,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 <>
 
                   <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Text</span>
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.text')}</span>
                     <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                   </div>
 
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Font Family</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontFamily')}</label>
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
@@ -7478,7 +7478,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   </div>
 
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Font Size (px)</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontSize')}</label>
                     <input
                       type="number"
                       min={8}
@@ -7499,7 +7499,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         }
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder="Font size in px"
+                      placeholder={t('atrium.customize.fontSizeHint')}
                     />
                   </div>
 
@@ -7507,7 +7507,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       scale, or stays fixed and lets the box only control
                       how much room the text has to reflow in. */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Sizing</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
                     <div className="flex gap-2">
                       {([
                         { value: true, label: 'Scales With Box' },
@@ -7531,13 +7531,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       ))}
                     </div>
                     <p className="text-[0.7rem] text-nier-bg/55 leading-relaxed tracking-wide mt-1.5">
-                      Fixed keeps the font size when you resize the trace — the text just reflows.
+                      {t('atrium.customize.textSizingHint')}
                     </p>
                   </div>
 
                   {/* Text Formatting */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Style</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textStyle')}</label>
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
@@ -7586,7 +7586,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                   {/* Text Alignment */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Alignment</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textAlignment')}</label>
                     <div className="flex gap-2">
                       {(['left', 'center', 'right', 'justify'] as const).map((align) => (
                         <button
@@ -7613,7 +7613,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                   {/* Text Color */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textColour')}</label>
                     <div className="flex gap-2 items-center">
                       <input
                         type="color"
@@ -7645,7 +7645,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           updateTraceCustomization(editingTrace.id, { textColor: '#ffffff' });
                         }}
                         className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                        title="Reset to white"
+                        title={t('atrium.customize.resetWhite')}
                       >
                         ↺
                       </button>
@@ -7659,13 +7659,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 <div className="space-y-4">
 
                   <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Shape</span>
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.shape')}</span>
                     <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                   </div>
 
                   {/* Shape Type */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Shape Type</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.shapeType')}</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
                         <button
@@ -7713,7 +7713,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         className="w-full accent-nier-bg"
                       />
                       <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                        Rounds the corners of the shape
+                        {t('atrium.customize.roundsCorners')}
                       </p>
                     </div>
                   )}
@@ -7739,7 +7739,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       className="w-full accent-nier-bg"
                     />
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      Adjust the thickness of the path
+                      {t('atrium.customize.pathThickness')}
                     </p>
                   </div>
                   )}
@@ -7748,7 +7748,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {editingTrace.shapeType === 'path' && (
                   <>
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Path Style</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.pathStyle')}</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['straight', 'bezier'] as const).map((type) => (
                         <button
@@ -7774,7 +7774,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                   {/* Arrow Start */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Arrow Start</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.arrowStart')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['none', 'triangle', 'diamond'] as const).map((type) => (
                         <button
@@ -7801,7 +7801,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                   {/* Arrow End */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Arrow End</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.arrowEnd')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['none', 'triangle', 'diamond'] as const).map((type) => (
                         <button
@@ -7857,7 +7857,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         }}
                         className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
                       >
-                        Remove
+                        {t('atrium.customize.remove')}
                       </button>
                     </div>
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
@@ -7870,13 +7870,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   )}
 
                   <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Colour</span>
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.colour')}</span>
                     <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                   </div>
 
                   {/* Color Picker */}
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
                     
                     {/* Color preset palette */}
                     <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -7923,7 +7923,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           }
                         }}
                         className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
-                        title="Pick color from screen"
+                        title={t('atrium.customize.pickColour')}
                       >
                         💧
                       </button>
@@ -7995,7 +7995,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         }}
                         className="hidden"
                       />
-                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">No Fill</span>
+                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.noFill')}</span>
                     </label>
                   </div>
 
@@ -8016,7 +8016,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         }}
                         className="hidden"
                       />
-                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Outline</span>
+                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showOutline')}</span>
                     </label>
                     
                     {editingTrace.shapeOutlineOnly && (
@@ -8039,7 +8039,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           className="w-full"
                         />
                         <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                          Adjust the thickness of the outline
+                          {t('atrium.customize.outlineThickness')}
                         </p>
 
                         <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
@@ -8067,7 +8067,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {/* Outline Color (only show if outline is enabled) */}
                   {editingTrace.shapeOutlineOnly && (
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Outline Color</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.outlineColour')}</label>
                       
                       {/* Color preset palette */}
                       <div className="grid grid-cols-8 gap-1.5 mb-3">
@@ -8114,7 +8114,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             }
                           }}
                           className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
-                          title="Pick color from screen"
+                          title={t('atrium.customize.pickColour')}
                         >
                           💧
                         </button>
@@ -8153,14 +8153,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 <>
 
                   <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Colour</span>
+                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.colour')}</span>
                     <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                   </div>
 
                   {/* NieR Presets */}
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">Quick Presets</span>
+                      <span className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">{t('atrium.customize.quickPresets')}</span>
                       <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
@@ -8198,7 +8198,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {/* Border Color & Opacity */}
                   {(editingTrace.showBorder ?? true) && (
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Border Color</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.borderColour')}</label>
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
@@ -8230,7 +8230,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             updateTraceCustomization(editingTrace.id, { borderColor: undefined });
                           }}
                           className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title="Reset to default"
+                          title={t('atrium.customize.resetDefault')}
                         >
                           ↺
                         </button>
@@ -8258,7 +8258,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {/* Fill Color & Opacity */}
                   {(editingTrace.showBackground ?? true) && (
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Fill Color</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
@@ -8290,7 +8290,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             updateTraceCustomization(editingTrace.id, { fillColor: undefined });
                           }}
                           className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title="Reset to default"
+                          title={t('atrium.customize.resetDefault')}
                         >
                           ↺
                         </button>
@@ -8318,7 +8318,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               )}
               {editingTrace.type !== 'shape' && (
                 <div className="flex items-baseline gap-3 pt-1">
-                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">Frame</span>
+                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.frame')}</span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
               )}
@@ -8343,7 +8343,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Border</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBorder')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8360,7 +8360,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Background</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBackground')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8377,7 +8377,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Username</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showUsername')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8394,7 +8394,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Description</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showDescription')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8411,7 +8411,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title="Soft drop shadow under the trace. Needs Show Background on to be visible.">Soft Shadow</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.softShadowHint')}>{t('atrium.customize.softShadow')}</span>
                 </label>
 
                 {/* Embed-only, but grouped with the other toggles rather than
@@ -8483,7 +8483,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     className="w-full accent-nier-bg"
                   />
                   <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                    Adjust the roundness of trace borders (0 = sharp corners)
+                    {t('atrium.customize.cornerRadiusHint')}
                   </p>
                 </div>
               )}
@@ -8595,7 +8595,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                     {!isPathTrace && (
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Light Position Offset</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.lightOffset')}</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mb-1">X: {editingTrace.lightOffsetX ?? 0}px</label>
@@ -8633,7 +8633,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         </div>
                       </div>
                       <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                        Adjust light source position relative to trace center
+                        {t('atrium.customize.lightOffsetHint')}
                       </p>
                     </div>
                     )}
@@ -8654,7 +8654,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           }}
                           className="hidden"
                         />
-                        <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Enable Pulsing/Flickering</span>
+                        <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.pulsing')}</span>
                       </label>
 
                       {editingTrace.lightPulse && (
@@ -8677,7 +8677,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             className="w-full accent-nier-bg"
                           />
                           <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                            Lower = faster pulse, Higher = slower pulse
+                            {t('atrium.customize.pulseHint')}
                           </p>
                         </div>
                       )}
@@ -8699,7 +8699,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 }}
                 className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-4"
               >
-                Done
+                {t('atrium.customize.done')}
               </button>
             </div>
           </div>
@@ -8755,7 +8755,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     trace does -- the point of a preset is that it holds. */}
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">Quick Presets</span>
+                    <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">{t('atrium.customize.quickPresets')}</span>
                     <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
@@ -8809,7 +8809,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         </span>
                         <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
                       </div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Font Family</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontFamily')}</label>
                       <select
                         value={mixed ? '' : seedFont}
                         onChange={e => {
@@ -8856,7 +8856,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBorder: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Border</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBorder')}</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8869,7 +8869,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBackground: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Background</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBackground')}</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8882,7 +8882,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showFilename: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Username</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showUsername')}</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8895,7 +8895,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showDescription: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Show Description</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showDescription')}</span>
                   </label>
 
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
@@ -8908,7 +8908,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onChange={(e) => updateTraceCustomizationForMany(batchIds, { showShadow: e.target.checked })}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Soft Shadow</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.softShadow')}</span>
                   </label>
                 </div>
 
@@ -8921,7 +8921,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   if (!textSeed) return null
                   return (
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Text Sizing</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
                       <div className="flex gap-2">
                         {([
                           { value: true, label: 'Scales With Box' },
@@ -8947,7 +8947,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 {/* Border Color & Opacity */}
                 {(seedTrace.showBorder ?? true) && (
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Border Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.borderColour')}</label>
                     <div className="flex gap-2 items-center mb-2">
                       <input
                         type="color"
@@ -8965,7 +8965,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       <button
                         onClick={() => updateTraceCustomizationForMany(batchIds, { borderColor: undefined })}
                         className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                        title="Reset to default"
+                        title={t('atrium.customize.resetDefault')}
                       >
                         ↺
                       </button>
@@ -8988,7 +8988,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 {/* Fill Color & Opacity */}
                 {(seedTrace.showBackground ?? true) && (
                   <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">Fill Color</label>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
                     <div className="flex gap-2 items-center mb-2">
                       <input
                         type="color"
@@ -9006,7 +9006,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       <button
                         onClick={() => updateTraceCustomizationForMany(batchIds, { fillColor: undefined })}
                         className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                        title="Reset to default"
+                        title={t('atrium.customize.resetDefault')}
                       >
                         ↺
                       </button>
@@ -9063,7 +9063,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 }}
                 className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-4"
               >
-                Done
+                {t('atrium.customize.done')}
               </button>
             </div>
 
@@ -9308,7 +9308,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 if (!embedUrl) {
                   return (
                     <div style={{ width: displayWidth, height: displayHeight }} className="flex items-center justify-center bg-gray-800/50">
-                      <p className="text-nier-bg/60 text-sm tracking-wider">Invalid embed code</p>
+                      <p className="text-nier-bg/60 text-sm tracking-wider">{t('atrium.customize.invalidEmbed')}</p>
                     </div>
                   )
                 }
@@ -9454,7 +9454,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 onClick={() => setNewGroupDialog(null)}
                 className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </form>
@@ -9491,39 +9491,39 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             </div>
             <p className="text-nier-strong mb-6 text-sm tracking-wide">
               {deleteConfirmDialog.traceIds.length > 1
-                ? `Are you sure you want to delete these ${deleteConfirmDialog.traceIds.length} traces? This can be undone with Ctrl+Z, but only until you save.`
-                : 'Are you sure you want to delete this trace? This can be undone with Ctrl+Z, but only until you save.'}
+                ? t('atrium.customize.deleteConfirmMany', { count: deleteConfirmDialog.traceIds.length })
+                : t('atrium.customize.deleteConfirmOne')}
             </p>
             <p className="text-nier-bg/60 text-[10px] tracking-wider uppercase mb-6">
-              ◇ Tip: Press <kbd className="px-2 py-1 bg-gray-800 border border-gray-600 text-nier-bg/70 text-[9px] tracking-wider">Delete</kbd> key for quick deletion
+              {t('atrium.customize.deleteTipPre')} <kbd className="px-2 py-1 bg-nier-black border border-nier-border/60 text-nier-bg/70 text-[9px] tracking-wider">{t('atrium.customize.deleteKeyName')}</kbd> {t('atrium.customize.deleteTipPost')}
             </p>
             
             <label className="flex items-center gap-3 text-nier-bg/60 text-xs mb-6 cursor-pointer group">
-              <div className="w-4 h-4 border border-gray-600 flex items-center justify-center group-hover:border-gray-400">
+              <div className="w-4 h-4 border border-nier-border/60 flex items-center justify-center group-hover:border-nier-border">
                 <input
                   type="checkbox"
                   className="hidden"
                   onChange={(e) => {
                     localStorage.setItem('dontAskDeleteTrace', e.target.checked ? 'true' : 'false')
-                    e.currentTarget.parentElement?.classList.toggle('bg-white')
+                    e.currentTarget.parentElement?.classList.toggle('bg-nier-bg')
                   }}
                 />
               </div>
-              <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Don't ask again</span>
+              <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.dontAskAgain')}</span>
             </label>
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-3 border border-gray-600 text-nier-bg/60 text-[10px] tracking-[0.15em] uppercase hover:border-gray-400 hover:text-nier-strong transition-colors"
+                className="flex-1 py-3 border border-nier-border/60 text-nier-bg/60 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border hover:text-nier-strong transition-colors"
                 onClick={() => setDeleteConfirmDialog(null)}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="flex-1 py-3 border border-red-500/40 bg-red-500/20 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
                 onClick={() => executeDelete(deleteConfirmDialog.traceIds)}
               >
-                Delete
+                {t('common.delete')}
               </button>
             </div>
           </div>
