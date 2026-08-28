@@ -4460,7 +4460,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         className="atrium-btn fixed bottom-20 right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
-        {showLocationsPanel ? 'Close' : 'Locations'}
+        {showLocationsPanel ? t('common.close') : t('atrium.locations.title')}
       </button>
 
       {/* Draw Button */}

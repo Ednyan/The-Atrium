@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from '../lib/i18n'
 import type { LobbyLocation } from '../types/database'
 
 // Custom drag MIME so LobbyScene's canvas-wide file/URL drop handlers can
@@ -114,6 +115,7 @@ export default function LocationsPanel({
   onTogglePresentation,
   presentationIndex,
 }: LocationsPanelProps) {
+  const { t } = useTranslation()
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
@@ -160,16 +162,16 @@ export default function LocationsPanel({
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
           <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">Locations</h2>
-          {dirty && <span className="text-amber-400 text-[11px] tracking-wider uppercase" title="Unsaved changes">● Unsaved</span>}
+          {dirty && <span className="text-amber-400 text-[11px] tracking-wider uppercase" title={t('atrium.locations.unsavedChanges')}>● {t('atrium.locations.unsaved')}</span>}
         </div>
         <div className="flex gap-2">
           {canEdit && (
             <button
               onClick={() => { setDialogMode('create'); setDialogInput(''); setDialogTargetId(null) }}
               className="px-3 py-1 bg-white text-black text-xs tracking-wider uppercase hover:bg-nier-bg transition-colors"
-              title="Save the current camera view as a location"
+              title={t('atrium.locations.saveViewHint')}
             >
-              + Save View
+              + {t('atrium.locations.saveView')}
             </button>
           )}
           <button onClick={onClose} className="text-nier-bg/70 hover:text-nier-strong text-lg w-6 h-6 flex items-center justify-center transition-colors">×</button>
@@ -199,7 +201,7 @@ export default function LocationsPanel({
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {locations.length === 0 && (
           <p className="text-nier-bg/70 text-xs tracking-wide text-center px-4 py-6">
-            {canEdit ? 'No locations yet. Frame a view and press "Save View".' : 'No locations saved.'}
+            {canEdit ? t('atrium.locations.empty') : t('atrium.locations.noneSaved')}
           </p>
         )}
         {locations.map((loc, index) => {
@@ -221,14 +223,14 @@ export default function LocationsPanel({
                   ? 'border-emerald-400 bg-emerald-900/30'
                   : 'border-nier-border/30 bg-nier-black hover:bg-nier-blackLight hover:border-nier-border/50'
               }`}
-              title="Double-click to fly here"
+              title={t('atrium.locations.doubleClickFly')}
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 {canEdit && (
                   <span
                     className="grid grid-cols-2 gap-[2px] px-1 py-0.5 cursor-grab active:cursor-grabbing shrink-0 group/grip"
                     style={{ userSelect: 'none' } as React.CSSProperties}
-                    title="Drag to reorder"
+                    title={t('common.dragReorder')}
                   >
                     {Array.from({ length: 6 }).map((_, i) => (
                       <span key={i} className="w-[3px] h-[3px] rounded-full bg-gray-600 group-hover/grip:bg-gray-300 pointer-events-none" style={{ userSelect: 'none' }} />
@@ -247,7 +249,7 @@ export default function LocationsPanel({
                 <button
                   onClick={(e) => { e.stopPropagation(); onGoToLocation(loc) }}
                   className="text-nier-bg/70 hover:text-nier-strong text-sm px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
-                  title="Fly here"
+                  title={t('atrium.locations.flyHere')}
                 >
                   →
                 </button>
@@ -262,7 +264,7 @@ export default function LocationsPanel({
                           : 'border-nier-border/25 text-nier-bg/75 hover:text-nier-strong hover:border-nier-border/60'
                       }`}
                       title={loc.isLocked
-                        ? 'Locked -- unlock to overwrite this view'
+                        ? t('atrium.locations.lockedHint')
                         : 'Set this location to the current camera view'}
                     >
                       <LocationIcon name="capture" />
@@ -276,15 +278,15 @@ export default function LocationsPanel({
                         ? { borderColor: 'rgb(var(--c-amber) / 0.55)', color: 'rgb(var(--c-amber))' }
                         : undefined}
                       title={loc.isLocked
-                        ? 'Unlock -- allow this view to be overwritten'
-                        : 'Lock -- protect this view from being overwritten'}
+                        ? t('atrium.locations.unlockHint')
+                        : t('atrium.locations.lockHint')}
                     >
                       <LocationIcon name={loc.isLocked ? 'locked' : 'unlocked'} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDialogMode('rename'); setDialogInput(loc.name); setDialogTargetId(loc.id) }}
                       className="inline-flex items-center justify-center w-7 h-7 border border-nier-border/25 text-nier-bg/75 hover:text-nier-strong hover:border-nier-border/60 transition-colors"
-                      title="Rename"
+                      title={t('common.rename')}
                     >
                       <LocationIcon name="rename" />
                     </button>
@@ -292,7 +294,7 @@ export default function LocationsPanel({
                       onClick={(e) => { e.stopPropagation(); setDialogMode('delete'); setDialogTargetId(loc.id) }}
                       className="inline-flex items-center justify-center w-7 h-7 border border-transparent hover:border-nier-border/40 transition-colors"
                       style={{ color: 'rgb(var(--c-danger) / 0.75)' }}
-                      title="Delete"
+                      title={t('common.delete')}
                     >
                       <LocationIcon name="delete" />
                     </button>
@@ -311,13 +313,13 @@ export default function LocationsPanel({
             onClick={onSave}
             className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
           >
-            Save Changes
+            {t('atrium.locations.saveChanges')}
           </button>
           <button
             onClick={onDiscard}
             className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
           >
-            Discard
+            {t('common.discard')}
           </button>
         </div>
       )}
@@ -339,7 +341,7 @@ export default function LocationsPanel({
                     onClick={() => { if (dialogTargetId) onDelete(dialogTargetId); setDialogMode(null) }}
                     className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    Delete
+                    {t('common.delete')}
                   </button>
                   <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">Cancel</button>
                 </div>
@@ -347,7 +349,7 @@ export default function LocationsPanel({
             ) : (
               <>
                 <p className="text-nier-strong text-xs tracking-[0.15em] uppercase mb-3">
-                  {dialogMode === 'create' ? 'Location Name' : 'Rename Location'}
+                  {dialogMode === 'create' ? t('atrium.locations.nameTitle') : t('atrium.locations.renameTitle')}
                 </p>
                 <input
                   autoFocus
@@ -363,7 +365,7 @@ export default function LocationsPanel({
                     if (e.key === 'Escape') setDialogMode(null)
                   }}
                   className="w-full bg-nier-black border border-nier-border/40 text-nier-strong text-xs px-3 py-2 mb-3 focus:border-nier-bg focus:outline-none tracking-wider"
-                  placeholder="Location name..."
+                  placeholder={t('atrium.locations.namePlaceholder')}
                 />
                 <div className="flex gap-2">
                   <button
@@ -376,7 +378,7 @@ export default function LocationsPanel({
                     }}
                     className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    {dialogMode === 'create' ? 'Save' : 'Rename'}
+                    {dialogMode === 'create' ? t('common.save') : t('common.rename')}
                   </button>
                   <button onClick={() => setDialogMode(null)} className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors">Cancel</button>
                 </div>

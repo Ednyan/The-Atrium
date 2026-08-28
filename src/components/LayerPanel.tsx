@@ -1144,7 +1144,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       onDragStart={(e) => handleLayerDragStart(e, layer.id)}
                       onDragEnd={handleLayerDragEnd}
                       onClick={(e) => e.stopPropagation()}
-                      title={t('atrium.layers.dragReorder')}
+                      title={t('common.dragReorder')}
                     >
                       {Array.from({ length: 6 }).map((_, i) => (
                         <span
@@ -1267,7 +1267,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                             onDragStart={(e) => { e.stopPropagation(); handleTraceDragStart(e, trace.id) }}
                             onDragEnd={handleTraceDragEnd}
                             onClick={(e) => e.stopPropagation()}
-                            title={t('atrium.layers.dragReorder')}
+                            title={t('common.dragReorder')}
                           >
                             {Array.from({ length: 6 }).map((_, i) => (
                               <span
@@ -1434,7 +1434,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         onDragStart={(e) => { e.stopPropagation(); handleTraceDragStart(e, trace.id) }}
                         onDragEnd={handleTraceDragEnd}
                         onClick={(e) => e.stopPropagation()}
-                        title={t('atrium.layers.dragReorder')}
+                        title={t('common.dragReorder')}
                       >
                         {Array.from({ length: 6 }).map((_, i) => (
                           <span
@@ -1549,7 +1549,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             {isGroup ? (
               <>
                 <MenuItem label={t('atrium.layers.duplicateGroup')} onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
-                <MenuItem label={t('atrium.layers.rename')} onClick={() => renameGroup(rowMenu.id, layer!.name)} />
+                <MenuItem label={t('common.rename')} onClick={() => renameGroup(rowMenu.id, layer!.name)} />
                 <MenuItem
                   label={isExpanded ? t('atrium.layers.collapse') : t('atrium.layers.expand')}
                   onClick={() => toggleGroup(rowMenu.id)}
@@ -1719,7 +1719,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     }}
                     className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
-                    {dialogMode === 'create' ? t('common.create') : t('atrium.layers.rename')}
+                    {dialogMode === 'create' ? t('common.create') : t('common.rename')}
                   </button>
                   <button
                     onClick={() => setDialogMode(null)}
