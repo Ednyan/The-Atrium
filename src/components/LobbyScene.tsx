@@ -1766,7 +1766,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       return
     }
     if (offer.images.length === 0) {
-      showToast('No image in the clipboard')
+      showToast(t('atrium.error.noImageClipboard'))
       return
     }
     if (!ensureLobbyHasSpace()) return
@@ -1783,7 +1783,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       return
     }
     if (!offer.url) {
-      showToast('No link in the clipboard')
+      showToast(t('atrium.error.noLinkClipboard'))
       return
     }
     if (!ensureLobbyHasSpace()) return
@@ -1887,7 +1887,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const handleConvertAllEmbeds = async () => {
     const embedTraces = useGameStore.getState().traces.filter(t => t.type === 'embed')
     if (embedTraces.length === 0) {
-      showToast('No embed traces in this atrium.')
+      showToast(t('atrium.error.noEmbedTraces'))
       return
     }
     setIsConvertingEmbeds(true)
@@ -1992,7 +1992,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       await kickUser(targetUserId, blacklist)
     } catch (err: any) {
       console.error('Error kicking user:', err)
-      showToast(err.message || 'Failed to kick user')
+      showToast(err.message || t('atrium.error.kickFailed'))
     } finally {
       setIsKicking(false)
       setKickTarget(null)
@@ -4038,7 +4038,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                style={{ backgroundColor: 'rgba(203, 203, 203, 0.08)', border: '2px dashed rgba(143, 143, 143, 0.5)' }}>
             <div className="bg-nier-black/80 border border-nier-border px-6 py-3">
               <p className="text-nier-bg text-sm tracking-[0.15em] uppercase font-mono">
-                {isDesktop ? 'DROP FILE TO CREATE TRACE' : 'DROP LINK TO CREATE TRACE'}
+                {isDesktop ? t('atrium.hud.dropFile') : t('atrium.hud.dropLink')}
               </p>
             </div>
           </div>
@@ -4152,7 +4152,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         <div
           className="flex items-center justify-between gap-2 cursor-pointer select-none h-[1.375rem] leading-none"
           onClick={() => setHudMinimized(!hudMinimized)}
-          title={hudMinimized ? 'Open' : 'Close'}
+          title={hudMinimized ? t('atrium.hud.openPanel') : t('common.close')}
         >
           <p className="text-nier-strong text-xs tracking-[0.1em] uppercase font-bold truncate">
             {username}

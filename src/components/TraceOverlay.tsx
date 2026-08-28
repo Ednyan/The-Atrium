@@ -565,7 +565,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             if (attempts <= 10) {
               window.setTimeout(() => setDocumentRetryTick(t => t + 1), 400)
             } else {
-              setDocumentError(prev => ({ ...prev, [trace.id]: 'File not found in the vault' }))
+              setDocumentError(prev => ({ ...prev, [trace.id]: t('atrium.error.fileNotInVault') }))
             }
             return
           }
@@ -614,7 +614,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           // told nobody anything when this went wrong.
           setDocumentError(prev => ({
             ...prev,
-            [trace.id]: err instanceof Error ? err.message : 'Could not read this PDF',
+            [trace.id]: err instanceof Error ? err.message : t('atrium.error.pdfUnreadable'),
           }))
         } finally {
           documentRenderingRef.current.delete(key)
@@ -3956,21 +3956,21 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const getTraceTypeLabel = useCallback((type: string) => {
     switch (type) {
       case 'text':
-        return 'Text'
+        return t('atrium.trace.type.text')
       case 'image':
-        return 'Image'
+        return t('atrium.trace.type.image')
       case 'audio':
-        return 'Audio'
+        return t('atrium.trace.type.audio')
       case 'video':
-        return 'Video'
+        return t('atrium.controls.video')
       case 'embed':
-        return 'Embed'
+        return t('atrium.trace.type.embed')
       case 'shape':
-        return 'Shape'
+        return t('atrium.trace.type.shape')
       default:
-        return 'Trace'
+        return t('atrium.controls.trace')
     }
-  }, [])
+  }, [t])
 
   // Extract iframe src from HTML embed code or return URL as-is
   const extractEmbedUrl = useCallback((content: string): string | null => {
@@ -5359,7 +5359,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
                         : <polygon points="2,0.5 9,5 2,9.5"/>}
                     </svg>
-                    {playingMedia.has(trace.id) ? 'Pause' : 'Play'}
+                    {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
                   </button>
                 </div>
               )}
@@ -5435,7 +5435,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
                         : <polygon points="2,0.5 9,5 2,9.5"/>}
                     </svg>
-                    {playingMedia.has(trace.id) ? 'Pause' : 'Play'}
+                    {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
                   </button>
                   {showDescription && trace.content && (
                     <p className="text-[10px] text-nier-strong/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
@@ -5467,7 +5467,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <span className="text-black/40 text-[10px] tracking-wider uppercase">
-                        {documentError[trace.id] ?? 'Rendering…'}
+                        {documentError[trace.id] ?? t('atrium.controls.rendering')}
                       </span>
                     </div>
                   )}
@@ -5632,7 +5632,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         />
                       )}
                       <p className="text-nier-strong/80 text-xs text-center line-clamp-2">
-                        {trace.content || 'View source'}
+                        {trace.content || t('atrium.controls.viewSource')}
                       </p>
                       {hostname && (
                         <p className="text-nier-strong/70 text-[9px] tracking-wider uppercase">{hostname}</p>
@@ -7001,7 +7001,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setContextMenu(null)
                     const result = await convertEmbedToInternalImage(trace.id)
                     if (!result.ok) {
-                      showToast(result.error || 'Could not convert this embed to an image')
+                      showToast(result.error || t('atrium.error.embedNotConverted'))
                     }
                   }}
                 >
@@ -7510,8 +7510,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
                     <div className="flex gap-2">
                       {([
-                        { value: true, label: 'Scales With Box' },
-                        { value: false, label: 'Fixed Size' },
+                        { value: true, label: t('atrium.controls.scalesWithBox') },
+                        { value: false, label: t('atrium.controls.fixedSize') },
                       ] as const).map(({ value, label }) => (
                         <button
                           key={String(value)}
@@ -7842,7 +7842,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
                         }`}
                       >
-                        {pathCreationMode ? '✓ Done Adding' : '+ Add Points'}
+                        {pathCreationMode ? t('atrium.controls.doneAdding') : t('atrium.controls.addPoints')}
                       </button>
                       <button
                         type="button"
@@ -7862,8 +7862,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     </div>
                     <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                       {pathCreationMode 
-                        ? 'Click anywhere on the canvas to add points to your path' 
-                        : 'Click "Add Points" to start adding points, or drag existing points to adjust'}
+                        ? t('atrium.controls.addPointsOn')
+                        : t('atrium.controls.addPointsOff')}
                     </p>
                   </div>
                   </>
@@ -8499,7 +8499,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 return (
               <div>
                 <div className="flex items-baseline gap-3 pt-1 mb-4">
-                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{isPathTrace ? 'Glow' : 'Light'}</span>
+                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{isPathTrace ? t('atrium.controls.glow') : t('atrium.controls.light')}</span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
 
@@ -8517,13 +8517,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }}
                     className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{isPathTrace ? 'Enable Glow' : 'Enable Light Emission'}</span>
+                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{isPathTrace ? t('atrium.controls.enableGlow') : t('atrium.controls.enableLight')}</span>
                 </label>
 
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
                     <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{isPathTrace ? 'Glow Color' : 'Light Color'}</label>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{isPathTrace ? t('atrium.controls.glowColour') : t('atrium.controls.lightColour')}</label>
                       <div className="flex gap-2 items-center">
                         <input
                           type="color"
@@ -8924,8 +8924,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
                       <div className="flex gap-2">
                         {([
-                          { value: true, label: 'Scales With Box' },
-                          { value: false, label: 'Fixed Size' },
+                          { value: true, label: t('atrium.controls.scalesWithBox') },
+                          { value: false, label: t('atrium.controls.fixedSize') },
                         ] as const).map(({ value, label }) => (
                           <button
                             key={String(value)}
@@ -9112,11 +9112,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
                 <h2 className="text-nier-strong text-sm tracking-[0.15em] uppercase font-mono">
-                  {modalTrace.type === 'text' && 'Text Trace'}
-                  {modalTrace.type === 'image' && 'Image Trace'}
-                  {modalTrace.type === 'audio' && 'Audio Trace'}
-                  {modalTrace.type === 'video' && 'Video Trace'}
-                  {modalTrace.type === 'embed' && 'Embedded Content'}
+                  {modalTrace.type === 'text' && t('atrium.controls.textTrace')}
+                  {modalTrace.type === 'image' && t('atrium.controls.imageTrace')}
+                  {modalTrace.type === 'audio' && t('atrium.controls.audioTrace')}
+                  {modalTrace.type === 'video' && t('atrium.controls.videoTrace')}
+                  {modalTrace.type === 'embed' && t('atrium.controls.embeddedContent')}
                   {modalTrace.type === 'document' && 'Document'}
                 </h2>
               </div>
@@ -9157,7 +9157,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         <img src={src} alt="" style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9 }} />
                       ) : (
                         <span className="text-black/40 text-xs tracking-wider uppercase px-12 py-24">
-                          {documentError[modalTrace.id] ?? 'Rendering…'}
+                          {documentError[modalTrace.id] ?? t('atrium.controls.rendering')}
                         </span>
                       )}
                     </div>
@@ -9426,8 +9426,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
             <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide mb-4">
               {newGroupDialog.traceIds.length > 1
-                ? `${newGroupDialog.traceIds.length} traces will be moved into it.`
-                : 'The selected trace will be moved into it.'}
+                ? t('atrium.controls.manyTracesMoved', { count: newGroupDialog.traceIds.length })
+                : t('atrium.controls.oneTraceMoved')}
             </p>
 
             <input
@@ -9446,7 +9446,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 disabled={newGroupBusy || !newGroupDialog.name.trim()}
                 className="flex-1 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {newGroupBusy ? 'Creating…' : 'Create'}
+                {newGroupBusy ? t('atrium.controls.creating') : t('atrium.controls.create')}
               </button>
               <button
                 type="button"
