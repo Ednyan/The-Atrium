@@ -374,7 +374,7 @@ const ru: Catalogue = {
   'atrium.draw.smooth': 'Сглаживание',
   'atrium.draw.save': 'Сохранить рисунок',
   'atrium.draw.exit': 'Выйти из рисования',
-  'atrium.draw.hint': 'Нажмите и тяните, чтобы рисовать • E переключает ластик • При сохранении станет изображением',
+  'atrium.draw.hint': 'Нажмите и тяните, чтобы рисовать • E переключает ластик • При сохранении станет trace',
   'profile.pinterestConnectedAs': 'Подключено как @{name}',
   'profile.pinterestConnectedPlain': 'Подключено',
   'profile.pinterestDesktopHow': 'Нажмите кнопку ниже, чтобы подключить Pinterest в браузере. Появится код — введите его здесь, чтобы завершить.',

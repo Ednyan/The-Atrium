@@ -368,7 +368,7 @@ const es: Catalogue = {
   'atrium.draw.smooth': 'Suavizado',
   'atrium.draw.save': 'Guardar dibujo',
   'atrium.draw.exit': 'Salir del dibujo',
-  'atrium.draw.hint': 'Haz clic y arrastra para dibujar • E alterna el borrador • Al guardar, queda como imagen',
+  'atrium.draw.hint': 'Haz clic y arrastra para dibujar • E alterna el borrador • Al guardar, queda como trace',
   'profile.pinterestConnectedAs': 'Conectado como @{name}',
   'profile.pinterestConnectedPlain': 'Conectado',
   'profile.pinterestDesktopHow': 'Pulsa el botón de abajo para conectar Pinterest en tu navegador. Se mostrará un código; introdúcelo aquí para terminar.',

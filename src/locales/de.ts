@@ -371,7 +371,7 @@ const de: Catalogue = {
   'atrium.draw.smooth': 'Glättung',
   'atrium.draw.save': 'Zeichnung speichern',
   'atrium.draw.exit': 'Zeichnen beenden',
-  'atrium.draw.hint': 'Klicken und ziehen zum Zeichnen • E schaltet den Radierer um • Beim Speichern wird es ein Bild',
+  'atrium.draw.hint': 'Klicken und ziehen zum Zeichnen • E schaltet den Radierer um • Beim Speichern wird es ein Trace',
   'profile.pinterestConnectedAs': 'Verbunden als @{name}',
   'profile.pinterestConnectedPlain': 'Verbunden',
   'profile.pinterestDesktopHow': 'Drücke die Schaltfläche unten, um Pinterest im Browser zu verbinden. Es wird ein Code angezeigt — gib ihn hier ein, um abzuschließen.',

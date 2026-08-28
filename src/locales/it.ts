@@ -372,7 +372,7 @@ const it: Catalogue = {
   'atrium.draw.smooth': 'Levigatura',
   'atrium.draw.save': 'Salva disegno',
   'atrium.draw.exit': 'Esci dal disegno',
-  'atrium.draw.hint': "Clicca e trascina per disegnare • E attiva la gomma • Salvando diventa un'immagine",
+  'atrium.draw.hint': 'Clicca e trascina per disegnare • E attiva la gomma • Salvando diventa un trace',
   'profile.pinterestConnectedAs': 'Connesso come @{name}',
   'profile.pinterestConnectedPlain': 'Connesso',
   'profile.pinterestDesktopHow': 'Premi il pulsante qui sotto per collegare Pinterest nel browser. Verrà mostrato un codice: inseriscilo qui per completare.',

@@ -274,7 +274,7 @@ export const en = {
   'atrium.draw.smooth': 'Smooth',
   'atrium.draw.save': 'Save drawing',
   'atrium.draw.exit': 'Exit drawing',
-  'atrium.draw.hint': 'Click and drag to draw • E to toggle eraser • Saving places it as an image',
+  'atrium.draw.hint': 'Click and drag to draw • E to toggle eraser • Saving places it as a trace',
   'profile.pinterestConnectedAs': 'Connected as @{name}',
   'profile.pinterestConnectedPlain': 'Connected',
   'profile.pinterestDesktopHow': 'Press the button below to connect Pinterest in your browser. A code will appear — enter it here to finish.',

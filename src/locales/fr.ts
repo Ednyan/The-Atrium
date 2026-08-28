@@ -370,7 +370,7 @@ const fr: Catalogue = {
   'atrium.draw.smooth': 'Lissage',
   'atrium.draw.save': 'Enregistrer le dessin',
   'atrium.draw.exit': 'Quitter le dessin',
-  'atrium.draw.hint': "Cliquez et faites glisser pour dessiner • E bascule la gomme • À l'enregistrement, devient une image",
+  'atrium.draw.hint': "Cliquez et faites glisser pour dessiner • E bascule la gomme • À l'enregistrement, devient un trace",
   'profile.pinterestConnectedAs': 'Connecté en tant que @{name}',
   'profile.pinterestConnectedPlain': 'Connecté',
   'profile.pinterestDesktopHow': "Appuyez sur le bouton ci-dessous pour connecter Pinterest dans votre navigateur. Un code s'affichera — saisissez-le ici pour terminer.",

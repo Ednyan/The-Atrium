@@ -372,7 +372,7 @@ const ptBR: Catalogue = {
   'atrium.draw.smooth': 'Suavizar',
   'atrium.draw.save': 'Salvar desenho',
   'atrium.draw.exit': 'Sair do desenho',
-  'atrium.draw.hint': 'Clique e arraste para desenhar • E alterna a borracha • Ao salvar, vira uma imagem',
+  'atrium.draw.hint': 'Clique e arraste para desenhar • E alterna a borracha • Ao salvar, vira um trace',
   'profile.pinterestConnectedAs': 'Conectado como @{name}',
   'profile.pinterestConnectedPlain': 'Conectado',
   'profile.pinterestDesktopHow': 'Toque no botão abaixo para conectar o Pinterest no seu navegador. Um código será exibido, insira-o aqui para concluir.',
