@@ -7,6 +7,7 @@ import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { showToast } from '../lib/toast'
+import { useTranslation } from '../lib/i18n'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
 // Video and audio stream from the vault rather than being read into memory --
@@ -352,6 +353,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
 }
 
 export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+  const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -6138,7 +6140,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   }}
                   onDoubleClick={(e) => e.stopPropagation()}
                 >
-                  Disable Interaction
+                  {t('atrium.menu.disableInteraction')}
                 </button>
               </div>
             )}
@@ -6734,7 +6736,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   setContextMenu(null)
                 }}
               >
-                <span className="text-gray-400 text-[10px]">◇</span> Customize
+                <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.customize')}
               </button>
             )}
             {editingWholeSelection && (
@@ -6776,14 +6778,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     <button
                       className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                       onClick={() => reorganizeSelectedTraces('square')}
-                      title="Pack into a rectangular block"
+                      title={t('atrium.menu.packRectangle')}
                     >
                       Square
                     </button>
                     <button
                       className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                       onClick={() => reorganizeSelectedTraces('circle')}
-                      title="Pack into a rounded cluster"
+                      title={t('atrium.menu.packCluster')}
                     >
                       Circle
                     </button>
@@ -6806,7 +6808,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-gray-400 text-[10px]">◇</span> Copy Text
+                  <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.copyText')}
                 </button>
               )
             })()}
@@ -6831,7 +6833,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-gray-400 text-[10px]">◇</span> Copy Embed Link
+                  <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.copyEmbedLink')}
                 </button>
               )
             })()}
@@ -6871,7 +6873,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               <button
                 className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
               >
-                <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Transformations</span>
+                <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.transformations')}</span>
                 <span className="text-gray-300 text-[9px]">▶</span>
               </button>
               {contextMenuTransformOpen && transformFlyoutRect && (
@@ -6900,7 +6902,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       setContextMenu(null)
                     }}
                   >
-                    Reset Cropping
+                    {t('atrium.menu.resetCropping')}
                   </button>
                   <button
                     className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -6918,7 +6920,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       setContextMenu(null)
                     }}
                   >
-                    Reset Aspect Ratio
+                    {t('atrium.menu.resetAspect')}
                   </button>
                   <button
                     className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -6930,7 +6932,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       setContextMenu(null)
                     }}
                   >
-                    Reset Rotation
+                    {t('atrium.menu.resetRotation')}
                   </button>
                   {(() => {
                     const trace = traces.find(t => t.id === contextMenu.traceId)
@@ -6944,7 +6946,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             setContextMenu(null)
                           }}
                         >
-                          Flip Horizontal
+                          {t('atrium.menu.flipHorizontal')}
                         </button>
                         <button
                           className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -6953,7 +6955,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             setContextMenu(null)
                           }}
                         >
-                          Flip Vertical
+                          {t('atrium.menu.flipVertical')}
                         </button>
                       </>
                     )
@@ -6975,7 +6977,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     }
                   }}
                 >
-                  <span className="text-gray-400 text-[10px]">◇</span> Convert to Image
+                  <span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.convertToImage')}
                 </button>
               )
             })()}
@@ -7002,7 +7004,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   <button
                     className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   >
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move to Group</span>
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.moveToGroup')}</span>
                     <span className="text-gray-300 text-[9px]">▶</span>
                   </button>
                   {contextMenuGroupOpen && groupFlyoutRect && (
@@ -7088,7 +7090,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   <button
                     className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   >
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Move Layer</span>
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('atrium.menu.moveLayer')}</span>
                     <span className="text-gray-300 text-[9px]">▶</span>
                   </button>
                   {contextMenuMoveOpen && moveFlyoutRect && (
@@ -7106,25 +7108,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceOneStep(trace.id, 'up')}
                       >
-                        Move Up
+                        {t('atrium.menu.moveUp')}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceOneStep(trace.id, 'down')}
                       >
-                        Move Down
+                        {t('atrium.menu.moveDown')}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
                       >
-                        Move to Top of Group
+                        {t('atrium.menu.moveTopOfGroup')}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
                         onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
                       >
-                        Move to Bottom of Group
+                        {t('atrium.menu.moveBottomOfGroup')}
                       </button>
                     </div>
                   )}
@@ -7150,7 +7152,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   onMouseLeave={scheduleCloseSelectFlyout}
                 >
                   <button className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
-                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> Select</span>
+                    <span className="flex items-center gap-3"><span className="text-gray-400 text-[10px]">◇</span> {t('common.select')}</span>
                     <span className="text-gray-300 text-[9px]">▶</span>
                   </button>
                   {contextMenuSelectOpen && selectFlyoutRect && (
@@ -7172,7 +7174,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           setContextMenu(null)
                         }}
                       >
-                        Select Group ({inGroup.length})
+                        {t('atrium.menu.selectGroup', { count: inGroup.length })}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -7182,7 +7184,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           setContextMenu(null)
                         }}
                       >
-                        Select All ({traces.length})
+                        {t('atrium.menu.selectAll', { count: traces.length })}
                       </button>
                     </div>
                   )}
@@ -7196,7 +7198,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 duplicateTrace(contextMenu.traceId)
               }}
             >
-              <span className="text-gray-400 text-[10px]">◇</span> Duplicate
+              <span className="text-gray-400 text-[10px]">◇</span> {t('common.duplicate')}
             </button>
             <button
               className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
@@ -7207,7 +7209,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             >
               <span className="text-red-500 text-[10px]">◇</span>
               {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
-                ? `Delete Selected (${multiSelectedIds.size})`
+                ? t('atrium.menu.deleteSelected', { count: multiSelectedIds.size })
                 : 'Delete'}
             </button>
           </div>
@@ -8401,7 +8403,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       }}
                       className="hidden"
                     />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">Enable Interaction</span>
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.menu.enableInteraction')}</span>
                   </label>
                 )}
 
@@ -9406,7 +9408,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               value={newGroupDialog.name}
               maxLength={60}
               onChange={(e) => setNewGroupDialog(d => (d ? { ...d, name: e.target.value } : d))}
-              placeholder="Group name"
+              placeholder={t('atrium.menu.groupNamePlaceholder')}
               className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors mb-5"
             />
 
