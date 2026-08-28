@@ -778,7 +778,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   {pdfMode === 'pages' && (
                     <div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        Grid — {pdfColumns} × {pdfRows}
+                        {t('atrium.trace.gridLayout', { columns: pdfColumns, rows: pdfRows })}
                       </label>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -807,7 +807,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                       <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
                         {t('atrium.trace.pagesOrder')}
                         {pdfColumns * pdfRows < pdfPageCount && (
-                          <> That fits {pdfColumns * pdfRows} of {pdfPageCount} — the rest continue in further rows.</>
+                          <> {t('atrium.trace.gridFits', { fits: pdfColumns * pdfRows, total: pdfPageCount })}</>
                         )}
                       </p>
                     </div>
@@ -845,10 +845,10 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               />
               {pickedFiles.length > 1 && (
                 <p className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                  {pickedFiles.length} files — placed together as a group
+                  {t('atrium.trace.filesGrouped', { count: pickedFiles.length })}
                 </p>
               )}
-              <p className="text-nier-strong text-xs tracking-[0.1em] uppercase">Or paste a URL:</p>
+              <p className="text-nier-strong text-xs tracking-[0.1em] uppercase">{t('atrium.trace.orPasteUrl')}</p>
               <input
                 type="url"
                 value={mediaUrl}
@@ -907,19 +907,27 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     autoFocus
                   />
                   <p className={`text-[9px] tracking-wider mt-2 uppercase ${batchOverCap ? '' : 'text-nier-bg/70'}`} style={batchOverCap ? { color: '#FF6161' } : undefined}>
-                    {batchValidUrls.length} valid link{batchValidUrls.length === 1 ? '' : 's'}
+                    {t(({
+                      one: 'atrium.trace.validLinks.one',
+                      few: 'atrium.trace.validLinks.few',
+                      many: 'atrium.trace.validLinks.many',
+                    } as const)[pluralCategory(batchValidUrls.length)], { count: batchValidUrls.length })}
                     {batchOverCap
-                      ? ` -- over the ${MAX_BATCH_EMBED_LINKS}-link limit per batch, remove ${batchValidUrls.length - MAX_BATCH_EMBED_LINKS} to place`
-                      : ' -- each becomes its own embed, arranged around the placement point'}
+                      ? t('atrium.trace.overCap', { cap: MAX_BATCH_EMBED_LINKS, excess: batchValidUrls.length - MAX_BATCH_EMBED_LINKS })
+                      : t('atrium.trace.eachOwnEmbed')}
                   </p>
                   {batchInvalidEntries.length > 0 && (
                     <div className="mt-2 border border-nier-red/40 bg-nier-red/10 px-3 py-2 space-y-1">
                       <p className="text-nier-bg text-[10px] tracking-wider">
-                        ⚠ {batchInvalidEntries.length} line{batchInvalidEntries.length === 1 ? '' : 's'} not a valid link -- fix or remove before placing:
+                        ⚠ {t(({
+                          one: 'atrium.trace.invalidLines.one',
+                          few: 'atrium.trace.invalidLines.few',
+                          many: 'atrium.trace.invalidLines.many',
+                        } as const)[pluralCategory(batchInvalidEntries.length)], { count: batchInvalidEntries.length })}
                       </p>
                       {batchInvalidEntries.slice(0, 5).map((entry) => (
                         <p key={entry.line} className="text-nier-bg/80 text-[9px] tracking-wide font-mono truncate">
-                          Line {entry.line}: {entry.text || '(empty)'}
+                          {t('atrium.trace.lineNumber', { number: entry.line })} {entry.text || t('atrium.trace.emptyLine')}
                         </p>
                       ))}
                       {batchInvalidEntries.length > 5 && (
@@ -1007,7 +1015,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {/* Opacity Slider */}
               <div>
                 <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                  Opacity: {shapeOpacity.toFixed(2)}
+                  {t('atrium.trace.opacityLabel', { value: shapeOpacity.toFixed(2) })}
                 </label>
                 <input
                   type="range"
@@ -1065,7 +1073,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               {(shapeType === 'rectangle' || shapeType === 'triangle') && (
                 <div>
                   <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                    Corner Radius: {cornerRadius}px
+                    {t('atrium.customize.cornerRadiusLabel', { value: cornerRadius })}
                   </label>
                   <input
                     type="range"

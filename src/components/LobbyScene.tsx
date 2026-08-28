@@ -1408,7 +1408,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
 
     if (error) {
       console.error('Failed to create path:', error)
-      showToast('Failed to create path: ' + error.message)
+      showToast(t('atrium.error.pathFailed', { message: error.message }))
       return
     }
 
@@ -1729,7 +1729,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
     const { data, error } = await (supabase.from('traces') as any).insert(rows).select()
     if (error) {
       console.error('PDF page insert error:', error)
-      showToast('Failed to place the pages: ' + error.message)
+      showToast(t('atrium.error.pagesFailed', { message: error.message }))
       return
     }
     for (const row of data ?? []) {
@@ -1762,7 +1762,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const handlePasteImageAt = async (worldX: number, worldY: number) => {
     const offer = await readClipboardContents()
     if (offer === null) {
-      showToast("Couldn't read the clipboard — try Ctrl+V instead")
+      showToast(t('atrium.error.clipboardUnreadable'))
       return
     }
     if (offer.images.length === 0) {
@@ -1779,7 +1779,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
   const handlePasteEmbedAt = async (worldX: number, worldY: number) => {
     const offer = await readClipboardContents()
     if (offer === null) {
-      showToast("Couldn't read the clipboard — try Ctrl+V instead")
+      showToast(t('atrium.error.clipboardUnreadable'))
       return
     }
     if (!offer.url) {
@@ -1848,7 +1848,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
       const { data, error } = await supabase.from('traces').insert(rows as any).select()
       if (error) {
         console.error('Batch embed insert error:', error)
-        showToast('Could not place those embeds: ' + error.message)
+        showToast(t('atrium.error.embedsFailed', { message: error.message }))
         return
       }
       if (data) {
@@ -3712,7 +3712,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         .then(({ error }: { error: any }) => {
           if (error) {
             console.error('[vault] failed to write media file:', storagePath, error)
-            showToast(`Couldn't save ${file.name} to the vault — it will show as a missing file`)
+            showToast(t('atrium.error.vaultSaveFailed', { name: file.name }))
             // Still announced as finished. It is not pending any more, and
             // leaving it pending would strand the trace saying "Preparing"
             // for the rest of the session rather than showing it is missing.
@@ -3744,7 +3744,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         })
         .catch((err: any) => {
           console.error('[vault] failed to write media file:', storagePath, err)
-          showToast(`Couldn't save ${file.name} to the vault — it will show as a missing file`)
+          showToast(t('atrium.error.vaultSaveFailed', { name: file.name }))
         })
       return localUrl
     }
@@ -4368,7 +4368,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 className="text-xs font-mono tracking-[0.12em] uppercase"
                 style={{ color: '#A78BFA', textShadow: HUD_TEXT_OUTLINE }}
               >
-                ◇ Hidden — You are not visible to anyone in this atrium
+                ◇ {t('atrium.hud.hiddenBadge')}
               </p>
             )}
             {!canEdit && (
@@ -4376,7 +4376,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                 className="text-xs font-mono tracking-[0.12em] uppercase"
                 style={{ color: '#FF6161', textShadow: HUD_TEXT_OUTLINE }}
               >
-                ◇ View Only — You don't have permission to edit this atrium
+                ◇ {t('atrium.hud.viewOnlyBadge')}
               </p>
             )}
             {multiSelectedTraceIds.length > 1 && (
@@ -5054,7 +5054,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
                     // there is no address bar to come back from, and no https
                     // origin for Pinterest to return to. Linking happens in
                     // Profile Settings, so say so rather than doing nothing.
-                    showToast('Link Pinterest first — Profile Settings, on the welcome screen')
+                    showToast(t('atrium.error.linkPinterestFirst'))
                   } else {
                     initiatePinterestConnect()
                   }

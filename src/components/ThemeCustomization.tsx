@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Lobby } from '../types/database'
-import { WHITE_ROOM } from '../lib/atriumThemePresets'
-import { useTranslation } from '../lib/i18n'
+import { SOFT_SEPIA, TECHNICAL, WHITE_ROOM } from '../lib/atriumThemePresets'
+import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 
 interface ThemeSettings {
@@ -36,47 +36,14 @@ const THEME_PRESETS: Array<{ nameKey: string; descKey: string; values: ThemeSett
   {
     nameKey: 'atrium.theme.presetSepia',
     descKey: 'atrium.theme.presetSepiaDesc',
-    values: {
-      gridColor: '#9c9681',
-      gridOpacity: 0.24,
-      backgroundColor: '#1a1a18',
-      particlesEnabled: true,
-      particleColor: '#dad4bb',
-      particleOpacity: 0.45,
-      particleDensity: 0.8,
-      groundParticlesEnabled: false,
-      groundParticleOpacity: 0.82,
-      groundPatternMode: 'grid',
-      gridSpacing: 125,
-      groundElementScale: 0.06,
-      groundElementScaleRange: 0.02,
-      groundElementDensity: 0.55,
-    },
+    values: SOFT_SEPIA as ThemeSettings,
   },
   {
     nameKey: 'atrium.theme.presetTechnical',
     descKey: 'atrium.theme.presetTechnicalDesc',
-    values: {
-      gridColor: '#6f8a7d',
-      gridOpacity: 0.3,
-      backgroundColor: '#0f1311',
-      particlesEnabled: true,
-      particleColor: '#b9d6c9',
-      particleOpacity: 0.55,
-      particleDensity: 1.2,
-      groundParticlesEnabled: false,
-      groundParticleOpacity: 0.9,
-      groundPatternMode: 'grid',
-      gridSpacing: 90,
-      groundElementScale: 0.055,
-      groundElementScaleRange: 0.03,
-      groundElementDensity: 0.8,
-    },
+    values: TECHNICAL as ThemeSettings,
   },
   {
-    // Replaced the old "Archive" preset (dusty dark monochrome). A bright
-    // gallery: near-white walls, faint grey grid, sparse dark particles so
-    // they read against the light ground.
     nameKey: 'atrium.theme.presetWhiteRoom',
     descKey: 'atrium.theme.presetWhiteRoomDesc',
     values: WHITE_ROOM as ThemeSettings,
@@ -148,7 +115,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
       }
 
       if (!data) {
-        setSaveError('Save failed — lobby not found or access denied')
+        setSaveError(t('atrium.theme.saveDenied'))
         return
       }
 
@@ -435,7 +402,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 
                 <div className="space-y-2">
                   <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                    Particle Opacity: {((settings.particleOpacity ?? 0.6) * 100).toFixed(0)}%
+                    {t('atrium.theme.particleOpacity', { value: ((settings.particleOpacity ?? 0.6) * 100).toFixed(0) })}
                   </label>
                   <input
                     type="range"
@@ -544,7 +511,11 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 {(settings.groundParticleUrls && settings.groundParticleUrls.length > 0) && (
                   <div className="space-y-2">
                     <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">
-                      {settings.groundParticleUrls.length} element{settings.groundParticleUrls.length !== 1 ? 's' : ''} configured
+                      {t(({
+                        one: 'atrium.theme.elementsConfigured.one',
+                        few: 'atrium.theme.elementsConfigured.few',
+                        many: 'atrium.theme.elementsConfigured.many',
+                      } as const)[pluralCategory(settings.groundParticleUrls.length)], { count: settings.groundParticleUrls.length })}
                     </p>
                     <div className="space-y-1 max-h-40 overflow-y-auto">
                       {settings.groundParticleUrls.map((url, index) => (
@@ -565,7 +536,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                 )}
 
                 <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-                  ◇ Upload to <a href="https://imgur.com" target="_blank" rel="noopener noreferrer" className="text-nier-bg/75 hover:text-nier-bg transition-colors">imgur.com</a> for free hosting, or use /public/themes/ground/
+                  ◇ {t('atrium.theme.uploadHintPre')} <a href="https://imgur.com" target="_blank" rel="noopener noreferrer" className="text-nier-bg/75 hover:text-nier-bg transition-colors">imgur.com</a> {t('atrium.theme.uploadHintPost')} /public/themes/ground/
                 </p>
                 <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
                   ◦ {t('atrium.theme.pngHint')}
@@ -577,7 +548,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
                   
                   <div className="space-y-2">
                     <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                      Opacity: {((settings.groundParticleOpacity ?? 1.0) * 100).toFixed(0)}%
+                      {t('atrium.theme.groundOpacity', { value: ((settings.groundParticleOpacity ?? 1.0) * 100).toFixed(0) })}
                     </label>
                     <input
                       type="range"
@@ -732,7 +703,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
           )}
           {saveSuccess && !saveError && (
             <span className="text-nier-bg text-xs font-mono tracking-wider mr-auto">
-              ✓ Theme saved
+              ✓ {t('atrium.theme.saved')}
             </span>
           )}
           <button

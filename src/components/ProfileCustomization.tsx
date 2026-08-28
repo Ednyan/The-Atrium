@@ -278,7 +278,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           {/* Undo History Depth */}
           <div>
             <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              Steps you can undo: {undoDepth}
+              {t('atrium.profile.undoDepth', { count: undoDepth })}
             </label>
             <input
               type="range"
@@ -290,7 +290,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               className="w-full accent-nier-bg"
             />
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              How many Ctrl+Z steps to remember, in every atrium. Kept in this browser only, never saved online.
+              {t('atrium.profile.undoDepthHint')}
             </p>
           </div>
 
@@ -410,7 +410,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
               </label>
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              Arrows at the edge, with how far away it is
+              {t('atrium.profile.pointOffscreenHint')}
             </p>
           </div>
 

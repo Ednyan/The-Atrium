@@ -22,6 +22,7 @@ import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVE
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
+import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
@@ -1982,7 +1983,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const { data, error } = await (supabase.from('traces') as any).insert(insertRows).select()
 
       if (error) {
-        showToast('Failed to duplicate trace: ' + error.message)
+        showToast(t('atrium.error.duplicateFailed', { message: error.message }))
         return
       }
 
@@ -5170,7 +5171,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   // it never travelled with. Said plainly rather than left as a
                   // broken image, since the trace keeps its place and the user
                   // needs to know why it's empty.
-                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
+                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
                   return (
                 <img
                   src={resolvedSrc || rawUrl}
@@ -5554,7 +5555,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
                   // Still local:// after resolving means the file is gone --
                   // see the image branch above.
-                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">Missing file</span></div>
+                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
                   // Render as image, not iframe
                   return (
                     <img
@@ -6076,7 +6077,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     setTransformMode('none')
                   }}
                 >
-                  {isCropMode ? '✓ DONE' : '✂ CROP'}
+                  {isCropMode ? `✓ ${t('atrium.controls.cropDone')}` : `✂ ${t('atrium.controls.crop')}`}
                 </button>
                 ) : null}
               </>
@@ -6715,7 +6716,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           {rotationReadout.delta && rotationReadout.angle >= 0 ? '+' : ''}
           {rotationReadout.angle.toFixed(rotationReadout.snapped ? 0 : 1)}°
           {rotationReadout.snapped && (
-            <span style={{ opacity: 0.7, marginLeft: 6 }}>SNAP {ROTATION_SNAP_DEGREES}°</span>
+            <span style={{ opacity: 0.7, marginLeft: 6 }}>{t('atrium.controls.snapDegrees', { value: ROTATION_SNAP_DEGREES })}</span>
           )}
         </div>
       )}
@@ -6776,7 +6777,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   setContextMenu(null)
                 }}
               >
-                <span className="text-nier-bg/60 text-[10px]">◇</span> Batch Edit ({multiSelectedIds.size})
+                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.customize.batchEdit', { count: multiSelectedIds.size })}
               </button>
             )}
             {editingWholeSelection && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
@@ -6789,7 +6790,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
                   title={t('atrium.customize.repackHint')}
                 >
-                  <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> Reorganize Selected ({multiSelectedIds.size})</span>
+                  <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.reorganizeSelected', { count: multiSelectedIds.size })}</span>
                   <span className="text-nier-bg/70 text-[9px]">▶</span>
                 </button>
                 {contextMenuReorganizeOpen && reorganizeFlyoutRect && (
@@ -7696,7 +7697,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {((editingTrace.shapeType || 'rectangle') === 'rectangle' || editingTrace.shapeType === 'triangle') && (
                     <div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        Corner Radius: {editingTrace.cornerRadius || 0}px
+                        {t('atrium.customize.cornerRadiusLabel', { value: editingTrace.cornerRadius || 0 })}
                       </label>
                       <input
                         type="range"
@@ -7722,7 +7723,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   {editingTrace.shapeType === 'path' && (
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      Path Thickness: {editingTrace.shapeOutlineWidth ?? 2}px
+                      {t('atrium.customize.pathThicknessLabel', { value: editingTrace.shapeOutlineWidth ?? 2 })}
                     </label>
                     <input
                       type="range"
@@ -7828,7 +7829,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      Path Points ({(editingTrace.shapePoints || []).length})
+                      {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
                     </label>
                     <div className="flex gap-2">
                       <button
@@ -7907,7 +7908,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           e.preventDefault()
                           
                           if (!hasEyeDropperSupport) {
-                            showToast('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
+                            showToast(t('atrium.error.pickerUnsupported'))
                             return
                           }
                           
@@ -7958,7 +7959,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       the Outline Opacity slider further down */}
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      Fill Opacity: {((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0)}%
+                      {t('atrium.customize.fillOpacity', { value: ((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0) })}
                     </label>
                     <input
                       type="range"
@@ -8022,7 +8023,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     {editingTrace.shapeOutlineOnly && (
                       <div className="ml-6">
                         <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                          Outline Width: {editingTrace.shapeOutlineWidth ?? 2}px
+                          {t('atrium.customize.outlineWidth', { value: editingTrace.shapeOutlineWidth ?? 2 })}
                         </label>
                         <input
                           type="range"
@@ -8043,7 +8044,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         </p>
 
                         <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
-                          Outline Opacity: {((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0)}%
+                          {t('atrium.customize.outlineOpacity', { value: ((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0) })}
                         </label>
                         <input
                           type="range"
@@ -8098,7 +8099,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             e.preventDefault()
                             
                             if (!hasEyeDropperSupport) {
-                              showToast('The color picker tool is not supported in this browser.\n\nPlease use Chrome, Edge, or another Chromium-based browser to use this feature.')
+                              showToast(t('atrium.error.pickerUnsupported'))
                               return
                             }
                             
@@ -8190,7 +8191,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                           style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
                         >
-                          {preset.label}
+                          {t(preset.labelKey as TranslationKey)}
                         </button>
                       ))}
                     </div>
@@ -8236,7 +8237,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         </button>
                       </div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                        Border Opacity: {Math.round((editingTrace.borderOpacity ?? 1) * 100)}%
+                        {t('atrium.customize.borderOpacity', { value: Math.round((editingTrace.borderOpacity ?? 1) * 100) })}
                       </label>
                       <input
                         type="range"
@@ -8296,7 +8297,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         </button>
                       </div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                        Fill Opacity: {Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}%
+                        {t('atrium.customize.fillOpacity', { value: Math.round((editingTrace.fillOpacity ?? 0.95) * 100) })}
                       </label>
                       <input
                         type="range"
@@ -8444,7 +8445,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (editingTrace.showBorder ?? true) && (
                 <div>
                   <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
-                    Border Thickness: {editingTrace.borderWidth ?? 2}px
+                    {t('atrium.customize.borderThickness', { value: editingTrace.borderWidth ?? 2 })}
                   </label>
                   <input
                     type="range"
@@ -8466,7 +8467,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               {editingTrace.type !== 'shape' && (
                 <div>
                   <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                    Border Radius: {editingTrace.borderRadius ?? 0}px
+                    {t('atrium.customize.borderRadius', { value: editingTrace.borderRadius ?? 0 })}
                   </label>
                   <input
                     type="range"
@@ -8553,7 +8554,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                     <div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        Intensity: {(editingTrace.lightIntensity ?? 1.0).toFixed(1)}x
+                        {t('atrium.customize.intensity', { value: (editingTrace.lightIntensity ?? 1.0).toFixed(1) })}
                       </label>
                       <input
                         type="range"
@@ -8574,7 +8575,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     {!isPathTrace && (
                     <div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        Radius: {editingTrace.lightRadius ?? 200}px
+                        {t('atrium.customize.radius', { value: editingTrace.lightRadius ?? 200 })}
                       </label>
                       <input
                         type="range"
@@ -8660,7 +8661,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       {editingTrace.lightPulse && (
                         <div className="ml-6">
                           <label className="block text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mb-1">
-                            Pulse Speed: {editingTrace.lightPulseSpeed ?? 2.0}s per cycle
+                            {t('atrium.customize.pulseSpeed', { value: editingTrace.lightPulseSpeed ?? 2.0 })}
                           </label>
                           <input
                             type="range"
@@ -8744,7 +8745,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">Batch Edit ({batchIds.length})</h2>
+                <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.customize.batchEdit', { count: batchIds.length })}</h2>
               </div>
 
               <div className="space-y-5">
@@ -8777,7 +8778,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[11px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors"
                         style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
                       >
-                        {preset.label}
+                        {t(preset.labelKey as TranslationKey)}
                       </button>
                     ))}
                   </div>
@@ -8971,7 +8972,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       </button>
                     </div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                      Border Opacity: {Math.round((seedTrace.borderOpacity ?? 1) * 100)}%
+                      {t('atrium.customize.borderOpacity', { value: Math.round((seedTrace.borderOpacity ?? 1) * 100) })}
                     </label>
                     <input
                       type="range"
@@ -9012,7 +9013,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       </button>
                     </div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                      Fill Opacity: {Math.round((seedTrace.fillOpacity ?? 0.95) * 100)}%
+                      {t('atrium.customize.fillOpacity', { value: Math.round((seedTrace.fillOpacity ?? 0.95) * 100) })}
                     </label>
                     <input
                       type="range"
@@ -9040,7 +9041,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   return (
                     <div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        Border Radius: {nonShapeSeed.borderRadius ?? 0}px
+                        {t('atrium.customize.borderRadius', { value: nonShapeSeed.borderRadius ?? 0 })}
                       </label>
                       <input
                         type="range"
