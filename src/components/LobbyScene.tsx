@@ -4268,7 +4268,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {currentLobby && (
           <button
             onClick={() => copyLobbyId(currentLobby.id)}
-            className="atrium-btn w-full mt-1 text-left"
+            className="atrium-btn w-full mt-1 text-center"
           >
             Copy Atrium ID
           </button>
@@ -4277,7 +4277,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           <button
             onClick={handleConvertAllEmbeds}
             disabled={isConvertingEmbeds}
-            className="atrium-btn w-full mt-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
+            className="atrium-btn w-full mt-1 text-center disabled:opacity-40 disabled:cursor-not-allowed"
             title="Convert every embed trace in this atrium into an internal image"
           >
             {isConvertingEmbeds ? convertEmbedsProgress || 'Converting...' : 'Convert Embeds to Images'}
@@ -4286,7 +4286,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         {canEdit && pinterestConnected && (
           <button
             onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
-            className="atrium-btn w-full mt-1 text-left"
+            className="atrium-btn w-full mt-1 text-center"
             title="Import a Pinterest board's pins as traces"
           >
             Import from Pinterest
@@ -4294,7 +4294,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
         )}
         <button
           onClick={() => setShowProfileCustomization(true)}
-          className="atrium-btn w-full mt-1 text-left"
+          className="atrium-btn w-full mt-1 text-center"
         >
           Profile
         </button>
@@ -4305,14 +4305,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             worldOffsetRef.current = { x: 0, y: 0 }
             setWorldOffset({ x: 0, y: 0 })
           }}
-          className="atrium-btn w-full mt-1 text-left"
+          className="atrium-btn w-full mt-1 text-center"
         >
           Recenter
         </button>
         {(isLobbyOwner || isLobbyAdmin) && (
           <button
             onClick={() => setShowThemeCustomization(true)}
-            className="atrium-btn w-full mt-1 text-left"
+            className="atrium-btn w-full mt-1 text-center"
           >
             Theme
           </button>
@@ -4321,14 +4321,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
             states how many; this is the thing you press to see who. */}
         <button
           onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
-          className="atrium-btn w-full mt-1 text-left"
+          className="atrium-btn w-full mt-1 text-center"
           data-active={showOnlineUsersList}
         >
           Online ({onlinePlayerCount})
         </button>
         <button
           onClick={() => setShowReportForm(true)}
-          className="atrium-btn w-full mt-1 text-left"
+          className="atrium-btn w-full mt-1 text-center"
         >
           Report a Problem
         </button>
