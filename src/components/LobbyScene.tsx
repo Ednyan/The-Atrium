@@ -4346,10 +4346,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby }: LobbySceneProps) {
           onClick={togglePresentationMode}
           className="atrium-btn group pointer-events-auto font-mono w-[2.125rem] hover:w-auto px-0 hover:px-4"
           data-active={presentationMode}
-          title={presentationMode ? 'Presentation mode on — ← / → to navigate. Click to exit.' : 'Start presentation mode'}
+          title={presentationMode ? t('atrium.locations.presentationOn') : t('atrium.locations.startPresentation')}
         >
           <span className="text-[12px] leading-none">▶</span>
-          <span className="hidden group-hover:inline ml-1.5 whitespace-nowrap leading-none">Present</span>
+          <span className="hidden group-hover:inline ml-1.5 whitespace-nowrap leading-none">{t('atrium.locations.present')}</span>
         </button>
       )}
       </div>

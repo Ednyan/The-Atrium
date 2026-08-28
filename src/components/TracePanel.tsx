@@ -859,7 +859,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 type="text"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Optional caption..."
+                placeholder={t('atrium.trace.captionPlaceholder')}
                 maxLength={100}
                 className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
               />
@@ -900,7 +900,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     // otherwise does everywhere else -- stopping propagation
                     // keeps that handler from ever seeing this keydown.
                     onKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation() }}
-                    placeholder={`One link per line:\nhttps://example.com/one\nhttps://example.com/two\nhttps://example.com/three`}
+                    placeholder={`${t('atrium.trace.batchPlaceholderLead')}\nhttps://example.com/one\nhttps://example.com/two\nhttps://example.com/three`}
                     className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors font-mono"
                     rows={8}
                     autoFocus
@@ -934,7 +934,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   <textarea
                     value={mediaUrl}
                     onChange={(e) => setMediaUrl(e.target.value)}
-                    placeholder={`Direct URL:\nhttps://youtube.com/watch?v=...\n\nOr full embed code:\n<iframe src="https://..."></iframe>`}
+                    placeholder={`${t('atrium.trace.embedPlaceholderLead')}\nhttps://youtube.com/watch?v=...\n\n${t('atrium.trace.embedPlaceholderOr')}\n<iframe src="https://..."></iframe>`}
                     className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors font-mono"
                     rows={5}
                     autoFocus

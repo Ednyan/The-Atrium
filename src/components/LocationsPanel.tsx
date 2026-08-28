@@ -182,7 +182,7 @@ export default function LocationsPanel({
       <div className="bg-nier-black/60 border-b border-nier-border/30 px-3 py-2 flex items-center justify-between">
         <div className="flex flex-col">
           <span className="text-nier-bg/80 text-xs tracking-wider uppercase">{t('atrium.locations.presentationMode')}</span>
-          <span className="text-nier-bg/80 text-[11px] tracking-wide">← / → keys to move between locations</span>
+          <span className="text-nier-bg/80 text-[11px] tracking-wide">{t('atrium.locations.arrowHint')}</span>
         </div>
         <button
           onClick={onTogglePresentation}
