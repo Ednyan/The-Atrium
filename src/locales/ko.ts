@@ -1123,9 +1123,9 @@ const ko: Catalogue = {
   // -------------------------------------- the little animations on the page
   'demo.sharedCanvas': '함께 쓰는 캔버스',
   'demo.you': '나',
-  'demo.wanderer': '떠도는 이',
-  'demo.visitorA': '나그네',
-  'demo.visitorB': '메아리',
+  'demo.wanderer': '방문자',
+  'demo.visitorA': '방문자 1',
+  'demo.visitorB': '방문자 2',
   'demo.panZoom': '끌어서 이동 · 스크롤로 확대',
   'demo.oneTrace': 'trace 하나, 어떤 모습으로든',
 

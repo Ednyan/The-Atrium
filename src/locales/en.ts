@@ -1067,9 +1067,9 @@ export const en = {
   // -------------------------------------- the little animations on the page
   'demo.sharedCanvas': 'a shared canvas',
   'demo.you': 'you',
-  'demo.wanderer': 'Wanderer',
-  'demo.visitorA': 'Drifter',
-  'demo.visitorB': 'Echo',
+  'demo.wanderer': 'Visitor',
+  'demo.visitorA': 'Visitor 1',
+  'demo.visitorB': 'Visitor 2',
   'demo.panZoom': 'drag to pan · scroll to zoom',
   'demo.oneTrace': 'one trace, any form',
 

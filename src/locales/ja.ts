@@ -1119,9 +1119,9 @@ const ja: Catalogue = {
   // -------------------------------------- the little animations on the page
   'demo.sharedCanvas': 'みんなで使うキャンバス',
   'demo.you': 'あなた',
-  'demo.wanderer': 'さすらい人',
-  'demo.visitorA': 'さすらい',
-  'demo.visitorB': 'こだま',
+  'demo.wanderer': '訪問者',
+  'demo.visitorA': '訪問者 1',
+  'demo.visitorB': '訪問者 2',
   'demo.panZoom': 'ドラッグで移動 · スクロールで拡大縮小',
   'demo.oneTrace': 'ひとつの trace、どんな形にも',
 

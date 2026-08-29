@@ -1122,9 +1122,9 @@ const zh: Catalogue = {
   // -------------------------------------- the little animations on the page
   'demo.sharedCanvas': '一块共享的画布',
   'demo.you': '你',
-  'demo.wanderer': '漫游者',
-  'demo.visitorA': '漫游者',
-  'demo.visitorB': '回声',
+  'demo.wanderer': '访客',
+  'demo.visitorA': '访客 1',
+  'demo.visitorB': '访客 2',
   'demo.panZoom': '拖动可平移 · 滚动可缩放',
   'demo.oneTrace': '一个 trace，什么形态都行',
 
