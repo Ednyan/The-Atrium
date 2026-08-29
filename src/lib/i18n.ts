@@ -71,6 +71,7 @@ const loaders: Partial<Record<LanguageCode, () => Promise<{ default: Catalogue }
   de: () => import('../locales/de'),
   it: () => import('../locales/it'),
   ru: () => import('../locales/ru'),
+  zh: () => import('../locales/zh'),
 }
 
 const KEY = 'atrium_language'
