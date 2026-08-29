@@ -5257,6 +5257,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           activeLayerId={activeLayerId}
           onSetActiveLayer={setActiveLayerId}
           onSelectGroupTraces={(traceIds) => setMultiSelectRequest(traceIds)}
+          // Same channel a group-header click already uses: the panel says what
+          // should be selected, and the canvas is what holds a selection.
+          onSetSelection={(traceIds) => setMultiSelectRequest([...traceIds])}
           onCustomize={(traceIds) => {
             if (traceIds.length === 0) return
             setShowLayerPanel(false)

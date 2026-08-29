@@ -72,6 +72,10 @@ interface LayerPanelProps {
   // two overlap on screen, and because having asked to customize something you
   // are done with the list you found it in.
   onCustomize?: (traceIds: string[]) => void
+  // Replace the whole multi-selection. The panel could only ever read the
+  // selection, which meant the one place that lists every trace by name was
+  // the one place you could not build a selection out of them.
+  onSetSelection?: (traceIds: string[]) => void
   onSelectTrace?: (traceId: string) => void
   onGoToTrace?: (traceId: string) => void
   // The layer group new traces should be created into. Clicking a group
@@ -91,7 +95,7 @@ interface LayerPanelProps {
   canEdit?: boolean
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSetSelection, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
@@ -133,6 +137,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const rowMenuPos = useClampedMenuPosition(rowMenuRef, rowMenu?.x ?? 0, rowMenu?.y ?? 0)
   // Whether the Move to Group flyout is open (its own state so the flyout
   // closes when the menu is re-opened elsewhere).
+  // Where a shift-range starts. Set by every plain or additive click, so the
+  // range runs from the last row touched rather than from whatever the canvas
+  // happens to consider selected.
+  const [rangeAnchor, setRangeAnchor] = useState<string | null>(null)
   const [moveToGroupOpen, setMoveToGroupOpen] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
 
@@ -1012,6 +1020,66 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // ungrouped section appears to do nothing.
   const ungroupedTraces = getTracesForLayer(null)
 
+  // Every trace row that is currently on screen, top to bottom, in the order
+  // the panel draws them: each expanded group's traces, then the ungrouped.
+  //
+  // Collapsed groups are left out on purpose. A range drawn between two
+  // visible rows should select what lies between them on screen -- sweeping in
+  // a dozen traces hidden inside a folded group would be a selection nobody
+  // made and nobody can see.
+  const visibleTraceOrder: string[] = []
+  for (const orderLayer of layers) {
+    if (!expandedGroups.has(orderLayer.id)) continue
+    for (const layerTrace of getTracesForLayer(orderLayer.id)) visibleTraceOrder.push(layerTrace.id)
+  }
+  for (const looseTrace of ungroupedTraces) visibleTraceOrder.push(looseTrace.id)
+
+  // What is selected right now, as a list.
+  //
+  // A single selection lives in selectedTraceId and never reaches
+  // multiSelectedTraceIds, so ctrl-clicking a second row has to start from it
+  // -- otherwise the first trace silently drops out of the selection it was
+  // supposed to be joining.
+  const currentSelection = (): string[] => {
+    if (multiSelectedSet.size > 0) return Array.from(multiSelectedSet)
+    return selectedTraceId ? [selectedTraceId] : []
+  }
+
+  // Click, ctrl/cmd-click and shift-click, as a list is expected to behave.
+  //
+  // Plain click still selects one and nothing else, which is what the panel
+  // has always done and what most clicks mean.
+  const handleTraceRowClick = (e: React.MouseEvent, traceId: string) => {
+    const additive = e.ctrlKey || e.metaKey
+
+    if (e.shiftKey && onSetSelection) {
+      const anchor = rangeAnchor ?? selectedTraceId
+      const from = anchor ? visibleTraceOrder.indexOf(anchor) : -1
+      const to = visibleTraceOrder.indexOf(traceId)
+      // An anchor inside a group that has since been collapsed is no longer on
+      // screen, so there is no range to draw. Falls through to a plain select
+      // rather than guessing at one.
+      if (from !== -1 && to !== -1) {
+        const [lo, hi] = from <= to ? [from, to] : [to, from]
+        onSetSelection(visibleTraceOrder.slice(lo, hi + 1))
+        return
+      }
+    }
+
+    if (additive && onSetSelection) {
+      const next = new Set(currentSelection())
+      // Toggling, so ctrl-clicking a selected row takes it out again.
+      if (next.has(traceId)) next.delete(traceId)
+      else next.add(traceId)
+      setRangeAnchor(traceId)
+      onSetSelection(Array.from(next))
+      return
+    }
+
+    setRangeAnchor(traceId)
+    onSelectTrace?.(traceId)
+  }
+
   // Self-heal ungrouped z-indexes. A trace created with no active layer is
   // inserted at z_index 0 (the DB default), so multiple ungrouped traces
   // collide at 0 with no defined stacking order -- which is why the top of
@@ -1271,8 +1339,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                       onDrop={(e) => handleTraceRowDrop(e, trace.id)}
                       onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
-                      onClick={() => {
-                        onSelectTrace?.(trace.id)
+                      onClick={(e) => {
+                        handleTraceRowClick(e, trace.id)
                       }}
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1438,8 +1506,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onDragOver={(e) => handleTraceRowDragOver(e, trace.id)}
                   onDrop={(e) => handleTraceRowDrop(e, trace.id)}
                   onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
-                  onClick={() => {
-                    onSelectTrace?.(trace.id)
+                  onClick={(e) => {
+                    handleTraceRowClick(e, trace.id)
                   }}
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
