@@ -1290,7 +1290,7 @@ const ja: Catalogue = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'Atrium は引っ越しました',
-  'moved.body': 'The Digital Atrium はいま *digitalatrium.org* にあります。この住所もいまのところ使えますが、これからは向こうがすべてです。',
+  'moved.body': 'The Digital Atrium はいま *digitalatrium.org* にあります。下のボタンから移動してください。',
   'moved.button': 'digitalatrium.org へ',
   'moved.note': 'ブックマークの更新をおすすめします——この住所はいずれ閉じられます。',
 }

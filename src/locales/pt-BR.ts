@@ -1212,7 +1212,7 @@ const ptBR: Catalogue = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'O Atrium mudou de endereço',
-  'moved.body': 'O Digital Atrium agora fica em *digitalatrium.org*. Este endereço ainda funciona por enquanto, mas tudo acontece lá.',
+  'moved.body': 'O Digital Atrium agora fica em *digitalatrium.org*. Clique abaixo para ir para lá.',
   'moved.button': 'Ir para digitalatrium.org',
   'moved.note': 'Vale atualizar seus favoritos — este endereço será desativado.',
 }

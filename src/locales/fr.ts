@@ -1210,7 +1210,7 @@ const fr: Catalogue = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'L’Atrium a déménagé',
-  'moved.body': 'The Digital Atrium se trouve désormais à *digitalatrium.org*. Cette adresse fonctionne encore pour l’instant, mais tout se passe là-bas.',
+  'moved.body': 'The Digital Atrium se trouve désormais à *digitalatrium.org*. Cliquez ci-dessous pour vous y rendre.',
   'moved.button': 'Aller sur digitalatrium.org',
   'moved.note': 'Pensez à mettre à jour vos favoris — cette adresse sera retirée.',
 }

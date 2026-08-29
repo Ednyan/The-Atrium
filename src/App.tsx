@@ -781,8 +781,21 @@ function MovedNotice() {
           <RichText text={t('moved.body')} />
         </p>
 
+        {/* A link, but it behaves like a redirect: location.replace drops this
+            page from history, so Back goes wherever they came from rather than
+            returning them to a notice about an address they have just left.
+
+            Still a real <a href>, so middle-click, ctrl-click and "copy link
+            address" all work -- the interception steps aside for any click
+            carrying a modifier, which is somebody deliberately asking for a
+            new tab. */}
         <a
           href="https://digitalatrium.org/"
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+            event.preventDefault()
+            window.location.replace('https://digitalatrium.org/')
+          }}
           className="block w-full text-center bg-nier-bg hover:bg-nier-strong text-nier-black text-[11px] tracking-[0.15em] uppercase py-3 px-4 transition-colors"
         >
           ◇ {t('moved.button')}

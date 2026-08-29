@@ -1212,7 +1212,7 @@ const it: Catalogue = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'L’Atrium ha traslocato',
-  'moved.body': 'The Digital Atrium ora si trova su *digitalatrium.org*. Questo indirizzo funziona ancora per ora, ma tutto accade là.',
+  'moved.body': 'The Digital Atrium ora si trova su *digitalatrium.org*. Clicca qui sotto per andarci.',
   'moved.button': 'Vai a digitalatrium.org',
   'moved.note': 'Conviene aggiornare i segnalibri — questo indirizzo verrà dismesso.',
 }

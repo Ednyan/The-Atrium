@@ -1214,7 +1214,7 @@ const ru: Catalogue = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'Atrium переехал',
-  'moved.body': 'The Digital Atrium теперь живёт по адресу *digitalatrium.org*. Этот адрес пока работает, но всё происходит уже там.',
+  'moved.body': 'The Digital Atrium теперь живёт по адресу *digitalatrium.org*. Нажмите ниже, чтобы перейти.',
   'moved.button': 'Перейти на digitalatrium.org',
   'moved.note': 'Стоит обновить закладки — этот адрес будет отключён.',
 }

@@ -1238,7 +1238,7 @@ export const en = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'The Atrium has moved',
-  'moved.body': 'The Digital Atrium now lives at *digitalatrium.org*. This address still works for the moment, but everything happens over there now.',
+  'moved.body': 'The Digital Atrium now lives at *digitalatrium.org*. Click below to go there.',
   'moved.button': 'Go to digitalatrium.org',
   'moved.note': 'Worth updating your bookmarks — this address will be retired.',
 } as const

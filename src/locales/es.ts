@@ -1208,7 +1208,7 @@ const es: Catalogue = {
 
   // ------------------------------------------- the address that moved
   'moved.title': 'El Atrium se ha mudado',
-  'moved.body': 'The Digital Atrium ahora está en *digitalatrium.org*. Esta dirección todavía funciona por ahora, pero todo ocurre allí.',
+  'moved.body': 'The Digital Atrium ahora está en *digitalatrium.org*. Haz clic abajo para ir allí.',
   'moved.button': 'Ir a digitalatrium.org',
   'moved.note': 'Conviene actualizar tus marcadores — esta dirección se retirará.',
 }
