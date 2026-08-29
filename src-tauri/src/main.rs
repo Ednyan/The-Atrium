@@ -97,6 +97,21 @@ fn copy_dir_recursive_if_needed(source_path: &std::path::Path, target_path: &std
         if source_entry_path.is_dir() {
             copy_dir_recursive_if_needed(&source_entry_path, &target_entry_path)?;
         } else {
+            // Never over the top of a file that is already there.
+            //
+            // "if_needed" was in the name from the start, but only the whole
+            // directory was checked, never the individual files -- so pointing
+            // the vault setting at a folder that already held a vault copied
+            // this install's _runtime over it, atrium.db included, and the
+            // atriums that were in there stopped existing. That is the same
+            // rule seed_database_if_needed applies two calls further down; it
+            // was simply being undone before it ran.
+            //
+            // Choosing a folder that already contains a vault is a request to
+            // use that vault, not to replace it.
+            if target_entry_path.exists() {
+                continue;
+            }
             ensure_parent_dir(&target_entry_path)?;
             fs::copy(&source_entry_path, &target_entry_path)
                 .map(|_| ())
