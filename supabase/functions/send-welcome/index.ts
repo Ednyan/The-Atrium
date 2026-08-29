@@ -6,10 +6,12 @@
 // everything else is read from the database. A client can ask for the welcome
 // to be considered; it cannot say who it is for or what address it goes to.
 //
-// Sending twice is the failure this guards hardest against. profiles.
-// welcome_email_sent_at is checked before sending and stamped after, and the
-// stamp is written even if Resend fails -- a missing welcome is a small loss,
-// two welcomes is the kind of thing people notice and mention.
+// Sending twice is the failure this guards hardest against, on three counts:
+// profiles.welcome_email_sent_at is claimed before the send rather than after,
+// so two tabs cannot both win; the address is checked as well as the account,
+// so a second account row for the same person is not a second greeting; and
+// the stamp is written even when Resend refuses. A missing welcome is a small
+// loss, two welcomes is the kind of thing people notice and mention.
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -52,6 +54,35 @@ Deno.serve(async (req: Request) => {
 
     if (!profile) return json({ sent: false, reason: 'no-profile' })
     if (profile.welcome_email_sent_at) return json({ sent: false, reason: 'already-sent' })
+
+    // One welcome per address, not merely per account row.
+    //
+    // Somebody who registers with a password and later signs in with Google
+    // normally stays one account: Auth links an OAuth identity to an existing
+    // user when the provider has verified the same address, and that lands on
+    // the profile checked just above. "Normally" is carrying real weight in
+    // that sentence. It is a property of how Auth is configured -- something
+    // no file in this repo can see or promise -- and it does not hold when the
+    // older account was never confirmed, which leaves a second row behind.
+    //
+    // So the address is checked too. What a person remembers is being written
+    // to twice, not how many rows we kept.
+    const { data: greetedAlready } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('email', user.email.toLowerCase())
+      .not('welcome_email_sent_at', 'is', null)
+      .limit(1)
+
+    if (greetedAlready && greetedAlready.length > 0) {
+      // Stamped here as well, so this is settled once instead of re-asked on
+      // every sign-in for the rest of the account's life.
+      await admin
+        .from('profiles')
+        .update({ welcome_email_sent_at: new Date().toISOString() })
+        .eq('id', user.id)
+      return json({ sent: false, reason: 'already-sent-to-address' })
+    }
 
     // Claimed before the send, not after. Two tabs opening at once would
     // otherwise both read null and both send.
