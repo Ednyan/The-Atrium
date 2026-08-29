@@ -210,6 +210,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
                     onClick={() => run(entry.id, () => call(entry.hidden ? 'unhide' : 'hide', { id: entry.id }))}
                   />
                   <Action label={t('names.action.edit')} disabled={busyId === entry.id} onClick={() => setEditing(entry)} />
+                  <Action label={t('names.action.write')} disabled={busyId === entry.id} onClick={() => setMessaging(entry)} />
                   <Action label={t('common.delete')} danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
                 </Row>
               ))}
@@ -224,6 +225,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
             <div className="space-y-2 mb-5">
               {refunded.map(entry => (
                 <Row key={entry.id} entry={entry}>
+                  <Action label={t('names.action.write')} disabled={busyId === entry.id} onClick={() => setMessaging(entry)} />
                   <Action label={t('common.delete')} danger disabled={busyId === entry.id} onClick={() => setDeleting(entry)} />
                 </Row>
               ))}

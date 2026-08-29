@@ -1130,6 +1130,7 @@ const es: Catalogue = {
   'wall.dismiss': 'Haz clic en cualquier lugar para ocultar el mensaje',
   'demo.sharedCanvas': 'un lienzo compartido',
   'demo.you': 'tú',
+  'demo.wanderer': 'Errante',
   'demo.visitorA': 'Errante',
   'demo.visitorB': 'Eco',
   'demo.panZoom': 'arrastra para desplazarte · rueda para acercar',

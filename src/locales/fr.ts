@@ -1132,6 +1132,7 @@ const fr: Catalogue = {
   'wall.dismiss': 'Cliquez n’importe où pour masquer le message',
   'demo.sharedCanvas': 'un canevas partagé',
   'demo.you': 'vous',
+  'demo.wanderer': 'Vagabond',
   'demo.visitorA': 'Errant',
   'demo.visitorB': 'Écho',
   'demo.panZoom': 'glisser pour déplacer · molette pour zoomer',

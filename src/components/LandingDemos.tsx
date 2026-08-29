@@ -160,8 +160,8 @@ export function LivingAtriumScene() {
         </div>
 
         {/* cursors */}
-        <DemoCursor name="You" color={C.silver} style={{ left: 0, top: 0, animation: 'ldCursorYou 22s ease-in-out infinite' }} />
-        <DemoCursor name="Wanderer" color={C.emerald} style={{ left: 0, top: 0, animation: 'ldCursorWanderer 22s ease-in-out infinite' }} />
+        <DemoCursor name={t('demo.you')} color={C.silver} style={{ left: 0, top: 0, animation: 'ldCursorYou 22s ease-in-out infinite' }} />
+        <DemoCursor name={t('demo.wanderer')} color={C.emerald} style={{ left: 0, top: 0, animation: 'ldCursorWanderer 22s ease-in-out infinite' }} />
       </div>
 
       <style>{`

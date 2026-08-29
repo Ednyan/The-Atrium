@@ -1133,6 +1133,7 @@ const de: Catalogue = {
   'wall.dismiss': 'Klicke irgendwohin, um die Nachricht auszublenden',
   'demo.sharedCanvas': 'eine gemeinsame Leinwand',
   'demo.you': 'du',
+  'demo.wanderer': 'Wanderer',
   'demo.visitorA': 'Wanderer',
   'demo.visitorB': 'Echo',
   'demo.panZoom': 'ziehen zum Verschieben · Rad zum Zoomen',

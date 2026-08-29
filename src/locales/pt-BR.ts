@@ -1134,6 +1134,7 @@ const ptBR: Catalogue = {
   'wall.dismiss': 'Clique em qualquer lugar para esconder a mensagem',
   'demo.sharedCanvas': 'uma tela compartilhada',
   'demo.you': 'você',
+  'demo.wanderer': 'Errante',
   'demo.visitorA': 'Errante',
   'demo.visitorB': 'Eco',
   'demo.panZoom': 'arraste para navegar · role para dar zoom',

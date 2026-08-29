@@ -1134,6 +1134,7 @@ const it: Catalogue = {
   'wall.dismiss': 'Clicca in qualsiasi punto per nascondere il messaggio',
   'demo.sharedCanvas': 'una tela condivisa',
   'demo.you': 'tu',
+  'demo.wanderer': 'Vagabondo',
   'demo.visitorA': 'Errante',
   'demo.visitorB': 'Eco',
   'demo.panZoom': 'trascina per spostarti · rotellina per zoomare',

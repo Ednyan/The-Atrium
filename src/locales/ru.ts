@@ -1136,6 +1136,7 @@ const ru: Catalogue = {
   'wall.dismiss': 'Нажмите в любом месте, чтобы скрыть сообщение',
   'demo.sharedCanvas': 'общий холст',
   'demo.you': 'вы',
+  'demo.wanderer': 'Странник',
   'demo.visitorA': 'Странник',
   'demo.visitorB': 'Эхо',
   'demo.panZoom': 'перетащите для перемещения · колесо для масштабирования',
