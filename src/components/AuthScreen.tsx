@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { friendlyAuthError } from '../lib/authErrors'
 import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 
@@ -198,7 +199,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
       }
     } catch (err: any) {
       console.error('Signup error:', err)
-      setError(err.message || t('auth.error.signUpFailed'))
+      setError(friendlyAuthError(err, t('auth.error.signUpFailed')))
     } finally {
       setLoading(false)
     }
@@ -279,7 +280,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
         }
       }
     } catch (err: any) {
-      setError(err.message || t('auth.error.logInFailed'))
+      setError(friendlyAuthError(err, t('auth.error.logInFailed')))
     } finally {
       setLoading(false)
     }

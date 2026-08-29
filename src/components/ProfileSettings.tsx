@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { friendlyAuthError } from '../lib/authErrors'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { deleteMyAccount } from '../lib/account'
@@ -284,7 +285,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         setPasswordSuccess(false)
       }, 2000)
     } catch (err: any) {
-      setPasswordError(err.message || t('profile.errUpdatePassword'))
+      setPasswordError(friendlyAuthError(err, t('profile.errUpdatePassword')))
     } finally {
       setPasswordLoading(false)
     }
