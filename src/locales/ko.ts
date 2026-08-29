@@ -52,7 +52,6 @@ const ko: Catalogue = {
   'theme.change': '테마: {mode}. 클릭하면 바뀌어요.',
 
   // ------------------------------------------------------ the monthly gauge
-  'goal.thisMonth': '이번 달의 후원',
   'goal.funded': '{percent}% 달성',
   'goal.seeWho': '이곳을 떠받치는 사람들 보기',
 

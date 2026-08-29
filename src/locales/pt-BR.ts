@@ -297,7 +297,6 @@ const ptBR: Catalogue = {
   'theme.light': 'Claro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Clique para mudar.',
-  'goal.thisMonth': 'Contribuições este mês',
   'goal.funded': '{percent}% financiado',
   'goal.seeWho': 'Veja quem mantém isso funcionando',
   'locked.passwordNeeded': 'Senha necessária',

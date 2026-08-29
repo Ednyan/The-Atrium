@@ -299,7 +299,6 @@ const ru: Catalogue = {
   'theme.light': 'Светлая',
   'theme.label': 'Тема: {mode}',
   'theme.change': 'Тема: {mode}. Нажмите, чтобы изменить.',
-  'goal.thisMonth': 'Пожертвования в этом месяце',
   'goal.funded': '{percent}% покрыто',
   'goal.seeWho': 'Посмотрите, кто это поддерживает',
   'locked.passwordNeeded': 'Требуется пароль',

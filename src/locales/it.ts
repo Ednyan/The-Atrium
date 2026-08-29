@@ -297,7 +297,6 @@ const it: Catalogue = {
   'theme.light': 'Chiaro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Clicca per cambiare.',
-  'goal.thisMonth': 'Contributi questo mese',
   'goal.funded': '{percent}% finanziato',
   'goal.seeWho': 'Guarda chi tiene in piedi tutto questo',
   'locked.passwordNeeded': 'Password necessaria',

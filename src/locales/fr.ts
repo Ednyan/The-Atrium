@@ -295,7 +295,6 @@ const fr: Catalogue = {
   'theme.light': 'Clair',
   'theme.label': 'Thème : {mode}',
   'theme.change': 'Thème : {mode}. Cliquez pour changer.',
-  'goal.thisMonth': 'Contributions ce mois-ci',
   'goal.funded': '{percent}% financé',
   'goal.seeWho': 'Voir qui fait vivre ce projet',
   'locked.passwordNeeded': 'Mot de passe requis',

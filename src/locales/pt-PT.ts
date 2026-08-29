@@ -300,7 +300,6 @@ const ptPT: Catalogue = {
   'theme.light': 'Claro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Clique para mudar.',
-  'goal.thisMonth': 'Contribuições este mês',
   'goal.funded': '{percent}% financiado',
   'goal.seeWho': 'Veja quem mantém isto a funcionar',
   'locked.passwordNeeded': 'Palavra-passe necessária',

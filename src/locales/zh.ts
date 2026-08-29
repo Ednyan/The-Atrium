@@ -51,7 +51,6 @@ const zh: Catalogue = {
   'theme.change': '主题：{mode}。点击切换。',
 
   // ------------------------------------------------------ the monthly gauge
-  'goal.thisMonth': '本月的支持',
   'goal.funded': '{percent}% 已覆盖',
   'goal.seeWho': '看看是谁在支撑这里',
 

@@ -42,7 +42,6 @@ export const en = {
   'theme.change': 'Theme: {mode}. Click to change.',
 
   // ------------------------------------------------------ the monthly gauge
-  'goal.thisMonth': 'Contributions this month',
   'goal.funded': '{percent}% funded',
   'goal.seeWho': 'See who keeps this running',
 

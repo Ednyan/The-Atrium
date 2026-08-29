@@ -14,9 +14,7 @@
 import { useEffect, useState } from 'react'
 import type { MonthlyProgress } from '../lib/contributions'
 import { useTranslation } from '../lib/i18n'
-// Only the figures: the column shows a bare count above a label that already
-// says what it counts, so it needs no sentence and no plural rule.
-import { gaugeFigures } from '../lib/monthlyGauge'
+import { contributionCountKey, gaugeFigures } from '../lib/monthlyGauge'
 
 interface MonthlyGoalColumnProps {
   month: MonthlyProgress | null
@@ -70,8 +68,12 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
       // translateY is written into the transform rather than left to
       // -translate-y-1/2: an inline transform replaces the class outright, and
       // without it the column jumps to the middle of the screen.
-      className={`hidden md:flex fixed top-1/2 z-20 flex-col items-center gap-4 group ${
-        side === 'left' ? 'left-10 xl:left-16' : 'right-10 xl:right-16'
+      // A row rather than a stack. Both figures used to sit above and below
+      // the bar, which made a tall thing taller and pushed the fill off centre
+      // on a short window. Beside it, the caption borrows height the bar
+      // already has.
+      className={`hidden md:flex fixed top-1/2 z-20 items-center gap-3 group ${
+        side === 'left' ? 'left-10 xl:left-16 flex-row' : 'right-10 xl:right-16 flex-row-reverse'
       }`}
       style={{
         transform: `translateY(-50%) scale(${scale})`,
@@ -79,16 +81,28 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
       }}
       title={t('goal.seeWho')}
     >
-      {/* What the column is trying to reach sits at the top, where it is
-          reaching. This said the goal in euros and the bottom said the sum
-          raised; it now says how much of the month is covered, and no sum
-          appears anywhere -- a gauge that names an amount stops being an
-          ornament and becomes a thermometer. */}
-      <span className="text-xs tracking-[0.2em] text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors tabular-nums whitespace-nowrap">
-        {t('goal.funded', { percent })}
+      {/* One sentence, on its side, beside the thing it describes. Set with
+          vertical-rl rather than rotated with a transform: that is real text
+          layout, so it wraps, selects and measures like text.
+
+          Tighter and a shade smaller than the old label because it is a whole
+          sentence now rather than three words, and it has only the bar's
+          height to live in. */}
+      <span
+        className="text-[10px] tracking-[0.18em] uppercase text-nier-bg/70 group-hover:text-nier-bg transition-colors whitespace-nowrap"
+        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+      >
+        {t(contributionCountKey(count), { count })}
       </span>
 
-      <div className="relative w-[10px] h-[clamp(150px,34vh,300px)] border border-nier-border/30 bg-nier-black overflow-hidden">
+      {/* Wide enough to be written in. It was a 10px sliver with both figures
+          stacked outside it; the percentage belongs inside the vessel it is
+          describing, which needs room for a line of type. */}
+      {/* isolate so the difference blend below has this box as its backdrop and
+          nothing further out. The button's own transform already makes a
+          stacking context, so this is belt and braces -- but a blend mode that
+          quietly reaches past its container is a horrible thing to debug. */}
+      <div className="relative isolate w-[34px] h-[clamp(150px,34vh,300px)] border border-nier-border/30 bg-nier-black overflow-hidden">
         <div
           className="absolute inset-x-0 bottom-0 bg-nier-bg/75 group-hover:bg-nier-bg transition-[height,background-color] duration-[1600ms] ease-out overflow-hidden"
           style={{ height: filled ? `${percent}%` : '0%' }}
@@ -114,23 +128,29 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
 
         {/* The line it is trying to reach. */}
         <div className="absolute inset-x-0 top-0 h-px bg-nier-border/50" />
+
+        {/* Inside the vessel, hanging from the top, so it is read as a
+            property of the bar rather than a caption near it.
+
+            difference blending rather than a chosen colour, because the fill
+            rises past this text: at 90% it sits on the fill, at 10% on the
+            empty ground, and around the surface it lies across both at once.
+            White differenced against whatever is behind it inverts, so it
+            stays legible on either -- and it keeps working in light mode,
+            where the two grounds swap over. Any fixed colour is wrong half the
+            month. */}
+        <span
+          className="absolute top-2 left-1/2 text-[10px] tracking-[0.15em] uppercase whitespace-nowrap pointer-events-none tabular-nums"
+          style={{
+            writingMode: 'vertical-rl',
+            transform: 'translateX(-50%)',
+            color: '#ffffff',
+            mixBlendMode: 'difference',
+          }}
+        >
+          {t('goal.funded', { percent })}
+        </span>
       </div>
-
-      {/* The people, under the fill they made. Bare, because the line
-          below it says what it counts -- and the two are read together, the
-          number sitting directly above the words. */}
-      <span className="text-sm tracking-[0.2em] text-nier-bg/85 group-hover:text-nier-strong transition-colors tabular-nums">
-        {count}
-      </span>
-
-      {/* Set on its side rather than rotated with a transform: vertical-rl is
-          real text layout, so it wraps, selects and measures like text. */}
-      <span
-        className="text-[11px] tracking-[0.28em] uppercase text-nier-bg/70 group-hover:text-nier-bg transition-colors whitespace-nowrap"
-        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-      >
-        {t('goal.thisMonth')}
-      </span>
     </button>
   )
 }

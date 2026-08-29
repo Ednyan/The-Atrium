@@ -48,7 +48,6 @@ const ja: Catalogue = {
   'theme.change': 'テーマ：{mode}。クリックで切り替えます。',
 
   // ------------------------------------------------------ the monthly gauge
-  'goal.thisMonth': '今月の支援',
   'goal.funded': '{percent}% 達成',
   'goal.seeWho': 'ここを支えている人たちを見る',
 

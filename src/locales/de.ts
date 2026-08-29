@@ -296,7 +296,6 @@ const de: Catalogue = {
   'theme.light': 'Hell',
   'theme.label': 'Design: {mode}',
   'theme.change': 'Design: {mode}. Zum Ändern klicken.',
-  'goal.thisMonth': 'Beiträge diesen Monat',
   'goal.funded': '{percent}% finanziert',
   'goal.seeWho': 'Sieh, wer das hier am Laufen hält',
   'locked.passwordNeeded': 'Passwort erforderlich',

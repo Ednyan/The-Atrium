@@ -293,7 +293,6 @@ const es: Catalogue = {
   'theme.light': 'Claro',
   'theme.label': 'Tema: {mode}',
   'theme.change': 'Tema: {mode}. Haz clic para cambiar.',
-  'goal.thisMonth': 'Contribuciones este mes',
   'goal.funded': '{percent}% financiado',
   'goal.seeWho': 'Ve quién mantiene esto en marcha',
   'locked.passwordNeeded': 'Se necesita contraseña',
