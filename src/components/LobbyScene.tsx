@@ -5062,8 +5062,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                     // Sending the webview to Pinterest would strand it there:
                     // there is no address bar to come back from, and no https
                     // origin for Pinterest to return to. Linking happens in
-                    // Profile Settings, so say so rather than doing nothing.
-                    showToast(t('atrium.error.linkPinterestFirst'))
+                    // its own row on the welcome screen, so say where rather
+                    // than doing nothing.
+                    showToast(t('atrium.error.linkPinterestFirst', { entry: t('welcome.pinterest') }))
                   } else {
                     initiatePinterestConnect()
                   }

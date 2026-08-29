@@ -79,7 +79,8 @@ export default function PinterestDesktopLink() {
         ) : code ? (
           <>
             <p className="text-nier-bg/80 text-[0.85rem] leading-relaxed tracking-wide mb-4">
-              Type this into the desktop app, under Profile Settings → Pinterest.
+              Type this into the desktop app, under Pinterest Connection on the
+              welcome screen.
             </p>
             <div className="border border-nier-border/40 bg-nier-border/10 px-4 py-5 text-center mb-3">
               {/* select-all so one click takes the whole code rather than the
