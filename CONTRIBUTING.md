@@ -16,9 +16,9 @@ Thank you for your interest in contributing to The Lobby! This document provides
 ## 🚀 Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/the-lobby.git`
+2. Clone your fork: `git clone https://github.com/your-username/The-Atrium.git`
 3. Install dependencies: `npm install`
-4. Set up Supabase following `QUICKSTART.md`
+4. Set up Supabase following `README.md`
 5. Create a branch: `git checkout -b feature/your-feature-name`
 
 ## 📝 Development Guidelines
