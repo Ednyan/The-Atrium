@@ -6,18 +6,23 @@
 //
 // Requires the RESEND_API_KEY secret to be set on this project
 // (`supabase secrets set RESEND_API_KEY=...`) with a key from
-// https://resend.com. The "from" address uses mail.scenefoundry.studio --
-// already verified in Resend (it's what sends account-confirmation email
-// via Supabase Auth SMTP) -- rather than Resend's shared onboarding@resend.dev
+// https://resend.com. The "from" address uses mail.digitalatrium.org, a
+// domain verified in Resend, rather than Resend's shared onboarding@resend.dev
 // sandbox address. reply_to is set to the caller's own verified email (from
 // their session JWT, not a client-supplied field) so replying in a normal
 // mail client goes straight back to them.
+//
+// Note that Supabase Auth's own SMTP sender -- the address on
+// account-confirmation and password-reset mail -- is configured in the
+// Supabase dashboard, not here, and has to be moved separately. It used to
+// share mail.scenefoundry.studio with this function, so retiring that domain
+// in Resend without changing the dashboard setting would break sign-up.
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
 const SUPPORT_EMAIL = 'thedigitalatrium@gmail.com'
-const RESEND_FROM = 'The Atrium <feedback@mail.scenefoundry.studio>'
+const RESEND_FROM = 'The Atrium <feedback@mail.digitalatrium.org>'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {

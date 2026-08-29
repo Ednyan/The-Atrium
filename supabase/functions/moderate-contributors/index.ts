@@ -23,7 +23,7 @@ import { renderContributorEmail } from '../_shared/contributorEmail.ts'
 // Replies are a different question, and these messages invite them -- so they
 // are pointed at the address a person actually reads. Without this, "reply to
 // this email" meant replying into a domain that receives nothing.
-const RESEND_FROM = 'The Atrium <contributions@mail.scenefoundry.studio>'
+const RESEND_FROM = 'The Atrium <contributions@mail.digitalatrium.org>'
 const RESEND_REPLY_TO = 'thedigitalatrium@gmail.com'
 
 // The same rules create-contribution applies. An edit must not be able to put
