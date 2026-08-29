@@ -79,7 +79,7 @@ const ja: Catalogue = {
   'welcome.welcomeToThe': 'ようこそ',
   'welcome.tagline': '創作のための静かな場所',
   'welcome.website': 'ウェブサイトを見る',
-  'welcome.websiteTitle': 'ブラウザーで the-atrium.pages.dev を開きます',
+  'welcome.websiteTitle': 'ブラウザーで digitalatrium.org を開きます',
 
   // -------------------------------------------------------- atrium browser
   'browser.loadingTitle': 'Atrium を読み込んでいます',
@@ -1287,6 +1287,12 @@ const ja: Catalogue = {
   'landing.nav.create': 'Atrium を開く',
   'landing.nav.populate': 'Trace を作る',
   'landing.nav.explore': 'さわって、見てまわる',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'Atrium は引っ越しました',
+  'moved.body': 'The Digital Atrium はいま *digitalatrium.org* にあります。この住所もいまのところ使えますが、これからは向こうがすべてです。',
+  'moved.button': 'digitalatrium.org へ',
+  'moved.note': 'ブックマークの更新をおすすめします——この住所はいずれ閉じられます。',
 }
 
 export default ja

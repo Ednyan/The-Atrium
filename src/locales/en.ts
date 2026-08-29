@@ -73,7 +73,7 @@ export const en = {
   'welcome.welcomeToThe': 'Welcome to the',
   'welcome.tagline': 'A quiet space for creative presence',
   'welcome.website': 'Visit the website',
-  'welcome.websiteTitle': 'Opens the-atrium.pages.dev in your browser',
+  'welcome.websiteTitle': 'Opens digitalatrium.org in your browser',
 
   // -------------------------------------------------------- atrium browser
   'browser.loadingTitle': 'Loading Atriums',
@@ -1235,6 +1235,12 @@ export const en = {
   'landing.nav.create': 'Open Your Atrium',
   'landing.nav.populate': 'Create Traces',
   'landing.nav.explore': 'Interact and Explore',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'The Atrium has moved',
+  'moved.body': 'The Digital Atrium now lives at *digitalatrium.org*. This address still works for the moment, but everything happens over there now.',
+  'moved.button': 'Go to digitalatrium.org',
+  'moved.note': 'Worth updating your bookmarks — this address will be retired.',
 } as const
 
 export type TranslationKey = keyof typeof en

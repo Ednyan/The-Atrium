@@ -313,7 +313,7 @@ const ptPT: Catalogue = {
   'welcome.welcomeToThe': 'Bem-vindo ao',
   'welcome.tagline': 'Um espaço tranquilo para a presença criativa',
   'welcome.website': 'Visitar o site',
-  'welcome.websiteTitle': 'Abre the-atrium.pages.dev no seu navegador',
+  'welcome.websiteTitle': 'Abre digitalatrium.org no seu navegador',
   'profile.title': 'Definições de perfil',
   'profile.usernamePermanent': 'Nome de utilizador (permanente)',
   'profile.displayName': 'Nome de exibição',
@@ -1212,6 +1212,12 @@ const ptPT: Catalogue = {
   'compare.web.share': 'Sim',
   'compare.desktop.share': 'Exportar um ficheiro',
   'landing.or': 'ou',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'O Atrium mudou de endereço',
+  'moved.body': 'O Digital Atrium está agora em *digitalatrium.org*. Este endereço ainda funciona por agora, mas tudo acontece lá.',
+  'moved.button': 'Ir para digitalatrium.org',
+  'moved.note': 'Vale a pena atualizar os seus favoritos — este endereço vai ser desativado.',
 }
 
 export default ptPT

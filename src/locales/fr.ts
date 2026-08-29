@@ -308,7 +308,7 @@ const fr: Catalogue = {
   'welcome.welcomeToThe': 'Bienvenue dans',
   'welcome.tagline': 'Un espace calme pour la présence créative',
   'welcome.website': 'Visiter le site web',
-  'welcome.websiteTitle': 'Ouvre the-atrium.pages.dev dans votre navigateur',
+  'welcome.websiteTitle': 'Ouvre digitalatrium.org dans votre navigateur',
   'profile.title': 'Paramètres du profil',
   'profile.usernamePermanent': 'Nom d’utilisateur (définitif)',
   'profile.displayName': 'Nom affiché',
@@ -1207,6 +1207,12 @@ const fr: Catalogue = {
   'compare.web.share': 'Oui',
   'compare.desktop.share': 'Exporter un fichier',
   'landing.or': 'ou',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'L’Atrium a déménagé',
+  'moved.body': 'The Digital Atrium se trouve désormais à *digitalatrium.org*. Cette adresse fonctionne encore pour l’instant, mais tout se passe là-bas.',
+  'moved.button': 'Aller sur digitalatrium.org',
+  'moved.note': 'Pensez à mettre à jour vos favoris — cette adresse sera retirée.',
 }
 
 export default fr

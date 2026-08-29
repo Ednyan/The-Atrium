@@ -4,13 +4,50 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/glass_dome_small_icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- What a search engine and a link preview get.
+
+         The app routes on the hash (#/browse, #/contributors), and search
+         engines have ignored fragments for indexing since 2015 -- so there is
+         exactly one indexable page however many screens the app has, and
+         everything below has to do the work for all of them.
+
+         og:image is the dome for now. A screenshot of a populated atrium at
+         1200x630 would be considerably better, since the thing is visual and
+         does not explain itself in a sentence; see docs/BEING_FOUND.md. -->
+    <title>The Digital Atrium — an infinite canvas for your references</title>
+    <meta name="description" content="Collect images, video, PDFs and links on an infinite shared canvas. Build a room of your references, arrange it however you like, and let others walk through it." />
+    <link rel="canonical" href="https://digitalatrium.org/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="The Digital Atrium" />
+    <meta property="og:title" content="The Digital Atrium" />
+    <meta property="og:description" content="An infinite canvas for the things you want to keep." />
+    <meta property="og:image" content="https://digitalatrium.org/glass_dome.png" />
+    <meta property="og:url" content="https://digitalatrium.org/" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="The Digital Atrium" />
+    <meta name="twitter:description" content="An infinite canvas for the things you want to keep." />
+    <meta name="twitter:image" content="https://digitalatrium.org/glass_dome.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-    <title>Digital Atrium</title>
   </head>
   <body>
     <div id="root"></div>
+    <!-- The shell renders empty until React runs, so this is both what a
+         visitor without JavaScript should see and the only prose the first
+         crawl pass has to go on. -->
+    <noscript>
+      <h1>The Digital Atrium</h1>
+      <p>
+        An infinite canvas for collecting and arranging references — images,
+        video, PDFs, links and notes — in a room you build and can share.
+      </p>
+      <p>The Digital Atrium needs JavaScript enabled to run.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

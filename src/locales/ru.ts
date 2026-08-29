@@ -312,7 +312,7 @@ const ru: Catalogue = {
   'welcome.welcomeToThe': 'Добро пожаловать в',
   'welcome.tagline': 'Тихое пространство для творческого присутствия',
   'welcome.website': 'Посетить сайт',
-  'welcome.websiteTitle': 'Открывает the-atrium.pages.dev в вашем браузере',
+  'welcome.websiteTitle': 'Открывает digitalatrium.org в вашем браузере',
   'profile.title': 'Настройки профиля',
   'profile.usernamePermanent': 'Имя пользователя (постоянное)',
   'profile.displayName': 'Отображаемое имя',
@@ -1211,6 +1211,12 @@ const ru: Catalogue = {
   'compare.web.share': 'Да',
   'compare.desktop.share': 'Экспорт файла',
   'landing.or': 'или',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'Atrium переехал',
+  'moved.body': 'The Digital Atrium теперь живёт по адресу *digitalatrium.org*. Этот адрес пока работает, но всё происходит уже там.',
+  'moved.button': 'Перейти на digitalatrium.org',
+  'moved.note': 'Стоит обновить закладки — этот адрес будет отключён.',
 }
 
 export default ru

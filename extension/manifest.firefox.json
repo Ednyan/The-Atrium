@@ -4,13 +4,15 @@
   "version": "0.1.0",
   "description": "Right-click any image, link or selection on the web and send it straight into your open Digital Atrium.",
   "permissions": ["contextMenus", "tabs", "notifications"],
-  "host_permissions": ["https://the-atrium.pages.dev/*"],
+  "host_permissions": ["https://digitalatrium.org/*",
+    "https://the-atrium.pages.dev/*"],
   "background": {
     "scripts": ["background.js"]
   },
   "content_scripts": [
     {
-      "matches": ["https://the-atrium.pages.dev/*"],
+      "matches": ["https://digitalatrium.org/*",
+    "https://the-atrium.pages.dev/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

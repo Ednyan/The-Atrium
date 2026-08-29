@@ -37,9 +37,9 @@ export interface Language {
   english: string
 }
 
-// Every language the app intends to speak, in the order they are offered.
-// English first because it is the original; the rest by how many people the
-// app is likely to reach in them.
+// Every language the app intends to speak. The order here is not the order
+// they are offered in -- availableLanguages() sorts by endonym, so this list
+// is free to grow by appending rather than by finding the right slot.
 export const LANGUAGES: Language[] = [
   { code: 'en', endonym: 'English', english: 'English' },
   { code: 'es', endonym: 'Español', english: 'Spanish' },
@@ -81,9 +81,21 @@ const catalogues: Partial<Record<LanguageCode, Catalogue>> = { en }
 const listeners = new Set<() => void>()
 let current: LanguageCode | null = null
 
-/** The languages that can actually be chosen right now. */
+/**
+ * The languages that can actually be chosen right now, alphabetically.
+ *
+ * Sorted by endonym rather than by English name, because the endonym is what
+ * the picker shows: somebody looking for their own language scans for 日本語,
+ * not for "Japanese", and a list ordered by words it does not display is a
+ * list in no order at all.
+ *
+ * localeCompare rather than a plain `<`, so the scripts land in a sensible
+ * sequence -- Latin, then Cyrillic, then CJK -- instead of by code point.
+ */
 export function availableLanguages(): Language[] {
-  return LANGUAGES.filter(language => language.code === 'en' || loaders[language.code])
+  return LANGUAGES
+    .filter(language => language.code === 'en' || loaders[language.code])
+    .sort((a, b) => a.endonym.localeCompare(b.endonym))
 }
 
 function isAvailable(code: string): code is LanguageCode {

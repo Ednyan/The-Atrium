@@ -25,4 +25,4 @@ export const CREATOR_LINKS: CreatorLink[] = [
 // day a custom domain replaces this one it is a single edit rather than a
 // search. The desktop build has no address bar of its own, so this is the only
 // way somebody inside it reaches the site.
-export const ATRIUM_WEBSITE = 'https://the-atrium.pages.dev'
+export const ATRIUM_WEBSITE = 'https://digitalatrium.org'

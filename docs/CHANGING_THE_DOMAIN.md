@@ -1,14 +1,19 @@
 # Moving to a custom domain
 
-The site currently lives at `https://the-atrium.pages.dev`.
+**In progress.** The domain is `digitalatrium.org`; the site was previously at
+`https://the-atrium.pages.dev`, which still serves and now shows a notice
+pointing at the new address.
 
-The short version: **the code barely knows its own address**, so the edit is
-small. The work is in four third-party consoles, and the one thing that can
-actually hurt is that installed desktop apps carry the old address compiled
-into them.
+**The code half is done** — the constant, the tooltips in every catalogue, both
+extension manifests, the metadata and the moved notice. What remains is the
+four consoles at the bottom of this page, which no commit can reach.
 
-Do it in the order below. Steps 1–3 can all be live at once with both domains
-working, which is what makes this safe.
+The short version: the code barely knows its own address, so that edit was
+small. The work is in the consoles, and the one thing that can actually hurt is
+that installed desktop apps carry the old address compiled into them.
+
+Steps 1–3 can all be live at once with both domains working, which is what
+makes this safe.
 
 ---
 
@@ -155,21 +160,36 @@ nothing to do with the site's domain.
 
 ## Order of operations
 
-1. Buy the domain, add it in Cloudflare Pages, confirm it serves the site.
-2. Add the new URL to Supabase Auth (keep the old one).
-3. Add the new redirect URI in Pinterest (keep the old one).
-4. Set the `SITE_URL` secret and redeploy the Edge Functions **from the repo
-   root**, or they ship a stale `_shared`.
-5. Change `ATRIUM_WEBSITE` and the eight `welcome.websiteTitle` strings; deploy
-   the web build.
-6. Cut a desktop release so installed apps start learning the new address.
-7. Update and resubmit the extension.
-8. Optionally move the Resend domain, verify first.
-9. Months later, once the desktop fleet has updated: retire the old domain and
-   drop the old Pinterest URI and Supabase redirect URL.
+- [x] Buy the domain.
+- [ ] **Add it in Cloudflare Pages** and confirm it serves the site. Namecheap
+      is the registrar; the least friction is moving the nameservers to
+      Cloudflare, which makes the apex domain work without needing ALIAS
+      records. Pages will keep serving `the-atrium.pages.dev` alongside it.
+- [ ] **Supabase → Authentication → URL Configuration.** Set Site URL to the
+      new domain and add it to Redirect URLs. Keep the old one listed. Skipping
+      this breaks sign-in, Google OAuth and password reset.
+- [ ] **Pinterest → your app → Redirect URIs.** Add `https://digitalatrium.org/`
+      with the trailing slash. Keep the old one: an installed desktop app opens
+      the *old* address to connect, which then sends the *old* origin.
+- [ ] **`npx supabase secrets set SITE_URL="https://digitalatrium.org"`**, then
+      redeploy the Edge Functions **from the repo root** or they ship a stale
+      `_shared`. Without it a donor pays and is returned to the old domain.
+- [x] Change `ATRIUM_WEBSITE`, the `welcome.websiteTitle` strings in all ten
+      catalogues, the canonical and Open Graph metadata, `robots.txt` and
+      `sitemap.xml`.
+- [x] Show a notice on the old domain, exempting `#/link-pinterest`.
+- [ ] **Cut a desktop release** so installed apps start learning the new
+      address. Until they do, they open the old one.
+- [x] Add the new host to both extension manifests, keeping the old.
+- [ ] **Repack and resubmit the extension** to the Chrome Web Store and AMO.
+- [ ] Optionally move the Resend sending domain — verify it there *first*.
+- [ ] **Verify in Google Search Console** (DNS TXT is easiest now the domain is
+      yours), submit the sitemap, and request indexing. See `BEING_FOUND.md`.
+- [ ] Months later, once the desktop fleet has updated: retire the old domain
+      and drop the old Pinterest URI and Supabase redirect URL.
 
-Nothing in steps 1–7 breaks the old domain, so there is no cutover moment to
-get wrong.
+Nothing in the steps above breaks the old domain, so there is no cutover moment
+to get wrong.
 
 ---
 

@@ -13,6 +13,7 @@ import { contributorsReturnPath, rememberContributorsReturn } from './lib/contri
 import { showToast } from './lib/toast'
 import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
+import RichText from './components/RichText'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
@@ -722,6 +723,61 @@ function KickedNotice({ notice, onDismiss }: {
         >
           {t('common.okay')}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// Where the site used to live. Cloudflare serves the same build on both the
+// custom domain and the project's own *.pages.dev address, so the two cannot
+// be told apart by the files -- only by the host the browser asked for.
+const LEGACY_HOSTS = new Set(['the-atrium.pages.dev'])
+
+function isLegacyHost(): boolean {
+  try {
+    return LEGACY_HOSTS.has(window.location.hostname)
+  } catch {
+    // No window: the desktop app, which has no hostname and never moved.
+    return false
+  }
+}
+
+// What the old address says now.
+//
+// A page rather than a banner: somebody who lands here should leave, and a
+// dismissible strip over a working app is an invitation to ignore it and go
+// on using an address that is going away.
+function MovedNotice() {
+  const { t } = useTranslation()
+  return (
+    <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
+      <div className="relative px-8 py-8 max-w-md w-full">
+        <div className="absolute top-0 left-0 w-5 h-5 border-t border-l border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-5 h-5 border-t border-r border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-5 h-5 border-b border-l border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-5 h-5 border-b border-r border-nier-border/60" />
+
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+          <h1 className="text-nier-strong text-sm tracking-[0.2em] uppercase">
+            {t('moved.title')}
+          </h1>
+        </div>
+
+        <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-6">
+          <RichText text={t('moved.body')} />
+        </p>
+
+        <a
+          href="https://digitalatrium.org/"
+          className="block w-full text-center bg-nier-bg hover:bg-nier-strong text-nier-black text-[11px] tracking-[0.15em] uppercase py-3 px-4 transition-colors"
+        >
+          ◇ {t('moved.button')}
+        </a>
+
+        <p className="text-nier-bg/55 text-[10px] tracking-wider leading-relaxed mt-4 text-center">
+          {t('moved.note')}
+        </p>
       </div>
     </div>
   )
@@ -1614,6 +1670,21 @@ function AppInner() {
 
   const handleBackToLanding = () => {
     navigate('/')
+  }
+
+  // The old address, when somebody still arrives at it.
+  //
+  // Shown before anything else, including the loading screen -- there is no
+  // point authenticating somebody on a domain they are about to leave.
+  //
+  // Except on /link-pinterest. Every desktop app installed before the move has
+  // the old address compiled into it (ATRIUM_WEBSITE is a build-time
+  // constant), and that is the page it opens to hand over a pairing code. A
+  // wall across the whole old domain would break Pinterest for every one of
+  // them until its owner happens to take an update. That page keeps working
+  // here until the fleet has moved.
+  if (isLegacyHost() && route.page !== 'link-pinterest') {
+    return <MovedNotice />
   }
 
   if (loading) {

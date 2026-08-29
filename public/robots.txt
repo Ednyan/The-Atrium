@@ -1,0 +1,7 @@
+# Files in public/ are copied to the build output as-is, so this ships with
+# the site. See docs/BEING_FOUND.md.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://digitalatrium.org/sitemap.xml

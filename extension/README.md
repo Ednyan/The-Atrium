@@ -38,7 +38,7 @@ account to distribute.
 
 ## Using it
 
-1. Open <https://the-atrium.pages.dev> and enter an atrium — signed in, with
+1. Open <https://digitalatrium.org> and enter an atrium — signed in, with
    edit permission.
 2. Right-click on any other page:
    - an **image** → *Send image to atrium*

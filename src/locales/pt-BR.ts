@@ -310,7 +310,7 @@ const ptBR: Catalogue = {
   'welcome.welcomeToThe': 'Bem-vindo ao',
   'welcome.tagline': 'Um espaço tranquilo para a presença criativa',
   'welcome.website': 'Visitar o site',
-  'welcome.websiteTitle': 'Abre the-atrium.pages.dev no seu navegador',
+  'welcome.websiteTitle': 'Abre digitalatrium.org no seu navegador',
   'profile.title': 'Configurações de perfil',
   'profile.usernamePermanent': 'Nome de usuário (permanente)',
   'profile.displayName': 'Nome de exibição',
@@ -1209,6 +1209,12 @@ const ptBR: Catalogue = {
   'compare.web.share': 'Sim',
   'compare.desktop.share': 'Exportar um arquivo',
   'landing.or': 'ou',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'O Atrium mudou de endereço',
+  'moved.body': 'O Digital Atrium agora fica em *digitalatrium.org*. Este endereço ainda funciona por enquanto, mas tudo acontece lá.',
+  'moved.button': 'Ir para digitalatrium.org',
+  'moved.note': 'Vale atualizar seus favoritos — este endereço será desativado.',
 }
 
 export default ptBR

@@ -7,7 +7,7 @@ One-time setup to make "Connect Pinterest" work. Web only for now.
 1. Go to https://developers.pinterest.com and sign in.
 2. Under **Apps**, create a new app (any name/description).
 3. Open the app's settings. Copy the **App ID** (Client ID) and generate an **App secret** (Client Secret).
-4. Under **Redirect URIs**, add exactly one value: **`https://the-atrium.pages.dev/`** (with the trailing slash). The app always sends the site root, whatever page you press Connect on, so this is the only URI to register.
+4. Under **Redirect URIs**, add exactly one value: **`https://digitalatrium.org/`** (with the trailing slash). The app always sends the site root, whatever page you press Connect on, so this is the only URI to register.
 5. Under **Scopes**, request: `boards:read`, `pins:read`, `user_accounts:read`. These are read-only and fall under Pinterest's Trial access tier -- no app review needed for personal use.
 
 ## 2. Frontend: Client ID

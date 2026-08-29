@@ -9,6 +9,7 @@
     "notifications"
   ],
   "host_permissions": [
+    "https://digitalatrium.org/*",
     "https://the-atrium.pages.dev/*"
   ],
   "background": {
@@ -17,7 +18,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://the-atrium.pages.dev/*"
+        "https://digitalatrium.org/*",
+    "https://the-atrium.pages.dev/*"
       ],
       "js": [
         "content.js"

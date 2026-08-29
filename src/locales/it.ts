@@ -310,7 +310,7 @@ const it: Catalogue = {
   'welcome.welcomeToThe': 'Benvenuto nel',
   'welcome.tagline': 'Uno spazio tranquillo per la presenza creativa',
   'welcome.website': 'Visita il sito web',
-  'welcome.websiteTitle': 'Apre the-atrium.pages.dev nel tuo browser',
+  'welcome.websiteTitle': 'Apre digitalatrium.org nel tuo browser',
   'profile.title': 'Impostazioni profilo',
   'profile.usernamePermanent': 'Nome utente (permanente)',
   'profile.displayName': 'Nome visualizzato',
@@ -1209,6 +1209,12 @@ const it: Catalogue = {
   'compare.web.share': 'Sì',
   'compare.desktop.share': 'Esportare un file',
   'landing.or': 'oppure',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'L’Atrium ha traslocato',
+  'moved.body': 'The Digital Atrium ora si trova su *digitalatrium.org*. Questo indirizzo funziona ancora per ora, ma tutto accade là.',
+  'moved.button': 'Vai a digitalatrium.org',
+  'moved.note': 'Conviene aggiornare i segnalibri — questo indirizzo verrà dismesso.',
 }
 
 export default it

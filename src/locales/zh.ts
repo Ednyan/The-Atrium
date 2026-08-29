@@ -82,7 +82,7 @@ const zh: Catalogue = {
   'welcome.welcomeToThe': '欢迎来到',
   'welcome.tagline': '一处安静的创作空间',
   'welcome.website': '访问网站',
-  'welcome.websiteTitle': '在浏览器中打开 the-atrium.pages.dev',
+  'welcome.websiteTitle': '在浏览器中打开 digitalatrium.org',
 
   // -------------------------------------------------------- atrium browser
   'browser.loadingTitle': '正在加载 Atrium',
@@ -1290,6 +1290,12 @@ const zh: Catalogue = {
   'landing.nav.create': '打开你的 Atrium',
   'landing.nav.populate': '创建 Trace',
   'landing.nav.explore': '互动与探索',
+
+  // ------------------------------------------- the address that moved
+  'moved.title': 'Atrium 搬家了',
+  'moved.body': 'The Digital Atrium 现在在 *digitalatrium.org*。这个地址暂时还能用，但所有事情都在那边发生了。',
+  'moved.button': '前往 digitalatrium.org',
+  'moved.note': '记得更新书签——这个地址以后会停用。',
 }
 
 export default zh
