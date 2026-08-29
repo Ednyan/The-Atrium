@@ -1,5 +1,9 @@
 // Deletes the calling user's account and everything that identifies them.
 //
+// Requires a confirmation code, emailed by request-deletion-code and checked
+// below. See add_account_deletion_codes.sql for why that replaced the password
+// check for every account rather than only for the Google ones that had none.
+//
 // traces/layers.user_id are plain text columns with no foreign key (see
 // add_account_deletion_support.sql), so nothing would otherwise touch
 // content the user created inside OTHER people's shared atriums. Per
@@ -21,7 +25,8 @@
 // add_account_deletion_support.sql.
 
 import { corsHeaders } from '../_shared/cors.ts'
-import { createAdminClient, createAnonClient, getAuthenticatedUser } from '../_shared/supabaseAdmin.ts'
+import { createAdminClient, getAuthenticatedUser } from '../_shared/supabaseAdmin.ts'
+import { MAX_ATTEMPTS, hashCode, hashesMatch } from '../_shared/deletionCode.ts'
 
 // Not a real user id (real ones are UUIDs) -- just a stable marker so
 // anonymized content can still be told apart from a live account if ever
@@ -45,99 +50,75 @@ Deno.serve(async (req: Request) => {
     }
     const userId = user.id
 
-    // The password is checked here rather than in the browser.
+    // The confirmation code is checked here rather than in the browser.
     //
-    // A valid session JWT is all this endpoint used to require, so the
-    // password prompt in Profile Settings was a gate in front of the door
-    // rather than a lock in it: anyone holding the session -- someone at an
-    // unlocked machine, say -- could skip the panel and call this directly.
-    // Deletion is the one irreversible action in the app, so the proof has to
-    // live inside the trust boundary, where no request can be shaped to
-    // avoid it.
+    // A valid session JWT is all this endpoint used to require, so a prompt in
+    // Profile Settings was a gate in front of the door rather than a lock in
+    // it: anyone holding the session -- someone at an unlocked machine, say --
+    // could skip the panel and call this directly. Deletion is the one
+    // irreversible action in the app, so the proof has to live inside the
+    // trust boundary, where no request can be shaped to avoid it.
     //
-    // This is not a brute-force surface worth rate-limiting on its own: you
-    // need a valid session for the account before you get here, and guessing
-    // the password of an account you are already signed into buys nothing.
-    // (Supabase throttles repeated sign-in attempts regardless.)
-    //
-    // Accounts created through Google have no password to check -- requiring
-    // one would lock them out of deleting their own account forever -- so the
-    // check applies exactly when there is an email/password identity to check
-    // against. That is read from the server's own copy of the user, never
-    // from anything the caller sent.
-    // Read two ways round, and default to asking.
-    //
-    // `(user.identities ?? []).some(p => p === 'email')` on its own decides
-    // "no password required" from an absent list just as readily as from a
-    // Google-only one -- so anything that left identities unpopulated would
-    // turn this whole check off and report success while doing it. A control
-    // whose failure mode is "silently stop checking" is not one worth having.
-    //
-    // So: skip the password only when the account positively says it has no
-    // email identity. If both sources are silent we cannot tell, and the
-    // wrong guess in that direction is unrecoverable, so we ask. The cost of
-    // being wrong the other way is a Google user seeing "that is not your
-    // password" and having to write in -- annoying, and reversible.
-    const identities = user.identities ?? []
-    const metaProviders: string[] = Array.isArray(user.app_metadata?.providers)
-      ? user.app_metadata.providers
-      : user.app_metadata?.provider
-        ? [user.app_metadata.provider]
-        : []
-
-    const providersKnown = identities.length > 0 || metaProviders.length > 0
-    const hasEmailIdentity =
-      identities.some((identity: { provider: string }) => identity.provider === 'email') ||
-      metaProviders.includes('email')
-
-    const hasPassword = !providersKnown || hasEmailIdentity
-
-    if (hasPassword) {
-      let password = ''
-      try {
-        const body = await req.json()
-        password = typeof body?.password === 'string' ? body.password : ''
-      } catch {
-        // No body, or not JSON. Treated as no password supplied.
-      }
-
-      if (!password) {
-        return new Response(JSON.stringify({ error: 'password_required' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
-      // Signing in is the only way to verify a password: there is no
-      // "check this password" API, and the service-role key deliberately
-      // cannot do it -- it bypasses authentication rather than performing
-      // it. The anon client is thrown away with the request, and the
-      // password is never logged.
-      const anon = createAnonClient()
-      const { error: reauthError } = await anon.auth.signInWithPassword({
-        email: user.email!,
-        password,
-      })
-      if (reauthError) {
-        return new Response(JSON.stringify({ error: 'invalid_password' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-      // Drop the session that check just minted, so a refresh token for this
-      // account cannot outlive a delete that fails further down.
-      //
-      // Guarded, because this is tidying rather than the job: unguarded it
-      // sits in the same try as the deletion, so a hiccup signing a session
-      // out would throw to the 500 below and the account the caller just
-      // proved they own would not be deleted. The token it is disposing of
-      // belongs to an account that is about to stop existing anyway.
-      try {
-        await anon.auth.signOut()
-      } catch (signOutError) {
-        console.error('[delete-account] could not discard the re-auth session:', signOutError)
-      }
+    // This used to be the account password. That was sound and covered half
+    // the accounts: Google accounts have none, so they had no second proof at
+    // all -- anyone at an unlocked machine could delete one outright. Now
+    // everybody proves the same thing, control of the mailbox, and there is one
+    // path to keep correct instead of two. It is not weaker for accounts that
+    // do have a password, either: anybody holding the mailbox could already
+    // reset that password and take the account.
+    let code = ''
+    try {
+      const body = await req.json()
+      code = typeof body?.code === 'string' ? body.code.trim() : ''
+    } catch {
+      // No body, or not JSON. Treated as no code supplied.
     }
+
+    const { data: pending } = code
+      ? await admin
+          .from('account_deletion_codes')
+          .select('code_hash, expires_at, attempts')
+          .eq('user_id', userId)
+          .maybeSingle()
+      : { data: null }
+
+    if (!code || !pending) {
+      return new Response(JSON.stringify({ error: 'code_required' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Expired and exhausted are reported the same way, because the answer is
+    // the same -- ask for a new one -- and because distinguishing them would
+    // tell somebody grinding codes which wall they hit.
+    const expired = new Date(pending.expires_at).getTime() < Date.now()
+    if (expired || pending.attempts >= MAX_ATTEMPTS) {
+      await admin.from('account_deletion_codes').delete().eq('user_id', userId)
+      return new Response(JSON.stringify({ error: 'code_expired' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (!hashesMatch(await hashCode(userId, code), pending.code_hash)) {
+      // Counted, not just refused. Six digits is a million guesses, which is
+      // nothing to a script already holding the session; the count is what
+      // makes that a dead end. Getting a fresh code costs an email to the
+      // account's owner, so grinding this is never quiet.
+      await admin
+        .from('account_deletion_codes')
+        .update({ attempts: pending.attempts + 1 })
+        .eq('user_id', userId)
+      return new Response(JSON.stringify({ error: 'invalid_code' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Spent the moment it is accepted, so it cannot be replayed if something
+    // below fails and the caller tries again.
+    await admin.from('account_deletion_codes').delete().eq('user_id', userId)
 
     const anonymize = { user_id: ANONYMIZED_USER_ID, username: ANONYMIZED_USERNAME }
 

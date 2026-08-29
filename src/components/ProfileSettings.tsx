@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { friendlyAuthError } from '../lib/authErrors'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
-import { deleteMyAccount } from '../lib/account'
+import { deleteMyAccount, requestDeletionCode } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
 import {
@@ -45,13 +45,16 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   // typing the account's own username as an explicit confirmation.
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
-  const [deletePassword, setDeletePassword] = useState('')
-  // Accounts created through Google have no password, so there is nothing to
-  // ask them for -- and asking anyway would leave them unable to delete their
-  // own account. Assumed true until the identities come back, so the field is
-  // never missing for someone who does need it. The Edge Function decides
-  // this again from its own copy of the user; this is only what to show.
-  const [hasPassword, setHasPassword] = useState(true)
+  // Confirmation is an emailed code now, for every account rather than only the
+  // ones with a password -- see add_account_deletion_codes.sql. So there is no
+  // longer anything to look up about how somebody signed in: the flow is the
+  // same either way.
+  const [deleteCode, setDeleteCode] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
+  const [codeSending, setCodeSending] = useState(false)
+  // Seconds until another code may be asked for. The server enforces this; the
+  // countdown only stops the button offering something that will be refused.
+  const [resendIn, setResendIn] = useState(0)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
@@ -73,19 +76,16 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
   useEffect(() => {
     loadProfile()
-    if (!isDesktop) {
-      loadHasPassword()
-    }
   }, [])
 
-  const loadHasPassword = async () => {
-    if (!supabase) return
-    const { data } = await supabase.auth.getUser()
-    const identities = data?.user?.identities ?? []
-    if (identities.length > 0) {
-      setHasPassword(identities.some((identity: { provider: string }) => identity.provider === 'email'))
-    }
-  }
+  // Ticks the resend cooldown down to zero. Cleared on unmount so closing the
+  // panel mid-countdown does not leave an interval running against a component
+  // that is gone.
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const timer = setInterval(() => setResendIn(seconds => Math.max(0, seconds - 1)), 1000)
+    return () => clearInterval(timer)
+  }, [resendIn])
 
   const loadProfile = async () => {
     if (!supabase || !userId) return
@@ -291,6 +291,36 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     }
   }
 
+  const handleSendDeletionCode = async () => {
+    // Guarded on the username as well, so the first thing this flow does is
+    // never to email somebody about deleting an account because a stranger
+    // opened the panel and pressed a button.
+    if (!actualUsername || deleteConfirmText !== actualUsername) return
+    setDeleteError('')
+    setCodeSending(true)
+
+    const result = await requestDeletionCode()
+    setCodeSending(false)
+
+    if (!result.success) {
+      if (result.code === 'too_soon') {
+        // Not an error worth a red box: a code is already in their inbox.
+        setCodeSent(true)
+        setResendIn(result.retryAfter ?? 60)
+        return
+      }
+      setDeleteError(
+        result.code === 'email_not_configured' || result.code === 'send_failed'
+          ? t('profile.errCodeNotSent')
+          : result.error || t('profile.errCodeNotSent'),
+      )
+      return
+    }
+
+    setCodeSent(true)
+    setResendIn(60)
+  }
+
   const handleDeleteAccount = async () => {
     // actualUsername is empty until the profile row loads, and an empty
     // confirmation box matches an empty expected name -- which would turn
@@ -299,28 +329,37 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     if (!actualUsername || deleteConfirmText !== actualUsername) return
     setDeleteError('')
 
-    if (hasPassword && !deletePassword) {
-      setDeleteError(t('profile.errEnterCurrent'))
+    if (!deleteCode) {
+      setDeleteError(t('profile.errEnterCode'))
       return
     }
 
     setDeleteLoading(true)
 
-    // The password goes to the Edge Function and is checked there, rather
-    // than being checked here first. Verifying in the browser would only ever
-    // be a gate in front of the request -- the endpoint would still delete on
-    // a valid session alone, so anything that skipped this panel skipped the
-    // password with it. One check, on the side that cannot be bypassed.
-    const result = await deleteMyAccount(deletePassword)
+    // The code goes to the Edge Function and is checked there, rather than
+    // being checked here first. Verifying in the browser would only ever be a
+    // gate in front of the request -- the endpoint would still delete on a
+    // valid session alone, so anything that skipped this panel skipped the
+    // check with it. One check, on the side that cannot be bypassed.
+    const result = await deleteMyAccount(deleteCode)
 
     if (!result.success) {
       setDeleteError(
-        result.code === 'invalid_password'
-          ? t('profile.errWrongCurrent')
-          : result.code === 'password_required'
-            ? t('profile.errEnterCurrent')
-            : result.error || 'Failed to delete account.',
+        result.code === 'invalid_code'
+          ? t('profile.errWrongCode')
+          : result.code === 'code_expired'
+            ? t('profile.errCodeExpired')
+            : result.code === 'code_required'
+              ? t('profile.errEnterCode')
+              : result.error || 'Failed to delete account.',
       )
+      // An expired or spent code cannot be retyped into working, so the panel
+      // goes back to offering a new one instead of leaving a dead box.
+      if (result.code === 'code_expired') {
+        setCodeSent(false)
+        setDeleteCode('')
+        setResendIn(0)
+      }
       setDeleteLoading(false)
       return
     }
@@ -712,29 +751,54 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     autoComplete="off"
                   />
 
-                  {/* And the account password on top of it. Typing a username
-                      that is printed on the screen directly above the box is
-                      a guard against misclicking, not against a stranger at
-                      an unlocked machine -- the password is what tells those
-                      two apart. Hidden for accounts that signed up through
-                      Google, which have no password to give. */}
-                  {hasPassword && (
-                  <div>
-                    <label
-                      htmlFor="delete-account-password"
-                      className="block text-nier-bg/75 text-xs tracking-[0.1em] uppercase mb-2"
+                  {/* And a code emailed to the account, on top of it. Typing a
+                      username printed on the screen directly above the box is a
+                      guard against misclicking, not against a stranger at an
+                      unlocked machine -- the code is what tells those two
+                      apart, and unlike the password it replaced, every account
+                      has one. */}
+                  {!codeSent ? (
+                    <button
+                      onClick={handleSendDeletionCode}
+                      disabled={codeSending || !actualUsername || deleteConfirmText !== actualUsername}
+                      className="w-full py-2 border border-nier-red/60 text-nier-red text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      {t('profile.currentPassword')}
-                    </label>
-                    <input
-                      id="delete-account-password"
-                      type="password"
-                      value={deletePassword}
-                      onChange={(e) => setDeletePassword(e.target.value)}
-                      className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-red/60 transition-colors"
-                      autoComplete="current-password"
-                    />
-                  </div>
+                      {codeSending ? t('profile.sendingCode') : t('profile.sendCode')}
+                    </button>
+                  ) : (
+                    <div>
+                      <label
+                        htmlFor="delete-account-code"
+                        className="block text-nier-bg/75 text-xs tracking-[0.1em] uppercase mb-2"
+                      >
+                        {t('profile.deleteCode')}
+                      </label>
+                      <p className="text-nier-bg/60 text-[0.75rem] leading-relaxed tracking-wide mb-2 normal-case">
+                        {t('profile.deleteCodeSent')}
+                      </p>
+                      <input
+                        id="delete-account-code"
+                        type="text"
+                        inputMode="numeric"
+                        // Six digits, so anything longer is a paste of
+                        // something else and anything non-numeric is a typo.
+                        // Filtered rather than validated, because a box that
+                        // silently refuses the wrong character is quicker to
+                        // understand than one that complains afterwards.
+                        value={deleteCode}
+                        onChange={(e) => setDeleteCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-[0.4em] placeholder-nier-bg/50 focus:border-nier-red/60 transition-colors"
+                        placeholder="000000"
+                        autoComplete="one-time-code"
+                      />
+                      <button
+                        onClick={handleSendDeletionCode}
+                        disabled={codeSending || resendIn > 0}
+                        className="mt-2 text-nier-bg/60 text-[0.75rem] tracking-wide underline hover:text-nier-bg transition-colors disabled:no-underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {resendIn > 0 ? t('profile.resendCodeIn', { seconds: String(resendIn) }) : t('profile.resendCode')}
+                      </button>
+                    </div>
                   )}
 
                   {deleteError && (
@@ -746,13 +810,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   <div className="flex gap-2">
                     <button
                       onClick={handleDeleteAccount}
-                      disabled={deleteLoading || !actualUsername || deleteConfirmText !== actualUsername || (hasPassword && !deletePassword)}
+                      disabled={deleteLoading || !actualUsername || deleteConfirmText !== actualUsername || !codeSent || deleteCode.length < 6}
                       className="flex-1 py-2 bg-nier-red/80 text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {deleteLoading ? t('profile.deleting') : t('profile.deletePermanently')}
                     </button>
                     <button
-                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeletePassword(''); setDeleteError('') }}
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteCode(''); setCodeSent(false); setResendIn(0); setDeleteError('') }}
                       disabled={deleteLoading}
                       className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
                     >
