@@ -12,8 +12,22 @@ let mediaBasePath: string = ''
 let legacyMediaBasePath: string = ''
 let vaultBasePath: string = ''
 
-const LOCAL_USER_ID = 'local-user'
-const LOCAL_USERNAME = 'Local User'
+// Who is using this vault, in this Windows session.
+//
+// `let`, not `const`, and read through an ESM live binding: importers see
+// whatever resolveVaultIdentity() settles on during init. Desktop had exactly
+// one identity for its whole life -- everybody was 'local-user' -- which was
+// fine while a vault belonged to one person and wrong the moment a household
+// shared one.
+//
+// 'local-user' stays the starting value on purpose. It is what every row in
+// every existing vault is stamped with, so it has to remain a real identity
+// somebody can hold rather than becoming a ghost that owns everything and is
+// nobody. See resolveVaultIdentity for who inherits it.
+export let LOCAL_USER_ID = 'local-user'
+export let LOCAL_USERNAME = 'Local User'
+
+const LEGACY_USER_ID = 'local-user'
 const LIVE_RUNTIME_DIR_NAME = '_runtime'
 const LIVE_MEDIA_DIR_NAME = 'media'
 const VAULT_SYNC_DELAY_MS = 1000
@@ -944,6 +958,89 @@ export function getDatabaseIntegrityError(): string | null {
   return databaseIntegrityError
 }
 
+// Works out which identity in this vault belongs to this Windows account, and
+// makes sure it has a profile.
+//
+// The mapping lives in the vault rather than beside the app, because it is a
+// fact about this vault: the same Windows account opening two different vaults
+// is a different person in each, and the alternative -- one id reused
+// everywhere -- would silently merge two households' ownership if a vault were
+// ever copied between machines.
+//
+// The first account to open a vault inherits 'local-user', which is what makes
+// upgrading safe. Everything already in an existing vault is owned by that id,
+// and since only an owner may change an atrium, handing the first person a
+// fresh id instead would leave every atrium they had ever made permanently
+// uneditable, owned by a user that no longer exists.
+//
+// Everyone after that gets a new id and owns what they make. That is the whole
+// of the rule.
+async function resolveVaultIdentity(db: any): Promise<void> {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS vault_identities (
+      device_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `)
+
+  // The uuid is generated here and only kept if the file does not exist yet,
+  // so this is "tell me who I am, and if nobody has said, it is this".
+  const identity = await invoke<{ device_id: string; os_user: string }>(
+    'get_or_create_device_id',
+    { proposed: uuid() },
+  )
+
+  const mapped = (await db.select(
+    'SELECT user_id FROM vault_identities WHERE device_id = ?',
+    [identity.device_id],
+  )) as any[]
+
+  if (mapped.length > 0) {
+    LOCAL_USER_ID = mapped[0].user_id
+  } else {
+    const legacyTaken = (await db.select(
+      'SELECT 1 FROM vault_identities WHERE user_id = ?',
+      [LEGACY_USER_ID],
+    )) as any[]
+    LOCAL_USER_ID = legacyTaken.length === 0 ? LEGACY_USER_ID : uuid()
+    await db.execute(
+      'INSERT INTO vault_identities (device_id, user_id) VALUES (?, ?)',
+      [identity.device_id, LOCAL_USER_ID],
+    )
+  }
+
+  const existing = (await db.select(
+    'SELECT username, display_name FROM profiles WHERE id = ?',
+    [LOCAL_USER_ID],
+  )) as any[]
+
+  if (existing.length > 0) {
+    LOCAL_USERNAME = existing[0].display_name || existing[0].username || 'Local User'
+    return
+  }
+
+  // Named after the Windows account, because a household sharing a vault wants
+  // to know whose trace is whose, and that name is the one they already answer
+  // to. Only a starting point -- Profile Settings renames it like any other.
+  const base = (identity.os_user || '').trim() || 'Local User'
+  let username = base
+  let suffix = 2
+  // profiles.username is UNIQUE, and two machines really can both have a
+  // "Admin", so a collision has to be survivable rather than fatal.
+  while (
+    ((await db.select('SELECT 1 FROM profiles WHERE username = ?', [username])) as any[]).length > 0
+  ) {
+    username = `${base} ${suffix++}`
+  }
+
+  await db.execute(
+    'INSERT INTO profiles (id, username, email, display_name, player_color) VALUES (?, ?, ?, ?, ?)',
+    [LOCAL_USER_ID, username, 'local@desktop', username, '#ffffff'],
+  )
+  LOCAL_USERNAME = username
+}
+
 export async function initLocalDb(): Promise<void> {
   const liveDatabasePath = await invoke<string>('prepare_live_database')
   db = await Database.load(`sqlite:${liveDatabasePath}`)
@@ -1269,14 +1366,7 @@ export async function initLocalDb(): Promise<void> {
 
   await dropTraceTypeCheckConstraint(db)
 
-  // Ensure local user profile exists
-  const profileRows = await db.select<any[]>('SELECT id FROM profiles WHERE id = ?', [LOCAL_USER_ID])
-  if (profileRows.length === 0) {
-    await db.execute(
-      'INSERT INTO profiles (id, username, email, display_name, player_color) VALUES (?, ?, ?, ?, ?)',
-      [LOCAL_USER_ID, LOCAL_USERNAME, 'local@desktop', 'Local User', '#ffffff']
-    )
-  }
+  await resolveVaultIdentity(db)
 
   await migrateLegacyLocalMediaIntoAtriumFolders()
 
@@ -1836,7 +1926,14 @@ async function localRpc(fnName: string, params: any): Promise<{ data: any; error
       }
 
       case 'get_user_lobby_access_status': {
-        // In local mode, the user owns everything
+        // This used to say "in local mode, the user owns everything", which
+        // stopped being true when a vault gained one identity per Windows
+        // account. Somebody else's atrium now answers 'none' rather than
+        // 'owner', and that is the right answer: 'none' is not a refusal, it
+        // only means falling through to the password check like any visitor,
+        // and an atrium with no password lets them straight in. What they lose
+        // is managing it -- renaming, re-theming, deleting -- which belongs to
+        // whoever made it.
         const rows = await db.select<any[]>(
           'SELECT owner_user_id FROM lobbies WHERE id = ?',
           [params.p_lobby_id]
@@ -2531,4 +2628,3 @@ export function isTauri(): boolean {
   return !!(window as any).__TAURI_INTERNALS__
 }
 
-export { LOCAL_USER_ID, LOCAL_USERNAME }

@@ -597,8 +597,14 @@ function AtriumRevealOverlay() {
   )
 }
 
-// Local user ID constant (matches localDb.ts) — avoids importing Tauri dependencies in web mode
-const LOCAL_USER_ID = 'local-user'
+// There used to be a copy of localDb's 'local-user' here, to avoid importing
+// Tauri code into the web bundle. It stopped being a constant when a vault
+// gained one identity per Windows account, and a hardcoded copy of an id that
+// now varies would have cleared the wrong person's active atrium -- silently,
+// and only for whoever was not the first to open the vault.
+//
+// The id this file needs is the one the session already reports, which is the
+// same value and always current.
 
 // Storage keys for persisting navigation state
 const STORAGE_KEYS = {
@@ -1593,7 +1599,13 @@ function AppInner() {
       if (supabase && currentLobbyId) {
         // In desktop mode, just clear via the local adapter directly
         if (isDesktop) {
-          supabase.from('profiles').update({ active_lobby_id: null }).eq('id', LOCAL_USER_ID)
+          // Read straight from the store rather than subscribed to: this runs
+          // once, while the window is closing, and a subscription would
+          // re-render the whole app every time the id changed for nothing.
+          const { userId } = useGameStore.getState()
+          if (userId) {
+            supabase.from('profiles').update({ active_lobby_id: null }).eq('id', userId)
+          }
           return
         }
         // Get stored session synchronously from localStorage
