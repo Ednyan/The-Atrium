@@ -1053,6 +1053,72 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('resize', resize)
   }, [isDrawingMode])
 
+  // Put the renderer back in step with the window when the two drift apart.
+  //
+  // For the bug this exists for: on the desktop build the grid sometimes stops
+  // short of the edge of the screen, and at the same time clicks in the layer
+  // panel land slightly off the thing they are aimed at, until the app is
+  // restarted. Those two look unrelated and are the same fact -- the page is
+  // laid out for a viewport that is no longer the one on screen. The canvas is
+  // then sized to the old viewport and stops early, and the browser hit-tests
+  // DOM against a box that has moved.
+  //
+  // WebView2 gets into that state on a scale change: the window crossing to a
+  // monitor with different display scaling, scaling being changed while the app
+  // runs, or a display waking up. `resizeTo: window` only listens for resize,
+  // and a scale change need not come with one.
+  //
+  // So the size is compared rather than trusted, on every signal that a window
+  // might have changed underneath us -- and, importantly, on focus. Even where
+  // this cannot prevent the desync it means alt-tabbing away and back repairs
+  // it, instead of the app having to be restarted.
+  //
+  // Cheap enough to be worth doing on all of them: a comparison of two numbers,
+  // and a resize only when they actually differ.
+  useEffect(() => {
+    let dpiQuery: MediaQueryList | null = null
+
+    function resync() {
+      const app = appRef.current
+      if (!app) return
+      const width = window.innerWidth
+      const height = window.innerHeight
+      if (app.screen.width !== width || app.screen.height !== height) {
+        app.renderer.resize(width, height)
+        // Redrawn at once rather than waiting for the render loop's every-other
+        // frame, so the gap at the edge closes in the same paint as the resize.
+        updateGridRef.current?.(cameraPositionRef.current.x, cameraPositionRef.current.y)
+      }
+    }
+
+    // A media query is the only way to hear about devicePixelRatio changing.
+    // It matches one exact ratio, so it has to be rebuilt around the new value
+    // every time it fires -- otherwise it reports the first change and nothing
+    // after it.
+    function onScaleChange() {
+      resync()
+      watchScale()
+    }
+
+    function watchScale() {
+      dpiQuery?.removeEventListener('change', onScaleChange)
+      dpiQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+      dpiQuery.addEventListener('change', onScaleChange)
+    }
+
+    window.addEventListener('resize', resync)
+    window.addEventListener('focus', resync)
+    document.addEventListener('visibilitychange', resync)
+    watchScale()
+
+    return () => {
+      window.removeEventListener('resize', resync)
+      window.removeEventListener('focus', resync)
+      document.removeEventListener('visibilitychange', resync)
+      dpiQuery?.removeEventListener('change', onScaleChange)
+    }
+  }, [])
+
   // Load lobby info
   useEffect(() => {
     if (!supabase || !lobbyId) return
