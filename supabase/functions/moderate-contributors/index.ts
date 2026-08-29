@@ -246,12 +246,20 @@ Deno.serve(async (req: Request) => {
             from: RESEND_FROM,
             to: row.contact_email,
             reply_to: RESEND_REPLY_TO,
-            subject: 'About the name on your contribution',
+            // Deliberately not "about your name". The operator writes whatever
+            // the situation needs -- to somebody waiting, somebody already on
+            // the wall, somebody refunded -- and only some of those are about a
+            // name. A subject line that announces the wrong topic is read as
+            // being about that topic before the first line is reached.
+            subject: 'About your contribution',
             ...renderContributorEmail({
-              heading: 'About your name',
+              heading: 'Your contribution',
               body,
               footnote: [
-                `You asked to be listed as "${row.display_name}". Your contribution is unaffected and still counts toward the month.`,
+                // Which contribution this is, without saying anything about
+                // the state it is in: "still counts toward the month" was true
+                // of a name being queried and false of one already refunded.
+                `You contributed as "${row.display_name}".`,
                 `Reply to this email and it reaches ${RESEND_REPLY_TO}.`,
               ].join('\n'),
             }),
