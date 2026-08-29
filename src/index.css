@@ -173,10 +173,63 @@
    phase -- it must NOT restart from opacity 0, which would flash back to
    black for an instant right where the video-to-overlay handoff needs to
    read as seamless. */
+/* The interface face, and what happens when a script it cannot draw arrives.
+ *
+ * Consolas and friends have no Han, Hangul or Devanagari, so those characters
+ * fall through to whatever the system picks last -- on Windows that is SimSun,
+ * a print face whose small sizes look bitmapped. Every platform already ships
+ * something far better; it only has to be named.
+ *
+ * Per language rather than one combined list, because the CJK scripts share
+ * thousands of characters that are *drawn differently* in each: 直, 骨 and 今
+ * all take different shapes in Chinese and Japanese, and a single stack would
+ * hand every Japanese reader the Chinese forms. document.documentElement.lang
+ * is already kept current by i18n.ts, so :lang() is enough to pick correctly.
+ *
+ * The Latin faces stay first in every stack. Numbers, "Ctrl+Z" and "Atrium"
+ * should keep the monospace character of the interface; only the characters
+ * Consolas genuinely lacks fall past it.
+ *
+ * All of these are system fonts. Nothing is downloaded, nothing needs the
+ * network, and the desktop app -- whose CSP allows neither remote stylesheets
+ * nor remote fonts -- gets the same result as the web. */
+:root {
+  --font-latin: 'Consolas', 'Monaco', 'Lucida Console', 'Liberation Mono';
+  --font-ui: var(--font-latin), monospace;
+}
+
+/* Simplified Chinese. */
+:root:lang(zh) {
+  --font-ui: var(--font-latin), 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'PingFang SC', 'Hiragino Sans GB', 'Source Han Sans SC', 'Noto Sans CJK SC',
+    'WenQuanYi Micro Hei', monospace;
+}
+
+/* Japanese. Yu Gothic UI before Meiryo: both ship on Windows, and Meiryo's
+   line metrics are tall enough to change the height of every row it lands in. */
+:root:lang(ja) {
+  --font-ui: var(--font-latin), 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Meiryo', 'Noto Sans CJK JP',
+    'Source Han Sans JP', monospace;
+}
+
+/* Korean. */
+:root:lang(ko) {
+  --font-ui: var(--font-latin), 'Malgun Gothic', 'Apple SD Gothic Neo',
+    'Noto Sans CJK KR', 'Source Han Sans KR', 'NanumGothic', monospace;
+}
+
+/* Devanagari. Nirmala UI before Mangal: Mangal is the older Windows face and
+   renders the conjuncts noticeably worse at interface sizes. */
+:root:lang(hi) {
+  --font-ui: var(--font-latin), 'Nirmala UI', 'Kohinoor Devanagari',
+    'Noto Sans Devanagari', 'Mangal', monospace;
+}
+
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Liberation Mono', monospace;
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* The tokens, so the page ground follows the choice too. The hex variables
@@ -379,7 +432,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .nier-text-mono {
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: 0.05em;
 }

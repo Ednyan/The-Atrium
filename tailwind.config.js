@@ -44,7 +44,16 @@ export default {
         }
       },
       fontFamily: {
-        nier: ['Consolas', 'Monaco', 'Lucida Console', 'Liberation Mono', 'monospace'],
+        // A variable rather than a list, so index.css can swap the tail of the
+        // stack per script without Tailwind having to know there are scripts.
+        // See --font-ui there.
+        //
+        // `mono` is overridden for the same reason and matters more: it is on
+        // 117 elements, and Tailwind's default stack names no CJK face, so
+        // every one of them would have gone on falling through to whatever the
+        // system picked last however carefully body was set.
+        nier: ['var(--font-ui)'],
+        mono: ['var(--font-ui)'],
         pixel: ['"Press Start 2P"', 'cursive'],
       },
       boxShadow: {

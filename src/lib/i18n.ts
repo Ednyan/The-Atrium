@@ -228,6 +228,18 @@ export function pluralCategory(count: number): 'one' | 'few' | 'many' {
   }
 }
 
+// The document's lang picks the font stack for the script (see --font-ui in
+// index.css), so it has to be right from the first paint rather than from
+// whenever the first catalogue finishes loading -- otherwise a Chinese reader
+// gets one frame of the system's last-resort face before it corrects.
+if (typeof document !== 'undefined') {
+  try {
+    document.documentElement.lang = currentLanguage()
+  } catch {
+    // Not in a document.
+  }
+}
+
 // The static privacy and terms pages write this same key, and both live in
 // their own tab. Without this an open app tab would keep whatever it read at
 // startup -- the same trap the theme switch fell into.
