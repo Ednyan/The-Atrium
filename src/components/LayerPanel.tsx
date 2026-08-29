@@ -67,6 +67,11 @@ interface LayerPanelProps {
   // so every multi-selected trace/group highlights here too, not just the
   // single selectedTraceId.
   multiSelectedTraceIds?: string[]
+  // Close this panel and open the customize UI for these traces -- one trace
+  // opens its own panel, several open batch edit. The panel closes because the
+  // two overlap on screen, and because having asked to customize something you
+  // are done with the list you found it in.
+  onCustomize?: (traceIds: string[]) => void
   onSelectTrace?: (traceId: string) => void
   onGoToTrace?: (traceId: string) => void
   // The layer group new traces should be created into. Clicking a group
@@ -86,7 +91,7 @@ interface LayerPanelProps {
   canEdit?: boolean
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
@@ -1561,6 +1566,21 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
             {isGroup ? (
               <>
+                {/* A group has no appearance of its own -- it is a name, an
+                    order and a visibility -- so customizing one means
+                    customizing what is in it. Empty groups have nothing to
+                    open, which is why this is off rather than hidden: the
+                    entry stays where the eye expects it between one group and
+                    the next. */}
+                <MenuItem
+                  label={
+                    groupTraces.length > 1
+                      ? `${t('atrium.menu.customize')} (${groupTraces.length})`
+                      : t('atrium.menu.customize')
+                  }
+                  onClick={() => onCustomize?.(groupTraces.map(gt => gt.id))}
+                  disabled={groupTraces.length === 0}
+                />
                 <MenuItem label={t('atrium.layers.duplicateGroup')} onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
                 <MenuItem label={t('common.rename')} onClick={() => renameGroup(rowMenu.id, layer!.name)} />
                 <MenuItem
@@ -1621,6 +1641,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <MenuItem label={t('common.duplicate')} onClick={() => duplicateSingleTrace(rowMenu.id)} busy={isBusy} />
                 <MenuItem label={t('common.select')} onClick={() => onSelectTrace?.(rowMenu.id)} />
                 <MenuItem label={t('atrium.layers.goToTrace')} onClick={() => onGoToTrace?.(rowMenu.id)} />
+                {/* Acts on the whole selection when the row is part of one,
+                    like Move to Group below -- several traces open batch edit
+                    rather than one panel per trace. */}
+                <MenuItem
+                  label={
+                    menuTargets.length > 1
+                      ? `${t('atrium.menu.customize')} (${menuTargets.length})`
+                      : t('atrium.menu.customize')
+                  }
+                  onClick={() => onCustomize?.(menuTargets)}
+                />
                 <MenuItem
                   label={trace!.isLocked ? t('atrium.layers.unlock') : t('atrium.layers.lock')}
                   onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}

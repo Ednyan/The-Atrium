@@ -666,6 +666,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
   const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
+  // Same one-shot shape as multiSelectRequest: a fresh array every time, so
+  // asking to customize the same traces twice fires the effect twice.
+  const [customizeRequest, setCustomizeRequest] = useState<string[] | null>(null)
   // One-shot request: a text trace just created from the canvas menu that
   // should be selected and dropped straight into typing. Same shape and same
   // reasoning as newPathTraceId -- ids are always fresh, so a useEffect keyed
@@ -4194,6 +4197,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
+            customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
             isDrawingMode={isDrawingMode}
@@ -5253,6 +5257,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           activeLayerId={activeLayerId}
           onSetActiveLayer={setActiveLayerId}
           onSelectGroupTraces={(traceIds) => setMultiSelectRequest(traceIds)}
+          onCustomize={(traceIds) => {
+            if (traceIds.length === 0) return
+            setShowLayerPanel(false)
+            setCustomizeRequest([...traceIds])
+          }}
           onGoToTrace={(traceId) => {
             const trace = traces.find(t => t.id === traceId)
             if (trace) {

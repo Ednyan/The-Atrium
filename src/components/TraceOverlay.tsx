@@ -172,6 +172,11 @@ interface TraceOverlayProps {
   // A new array reference is sent each time (even for the same set), so
   // the effect that consumes it always fires.
   multiSelectRequest?: string[] | null
+  // One-shot request from the Layer panel: open the customize UI for these
+  // traces. One id opens that trace's own panel; several select them and open
+  // batch edit. A new array reference is sent each time, like
+  // multiSelectRequest above, so asking twice for the same set still fires.
+  customizeRequest?: string[] | null
   // One-shot request from LobbyScene: a brand-new path trace (just inserted
   // with a single starting point) that should be selected and immediately
   // put into point-placing mode, instead of leaving the user to find the
@@ -353,7 +358,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1101,6 +1106,39 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setMultiSelectedIds(new Set(multiSelectRequest))
     setSelectedTraceId(multiSelectRequest[0] ?? null)
   }, [multiSelectRequest, setSelectedTraceId])
+
+  // Open the customize UI for a set asked for from the Layer panel.
+  //
+  // Traces are read through the ref rather than the prop, and the prop is left
+  // out of the dependency array, for the same reason newPathRequest does it
+  // below: traces changes constantly, and this should fire once per request
+  // rather than every time anything on the canvas moves.
+  //
+  // A trace named in the request may have been deleted between the menu
+  // opening and this running, so what is missing is dropped rather than
+  // trusted -- and if that leaves one trace, it opens the single panel, which
+  // is what one trace deserves however many were asked for.
+  useEffect(() => {
+    if (!customizeRequest || customizeRequest.length === 0) return
+    const present = customizeRequest.filter(id => tracesRef.current.some(t => t.id === id))
+    if (present.length === 0) return
+
+    if (present.length === 1) {
+      const trace = tracesRef.current.find(t => t.id === present[0])!
+      setShowBatchEditPanel(false)
+      setMultiSelectedIds(new Set())
+      setSelectedTraceId(trace.id)
+      setEditingTrace(trace)
+      return
+    }
+
+    // Closed first: the single panel and the batch panel occupy the same
+    // corner, and leaving one open behind the other looks like a bug.
+    setEditingTrace(null)
+    setMultiSelectedIds(new Set(present))
+    setSelectedTraceId(present[0])
+    setShowBatchEditPanel(true)
+  }, [customizeRequest, setSelectedTraceId])
 
   // A brand-new path was just created (single starting point) -- select it,
   // open its Customize panel, and drop straight into point-placing mode so
