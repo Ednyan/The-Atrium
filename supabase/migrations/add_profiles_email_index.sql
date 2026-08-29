@@ -1,0 +1,29 @@
+-- Looking a profile up by address.
+--
+-- send-welcome asks whether anybody at this address has already been greeted,
+-- before greeting them -- see the note in add_welcome_email.sql for why the
+-- address is checked and not just the account row. Without this it is a
+-- sequential scan of profiles.
+--
+-- It runs once per account for the life of that account, so on today's table
+-- it costs nothing measurable. This exists so it still costs nothing later,
+-- when the answer is not so obvious and nobody is looking.
+--
+-- Plain rather than partial. The obvious narrowing here is
+-- `where welcome_email_sent_at is not null`, which is exactly the query's
+-- predicate -- but every confirmed account ends up stamped, so that index
+-- converges on the size of this one while serving only this single query.
+-- A plain index on the column answers any later lookup by address too.
+--
+-- NOT unique, and that is the point rather than an oversight. Two auth.users
+-- rows can legitimately hold the same address: Auth leaves a second row behind
+-- when an older account was never confirmed, which is the very case the
+-- welcome guard was written for. A unique index would turn that situation from
+-- a duplicate row into a failed sign-up.
+--
+-- Written without CONCURRENTLY because Supabase runs migrations inside a
+-- transaction, which forbids it. The brief lock is irrelevant at this size; if
+-- profiles is ever large enough for that to matter, build it by hand outside a
+-- migration instead.
+
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles (email);
