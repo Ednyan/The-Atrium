@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="supported-color-schemes" content="dark" />
+<title>Confirm your account</title>
+</head>
+<body style="margin:0;padding:0;background:#191919;">
+  <!-- Shown in the inbox list under the subject, and nowhere else. -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">One step left before the door opens.</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#191919;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#1f1f1f;border:1px solid #3a3a3a;">
+
+          <tr>
+            <td style="padding:30px 34px 0;">
+              <div style="font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#8F8F8F;">
+                The Digital Atrium
+              </div>
+              <div style="height:1px;background:#3a3a3a;margin:20px 0 24px;line-height:1px;font-size:0;">&nbsp;</div>
+              <div style="font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:15px;letter-spacing:2px;text-transform:uppercase;color:#CBCBCB;line-height:1.5;">
+                <span style="color:#FF8A3D;">&#9671;</span>&nbsp;&nbsp;Confirm your account
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 34px 30px;">
+              <p style="margin:0 0 16px;font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:14px;line-height:1.75;color:#B5B5B5;">One step left before the door opens.</p>
+              <p style="margin:0 0 16px;font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:14px;line-height:1.75;color:#B5B5B5;">Confirm this address and your account is ready to use.</p>
+
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px;">
+                <tr>
+                  <td style="border:1px solid #CBCBCB;">
+                    <a href="{{ .ConfirmationURL }}"
+                       style="display:block;padding:13px 30px;font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#CBCBCB;text-decoration:none;">
+                      <span style="color:#FF8A3D;">&#9671;</span>&nbsp;&nbsp;Confirm Account
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="height:1px;background:#3a3a3a;margin:26px 0 16px;line-height:1px;font-size:0;">&nbsp;</div>
+
+              <!-- The one place a visible URL earns its space: whoever reads this
+                   may have no atrium open, and a button that fails to render
+                   leaves them with nothing to click. -->
+              <p style="margin:0 0 14px;font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:11px;line-height:1.8;color:#8F8F8F;">
+                If the button does not work, paste this into your browser:<br />
+                <a href="{{ .ConfirmationURL }}" style="color:#8F8F8F;word-break:break-all;">{{ .ConfirmationURL }}</a>
+              </p>
+              <p style="margin:0;font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:11px;line-height:1.8;color:#8F8F8F;">
+                The link works once, and only for a short while. If you did not create an account at The Digital Atrium, ignore this message &mdash; no account will be made.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <p style="max-width:560px;margin:16px auto 0;font-family:Consolas, Monaco, 'Lucida Console', 'Courier New', monospace;font-size:10px;line-height:1.7;color:#6a6a6a;text-align:center;">
+          Sent because this address was used to create an account at The Digital Atrium.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
