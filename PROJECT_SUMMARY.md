@@ -276,8 +276,11 @@ Digital_Lobby/
 ├── supabase/
 │   └── schema.sql         # Database schema
 ├── public/                # Static assets
-│   ├── logo.svg
-│   └── vite.svg
+│   ├── glass_dome*.png    # The mark: favicon, app icon, OG image
+│   ├── atrium-mark.png    # Silhouette, used as a CSS mask
+│   ├── privacy.html       # Served directly, outside the app
+│   ├── terms.html
+│   └── themes/            # Room textures
 ├── Documentation/
 │   ├── README.md          # Main docs
 │   ├── QUICKSTART.md      # Quick start
