@@ -14,6 +14,8 @@ import { showToast } from './lib/toast'
 import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
 import RichText from './components/RichText'
+import ThemeToggle from './components/ThemeToggle'
+import LanguageToggle from './components/LanguageToggle'
 import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
@@ -747,10 +749,21 @@ function isLegacyHost(): boolean {
 // A page rather than a banner: somebody who lands here should leave, and a
 // dismissible strip over a working app is an invitation to ignore it and go
 // on using an address that is going away.
+//
+// It keeps the language and theme switches. This is the one screen a visitor
+// might arrive at without ever having seen the app -- an old link, a stale
+// bookmark, somebody else's message -- so it cannot assume the language it
+// guessed from the browser is the one they read, and the sentence asking them
+// to go somewhere else is exactly the sentence that has to land.
 function MovedNotice() {
   const { t } = useTranslation()
   return (
     <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <LanguageToggle />
+        <ThemeToggle />
+      </div>
+
       <div className="relative px-8 py-8 max-w-md w-full">
         <div className="absolute top-0 left-0 w-5 h-5 border-t border-l border-nier-border/60" />
         <div className="absolute top-0 right-0 w-5 h-5 border-t border-r border-nier-border/60" />
