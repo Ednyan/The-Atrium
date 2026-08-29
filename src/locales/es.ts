@@ -753,6 +753,7 @@ const es: Catalogue = {
   'desktop.update.downloading': 'Descargando {percent}%',
   'desktop.update.starting': 'Iniciando la descarga…',
   'desktop.update.restarting': 'Reiniciando…',
+  'desktop.update.details': 'Ver aquí los detalles de esta actualización',
   'desktop.update.now': 'Actualizar ahora',
   'desktop.update.retry': 'Reintentar',
   'desktop.update.later': 'Más tarde',

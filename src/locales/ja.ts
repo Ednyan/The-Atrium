@@ -691,6 +691,7 @@ const ja: Catalogue = {
   'desktop.update.downloading': 'ダウンロード中 {percent}%',
   'desktop.update.starting': 'ダウンロードを開始しています…',
   'desktop.update.restarting': '再起動しています…',
+  'desktop.update.details': 'このアップデートの詳細はこちら',
   'desktop.update.now': '今すぐ更新',
   'desktop.update.retry': 'やり直す',
   'desktop.update.later': 'あとで',

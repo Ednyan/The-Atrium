@@ -695,6 +695,7 @@ const ko: Catalogue = {
   'desktop.update.downloading': '내려받는 중 {percent}%',
   'desktop.update.starting': '내려받기를 시작해요…',
   'desktop.update.restarting': '다시 시작하는 중…',
+  'desktop.update.details': '이 업데이트의 자세한 내용 보기',
   'desktop.update.now': '지금 업데이트',
   'desktop.update.retry': '다시 시도',
   'desktop.update.later': '나중에',

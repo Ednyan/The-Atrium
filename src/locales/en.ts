@@ -659,6 +659,7 @@ export const en = {
   'desktop.update.downloading': 'Downloading {percent}%',
   'desktop.update.starting': 'Starting download…',
   'desktop.update.restarting': 'Restarting…',
+  'desktop.update.details': 'See the details of this update here',
   'desktop.update.now': 'Update Now',
   'desktop.update.retry': 'Retry',
   'desktop.update.later': 'Later',

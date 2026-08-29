@@ -757,6 +757,7 @@ const ptBR: Catalogue = {
   'desktop.update.downloading': 'Baixando {percent}%',
   'desktop.update.starting': 'Iniciando o download…',
   'desktop.update.restarting': 'Reiniciando…',
+  'desktop.update.details': 'Ver aqui os detalhes desta atualização',
   'desktop.update.now': 'Atualizar agora',
   'desktop.update.retry': 'Tentar de novo',
   'desktop.update.later': 'Mais tarde',

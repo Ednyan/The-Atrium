@@ -760,6 +760,7 @@ const ptPT: Catalogue = {
   'desktop.update.downloading': 'A transferir {percent}%',
   'desktop.update.starting': 'A iniciar a transferência…',
   'desktop.update.restarting': 'A reiniciar…',
+  'desktop.update.details': 'Ver aqui os detalhes desta atualização',
   'desktop.update.now': 'Atualizar agora',
   'desktop.update.retry': 'Tentar de novo',
   'desktop.update.later': 'Mais tarde',

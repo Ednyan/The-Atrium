@@ -694,6 +694,7 @@ const zh: Catalogue = {
   'desktop.update.downloading': '下载中 {percent}%',
   'desktop.update.starting': '开始下载…',
   'desktop.update.restarting': '正在重启…',
+  'desktop.update.details': '在这里查看本次更新的详情',
   'desktop.update.now': '立即更新',
   'desktop.update.retry': '重试',
   'desktop.update.later': '以后再说',

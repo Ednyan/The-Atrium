@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { isDesktop } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
+import { openExternalUrl } from '../lib/openExternal'
+import { releaseNotesUrl } from '../lib/creatorLinks'
 
 // How often to re-check once the app is running. The check is a single small
 // HTTPS request for a JSON manifest, so hourly is cheap; it also fails
@@ -11,8 +13,9 @@ type Phase = 'idle' | 'available' | 'downloading' | 'ready' | 'error'
 
 interface PendingUpdate {
   version: string
-  notes?: string
-  // The plugin's Update handle. Typed loosely so this file doesn't need the
+  // No notes field: update.body was shown here and is now linked to instead,
+  // and keeping a copy of it around would only invite someone to put it back.
+  // The plugin's Update handle is typed loosely so this file doesn't need the
   // updater types at build time on web, where the module is never imported.
   handle: any
 }
@@ -45,7 +48,7 @@ export default function UpdateChecker() {
         const { check: checkUpdate } = await import('@tauri-apps/plugin-updater')
         const update = await checkUpdate()
         if (cancelled || !update) return
-        setPending({ version: update.version, notes: update.body, handle: update })
+        setPending({ version: update.version, handle: update })
         setPhase('available')
         // A new version supersedes a dismissal -- dismissing 1.1 shouldn't
         // hide 1.2.
@@ -121,10 +124,22 @@ export default function UpdateChecker() {
           {t('desktop.update.version', { version: pending.version })}
         </p>
 
-        {pending.notes && phase === 'available' && (
-          <p className="text-nier-bg/70 text-[9px] tracking-wide mb-3 max-h-16 overflow-y-auto whitespace-pre-line">
-            {pending.notes}
-          </p>
+        {/* A link to the release rather than the notes themselves.
+            `update.body` is whatever latest.json carries, which is usually
+            GitHub's default "See the assets below to download and install" --
+            a sentence that says nothing about what changed and points at
+            assets nobody can see from here. The release page has the real
+            notes, stays right if they are edited later, and fits in a box this
+            size. Opened in the system browser, since the app has no chrome to
+            come back from. */}
+        {phase === 'available' && (
+          <button
+            type="button"
+            onClick={() => openExternalUrl(releaseNotesUrl(pending.version))}
+            className="text-nier-bg/60 hover:text-nier-bg text-[9px] tracking-wide underline underline-offset-2 mb-3 block text-left transition-colors"
+          >
+            {t('desktop.update.details')}
+          </button>
         )}
 
         {phase === 'downloading' && (

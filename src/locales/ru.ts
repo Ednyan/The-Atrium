@@ -759,6 +759,7 @@ const ru: Catalogue = {
   'desktop.update.downloading': 'Загрузка {percent}%',
   'desktop.update.starting': 'Начало загрузки…',
   'desktop.update.restarting': 'Перезапуск…',
+  'desktop.update.details': 'Посмотреть подробности этого обновления',
   'desktop.update.now': 'Обновить сейчас',
   'desktop.update.retry': 'Повторить',
   'desktop.update.later': 'Позже',

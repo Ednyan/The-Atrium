@@ -755,6 +755,7 @@ const fr: Catalogue = {
   'desktop.update.downloading': 'Téléchargement {percent}%',
   'desktop.update.starting': 'Démarrage du téléchargement…',
   'desktop.update.restarting': 'Redémarrage…',
+  'desktop.update.details': 'Voir ici les détails de cette mise à jour',
   'desktop.update.now': 'Mettre à jour',
   'desktop.update.retry': 'Réessayer',
   'desktop.update.later': 'Plus tard',
