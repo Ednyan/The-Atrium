@@ -23,7 +23,7 @@ import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { renderAtriumEmail } from '../_shared/atriumEmail.ts'
 
 const SUPPORT_EMAIL = 'thedigitalatrium@gmail.com'
-const RESEND_FROM = 'The Atrium <feedback@mail.digitalatrium.org>'
+const RESEND_FROM = 'Digital Atrium <feedback@mail.digitalatrium.org>'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {

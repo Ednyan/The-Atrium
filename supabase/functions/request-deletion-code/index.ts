@@ -22,7 +22,7 @@ import {
 } from '../_shared/deletionCode.ts'
 import { DELETION_CODE_COPY, type DeletionCodeLanguage } from './copy.ts'
 
-const RESEND_FROM = 'The Atrium <hello@mail.digitalatrium.org>'
+const RESEND_FROM = 'Digital Atrium <hello@mail.digitalatrium.org>'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
