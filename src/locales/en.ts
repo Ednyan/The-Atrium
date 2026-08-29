@@ -43,6 +43,7 @@ export const en = {
 
   // ------------------------------------------------------ the monthly gauge
   'goal.thisMonth': 'Contributions this month',
+  'goal.funded': '{percent}% funded',
   'goal.seeWho': 'See who keeps this running',
 
   // -------------------------------------------------------- a door that is shut
@@ -1191,10 +1192,10 @@ export const en = {
   'landing.support.body1': 'Your support enables the continuous development and maintenance of The Digital Atrium.',
   'landing.support.body2': 'When you donate, your contribution shows up on the contributors page.',
   'landing.support.thisMonth': 'This month',
-  'landing.support.noneYet': 'Nobody yet this month',
-  'landing.support.countOne': '{count} contribution this month',
-  'landing.support.countFew': '{count} contributions this month',
-  'landing.support.countMany': '{count} contributions this month',
+  'goal.noneYet': 'Nobody yet this month',
+  'goal.countOne': '{count} contribution this month',
+  'goal.countFew': '{count} contributions this month',
+  'goal.countMany': '{count} contributions this month',
   'landing.support.keptStanding': 'This place is kept standing by the people who use it',
   'landing.creator.p1': 'My name is Eduardo Paranhos. I’m a 3D artist who got FED UP with hoarding reference images across scattered folders on my computer, with no good alternative. So I built The Digital Atrium.',
   'landing.creator.p2': 'I wanted something simple to use and fast to iterate in, like pinning ideas in a whiteboard. A mix of Pinterest, PureRef, Canva and Figma, but with the flexibility most platforms don’t give you.',

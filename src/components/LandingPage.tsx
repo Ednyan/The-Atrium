@@ -6,7 +6,8 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
-import { useTranslation, pluralCategory } from '../lib/i18n'
+import { useTranslation } from '../lib/i18n'
+import { contributionCountKey } from '../lib/monthlyGauge'
 import RichText from './RichText'
 import ConnectTiles from './ConnectTiles'
 import type { TranslationKey } from '../locales/en'
@@ -137,8 +138,11 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                 <>
                   <div className="flex items-baseline justify-between mb-2">
                     <span className="font-mono text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.support.thisMonth')}</span>
-                    <span className="font-mono text-sm tracking-wider text-nier-strong">
-                      {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
+                    {/* Was "12 / 50 €". The section says what the thing costs
+                        in its own words above; the gauge only has to say how
+                        far through the month's costs it has got. */}
+                    <span className="font-mono text-sm tracking-wider text-nier-strong tabular-nums">
+                      {t('goal.funded', { percent: Math.round(percent) })}
                     </span>
                   </div>
                   <div className="h-[4px] bg-nier-black border border-nier-border/30 overflow-hidden">
@@ -147,23 +151,11 @@ function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | n
                       style={{ width: `${percent}%`, background: 'rgb(var(--c-accent))' }}
                     />
                   </div>
-                  {/* Zero keeps its own sentence rather than being handed to
-                      the plural rule -- "0 contributions" is arithmetic where
-                      "nobody yet" is the thing worth saying. Above zero the
-                      language picks its own form: Russian wants three, and
-                      wants the first of them again at 21, which no amount of
-                      appending an s gets right. */}
+                  {/* The zero-and-plural reasoning moved to
+                      contributionCountKey, now that three gauges need it
+                      rather than only this one. */}
                   <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
-                    {month.contributionCount === 0
-                      ? t('landing.support.noneYet')
-                      : t(
-                          ({
-                            one: 'landing.support.countOne',
-                            few: 'landing.support.countFew',
-                            many: 'landing.support.countMany',
-                          } as const)[pluralCategory(month.contributionCount)],
-                          { count: month.contributionCount },
-                        )}
+                    {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
                   </p>
                 </>
               ) : (

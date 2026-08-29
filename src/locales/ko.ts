@@ -53,6 +53,7 @@ const ko: Catalogue = {
 
   // ------------------------------------------------------ the monthly gauge
   'goal.thisMonth': '이번 달의 후원',
+  'goal.funded': '{percent}% 달성',
   'goal.seeWho': '이곳을 떠받치는 사람들 보기',
 
   // -------------------------------------------------------- a door that is shut
@@ -1247,10 +1248,10 @@ const ko: Catalogue = {
   'landing.support.body1': '당신의 후원이 The Digital Atrium을 계속 만들고 돌보게 해 줘요.',
   'landing.support.body2': '후원하시면 그 마음이 후원자 페이지에 올라가요.',
   'landing.support.thisMonth': '이번 달',
-  'landing.support.noneYet': '이번 달은 아직 아무도 없어요',
-  'landing.support.countOne': '이번 달 {count}건의 후원',
-  'landing.support.countFew': '이번 달 {count}건의 후원',
-  'landing.support.countMany': '이번 달 {count}건의 후원',
+  'goal.noneYet': '이번 달은 아직 아무도 없어요',
+  'goal.countOne': '이번 달 {count}건의 후원',
+  'goal.countFew': '이번 달 {count}건의 후원',
+  'goal.countMany': '이번 달 {count}건의 후원',
   'landing.support.keptStanding': '이곳은 이곳을 쓰는 사람들이 떠받치고 있어요',
   'landing.creator.p1': '저는 Eduardo Paranhos, 3D 아티스트예요. 참고 이미지가 컴퓨터 여기저기 폴더에 흩어져 쌓이는 게 정말 지겨웠는데 마땅한 대안도 없어서, The Digital Atrium을 만들었어요.',
   'landing.creator.p2': '화이트보드에 아이디어를 붙이듯, 쓰기 쉽고 빠르게 고칠 수 있는 것이 필요했어요. Pinterest와 PureRef, Canva와 Figma를 섞고, 대부분의 서비스가 주지 않는 자유를 더한 것이에요.',

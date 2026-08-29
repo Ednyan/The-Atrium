@@ -14,6 +14,9 @@
 import { useEffect, useState } from 'react'
 import type { MonthlyProgress } from '../lib/contributions'
 import { useTranslation } from '../lib/i18n'
+// Only the figures: the column shows a bare count above a label that already
+// says what it counts, so it needs no sentence and no plural rule.
+import { gaugeFigures } from '../lib/monthlyGauge'
 
 interface MonthlyGoalColumnProps {
   month: MonthlyProgress | null
@@ -47,11 +50,10 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
 
   // Nothing at all rather than an empty gauge: a machine that has never been
   // online has no figure to show, and a bar reading zero is a claim.
-  if (!month || month.goalCents <= 0) return null
+  const figures = gaugeFigures(month)
+  if (!figures) return null
 
-  const percent = Math.min(100, (month.totalCents / month.goalCents) * 100)
-  const raised = Math.round(month.totalCents / 100)
-  const goal = Math.round(month.goalCents / 100)
+  const { percent, count } = figures
 
   return (
     <button
@@ -77,12 +79,13 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
       }}
       title={t('goal.seeWho')}
     >
-      {/* The goal sits at the top, where the column is trying to reach, and
-          the figure raised sits at the bottom with the fill it describes. The
-          other way round the two numbers were each at the wrong end of the
-          thing they referred to. */}
-      <span className="text-xs tracking-[0.2em] text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors tabular-nums">
-        €{goal}
+      {/* What the column is trying to reach sits at the top, where it is
+          reaching. This said the goal in euros and the bottom said the sum
+          raised; it now says how much of the month is covered, and no sum
+          appears anywhere -- a gauge that names an amount stops being an
+          ornament and becomes a thermometer. */}
+      <span className="text-xs tracking-[0.2em] text-nier-bg/60 group-hover:text-nier-bg/80 transition-colors tabular-nums whitespace-nowrap">
+        {t('goal.funded', { percent })}
       </span>
 
       <div className="relative w-[10px] h-[clamp(150px,34vh,300px)] border border-nier-border/30 bg-nier-black overflow-hidden">
@@ -113,8 +116,11 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
         <div className="absolute inset-x-0 top-0 h-px bg-nier-border/50" />
       </div>
 
+      {/* The people, under the fill they made. Bare, because the line
+          below it says what it counts -- and the two are read together, the
+          number sitting directly above the words. */}
       <span className="text-sm tracking-[0.2em] text-nier-bg/85 group-hover:text-nier-strong transition-colors tabular-nums">
-        €{raised}
+        {count}
       </span>
 
       {/* Set on its side rather than rotated with a transform: vertical-rl is

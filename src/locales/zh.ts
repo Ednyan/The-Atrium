@@ -52,6 +52,7 @@ const zh: Catalogue = {
 
   // ------------------------------------------------------ the monthly gauge
   'goal.thisMonth': '本月的支持',
+  'goal.funded': '{percent}% 已覆盖',
   'goal.seeWho': '看看是谁在支撑这里',
 
   // -------------------------------------------------------- a door that is shut
@@ -1246,10 +1247,10 @@ const zh: Catalogue = {
   'landing.support.body1': '你的支持让 The Digital Atrium 得以持续开发和维护。',
   'landing.support.body2': '你捐赠之后，这笔支持会出现在支持者页面上。',
   'landing.support.thisMonth': '本月',
-  'landing.support.noneYet': '本月还没有人',
-  'landing.support.countOne': '本月 {count} 笔支持',
-  'landing.support.countFew': '本月 {count} 笔支持',
-  'landing.support.countMany': '本月 {count} 笔支持',
+  'goal.noneYet': '本月还没有人',
+  'goal.countOne': '本月 {count} 笔支持',
+  'goal.countFew': '本月 {count} 笔支持',
+  'goal.countMany': '本月 {count} 笔支持',
   'landing.support.keptStanding': '这个地方，是靠使用它的人撑起来的',
   'landing.creator.p1': '我叫 Eduardo Paranhos，是一名 3D 艺术家。参考图散落在电脑各个文件夹里越攒越多，又找不到更好的办法，我实在受够了，于是做了 The Digital Atrium。',
   'landing.creator.p2': '我想要一个用起来简单、改起来又快的东西，就像把想法钉在白板上一样。它是 Pinterest、PureRef、Canva 和 Figma 的混合体，但多了大多数平台不肯给你的那份自由。',

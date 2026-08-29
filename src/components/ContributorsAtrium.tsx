@@ -7,6 +7,7 @@ import ThemeToggle from './ThemeToggle'
 import HeartRush from './HeartRush'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
+import { contributionCountKey } from '../lib/monthlyGauge'
 import type { TranslationKey } from '../locales/en'
 import {
   getCachedContributions,
@@ -1052,8 +1053,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[min(420px,60vw)] pointer-events-none">
           <div className="flex items-baseline justify-between mb-1">
             <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">{t('wall.thisMonth')}</span>
-            <span className="text-xs text-nier-bg/80 tracking-wider">
-              {Math.round(month.totalCents / 100)} / {Math.round(month.goalCents / 100)} €
+            {/* Was "12 / 50 €". The wall already names every contributor; it
+                does not also need to publish the takings. */}
+            <span className="text-xs text-nier-bg/80 tracking-wider tabular-nums">
+              {t('goal.funded', { percent: Math.min(100, Math.round((month.totalCents / month.goalCents) * 100)) })}
             </span>
           </div>
           <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden">
@@ -1062,6 +1065,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               style={{ width: `${Math.min(100, (month.totalCents / month.goalCents) * 100)}%` }}
             />
           </div>
+          <p className="text-[11px] text-nier-bg/60 tracking-[0.15em] uppercase mt-1.5">
+            {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
+          </p>
         </div>
       )}
 

@@ -49,6 +49,7 @@ const ja: Catalogue = {
 
   // ------------------------------------------------------ the monthly gauge
   'goal.thisMonth': '今月の支援',
+  'goal.funded': '{percent}% 達成',
   'goal.seeWho': 'ここを支えている人たちを見る',
 
   // -------------------------------------------------------- a door that is shut
@@ -1243,10 +1244,10 @@ const ja: Catalogue = {
   'landing.support.body1': 'あなたの支援が、The Digital Atrium の開発と維持を続けさせてくれます。',
   'landing.support.body2': '寄付していただくと、そのご支援が支援者ページに載ります。',
   'landing.support.thisMonth': '今月',
-  'landing.support.noneYet': '今月はまだ誰もいません',
-  'landing.support.countOne': '今月 {count} 件のご支援',
-  'landing.support.countFew': '今月 {count} 件のご支援',
-  'landing.support.countMany': '今月 {count} 件のご支援',
+  'goal.noneYet': '今月はまだ誰もいません',
+  'goal.countOne': '今月 {count} 件のご支援',
+  'goal.countFew': '今月 {count} 件のご支援',
+  'goal.countMany': '今月 {count} 件のご支援',
   'landing.support.keptStanding': 'この場所は、使ってくれる人たちに支えられて立っています',
   'landing.creator.p1': '私は Eduardo Paranhos、3D アーティストです。参考画像がパソコンのあちこちのフォルダーに散らばって溜まっていくのに心底うんざりして、それでいて代わりになるものもなかったので、The Digital Atrium を作りました。',
   'landing.creator.p2': 'ホワイトボードにアイデアを貼っていくような、使うのが簡単で、手早く試せるものが欲しかったのです。Pinterest と PureRef と Canva と Figma を混ぜて、そこに多くのサービスがくれない自由を足したものです。',
