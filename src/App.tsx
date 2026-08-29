@@ -15,6 +15,7 @@ import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
+import { consumeSignInIntent } from './lib/signInIntent'
 import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { LobbyBrowser } from './components/LobbyBrowser'
@@ -1284,6 +1285,15 @@ function AppInner() {
       return
     }
 
+    // Asked once, here, because both the restore below and the listener after
+    // it want the answer and the flag is spent by whoever reads it first.
+    //
+    // True means somebody pressed sign in, registered, or came back from
+    // Google in the last hour. It is the difference between "/" meaning "put
+    // me back on the landing page" and "/" meaning "this is just where the
+    // sign-in happened to drop me".
+    const cameFromSignIn = consumeSignInIntent()
+
     // Clean up old pre-auth user data
     const oldUserId = localStorage.getItem('userId')
     if (oldUserId && !oldUserId.startsWith('00000000-')) {
@@ -1411,6 +1421,15 @@ function AppInner() {
                       .eq('id', session.user.id)
                   }
                 }
+              } else if (cameFromSignIn) {
+                // Signing in ends at the welcome screen, wherever the sign-in
+                // physically landed. Google returns to "/", and so does a
+                // confirmation link, so without this somebody who had an
+                // atrium stored was left staring at the landing page they
+                // thought they had just left -- signed in, with nothing to say
+                // so. Checked before explicitRoute because "/" is only a
+                // request for the landing page when the person went there.
+                navigate('/welcome')
               } else if (explicitRoute) {
                 // Already where the user asked to be.
                 // The stored atrium is deliberately left in localStorage so
@@ -1527,7 +1546,8 @@ function AppInner() {
           // other way of getting to the atrium from the landing page is a
           // button the reader pressed on purpose.
           const isRealLogin = event !== 'INITIAL_SESSION' && justSignedIn
-          if (isRealLogin && currentRoute.page === 'login') {
+          if ((isRealLogin && currentRoute.page === 'login') ||
+              (cameFromSignIn && (currentRoute.page === 'landing' || currentRoute.page === 'login'))) {
             navigate('/welcome')
           }
         }

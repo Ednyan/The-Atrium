@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { friendlyAuthError } from '../lib/authErrors'
+import { markSignInStarted } from '../lib/signInIntent'
 import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 
@@ -160,6 +161,12 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
         return
       }
 
+      // Noted before the request, not after it. Registering by email can
+      // finish in a different tab an hour later, when the click lands on the
+      // confirmation link, and nothing in that tab would otherwise know this
+      // person had just signed up rather than merely arrived.
+      markSignInStarted()
+
       // Sign up user
       const { data, error: signupError } = await supabase.auth.signUp({
         email,
@@ -213,6 +220,9 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
     setError('')
     setLoading(true)
     try {
+      // Recorded before leaving for Google, because after it the app is
+      // reloaded from scratch at "/" and has no memory of having sent them.
+      markSignInStarted()
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: window.location.origin },
@@ -260,6 +270,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
         loginEmail = profile.email
       }
 
+      markSignInStarted()
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password,
