@@ -1,10 +1,17 @@
 // Greets somebody the first time they arrive with a confirmed account.
 //
 // Called by the app after a successful sign-in, not by a trigger on
-// auth.users -- see the note in add_welcome_email.sql for why. The caller
-// supplies nothing that matters: the user is taken from the session JWT, and
-// everything else is read from the database. A client can ask for the welcome
-// to be considered; it cannot say who it is for or what address it goes to.
+// auth.users -- see the note in add_welcome_email.sql for why. The identity is
+// taken from the session JWT and the address from the database, so a client can
+// ask for the welcome to be considered but cannot say who it is for or where it
+// goes. The one thing it does supply is which language it is showing, which is
+// checked against the copy this function has and is worth nothing to an
+// attacker: the most a forged value achieves is a welcome in the wrong
+// language, sent to the forger's own address.
+//
+// That language is also recorded on the profile the first time it is seen, so
+// mail sent later -- with no browser attached to ask -- still knows. See
+// add_profile_language.sql.
 //
 // Sending twice is the failure this guards hardest against, on three counts:
 // profiles.welcome_email_sent_at is claimed before the send rather than after,
@@ -48,11 +55,49 @@ Deno.serve(async (req: Request) => {
 
     const { data: profile } = await admin
       .from('profiles')
-      .select('username, display_name, welcome_email_sent_at')
+      .select('username, display_name, language, welcome_email_sent_at')
       .eq('id', user.id)
       .maybeSingle()
 
     if (!profile) return json({ sent: false, reason: 'no-profile' })
+
+    // The language the app is showing, when it is one this mail speaks.
+    // Anything else, including nothing at all, reads better in English than in
+    // a language guessed from an IP address -- that is a guess about a country,
+    // and country is not language.
+    let asked = ''
+    try {
+      const body = await req.json()
+      if (typeof body?.language === 'string') asked = body.language
+    } catch {
+      // No body, or not JSON.
+    }
+
+    // Recorded once, on the first arrival we ever see, and never overwritten.
+    //
+    // This runs before the already-sent checks below on purpose: accounts that
+    // were welcomed before this column existed still come through here on every
+    // sign-in, and this is the only chance to learn what they read. Doing it
+    // after the early returns would leave every existing account English
+    // forever.
+    if (!profile.language && asked in WELCOME_COPY) {
+      await admin
+        .from('profiles')
+        .update({ language: asked })
+        .eq('id', user.id)
+        .is('language', null)
+    }
+
+    // What the profile remembers wins over what this request claims. For the
+    // welcome they are the same thing; for everything sent later there is no
+    // request to ask, which is the reason the column exists.
+    const language: WelcomeLanguage =
+      profile.language && profile.language in WELCOME_COPY
+        ? (profile.language as WelcomeLanguage)
+        : asked in WELCOME_COPY
+          ? (asked as WelcomeLanguage)
+          : 'en'
+
     if (profile.welcome_email_sent_at) return json({ sent: false, reason: 'already-sent' })
 
     // One welcome per address, not merely per account row.
@@ -95,18 +140,6 @@ Deno.serve(async (req: Request) => {
 
     const resendKey = Deno.env.get('RESEND_API_KEY')
     if (!resendKey) return json({ sent: false, reason: 'email-not-configured' })
-
-    // The language the app is showing, when it is one this mail speaks.
-    // Anything else, including nothing at all, reads better in English than in
-    // a language guessed from an IP address.
-    let language: WelcomeLanguage = 'en'
-    try {
-      const body = await req.json()
-      const asked = typeof body?.language === 'string' ? body.language : ''
-      if (asked in WELCOME_COPY) language = asked as WelcomeLanguage
-    } catch {
-      // No body, or not JSON. English.
-    }
 
     const copy = WELCOME_COPY[language]
     const name = (profile.display_name || profile.username || '').trim()
