@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import ToastHost from './components/ToastHost.tsx'
+import StartupFailure from './components/StartupFailure.tsx'
 import './index.css'
 import { localDbReady } from './lib/supabase'
 
@@ -21,19 +22,17 @@ localDbReady.then(() => {
 }).catch((error) => {
   console.error('Failed to initialize Digital Atrium:', error)
 
+  // A vault another session already has open is a normal thing to run into --
+  // one fast user switch away on a shared machine -- so it gets a sentence
+  // saying so, in the reader's own language, rather than the raw failure this
+  // screen used to print for everything alike. VAULT_IN_USE is returned
+  // verbatim by prepare_live_database precisely so it can be recognised here.
+  const message = error instanceof Error ? error.message : String(error)
+  const reason = message.includes('VAULT_IN_USE') ? 'vault-in-use' : 'unknown'
+
   root.render(
     <React.StrictMode>
-      <div className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center p-6">
-        <div className="max-w-xl w-full border border-white/20 bg-black/40 p-6 space-y-3">
-          <h1 className="text-sm tracking-[0.2em] uppercase">Digital Atrium Failed To Start</h1>
-          <p className="text-sm text-white/70 leading-relaxed">
-            Desktop initialization failed before the app could render.
-          </p>
-          <pre className="text-xs text-red-300 whitespace-pre-wrap break-words bg-black/40 p-3 border border-red-500/20">
-            {error instanceof Error ? error.message : String(error)}
-          </pre>
-        </div>
-      </div>
+      <StartupFailure reason={reason} detail={message} />
     </React.StrictMode>,
   )
 })

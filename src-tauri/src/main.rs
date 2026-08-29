@@ -18,6 +18,95 @@ struct VaultSettings {
 const LIVE_RUNTIME_DIR_NAME: &str = "_runtime";
 const LIVE_DATABASE_FILE_NAME: &str = "atrium.db";
 const LIVE_MEDIA_DIR_NAME: &str = "media";
+const VAULT_LOCK_FILE_NAME: &str = "vault.lock";
+
+// Returned verbatim so the front end can tell this apart from every other way
+// starting up can fail, and say something useful instead of "error".
+const VAULT_IN_USE: &str = "VAULT_IN_USE";
+
+// One session at a time per vault.
+//
+// Two copies of the app writing one SQLite file is how a vault gets corrupted,
+// and Windows makes that easy to do by accident: fast user switching leaves the
+// first account's app running while the second logs in and opens the same
+// shared folder. Nothing warned about it, and the damage is not visible until
+// later.
+//
+// A sentinel file held open for the life of the process, NOT a lock on
+// atrium.db. That distinction is deliberate: the database stays an ordinary
+// file that anything may read, so exporting, backing up, or copying the vault
+// folder are all unaffected. The only thing being claimed is the right to be
+// the session that has this vault open.
+//
+// No timestamps, no heartbeat, no process ids. The exclusive handle below is
+// released by the operating system when the process ends -- including when it
+// crashes or is killed -- so there is no such thing as a stale lock to detect,
+// expire, or offer to break. Every lock file that stores a pid ends up needing
+// all three.
+#[derive(Default)]
+struct VaultLock(std::sync::Mutex<Option<std::fs::File>>);
+
+fn vault_lock_path(base_path: &std::path::Path) -> PathBuf {
+    live_runtime_dir(base_path).join(VAULT_LOCK_FILE_NAME)
+}
+
+// share_mode(0) asks Windows for the file with no sharing at all, so a second
+// process cannot even open it. This is the whole mechanism.
+#[cfg(windows)]
+fn open_exclusive(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .share_mode(0)
+        .open(path)
+}
+
+// Everywhere else this opens the file and claims nothing, because the app ships
+// for Windows and a half-working lock elsewhere would be worse than an absent
+// one -- it would look like a guarantee. If a mac or Linux build ever ships,
+// this needs flock(2) before it means anything.
+#[cfg(not(windows))]
+fn open_exclusive(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(path)
+}
+
+fn claim_vault(base_path: &std::path::Path, lock: &VaultLock) -> Result<(), String> {
+    fs::create_dir_all(live_runtime_dir(base_path)).map_err(|e| e.to_string())?;
+
+    let mut held = lock
+        .0
+        .lock()
+        .map_err(|_| "The vault lock is in a bad state; restart the app.".to_string())?;
+
+    // Dropped before reopening, so claiming a vault this process already holds
+    // succeeds rather than colliding with its own handle -- which is what
+    // switching to the current folder, or a retry, would otherwise do.
+    *held = None;
+
+    match open_exclusive(&vault_lock_path(base_path)) {
+        Ok(file) => {
+            *held = Some(file);
+            Ok(())
+        }
+        Err(e) => {
+            // 32 is ERROR_SHARING_VIOLATION and 33 ERROR_LOCK_VIOLATION: another
+            // process holds it. Matched on the raw code because Rust has never
+            // promised a stable ErrorKind for either.
+            let raw = e.raw_os_error().unwrap_or(0);
+            if raw == 32 || raw == 33 || e.kind() == std::io::ErrorKind::PermissionDenied {
+                Err(VAULT_IN_USE.to_string())
+            } else {
+                Err(format!("Could not claim the vault folder: {}", e))
+            }
+        }
+    }
+}
 
 fn default_vault_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let base_dir = app
@@ -131,7 +220,11 @@ fn get_vault_base_path(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn set_vault_base_path(app: tauri::AppHandle, path: String) -> Result<String, String> {
+fn set_vault_base_path(
+    app: tauri::AppHandle,
+    path: String,
+    lock: tauri::State<'_, VaultLock>,
+) -> Result<String, String> {
     let previous_base_path = current_vault_base_path(&app)?;
     let previous_live_database = live_database_path(&previous_base_path);
     let legacy_database = legacy_database_path(&app)?;
@@ -144,6 +237,17 @@ fn set_vault_base_path(app: tauri::AppHandle, path: String) -> Result<String, St
     let base_path = PathBuf::from(trimmed);
     fs::create_dir_all(&base_path).map_err(|e| e.to_string())?;
     fs::create_dir_all(live_runtime_dir(&base_path)).map_err(|e| e.to_string())?;
+
+    // Claimed before a single byte is written, so pointing at a vault another
+    // session already has open changes nothing at all -- the setting is not
+    // saved, no files are copied, and this session keeps the vault it had.
+    if let Err(e) = claim_vault(&base_path, &lock) {
+        // Taking the old one back, because claiming released it. Ignored on
+        // failure: nothing useful can be done about it here, and the caller
+        // needs to hear about the folder they actually chose.
+        let _ = claim_vault(&previous_base_path, &lock);
+        return Err(e);
+    }
 
     let settings_path = vault_settings_path(&app)?;
     if let Some(parent) = settings_path.parent() {
@@ -214,9 +318,13 @@ than moving files by hand.
 }
 
 #[tauri::command]
-fn prepare_live_database(app: tauri::AppHandle) -> Result<String, String> {
+fn prepare_live_database(app: tauri::AppHandle, lock: tauri::State<'_, VaultLock>) -> Result<String, String> {
     let base_path = current_vault_base_path(&app)?;
     fs::create_dir_all(&base_path).map_err(|e| e.to_string())?;
+
+    // Before the path is handed back, so nothing gets a connection to a
+    // database another session already has open.
+    claim_vault(&base_path, &lock)?;
 
     let target_database = live_database_path(&base_path);
     fs::create_dir_all(live_runtime_dir(&base_path)).map_err(|e| e.to_string())?;
@@ -912,6 +1020,10 @@ fn main() {
             Ok(())
         })
         .manage(VaultWrites::default())
+        // Holds the open handle on the current vault's lock file for as long as
+        // the process lives. Dropping it is what releases the vault, so it must
+        // outlive every command that touches one.
+        .manage(VaultLock::default())
         .invoke_handler(tauri::generate_handler![
             get_app_data_dir,
             get_vault_base_path,
