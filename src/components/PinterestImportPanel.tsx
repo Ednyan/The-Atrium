@@ -20,7 +20,7 @@ interface PinterestImportPanelProps {
   activeLayerId: string | null
 }
 
-type Step = 'boards' | 'pins-loading' | 'confirm' | 'importing' | 'done' | 'error'
+type Step = 'boards' | 'pins-loading' | 'confirm' | 'importing' | 'error'
 
 export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, packingShape, activeLayerId }: PinterestImportPanelProps) {
   const { t } = useTranslation()
@@ -130,7 +130,11 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
         setImportDone(prev => prev + chunk.length)
       }
 
-      setStep('done')
+      // Straight out, with no "imported N pins, press Done" step in
+      // between. The pins are already on the canvas -- addTrace ran for each
+      // one as it landed -- so closing reveals the result the panel would
+      // otherwise be describing while covering it up.
+      onClose()
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to import pins')
       setStep('error')
@@ -242,18 +246,6 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
                   style={{ width: `${pins.length ? (importDone / pins.length) * 100 : 0}%` }}
                 />
               </div>
-            </div>
-          )}
-
-          {step === 'done' && (
-            <div className="py-12 text-center space-y-4">
-              <p className="text-nier-bg text-sm tracking-wider">✓ Imported {importDone} pins</p>
-              <button
-                onClick={onClose}
-                className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
-              >
-                Done
-              </button>
             </div>
           )}
 
