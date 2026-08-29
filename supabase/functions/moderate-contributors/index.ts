@@ -14,7 +14,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUserId } from '../_shared/supabaseAdmin.ts'
-import { renderContributorEmail } from '../_shared/contributorEmail.ts'
+import { renderContributorEmail } from '../_shared/atriumEmail.ts'
 
 // Sent from the verified domain, because that is what Resend can sign for and
 // what will not be dropped: a Gmail address cannot be a sending identity here,

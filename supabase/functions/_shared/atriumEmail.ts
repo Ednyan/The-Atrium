@@ -1,11 +1,15 @@
-// The look of mail sent to contributors.
+// The look of mail the atrium sends.
 //
-// These were plain text, which is fine for a receipt and wrong for the two
-// things they actually are: a thank-you, and a request. They arrive in an inbox
-// beside every other message somebody gets, and the atrium's own surfaces are
-// the reason anyone recognises it -- so the mail is built out of the same
-// pieces. Near-black ground, bone text, one monospace face, hairlines instead
-// of boxes, and the diamond.
+// One renderer for all of it -- the welcome, the notes to contributors, the
+// feedback that arrives at support -- because three near-identical templates
+// drift, and mail from one product should look like one product.
+//
+// These were plain text, which is fine for a receipt and wrong for the things
+// they actually are: a greeting, a thank-you, a request. They arrive in an
+// inbox beside every other message somebody gets, and the atrium's own
+// surfaces are the reason anyone recognises it -- so the mail is built out of
+// the same pieces. Near-black ground, bone text, one monospace face, hairlines
+// instead of boxes, and the diamond.
 //
 // Written as tables with inline styles, because email is not the web. Gmail
 // discards a <style> block when it clips a long message, Outlook renders
@@ -26,8 +30,9 @@ const ACCENT = '#FF8A3D'
 
 const MONO = "Consolas, Monaco, 'Lucida Console', 'Courier New', monospace"
 
-// Contributor names and whatever the operator typed both end up here, and both
-// are text somebody else wrote. Escaped rather than trusted.
+// Names, whatever the operator typed, and whatever a user wrote in a feedback
+// form all end up here. All of it is text somebody else wrote, so all of it is
+// escaped rather than trusted.
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -36,17 +41,25 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
-export interface ContributorEmail {
+export interface AtriumEmail {
   heading: string
   // Blank lines separate paragraphs, which is how people write in a textarea
   // and not something they should have to think about.
   body: string
-  // Set apart from the message: a reason given, or a name being quoted back.
+  // Set apart from the message: a reason given, a name quoted back, or the
+  // details attached to a report.
   quote?: string
+  // One thing to do. Rendered as a bordered block rather than a filled pill:
+  // a solid button in a dark message reads as an advertisement, and this is
+  // not one.
+  action?: { label: string; href: string }
   footnote?: string
+  // Why this message arrived, in the grey line under the card. Every honest
+  // mail answers that question somewhere.
+  footer: string
 }
 
-export function renderContributorEmail({ heading, body, quote, footnote }: ContributorEmail): {
+export function renderAtriumEmail({ heading, body, quote, action, footnote, footer }: AtriumEmail): {
   html: string
   text: string
 } {
@@ -69,6 +82,21 @@ export function renderContributorEmail({ heading, body, quote, footnote }: Contr
            <td style="width:2px;background:${ACCENT};"></td>
            <td style="padding:2px 0 2px 16px;font-family:${MONO};font-size:13px;line-height:1.7;color:${TEXT};">
              ${escapeHtml(quote).replace(/\n/g, '<br />')}
+           </td>
+         </tr>
+       </table>`
+    : ''
+
+  // Centred, and wide enough to be hit on a phone. The href is ours in every
+  // caller, never something a user supplied.
+  const actionHtml = action
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px;">
+         <tr>
+           <td style="border:1px solid ${TEXT};">
+             <a href="${escapeHtml(action.href)}"
+                style="display:block;padding:13px 30px;font-family:${MONO};font-size:12px;letter-spacing:2px;text-transform:uppercase;color:${TEXT};text-decoration:none;">
+               <span style="color:${ACCENT};">&#9671;</span>&nbsp;&nbsp;${escapeHtml(action.label)}
+             </a>
            </td>
          </tr>
        </table>`
@@ -105,7 +133,7 @@ export function renderContributorEmail({ heading, body, quote, footnote }: Contr
                 The Digital Atrium
               </div>
               <div style="height:1px;background:${LINE};margin:20px 0 24px;line-height:1px;font-size:0;">&nbsp;</div>
-              <div style="font-family:${MONO};font-size:15px;letter-spacing:2px;text-transform:uppercase;color:${TEXT};">
+              <div style="font-family:${MONO};font-size:15px;letter-spacing:2px;text-transform:uppercase;color:${TEXT};line-height:1.5;">
                 <span style="color:${ACCENT};">&#9671;</span>&nbsp;&nbsp;${escapeHtml(heading)}
               </div>
             </td>
@@ -115,6 +143,7 @@ export function renderContributorEmail({ heading, body, quote, footnote }: Contr
             <td style="padding:24px 34px 30px;">
               ${paragraphHtml}
               ${quoteHtml}
+              ${actionHtml}
               ${footnoteHtml}
             </td>
           </tr>
@@ -122,7 +151,7 @@ export function renderContributorEmail({ heading, body, quote, footnote }: Contr
         </table>
 
         <p style="max-width:560px;margin:16px auto 0;font-family:${MONO};font-size:10px;line-height:1.7;color:#6a6a6a;text-align:center;">
-          Sent because you contributed to The Digital Atrium.
+          ${escapeHtml(footer)}
         </p>
       </td>
     </tr>
@@ -135,8 +164,21 @@ export function renderContributorEmail({ heading, body, quote, footnote }: Contr
   // the obvious version filtered out the very blanks it was inserting.
   const sections = ['THE DIGITAL ATRIUM', heading.toUpperCase(), paragraphs.join('\n\n')]
   if (quote) sections.push(quote.split('\n').map(line => `  ${line}`).join('\n'))
+  if (action) sections.push(`${action.label.toUpperCase()}\n${action.href}`)
   if (footnote) sections.push(`--\n${footnote}`)
+  sections.push(footer)
   const text = sections.join('\n\n')
 
   return { html, text }
+}
+
+// The contributor mail's footer never varies, so its callers do not have to
+// remember it.
+export type ContributorEmail = Omit<AtriumEmail, 'footer'>
+
+export function renderContributorEmail(email: ContributorEmail) {
+  return renderAtriumEmail({
+    ...email,
+    footer: 'Sent because you contributed to The Digital Atrium.',
+  })
 }

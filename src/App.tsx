@@ -14,6 +14,7 @@ import { showToast } from './lib/toast'
 import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
 import RichText from './components/RichText'
+import { maybeSendWelcome } from './lib/welcome'
 import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { LobbyBrowser } from './components/LobbyBrowser'
@@ -1337,6 +1338,10 @@ function AppInner() {
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
+              // Greets somebody the first time they arrive with a confirmed
+              // account. Guarded server-side, so calling it here and from
+              // onAuthStateChange cannot produce two.
+              void maybeSendWelcome()
               // This path and onAuthStateChange race on load; whichever lands
               // first must record that a session already existed, so the other
               // doesn't mistake it for a fresh login and redirect.
@@ -1506,6 +1511,7 @@ function AppInner() {
           //     name alone can't tell from a real login.
           const justSignedIn = !wasSignedInRef.current
           wasSignedInRef.current = true
+          void maybeSendWelcome()
           const currentRoute = parseRoute()
           // The landing page is somewhere people mean to be, so nothing
           // navigates away from it.

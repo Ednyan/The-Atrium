@@ -20,6 +20,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
+import { renderAtriumEmail } from '../_shared/atriumEmail.ts'
 
 const SUPPORT_EMAIL = 'thedigitalatrium@gmail.com'
 const RESEND_FROM = 'The Atrium <feedback@mail.digitalatrium.org>'
@@ -64,15 +65,20 @@ Deno.serve(async (req: Request) => {
     const motiveLabel = motive === 'feature' ? 'Feature Suggestion' : motive === 'other' ? 'Other' : 'Bug Report'
     const trimmedUserSubject = typeof userSubject === 'string' ? userSubject.trim() : ''
     const subject = trimmedUserSubject ? `${motiveLabel} - ${trimmedUserSubject}` : motiveLabel
-    const text = [
-      String(description).trim(),
-      '',
-      '---',
-      `Motive: ${motiveLabel}`,
-      `User: ${username || 'Unknown'}`,
-      `Atrium: ${atriumName || 'Unknown'}`,
-      `Platform: ${platform || 'Unknown'}`,
-    ].join('\n')
+    // The same card the rest of the mail uses. This one goes to support
+    // rather than to a user, but a report that arrives looking like the
+    // product is easier to read at a glance than a wall of plain text -- and
+    // the details belong set apart from what the person actually wrote.
+    const { html, text } = renderAtriumEmail({
+      heading: motiveLabel,
+      body: String(description).trim(),
+      quote: [
+        `User: ${username || 'Unknown'}`,
+        `Atrium: ${atriumName || 'Unknown'}`,
+        `Platform: ${platform || 'Unknown'}`,
+      ].join('\n'),
+      footer: 'Sent from the report form inside The Digital Atrium.',
+    })
 
     const resendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -85,6 +91,7 @@ Deno.serve(async (req: Request) => {
         to: SUPPORT_EMAIL,
         reply_to: replyTo,
         subject,
+        html,
         text,
       }),
     })
