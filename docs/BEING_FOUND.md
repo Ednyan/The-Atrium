@@ -1,151 +1,119 @@
 # Being found in search
 
-Right now the site is close to invisible to a search engine, and it is not
-because of anything difficult. Four things are missing, three of them are files
-you can write in an afternoon, and the fourth is the custom domain.
+Written when the site was close to invisible to a search engine. Most of it has
+since been done, so this is now two lists: what is in place, and what is left.
+
+The short version of the whole document: the on-page work is finished and it was
+never the hard part. What decides whether anyone finds this is links from
+elsewhere, and no file in this repo can produce one.
 
 ---
 
-## What a crawler currently gets
-
-This is the entire `index.html` that ships:
-
-```html
-<title>Digital Atrium</title>
-<link rel="icon" ...>
-<meta name="viewport" ...>
-...
-<div id="root"></div>
-```
-
-No description. No Open Graph tags, so a link pasted into Discord, WhatsApp or
-Twitter shows a bare URL with no title, image or summary. No `robots.txt`, no
-`sitemap.xml`. And an empty `<div>` where the page should be.
-
-Google does run JavaScript, so the landing page *will* eventually be read — the
-English catalogue is bundled rather than fetched, so the text is there once
-React renders. But rendering is a second, slower pass for the crawler, and
-everything that decides how your result *looks* in the list is metadata that
-does not exist yet.
-
-### The hash router matters here
+## The constraint that shapes everything
 
 The app routes on the fragment: `#/browse`, `#/contributors`, `#/desktop`.
-Google has ignored fragments for indexing since 2015 — `example.com/#/browse`
-and `example.com/` are the same URL to a crawler.
+Google has ignored fragments for indexing since 2015 — `digitalatrium.org/#/browse`
+and `digitalatrium.org/` are the same URL to a crawler.
 
 So there is exactly **one indexable page**, no matter how many screens the app
-has. That is fine — it is an app, not a blog — but it means the one page has to
-do all the work, and it makes the title, description and social card
-disproportionately important.
+has, plus `privacy.html` and `terms.html`. That is fine for an app rather than a
+blog, but it means the one page has to do all the work, and it makes the title,
+the description and the social card disproportionately important.
+
+Google does run JavaScript, so the landing page is read eventually — the English
+catalogue is bundled rather than fetched, so the text is there once React
+renders. But rendering is a second, slower pass, and everything deciding how the
+result *looks* in the list is static metadata.
 
 ---
 
-## In order of value
+## In place
 
-### 1. A custom domain
+- **A custom domain.** `digitalatrium.org`. This was the largest single
+  improvement available: `pages.dev` is on the Public Suffix List, so a
+  subdomain of it inherits no authority at all. See `CHANGING_THE_DOMAIN.md`.
+- **Title, description, canonical** in `index.html`. The description is kept
+  near 155 characters, which is roughly where Google truncates.
+- **Open Graph and Twitter cards**, with `og:image:width`/`height`/`alt` so a
+  chat client can reserve the space instead of reflowing under a bare link.
+- **`og-card.png`**, 1200×630, built by `scripts/make-og-image.mjs`. This
+  replaced `glass_dome.png`, which is 2780×2503 — very nearly square, and so
+  cropped to its middle by every client that shows a large card.
+- **JSON-LD** (`WebApplication`), so the category and the price are stated
+  rather than inferred.
+- **`robots.txt` and `sitemap.xml`** in `public/`, listing only real URLs. The
+  `#/` routes are deliberately absent; they are not pages.
+- **A `<noscript>` block** with real prose, which is what the first crawl pass
+  and a visitor without JavaScript both get.
+- **Descriptions and canonicals on `privacy.html` and `terms.html`** — the only
+  prose on the site readable without running any JavaScript.
 
-`*.pages.dev` is a shared domain owned by Cloudflare, used by hundreds of
-thousands of projects, many of them abandoned or spam. Search engines treat
-subdomains of a shared host with suspicion and rank them poorly; `pages.dev` is
-also on the Public Suffix List, which means your subdomain inherits no
-authority from the parent at all.
+---
 
-A domain you own is the single largest improvement available, and everything
-below works better once it exists. See `CHANGING_THE_DOMAIN.md`.
+## Left to do
 
-### 2. Metadata in `index.html`
+### 1. Links from elsewhere
 
-Cheap, static, and entirely under your control. Roughly:
+This is the part no file here can do, and it is what actually decides ranking. A
+new domain with no inbound links ranks nowhere however clean its markup is.
 
-```html
-<title>The Digital Atrium — an infinite canvas for your references</title>
-<meta name="description" content="Collect images, video, PDFs and links on an
-  infinite shared canvas. Build a room of your references and let others walk
-  through it." />
-<link rel="canonical" href="https://your-domain/" />
+The honest routes: show it where people collect visual references and talk about
+tools for doing it. A demo video does far more than a link, because the thing is
+visual and does not explain itself in a sentence.
 
-<meta property="og:type" content="website" />
-<meta property="og:title" content="The Digital Atrium" />
-<meta property="og:description" content="An infinite canvas for the things you
-  want to keep." />
-<meta property="og:image" content="https://your-domain/atrium-mark.png" />
-<meta property="og:url" content="https://your-domain/" />
+Everything below this line is worth less than this item.
 
-<meta name="twitter:card" content="summary_large_image" />
-```
+### 2. Search Console and Bing Webmaster Tools
 
-The description is what appears under your title in the results, and the
-`og:image` is what people see when they share the link. Both are currently
-blank. Use a real screenshot of a populated atrium for the image, not the logo —
-1200×630, under 1 MB.
+- **Google Search Console** — add the property, verify by DNS TXT record,
+  submit the sitemap, then *URL Inspection → Request indexing* on the homepage.
+  It is the only way to see what Google actually thinks, including how it
+  renders the page.
+- **Bing Webmaster Tools** — can import straight from Search Console. Bing feeds
+  DuckDuckGo, which is worth more than its market share suggests here.
 
-Note the description is a *sentence a person reads*, not keywords. Keyword
-stuffing has been actively penalised for over a decade.
+Expect days to weeks, and read nothing into the first fortnight.
 
-### 3. `robots.txt` and `sitemap.xml`
+### 3. A real screenshot for the card
 
-Two small files in `public/`, which Cloudflare Pages serves as-is.
+`og-card.png` is the mark on the app's ground. Honest, correctly shaped, and
+says little. A screenshot of a populated atrium would say what the product is in
+the one place people actually look at it — a link pasted into a chat.
 
-```
-# public/robots.txt
-User-agent: *
-Allow: /
-Sitemap: https://your-domain/sitemap.xml
-```
+Drop-in: save it over `public/og-card.png` at 1200×630, under 1 MB, and change
+nothing else.
 
-```xml
-<!-- public/sitemap.xml -->
-<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://your-domain/</loc><priority>1.0</priority></url>
-  <url><loc>https://your-domain/privacy.html</loc><priority>0.3</priority></url>
-  <url><loc>https://your-domain/terms.html</loc><priority>0.3</priority></url>
-</urlset>
-```
+### 4. A `www` → apex redirect
 
-Only real URLs belong here. Do not list the `#/` routes; they are not pages.
+The DNS record exists and is proxied, but nothing redirects. `canonical` already
+points at the apex, so this is tidiness rather than a duplicate-content problem.
+A Cloudflare redirect rule does it.
 
-`privacy.html` and `terms.html` are genuine static files and are worth listing —
-they are also the only prose on the site a crawler can read without running any
-JavaScript.
+### 5. Consider what `_redirects` is doing
 
-### 4. Tell the search engines it exists
+`public/_redirects` is `/* /index.html 200`, so **every** path returns the app
+with a 200 — `/nonsense` included. Those are soft 404s, and Google dislikes
+them.
 
-- **Google Search Console** — add the property, verify by DNS TXT record (the
-  domain is yours, so this is the easy method), submit the sitemap, then use
-  *URL Inspection → Request indexing* on the homepage. This is the only way to
-  see what Google actually thinks of the site, including how it renders it.
-- **Bing Webmaster Tools** — same idea, and it can import straight from Search
-  Console. Bing also feeds DuckDuckGo, which is worth more than its market
-  share suggests for a tool like this.
+It is also probably unnecessary. Routing is entirely on the hash (`parseRoute`
+reads only `window.location.hash`), and every OAuth callback returns to `/`
+(`getPinterestRedirectUri` is `origin + '/'`; Supabase uses the site URL). So no
+path other than `/` and the two `.html` files needs to resolve.
 
-Expect days to weeks before anything appears, and do not read anything into the
-first fortnight.
+Left alone deliberately: the gain is theoretical, since Google only indexes URLs
+it discovers and nothing links to a phantom path, while the risk is a live
+routing change on a deployed site. If it is ever changed, test both sign-in
+flows and the desktop Pinterest link before believing it.
 
-### 5. Something static for the crawler to read
+### 6. Prerendering
 
-Optional, and more work than the rest. The shell renders empty, so the first
-crawl pass sees nothing and everything depends on the render pass.
+The shell renders empty, so the first crawl pass depends on the `<noscript>`
+block and everything else waits for the render pass. Prerendering the landing
+page to static HTML at build time (`vite-plugin-prerender` or similar) would fix
+that properly.
 
-The cheap version is a `<noscript>` block in `index.html` with a paragraph or
-two of real prose about what the atrium is. It costs nothing, is honest — it is
-what a visitor without JavaScript should see anyway — and gives the crawler
-something on the first pass.
-
-The thorough version is prerendering the landing page to static HTML at build
-time (`vite-plugin-prerender` or similar). Worth doing only if the metadata and
-the domain have not moved the needle after a couple of months.
-
-### 6. Links from elsewhere
-
-This is the part no file in this repo can do, and it is what actually decides
-ranking. A new domain with no inbound links ranks nowhere regardless of how
-clean its markup is.
-
-The honest routes for a project like this: show it where people collect visual
-references and talk about tools for it. A demo video does far more than a link,
-because the thing is visual and does not explain itself in a sentence.
+Worth doing only if the domain and metadata have not moved anything after a
+couple of months. It is real complexity for a second-order gain.
 
 ---
 
@@ -153,18 +121,7 @@ because the thing is visual and does not explain itself in a sentence.
 
 - **Meta keywords.** Ignored by every search engine since roughly 2009.
 - **Submitting to directories.** Either useless or actively harmful.
-- **Anything sold as "SEO services" for a project this size.** The four steps
-  above are the whole of it.
-
----
-
-## A reasonable order
-
-1. Buy the domain and point Pages at it.
-2. Add the metadata, `robots.txt` and `sitemap.xml` in the same commit.
-3. Verify in Search Console, submit the sitemap, request indexing.
-4. Wait a month before judging anything.
-5. Then consider prerendering, and start on links.
-
-Steps 2 and 3 are perhaps an hour of work together. Step 1 is the one that
-matters most.
+- **BIMI**, if the goal is a logo beside the sender in Gmail. It needs DMARC at
+  enforcement plus a VMC or CMC certificate — hundreds to well over a thousand
+  a year, and a VMC needs a registered trademark.
+- **Anything sold as "SEO services"** for a project this size.

@@ -12,24 +12,62 @@
          exactly one indexable page however many screens the app has, and
          everything below has to do the work for all of them.
 
-         og:image is the dome for now. A screenshot of a populated atrium at
-         1200x630 would be considerably better, since the thing is visual and
-         does not explain itself in a sentence; see docs/BEING_FOUND.md. -->
+         og:image is og-card.png, built by scripts/make-og-image.mjs. It used
+         to be glass_dome.png, which is 2780x2503 and so arrived cropped to its
+         middle in every client that shows a large card. Replacing that file
+         with a 1200x630 screenshot of a full atrium would be better still and
+         needs no change here; see docs/BEING_FOUND.md.
+
+         The description is kept near 155 characters, because that is roughly
+         where Google truncates it and a sentence cut mid-clause reads as
+         carelessness in the one place everybody looks. -->
     <title>The Digital Atrium — an infinite canvas for your references</title>
-    <meta name="description" content="Collect images, video, PDFs and links on an infinite shared canvas. Build a room of your references, arrange it however you like, and let others walk through it." />
+    <meta name="description" content="Collect images, video, PDFs and links on an infinite shared canvas. Build a room of your references and let others walk through it." />
     <link rel="canonical" href="https://digitalatrium.org/" />
+    <meta name="theme-color" content="#191919" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="The Digital Atrium" />
     <meta property="og:title" content="The Digital Atrium" />
     <meta property="og:description" content="An infinite canvas for the things you want to keep." />
-    <meta property="og:image" content="https://digitalatrium.org/glass_dome.png" />
+    <meta property="og:image" content="https://digitalatrium.org/og-card.png" />
+    <!-- Stated so a client can reserve the space before the image arrives,
+         rather than showing a bare link and then reflowing under it. -->
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Digital Atrium mark: a wireframe portal beneath a point of light." />
     <meta property="og:url" content="https://digitalatrium.org/" />
+    <!-- One URL, and the interface picks its language at runtime, so there is
+         nothing for hreflang to point at. This says what the markup below is
+         written in and claims nothing more. -->
+    <meta property="og:locale" content="en_US" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="The Digital Atrium" />
     <meta name="twitter:description" content="An infinite canvas for the things you want to keep." />
-    <meta name="twitter:image" content="https://digitalatrium.org/glass_dome.png" />
+    <meta name="twitter:image" content="https://digitalatrium.org/og-card.png" />
+    <meta name="twitter:image:alt" content="The Digital Atrium mark: a wireframe portal beneath a point of light." />
+
+    <!-- What the thing is, in the form a search engine reads without inferring
+         it from prose. Free is stated because it is true and because it is the
+         first question anybody asks; contributing is a donation, not a price. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "The Digital Atrium",
+      "url": "https://digitalatrium.org/",
+      "description": "Collect images, video, PDFs and links on an infinite shared canvas. Build a room of your references and let others walk through it.",
+      "applicationCategory": "DesignApplication",
+      "operatingSystem": "Web browser, Windows",
+      "image": "https://digitalatrium.org/og-card.png",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
