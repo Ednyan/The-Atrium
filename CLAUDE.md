@@ -39,6 +39,13 @@ signed by the key already compiled into them.
 - Schema changes need a migration in `supabase/migrations/` **applied before
   the web build deploys** — the save payload includes new columns immediately,
   so an unapplied migration makes Postgres reject every trace save.
+- **Migrations are applied by hand, in the dashboard SQL editor.** Not with
+  `supabase db push` or `migration up`: the files here are named
+  `add_thing.sql`, and the CLI only tracks `<timestamp>_name.sql`, so it
+  cannot see any of them. (`db push` fails earlier than that anyway, on
+  creating its `cli_login_postgres` role.) Write every migration so it can be
+  run twice — `if not exists`, `or replace`, `drop ... if exists` first —
+  because nothing records which have already been run.
 - Desktop schema changes additionally need an additive `ALTER TABLE` in
   `localDb.ts` for existing vaults.
 - Verify with `npx tsc --noEmit -p tsconfig.json` then `npm run build`.
