@@ -352,8 +352,9 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
+      onClick={requestClose}
     >
-      <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
+      <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }} onClick={(e) => e.stopPropagation()}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />

@@ -170,6 +170,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
       style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
       onTouchMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
+      onClick={onClose}
     >
         {/* Corner brackets live on this outer, non-scrolling wrapper (capped
             at max-h-[90vh]) so they stay pinned to the modal's actual
@@ -178,7 +179,7 @@ export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizat
             once enough theme options were added to make it scroll, bottom-0
             anchored to the bottom of the full scrollable content instead of
             the visible box. */}
-        <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] relative flex flex-col">
+        <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] relative flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />

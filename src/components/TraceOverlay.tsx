@@ -3567,7 +3567,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // a character deletes the entire trace instead.
       const target = e.target as HTMLElement | null
       const isEditableTarget = target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT'
-      if (e.key === 'Delete' && canEdit && !isEditableTarget && (selectedTraceId || multiSelectedIds.size > 0)) {
+      if (e.key === 'Delete' && !isDrawingModeRef.current && canEdit && !isEditableTarget && (selectedTraceId || multiSelectedIds.size > 0)) {
         e.preventDefault()
         deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
       }

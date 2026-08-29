@@ -895,6 +895,47 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const drawingSmoothingRef = useRef(30)
   const brushCursorRef = useRef<HTMLDivElement>(null)
 
+  // Drawing history. Snapshots of the whole stroke list rather than a stack of
+  // strokes, because "clear" has to be undoable too and there is no single
+  // stroke to put back for it.
+  type DrawSnapshot = typeof completedStrokes
+  const drawPastRef = useRef<DrawSnapshot[]>([])
+  const drawFutureRef = useRef<DrawSnapshot[]>([])
+
+  // Every change to the drawing goes through here, so nothing can quietly
+  // mutate the strokes without becoming undoable. A new change discards the
+  // redo branch, as it does in every editor.
+  const commitDrawing = useCallback((next: DrawSnapshot | ((prev: DrawSnapshot) => DrawSnapshot)) => {
+    drawPastRef.current = [...drawPastRef.current, completedStrokesRef.current]
+    drawFutureRef.current = []
+    setCompletedStrokes(prev => (typeof next === 'function' ? next(prev) : next))
+  }, [])
+
+  const undoDrawing = useCallback(() => {
+    const past = drawPastRef.current
+    if (past.length === 0) return
+    drawFutureRef.current = [completedStrokesRef.current, ...drawFutureRef.current]
+    drawPastRef.current = past.slice(0, -1)
+    setCompletedStrokes(past[past.length - 1])
+  }, [])
+
+  const redoDrawing = useCallback(() => {
+    const future = drawFutureRef.current
+    if (future.length === 0) return
+    drawPastRef.current = [...drawPastRef.current, completedStrokesRef.current]
+    drawFutureRef.current = future.slice(1)
+    setCompletedStrokes(future[0])
+  }, [])
+
+  // Leaving, entering or saving starts a fresh drawing, so the history of the
+  // previous one must not survive into it.
+  const resetDrawing = useCallback(() => {
+    drawPastRef.current = []
+    drawFutureRef.current = []
+    setCompletedStrokes([])
+    currentStrokeRef.current = []
+  }, [])
+
   // Keep drawing mode ref in sync
   useEffect(() => {
     isDrawingModeRef.current = isDrawingMode
@@ -1304,8 +1345,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         setIsDrawingMode(prev => {
           if (!prev) return true
           // Exiting: clear everything
-          setCompletedStrokes([])
-          currentStrokeRef.current = []
+          resetDrawing()
           setIsEraserMode(false)
           return false
         })
@@ -1317,13 +1357,47 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           setIsEraserMode(prev => !prev)
         }
       }
-      // Ctrl+Z undoes the last stroke while drawing, same as the Undo
-      // button -- TraceOverlay's own Ctrl+Z (trace undo/redo) steps aside
-      // while isDrawingMode is active, see its isDrawingModeRef guard.
-      if (isDrawingModeRef.current && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault()
-        e.stopPropagation()
-        setCompletedStrokes(prev => prev.slice(0, -1))
+      // The drawing's own keys. TraceOverlay's Ctrl+Z (trace undo/redo) and
+      // its Delete (remove selected traces) both step aside while
+      // isDrawingMode is active -- see the isDrawingModeRef guards there.
+      if (isDrawingModeRef.current) {
+        const mod = e.ctrlKey || e.metaKey
+        if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+          e.preventDefault()
+          e.stopPropagation()
+          undoDrawing()
+        }
+        // Ctrl+Y as well as Ctrl+Shift+Z: the first is what Windows apps use,
+        // the second what design tools do, and people arrive from both.
+        if (mod && ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y')) {
+          e.preventDefault()
+          e.stopPropagation()
+          redoDrawing()
+        }
+        // Clears the canvas rather than deleting a trace -- and goes through
+        // the history, so it is a step back like any other.
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault()
+          e.stopPropagation()
+          commitDrawing([])
+          currentStrokeRef.current = []
+        }
+        // Enter is the same path as the Save button, guarded there against an
+        // empty canvas and against a save already running.
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          e.stopPropagation()
+          void saveDrawingRef.current()
+        }
+        // Escape leaves without saving, which is what Escape means everywhere
+        // else in the app. The Exit button does the same thing.
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsDrawingMode(false)
+          resetDrawing()
+          setIsEraserMode(false)
+        }
       }
     }
     
@@ -3948,6 +4022,150 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('message', onMessage)
   }, [canEdit])
 
+  // Saving the drawing: rasterise the strokes, upload, place the result as an
+  // image trace. Lifted out of the button so the Enter key runs the same path
+  // -- two ways in, one implementation.
+  const saveDrawing = async () => {
+    if (isSavingDrawing || completedStrokesRef.current.length === 0) return
+    setIsSavingDrawing(true)
+    try {
+      // Render all strokes to find tight bounding box
+      const allPoints = completedStrokes.flatMap(s => s.points)
+      // Returning from inside the try skips the cleanup after it, so this one
+      // has to undo the flag itself or the button stays disabled for good.
+      if (allPoints.length === 0) { setIsSavingDrawing(false); return }
+
+      const padding = 20
+      const minSX = Math.min(...allPoints.map(p => p.x)) - padding
+      const maxSX = Math.max(...allPoints.map(p => p.x)) + padding
+      const minSY = Math.min(...allPoints.map(p => p.y)) - padding
+      const maxSY = Math.max(...allPoints.map(p => p.y)) + padding
+      const cropW = Math.max(1, maxSX - minSX)
+      const cropH = Math.max(1, maxSY - minSY)
+
+      // Create offscreen canvas sized to the bounding box
+      const offscreen = document.createElement('canvas')
+      offscreen.width = Math.ceil(cropW)
+      offscreen.height = Math.ceil(cropH)
+      const offCtx = offscreen.getContext('2d')!
+
+      // Draw strokes shifted so bounding box starts at (0,0)
+      for (const stroke of completedStrokes) {
+        const shifted = stroke.points.map(p => ({ x: p.x - minSX, y: p.y - minSY }))
+        drawBezierStroke(offCtx, shifted, stroke.color, stroke.width, stroke.isEraser)
+      }
+
+      // Export as PNG blob and upload to Supabase Storage
+      const blob = await new Promise<Blob>((resolve) => {
+        offscreen.toBlob((b) => resolve(b!), 'image/png')
+      })
+      const fileName = `drawing_${userId}_${Date.now()}.png`
+      const storagePath = `${lobbyId}/${fileName}`
+      
+      let imageUrl = ''
+      const { error: uploadError } = await supabase!.storage
+        .from('traces')
+        .upload(storagePath, blob, { contentType: 'image/png' })
+      
+      if (uploadError) {
+        console.error('Storage upload failed, falling back to data URL:', uploadError)
+        imageUrl = offscreen.toDataURL('image/png')
+      } else {
+        const { data: { publicUrl } } = supabase!.storage
+          .from('traces')
+          .getPublicUrl(storagePath)
+        imageUrl = publicUrl
+      }
+
+      // Convert screen-space bounds to world coordinates
+      const panX = worldContainerRef.current?.x ?? 0
+      const panY = worldContainerRef.current?.y ?? 0
+      const zoom = zoomRef.current
+      const worldMinX = (minSX - panX) / zoom
+      const worldMinY = (minSY - panY) / zoom
+      const worldW = cropW / zoom
+      const worldH = cropH / zoom
+      const worldCenterX = worldMinX + worldW / 2
+      const worldCenterY = worldMinY + worldH / 2
+
+      if (supabase) {
+        // Check lobby size limit before saving drawing
+        if (useGameStore.getState().isLobbyFull()) {
+          const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
+          showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+          setIsSavingDrawing(false)
+          return
+        }
+        const layerFields = activeLayerId
+          ? {
+              layer_id: activeLayerId,
+              z_index: await computeZIndexForNewTraceInLayer(
+                activeLayerId,
+                traces.filter(t => t.layerId === activeLayerId).length
+              ),
+            }
+          : {}
+
+        const { data, error } = await supabase.from('traces').insert({
+          user_id: userId,
+          username,
+          type: 'image',
+          content: 'freehand drawing',
+          media_url: imageUrl,
+          position_x: worldCenterX,
+          position_y: worldCenterY,
+          scale: 1.0,
+          rotation: 0.0,
+          lobby_id: lobbyId,
+          width: Math.round(worldW),
+          height: Math.round(worldH),
+          show_border: false,
+          show_background: false,
+          show_description: false,
+          show_filename: false,
+          ...layerFields,
+        } as any).select()
+
+        if (!error && data && data[0]) {
+          const dbTrace = data[0] as any
+          const trace: Trace = {
+            id: dbTrace.id,
+            userId: dbTrace.user_id,
+            username: dbTrace.username,
+            type: dbTrace.type,
+            content: dbTrace.content,
+            x: dbTrace.position_x,
+            y: dbTrace.position_y,
+            createdAt: dbTrace.created_at,
+            scale: dbTrace.scale ?? 1.0,
+            scaleX: dbTrace.scale ?? 1.0,
+            scaleY: dbTrace.scale ?? 1.0,
+            rotation: dbTrace.rotation ?? 0.0,
+            width: dbTrace.width,
+            height: dbTrace.height,
+            mediaUrl: dbTrace.media_url,
+            showBorder: false,
+            showBackground: false,
+            showDescription: false,
+            lobbyId: dbTrace.lobby_id,
+          }
+          useGameStore.getState().addTrace(trace)
+        } else if (error) {
+          console.error('Failed to save drawing:', error)
+        }
+      }
+    } catch (err) {
+      console.error('Error saving drawing:', err)
+    }
+    setIsSavingDrawing(false)
+    resetDrawing()
+  }
+
+  // The key handler is registered once, so it reaches the current save
+  // through a ref rather than closing over the first render's copy.
+  const saveDrawingRef = useRef(saveDrawing)
+  useEffect(() => { saveDrawingRef.current = saveDrawing })
+
   return (
     <div
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
@@ -4600,13 +4818,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   </div>
                 )}
 
-                {/* Undo last stroke */}
-                {completedStrokes.length > 0 && (
+                {/* Undo and redo. Both stay mounted once there is anything to
+                    step through, so the row does not reflow under the pointer
+                    mid-edit -- and redo outlives an undo back to an empty
+                    canvas, which is exactly when it is wanted. */}
+                {(completedStrokes.length > 0 || drawPastRef.current.length > 0) && (
                   <button
-                    onClick={() => setCompletedStrokes(prev => prev.slice(0, -1))}
-                    className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
+                    onClick={undoDrawing}
+                    disabled={drawPastRef.current.length === 0}
+                    className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     {t('common.undo')}
+                  </button>
+                )}
+                {(completedStrokes.length > 0 || drawFutureRef.current.length > 0) && (
+                  <button
+                    onClick={redoDrawing}
+                    disabled={drawFutureRef.current.length === 0}
+                    className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    {t('common.redo')}
                   </button>
                 )}
 
@@ -4614,7 +4845,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 {completedStrokes.length > 0 && (
                   <button
                     onClick={() => {
-                      setCompletedStrokes([])
+                      commitDrawing([])
                       currentStrokeRef.current = []
                     }}
                     className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
@@ -4627,139 +4858,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 {completedStrokes.length > 0 && (
                   <button
                     disabled={isSavingDrawing}
-                    onClick={async () => {
-                      setIsSavingDrawing(true)
-                      try {
-                        // Render all strokes to find tight bounding box
-                        const allPoints = completedStrokes.flatMap(s => s.points)
-                        if (allPoints.length === 0) return
-
-                        const padding = 20
-                        const minSX = Math.min(...allPoints.map(p => p.x)) - padding
-                        const maxSX = Math.max(...allPoints.map(p => p.x)) + padding
-                        const minSY = Math.min(...allPoints.map(p => p.y)) - padding
-                        const maxSY = Math.max(...allPoints.map(p => p.y)) + padding
-                        const cropW = Math.max(1, maxSX - minSX)
-                        const cropH = Math.max(1, maxSY - minSY)
-
-                        // Create offscreen canvas sized to the bounding box
-                        const offscreen = document.createElement('canvas')
-                        offscreen.width = Math.ceil(cropW)
-                        offscreen.height = Math.ceil(cropH)
-                        const offCtx = offscreen.getContext('2d')!
-
-                        // Draw strokes shifted so bounding box starts at (0,0)
-                        for (const stroke of completedStrokes) {
-                          const shifted = stroke.points.map(p => ({ x: p.x - minSX, y: p.y - minSY }))
-                          drawBezierStroke(offCtx, shifted, stroke.color, stroke.width, stroke.isEraser)
-                        }
-
-                        // Export as PNG blob and upload to Supabase Storage
-                        const blob = await new Promise<Blob>((resolve) => {
-                          offscreen.toBlob((b) => resolve(b!), 'image/png')
-                        })
-                        const fileName = `drawing_${userId}_${Date.now()}.png`
-                        const storagePath = `${lobbyId}/${fileName}`
-                        
-                        let imageUrl = ''
-                        const { error: uploadError } = await supabase!.storage
-                          .from('traces')
-                          .upload(storagePath, blob, { contentType: 'image/png' })
-                        
-                        if (uploadError) {
-                          console.error('Storage upload failed, falling back to data URL:', uploadError)
-                          imageUrl = offscreen.toDataURL('image/png')
-                        } else {
-                          const { data: { publicUrl } } = supabase!.storage
-                            .from('traces')
-                            .getPublicUrl(storagePath)
-                          imageUrl = publicUrl
-                        }
-
-                        // Convert screen-space bounds to world coordinates
-                        const panX = worldContainerRef.current?.x ?? 0
-                        const panY = worldContainerRef.current?.y ?? 0
-                        const zoom = zoomRef.current
-                        const worldMinX = (minSX - panX) / zoom
-                        const worldMinY = (minSY - panY) / zoom
-                        const worldW = cropW / zoom
-                        const worldH = cropH / zoom
-                        const worldCenterX = worldMinX + worldW / 2
-                        const worldCenterY = worldMinY + worldH / 2
-
-                        if (supabase) {
-                          // Check lobby size limit before saving drawing
-                          if (useGameStore.getState().isLobbyFull()) {
-                            const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-                            showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
-                            setIsSavingDrawing(false)
-                            return
-                          }
-                          const layerFields = activeLayerId
-                            ? {
-                                layer_id: activeLayerId,
-                                z_index: await computeZIndexForNewTraceInLayer(
-                                  activeLayerId,
-                                  traces.filter(t => t.layerId === activeLayerId).length
-                                ),
-                              }
-                            : {}
-
-                          const { data, error } = await supabase.from('traces').insert({
-                            user_id: userId,
-                            username,
-                            type: 'image',
-                            content: 'freehand drawing',
-                            media_url: imageUrl,
-                            position_x: worldCenterX,
-                            position_y: worldCenterY,
-                            scale: 1.0,
-                            rotation: 0.0,
-                            lobby_id: lobbyId,
-                            width: Math.round(worldW),
-                            height: Math.round(worldH),
-                            show_border: false,
-                            show_background: false,
-                            show_description: false,
-                            show_filename: false,
-                            ...layerFields,
-                          } as any).select()
-
-                          if (!error && data && data[0]) {
-                            const dbTrace = data[0] as any
-                            const trace: Trace = {
-                              id: dbTrace.id,
-                              userId: dbTrace.user_id,
-                              username: dbTrace.username,
-                              type: dbTrace.type,
-                              content: dbTrace.content,
-                              x: dbTrace.position_x,
-                              y: dbTrace.position_y,
-                              createdAt: dbTrace.created_at,
-                              scale: dbTrace.scale ?? 1.0,
-                              scaleX: dbTrace.scale ?? 1.0,
-                              scaleY: dbTrace.scale ?? 1.0,
-                              rotation: dbTrace.rotation ?? 0.0,
-                              width: dbTrace.width,
-                              height: dbTrace.height,
-                              mediaUrl: dbTrace.media_url,
-                              showBorder: false,
-                              showBackground: false,
-                              showDescription: false,
-                              lobbyId: dbTrace.lobby_id,
-                            }
-                            useGameStore.getState().addTrace(trace)
-                          } else if (error) {
-                            console.error('Failed to save drawing:', error)
-                          }
-                        }
-                      } catch (err) {
-                        console.error('Error saving drawing:', err)
-                      }
-                      setIsSavingDrawing(false)
-                      setCompletedStrokes([])
-                      currentStrokeRef.current = []
-                    }}
+                    onClick={saveDrawing}
                     className="bg-white hover:bg-nier-bg text-black px-4 py-1 text-xs tracking-wider uppercase transition-all border border-nier-bg font-bold"
                   >
                     {isSavingDrawing ? '...' : `✓ ${t('atrium.draw.save')} (${completedStrokes.length})`}
@@ -4769,8 +4868,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 <button
                   onClick={() => {
                     setIsDrawingMode(false)
-                    setCompletedStrokes([])
-                    currentStrokeRef.current = []
+                    resetDrawing()
                     setIsEraserMode(false)
                   }}
                   className="atrium-btn w-full hover:brightness-110"
@@ -4864,7 +4962,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 setIsDrawing(false)
                 const rawPoints = currentStrokeRef.current
                 if (rawPoints.length >= 1) {
-                  setCompletedStrokes(prev => [...prev, {
+                  commitDrawing(prev => [...prev, {
                     points: [...rawPoints],
                     color: drawingColorRef.current,
                     width: drawingWidthRef.current,
@@ -4913,7 +5011,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 setIsDrawing(false)
                 const rawPoints = currentStrokeRef.current
                 if (rawPoints.length >= 1) {
-                  setCompletedStrokes(prev => [...prev, {
+                  commitDrawing(prev => [...prev, {
                     points: [...rawPoints],
                     color: drawingColorRef.current,
                     width: drawingWidthRef.current,
