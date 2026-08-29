@@ -8913,6 +8913,47 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   </label>
                 </div>
 
+                {/* Text colour, on the same gate as Text Sizing below: shown
+                    as long as ANY selected trace is text.
+
+                    The single-trace panel has had this since text traces did;
+                    batch edit could set the border and the fill of a dozen
+                    traces at once but not the one property that is actually
+                    about the words. Recolouring twelve labels one at a time is
+                    exactly the work this panel exists to avoid.
+
+                    No text field beside the swatch, unlike the single-trace
+                    version. There it mirrors one trace's current value, which
+                    is a fact; here the selection may hold a dozen different
+                    colours and any hex printed in the box would be a claim
+                    about all of them. The swatch sets, and says nothing. */}
+                {(() => {
+                  const colourSeed = batchIds
+                    .map(id => traces.find(t => t.id === id))
+                    .find((t): t is Trace => !!t && t.type === 'text')
+                  if (!colourSeed) return null
+                  return (
+                    <div>
+                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textColour')}</label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="color"
+                          value={colourSeed.textColor ?? '#ffffff'}
+                          onChange={(e) => updateTraceCustomizationForMany(batchIds, { textColor: e.target.value })}
+                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                        />
+                        <button
+                          onClick={() => updateTraceCustomizationForMany(batchIds, { textColor: '#ffffff' })}
+                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                          title={t('atrium.customize.resetWhite')}
+                        >
+                          ↺
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* Text Sizing -- gated like Border Radius below: shown as long
                     as ANY selected trace is text, not just the seed. */}
                 {(() => {

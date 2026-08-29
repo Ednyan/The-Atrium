@@ -131,6 +131,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const [moveToGroupOpen, setMoveToGroupOpen] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
 
+  // Which traces a row-menu action applies to.
+  //
+  // Dragging one trace out of a multi-selection has always taken the whole
+  // selection with it; the menu moved only the row it was opened on, so the
+  // same intent gave two different results depending on how it was expressed.
+  // Right-clicking a row that is NOT part of the selection still acts on that
+  // row alone, which is what pointing at something means.
+  const rowTraceTargets = (traceId: string): string[] =>
+    multiSelectedSet.has(traceId) && multiSelectedSet.size > 1
+      ? Array.from(multiSelectedSet)
+      : [traceId]
+
   const openRowMenu = (e: React.MouseEvent, kind: 'group' | 'trace', id: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -1521,6 +1533,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         if (!isGroup && !trace) return null
 
         const groupTraces = isGroup ? getTracesForLayer(rowMenu.id) : []
+        const menuTargets = isGroup ? [] : rowTraceTargets(rowMenu.id)
         const isExpanded = isGroup ? expandedGroups.has(rowMenu.id) : false
         const MENU_WIDTH = 190
 
@@ -1621,7 +1634,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={(e) => { e.stopPropagation(); setMoveToGroupOpen(o => !o) }}
                   className="w-full text-left px-3 py-1.5 text-sm tracking-wider text-nier-strong hover:bg-nier-blackLight flex items-center justify-between"
                 >
-                  {t('atrium.layers.moveToGroup')} <span className="text-nier-bg/80">{moveToGroupOpen ? '▾' : '▸'}</span>
+                  {/* The count, when this will move more than the row it was
+                      opened on. A bare number in brackets rather than a second
+                      phrasing of the label: it needs no translating, and the
+                      alternative is somebody moving eleven traces because the
+                      menu only mentioned one. */}
+                  <span>
+                    {t('atrium.layers.moveToGroup')}
+                    {menuTargets.length > 1 && <span className="text-nier-bg/80"> ({menuTargets.length})</span>}
+                  </span>
+                  <span className="text-nier-bg/80">{moveToGroupOpen ? '▾' : '▸'}</span>
                 </button>
                 {moveToGroupOpen && (
                   <div className="max-h-40 overflow-y-auto border-y border-nier-border/30 my-1 bg-nier-black/60">
@@ -1631,8 +1653,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     {layers.map(l => (
                       <button
                         key={l.id}
-                        disabled={(trace!.layerId ?? null) === l.id}
-                        onClick={() => { moveTraceToLayer(rowMenu.id, l.id); closeRowMenu() }}
+                        // Off only when every target is already in there --
+                        // with a mixed selection there is still work to do.
+                        disabled={menuTargets.every(id => (traces.find(tr => tr.id === id)?.layerId ?? null) === l.id)}
+                        onClick={() => { moveTracesToLayer(menuTargets, l.id); closeRowMenu() }}
                         className="w-full text-left px-4 py-1.5 text-xs tracking-wider text-nier-strong hover:bg-nier-blackLight disabled:opacity-30 disabled:cursor-not-allowed truncate"
                       >
                         {l.name}
@@ -1640,10 +1664,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     ))}
                   </div>
                 )}
-                {trace!.layerId && (
+                {menuTargets.some(id => traces.find(tr => tr.id === id)?.layerId) && (
                   <MenuItem
-                    label={t('atrium.layers.ungroup')}
-                    onClick={() => moveTraceToLayer(rowMenu.id, null)}
+                    label={
+                      menuTargets.length > 1
+                        ? `${t('atrium.layers.ungroup')} (${menuTargets.length})`
+                        : t('atrium.layers.ungroup')
+                    }
+                    onClick={() => moveTracesToLayer(menuTargets, null)}
                     hint={t('atrium.layers.ungroupHint')}
                   />
                 )}
