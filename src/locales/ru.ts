@@ -1216,7 +1216,7 @@ const ru: Catalogue = {
   'landing.or': 'или',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'Atrium переехал',
+  'moved.title': 'У The Digital Atrium новый адрес',
   'moved.body': 'The Digital Atrium теперь живёт по адресу *digitalatrium.org*. Нажмите ниже, чтобы перейти.',
   'moved.button': 'Перейти на digitalatrium.org',
   'moved.note': 'Стоит обновить закладки — этот адрес будет отключён.',

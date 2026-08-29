@@ -1212,7 +1212,7 @@ const fr: Catalogue = {
   'landing.or': 'ou',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'L’Atrium a déménagé',
+  'moved.title': 'The Digital Atrium a une nouvelle adresse',
   'moved.body': 'The Digital Atrium se trouve désormais à *digitalatrium.org*. Cliquez ci-dessous pour vous y rendre.',
   'moved.button': 'Aller sur digitalatrium.org',
   'moved.note': 'Pensez à mettre à jour vos favoris — cette adresse sera retirée.',

@@ -1214,7 +1214,7 @@ const it: Catalogue = {
   'landing.or': 'oppure',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'L’Atrium ha traslocato',
+  'moved.title': 'The Digital Atrium ha un nuovo indirizzo',
   'moved.body': 'The Digital Atrium ora si trova su *digitalatrium.org*. Clicca qui sotto per andarci.',
   'moved.button': 'Vai a digitalatrium.org',
   'moved.note': 'Conviene aggiornare i segnalibri — questo indirizzo verrà dismesso.',

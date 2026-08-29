@@ -758,26 +758,30 @@ function isLegacyHost(): boolean {
 function MovedNotice() {
   const { t } = useTranslation()
   return (
-    <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
-      <div className="absolute top-4 right-4 flex items-center gap-2">
+    <div className="fixed inset-0 bg-nier-black flex flex-col items-center justify-center font-mono px-4">
+      {/* Above the frame and centred on it, rather than pinned to a screen
+          corner. This page is one short message in the middle of a lot of
+          empty room; a control in the far corner reads as belonging to some
+          other layout that isn't here. */}
+      <div className="flex items-center gap-3 mb-5">
         <LanguageToggle />
         <ThemeToggle />
       </div>
 
-      <div className="relative px-8 py-8 max-w-md w-full">
-        <div className="absolute top-0 left-0 w-5 h-5 border-t border-l border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-5 h-5 border-t border-r border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-5 h-5 border-b border-l border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-5 h-5 border-b border-r border-nier-border/60" />
+      <div className="relative px-10 sm:px-14 py-12 max-w-2xl w-full">
+        <div className="absolute top-0 left-0 w-8 h-8 border-t border-l border-nier-border/60" />
+        <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-nier-border/60" />
+        <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-nier-border/60" />
+        <div className="absolute bottom-0 right-0 w-8 h-8 border-b border-r border-nier-border/60" />
 
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h1 className="text-nier-strong text-sm tracking-[0.2em] uppercase">
+        <div className="flex items-center gap-4 mb-7">
+          <div className="w-2 h-2 rotate-45 border border-nier-border/60 shrink-0" />
+          <h1 className="text-nier-strong text-lg sm:text-xl tracking-[0.18em] uppercase leading-snug">
             {t('moved.title')}
           </h1>
         </div>
 
-        <p className="text-nier-bg/80 text-xs tracking-wide leading-relaxed mb-6">
+        <p className="text-nier-bg/80 text-base tracking-wide leading-relaxed mb-8">
           <RichText text={t('moved.body')} />
         </p>
 
@@ -796,12 +800,12 @@ function MovedNotice() {
             event.preventDefault()
             window.location.replace('https://digitalatrium.org/')
           }}
-          className="block w-full text-center bg-nier-bg hover:bg-nier-strong text-nier-black text-[11px] tracking-[0.15em] uppercase py-3 px-4 transition-colors"
+          className="block w-full text-center bg-nier-bg hover:bg-nier-strong text-nier-black text-sm tracking-[0.15em] uppercase py-4 px-6 transition-colors"
         >
           ◇ {t('moved.button')}
         </a>
 
-        <p className="text-nier-bg/55 text-[10px] tracking-wider leading-relaxed mt-4 text-center">
+        <p className="text-nier-bg/55 text-xs tracking-wider leading-relaxed mt-6 text-center">
           {t('moved.note')}
         </p>
       </div>

@@ -1292,7 +1292,7 @@ const ja: Catalogue = {
   'landing.nav.explore': 'さわって、見てまわる',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'Atrium は引っ越しました',
+  'moved.title': 'The Digital Atrium の新しい場所',
   'moved.body': 'The Digital Atrium はいま *digitalatrium.org* にあります。下のボタンから移動してください。',
   'moved.button': 'digitalatrium.org へ',
   'moved.note': 'ブックマークの更新をおすすめします——この住所はいずれ閉じられます。',

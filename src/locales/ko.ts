@@ -1296,7 +1296,7 @@ const ko: Catalogue = {
   'landing.nav.explore': '만지고 둘러보기',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'Atrium이 이사했어요',
+  'moved.title': 'The Digital Atrium의 새 주소',
   'moved.body': 'The Digital Atrium은 이제 *digitalatrium.org*에 있어요. 아래를 눌러 이동하세요.',
   'moved.button': 'digitalatrium.org로 가기',
   'moved.note': '북마크를 바꿔 두세요 — 이 주소는 곧 닫혀요.',

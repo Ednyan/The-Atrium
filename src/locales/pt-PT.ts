@@ -1217,7 +1217,7 @@ const ptPT: Catalogue = {
   'landing.or': 'ou',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'O Atrium mudou de endereço',
+  'moved.title': 'O Digital Atrium tem uma nova morada',
   'moved.body': 'O Digital Atrium está agora em *digitalatrium.org*. Clique abaixo para ir para lá.',
   'moved.button': 'Ir para digitalatrium.org',
   'moved.note': 'Vale a pena atualizar os seus favoritos — este endereço vai ser desativado.',

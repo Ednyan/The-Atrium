@@ -1240,7 +1240,7 @@ export const en = {
   'landing.nav.explore': 'Interact and Explore',
 
   // ------------------------------------------- the address that moved
-  'moved.title': 'The Atrium has moved',
+  'moved.title': 'The Digital Atrium has a new location',
   'moved.body': 'The Digital Atrium now lives at *digitalatrium.org*. Click below to go there.',
   'moved.button': 'Go to digitalatrium.org',
   'moved.note': 'Worth updating your bookmarks — this address will be retired.',
