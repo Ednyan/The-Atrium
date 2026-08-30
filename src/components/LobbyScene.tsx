@@ -22,6 +22,7 @@ import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { copyLobbyId } from '../lib/clipboard'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
+import { isEditableTarget } from '../lib/editableTarget'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
@@ -383,31 +384,6 @@ const extractImageUrlFromHtml = (html: string): DroppedUrlPayload | null => {
   }
 
   return null
-}
-
-// Inputs that hold focus but swallow no typing.
-//
-// A slider keeps focus after you drag it, and this guard treated any <input>
-// as somewhere text was being entered -- so touching the brush width or the
-// smoothing slider silently killed every keyboard shortcut in the atrium until
-// something else was clicked. The buttons kept working, which is what made it
-// look like the shortcuts had broken rather than that focus had moved.
-//
-// None of these take text, so a keystroke aimed at one is not a keystroke
-// aimed at a text field, and the shortcut should run.
-const NON_TEXT_INPUT_TYPES = new Set([
-  'range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file', 'image',
-])
-
-const isEditableTarget = (target: EventTarget | null) => {
-  const element = target as HTMLElement | null
-  if (!element) return false
-  if (element.isContentEditable) return true
-
-  const field = element.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]')
-  if (!field) return false
-  if (field instanceof HTMLInputElement && NON_TEXT_INPUT_TYPES.has(field.type)) return false
-  return true
 }
 
 interface LobbySceneProps {
@@ -1388,8 +1364,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         e.preventDefault()
       }
 
-      // Don't trigger if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // Don't trigger if user is typing in an input.
+      //
+      // Through the shared test, which knows a slider is not typing. This was
+      // a bare instanceof HTMLInputElement, and it is the handler the drawing
+      // keys live in -- so undo, redo, Enter, Delete and Escape all went quiet
+      // the moment the brush width or smoothing slider took focus.
+      if (isEditableTarget(e.target)) return
       
       // Keyboard zoom, for anyone without a wheel and as a precise alternative
       // to one. Deliberately +/-/0 rather than the arrow keys: left and right

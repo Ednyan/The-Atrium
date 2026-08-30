@@ -8,6 +8,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
+import { isEditableTarget } from '../lib/editableTarget'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
 // Video and audio stream from the vault rather than being read into memory --
@@ -1413,8 +1414,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         // open on a successfully-finished path so its arrow-config section
         // (right above Path Points there) is immediately at hand.
         const target = e.target as HTMLElement | null
-        const isEditableTarget = target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT'
-        if (isEditableTarget) return
+        const typingHere = isEditableTarget(target)
+        if (typingHere) return
         e.preventDefault()
         setPathCreationMode(false)
         const currentSelectedId = selectedTraceIdRef.current
@@ -3604,8 +3605,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // panel's text content field) -- otherwise pressing Delete to remove
       // a character deletes the entire trace instead.
       const target = e.target as HTMLElement | null
-      const isEditableTarget = target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT'
-      if (e.key === 'Delete' && !isDrawingModeRef.current && canEdit && !isEditableTarget && (selectedTraceId || multiSelectedIds.size > 0)) {
+      const typingHere = isEditableTarget(target)
+      if (e.key === 'Delete' && !isDrawingModeRef.current && canEdit && !typingHere && (selectedTraceId || multiSelectedIds.size > 0)) {
         e.preventDefault()
         deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
       }
