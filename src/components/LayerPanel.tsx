@@ -613,18 +613,40 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (!supabase) return
 
     const total = orderedTraces.length
-    for (let index = 0; index < total; index++) {
-      const trace = orderedTraces[index]
+    const resolvedLayerZIndex = layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex ?? 0
+    const updates = orderedTraces.map((trace, index) => {
       const orderIndex = total - index - 1
-      const newZIndex = layerId === null
-        ? getTraceZIndexForOrder(null, 0, orderIndex)
-        : getTraceZIndexForOrder(layerId, layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex ?? 0, orderIndex)
+      return {
+        trace,
+        newZIndex: layerId === null
+          ? getTraceZIndexForOrder(null, 0, orderIndex)
+          : getTraceZIndexForOrder(layerId, resolvedLayerZIndex, orderIndex),
+      }
+    })
 
+    // Every local update first, in one synchronous pass, so the panel
+    // re-renders once and straight into the finished order.
+    //
+    // This used to sit inside the loop below, after each write: with five
+    // traces in a group that meant five round trips, each landing one new
+    // z-index and re-sorting the list around it, so the rows visibly shuffled
+    // through four wrong orders on the way to the right one. Dragging looked
+    // broken because what you were watching WAS broken -- just briefly, and
+    // then repaired. React batches these into a single render because nothing
+    // is awaited between them.
+    for (const { trace, newZIndex } of updates) {
+      addTrace({ ...trace, zIndex: newZIndex })
+    }
+
+    // The writes still go one at a time. Sending them together would be
+    // quicker, but the desktop build puts these through SQLite, and a burst of
+    // concurrent writers is a good way to find out what its locking does under
+    // pressure. Nothing is watching them land any more, so their speed stopped
+    // being what anybody sees.
+    for (const { trace, newZIndex } of updates) {
       await (supabase.from('traces') as any)
         .update({ z_index: newZIndex })
         .eq('id', trace.id)
-
-      addTrace({ ...trace, zIndex: newZIndex })
     }
   }
 
@@ -1077,7 +1099,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
 
     setRangeAnchor(traceId)
-    onSelectTrace?.(traceId)
+    // Through onSetSelection rather than onSelectTrace, so this clears the
+    // others.
+    //
+    // onSelectTrace only sets which single trace is selected; the
+    // multi-selection lives elsewhere and was left standing, so after
+    // shift-picking six rows a plain click on a seventh gave seven selected
+    // traces and no way to get back to one except by clicking the canvas.
+    // Selecting one thing has to be able to mean only that thing.
+    if (onSetSelection) onSetSelection([traceId])
+    else onSelectTrace?.(traceId)
   }
 
   // Self-heal ungrouped z-indexes. A trace created with no active layer is
