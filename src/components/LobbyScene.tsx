@@ -23,6 +23,7 @@ import { copyLobbyId } from '../lib/clipboard'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
 import { isEditableTarget } from '../lib/editableTarget'
+import { record, undo as undoHistory, redo as redoHistory, clearHistory, canUndo, canRedo, subscribeToHistory } from '../lib/history'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
@@ -896,42 +897,56 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Drawing history. Snapshots of the whole stroke list rather than a stack of
   // strokes, because "clear" has to be undoable too and there is no single
   // stroke to put back for it.
+  //
+  // The snapshots are the same as they were; what changed is where they are
+  // kept. They used to live in drawPastRef/drawFutureRef here, a stack of
+  // their own that took turns with TraceOverlay's by mode -- drawing's Ctrl+Z
+  // won while drawing mode was on, the trace one won otherwise. They now go on
+  // the shared timeline in lib/history, in the order they happened, alongside
+  // everything else that will move onto it.
+  //
+  // First consumer, and chosen for it because it is self-contained: nothing
+  // outside this component can change the drawing, so there is no call site
+  // elsewhere that could quietly bypass the recording.
   type DrawSnapshot = typeof completedStrokes
-  const drawPastRef = useRef<DrawSnapshot[]>([])
-  const drawFutureRef = useRef<DrawSnapshot[]>([])
+
+  // The timeline lives outside React, so nothing re-renders when it changes.
+  // The undo and redo buttons read canUndo/canRedo, which means this component
+  // has to hear about every push and pop. The value itself is never read --
+  // it exists only to make the render happen.
+  const [, onHistoryChanged] = useState(0)
+  useEffect(() => subscribeToHistory(() => onHistoryChanged(n => n + 1)), [])
 
   // Every change to the drawing goes through here, so nothing can quietly
-  // mutate the strokes without becoming undoable. A new change discards the
-  // redo branch, as it does in every editor.
+  // mutate the strokes without becoming undoable.
   const commitDrawing = useCallback((next: DrawSnapshot | ((prev: DrawSnapshot) => DrawSnapshot)) => {
-    drawPastRef.current = [...drawPastRef.current, completedStrokesRef.current]
-    drawFutureRef.current = []
-    setCompletedStrokes(prev => (typeof next === 'function' ? next(prev) : next))
+    const before = completedStrokesRef.current
+    const after = typeof next === 'function' ? next(before) : next
+    setCompletedStrokes(after)
+    // Recorded after the change, with both ends captured, so the entry always
+    // describes something that actually happened.
+    record({
+      label: 'drawing',
+      undo: () => setCompletedStrokes(before),
+      redo: () => setCompletedStrokes(after),
+    })
   }, [])
 
-  const undoDrawing = useCallback(() => {
-    const past = drawPastRef.current
-    if (past.length === 0) return
-    drawFutureRef.current = [completedStrokesRef.current, ...drawFutureRef.current]
-    drawPastRef.current = past.slice(0, -1)
-    setCompletedStrokes(past[past.length - 1])
-  }, [])
-
-  const redoDrawing = useCallback(() => {
-    const future = drawFutureRef.current
-    if (future.length === 0) return
-    drawPastRef.current = [...drawPastRef.current, completedStrokesRef.current]
-    drawFutureRef.current = future.slice(1)
-    setCompletedStrokes(future[0])
-  }, [])
+  // Kept as named functions rather than calling the shared undo directly at
+  // the key handler, so the drawing keys read the same as they did and there
+  // is one place to change if drawing ever needs to do more than reverse the
+  // last thing on the timeline.
+  const undoDrawing = useCallback(() => { void undoHistory() }, [])
+  const redoDrawing = useCallback(() => { void redoHistory() }, [])
 
   // Leaving, entering or saving starts a fresh drawing, so the history of the
   // previous one must not survive into it.
   const resetDrawing = useCallback(() => {
-    drawPastRef.current = []
-    drawFutureRef.current = []
     setCompletedStrokes([])
     currentStrokeRef.current = []
+    // The way back to a drawing that no longer exists is not a way back to
+    // anything, so the timeline goes with it.
+    clearHistory()
   }, [])
 
   // Keep drawing mode ref in sync
@@ -4892,19 +4907,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                     step through, so the row does not reflow under the pointer
                     mid-edit -- and redo outlives an undo back to an empty
                     canvas, which is exactly when it is wanted. */}
-                {(completedStrokes.length > 0 || drawPastRef.current.length > 0) && (
+                {(completedStrokes.length > 0 || canUndo()) && (
                   <button
                     onClick={undoDrawing}
-                    disabled={drawPastRef.current.length === 0}
+                    disabled={!canUndo()}
                     className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     {t('common.undo')}
                   </button>
                 )}
-                {(completedStrokes.length > 0 || drawFutureRef.current.length > 0) && (
+                {(completedStrokes.length > 0 || canRedo()) && (
                   <button
                     onClick={redoDrawing}
-                    disabled={drawFutureRef.current.length === 0}
+                    disabled={!canRedo()}
                     className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     {t('common.redo')}
