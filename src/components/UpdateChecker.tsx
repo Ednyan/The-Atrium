@@ -3,6 +3,7 @@ import { isDesktop } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import { openExternalUrl } from '../lib/openExternal'
 import { releaseNotesUrl } from '../lib/creatorLinks'
+import { noteUpdateInstalled } from '../lib/supportAppeal'
 
 // How often to re-check once the app is running. The check is a single small
 // HTTPS request for a JSON manifest, so hourly is cheap; it also fails
@@ -95,6 +96,13 @@ export default function UpdateChecker() {
       })
 
       setPhase('ready')
+
+      // Asked on the way back in, not here. The appeal belongs on a screen
+      // somebody has arrived at, not over the top of an install finishing --
+      // and this window is about to be replaced anyway. Suppressed for anyone
+      // who has donated recently; see noteUpdateInstalled.
+      noteUpdateInstalled()
+
       // Relaunch rather than exiting: the installer has already replaced the
       // binary on disk, so this comes back up on the new version.
       const { relaunch } = await import('@tauri-apps/plugin-process')

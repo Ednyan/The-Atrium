@@ -80,6 +80,23 @@ export function recordTraceCreated() {
   write({ ...state, tracesCreated: state.tracesCreated + 1 })
 }
 
+// An update has just been installed, so ask on the way back in.
+//
+// Called from UpdateChecker immediately before the relaunch, which makes the
+// next launch the one that follows new work landing -- the moment somebody has
+// just been given something is a fair moment to ask, and it is the only moment
+// in this file that is not about counting.
+//
+// Reuses remindNextLaunch rather than adding a second flag, because it already
+// means precisely this: show on the next launch, whatever the counters say.
+// Note where shouldShowAppeal tests it -- after silentUntil, never before. A
+// recent donor is not asked again because a new version shipped; they already
+// answered, and shipping is not a reason to re-open the question.
+export function noteUpdateInstalled() {
+  const state = read()
+  write({ ...state, remindNextLaunch: true })
+}
+
 // Evaluated once per launch. Returning to the welcome screen after leaving an
 // atrium is not a new launch, and the appeal must never appear over the canvas.
 let evaluatedThisSession = false

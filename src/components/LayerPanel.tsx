@@ -142,6 +142,27 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // happens to consider selected.
   const [rangeAnchor, setRangeAnchor] = useState<string | null>(null)
   const [moveToGroupOpen, setMoveToGroupOpen] = useState(false)
+  // Where the Move to Group flyout hangs, and the grace period before it
+  // closes. Both copied deliberately from the canvas menu's Reorganize flyout
+  // (TraceOverlay) so the two behave identically -- a submenu that opens on
+  // hover in one place and expands in place in the other is two answers to the
+  // same question.
+  const [moveToGroupRect, setMoveToGroupRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const moveToGroupCloseTimer = useRef<number | null>(null)
+
+  const openMoveToGroup = (e: React.MouseEvent<HTMLElement>) => {
+    if (moveToGroupCloseTimer.current) window.clearTimeout(moveToGroupCloseTimer.current)
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMoveToGroupRect({ top: rect.top, left: rect.left, right: rect.right })
+    setMoveToGroupOpen(true)
+  }
+  const keepMoveToGroupOpen = () => {
+    if (moveToGroupCloseTimer.current) window.clearTimeout(moveToGroupCloseTimer.current)
+  }
+  const scheduleCloseMoveToGroup = () => {
+    if (moveToGroupCloseTimer.current) window.clearTimeout(moveToGroupCloseTimer.current)
+    moveToGroupCloseTimer.current = window.setTimeout(() => setMoveToGroupOpen(false), 200)
+  }
   const [isBusy, setIsBusy] = useState(false)
 
   // Which traces a row-menu action applies to.
@@ -522,6 +543,29 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (trace) {
       removeTrace(traceId)
       addTrace({ ...trace, isLocked: locked })
+    }
+  }
+
+  // Whether a trace can be clicked at all.
+  //
+  // Reachable from the canvas menu already, but not from the list -- which is
+  // the awkward way round, because the traces people want to make
+  // click-through are backgrounds, and a background is precisely the thing
+  // that is hard to right-click on the canvas without hitting something in
+  // front of it. From here it can be done to a whole group at once.
+  const setTracesIgnoreClicks = async (traceIds: string[], ignore: boolean) => {
+    if (!supabase || !canEdit || traceIds.length === 0) return
+
+    for (const traceId of traceIds) {
+      const { error } = await (supabase.from('traces') as any)
+        .update({ ignore_clicks: ignore })
+        .eq('id', traceId)
+      if (error) {
+        console.error('Error updating clicks:', error)
+        continue
+      }
+      const trace = traces.find(t => t.id === traceId)
+      if (trace) addTrace({ ...trace, ignoreClicks: ignore })
     }
   }
 
@@ -1638,6 +1682,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
         const groupTraces = isGroup ? getTracesForLayer(rowMenu.id) : []
         const menuTargets = isGroup ? [] : rowTraceTargets(rowMenu.id)
+        // Opened leftwards when there is not enough room to the right. Without
+        // this the flyout would run off the edge whenever the menu is near it,
+        // which is the reason this was an in-place expander to begin with.
+        const flyoutOnLeft = moveToGroupRect
+          ? moveToGroupRect.right + 180 > window.innerWidth
+          : false
         const isExpanded = isGroup ? expandedGroups.has(rowMenu.id) : false
         const MENU_WIDTH = 190
 
@@ -1678,6 +1728,24 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       : t('atrium.menu.customize')
                   }
                   onClick={() => onCustomize?.(groupTraces.map(gt => gt.id))}
+                  disabled={groupTraces.length === 0}
+                />
+                {/* Ignoring clicks, for the whole group.
+                    Offered as whichever direction is not already true of all of
+                    them: a group where anything is still clickable offers to
+                    stop it, and only a group that is entirely click-through
+                    offers to undo that. Mixed groups therefore settle in one
+                    press rather than toggling half of them each time. */}
+                <MenuItem
+                  label={
+                    groupTraces.some(gt => !gt.ignoreClicks)
+                      ? t('atrium.menu.ignoreClicks')
+                      : t('atrium.menu.enableClicks')
+                  }
+                  onClick={() => setTracesIgnoreClicks(
+                    groupTraces.map(gt => gt.id),
+                    groupTraces.some(gt => !gt.ignoreClicks),
+                  )}
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem label={t('atrium.layers.duplicateGroup')} onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
@@ -1756,44 +1824,63 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
                   hint={trace!.isLocked ? t('atrium.layers.allowInteract') : t('atrium.layers.preventInteract')}
                 />
+                <MenuItem
+                  label={trace!.ignoreClicks ? t('atrium.menu.enableClicks') : t('atrium.menu.ignoreClicks')}
+                  onClick={() => setTracesIgnoreClicks(menuTargets, !trace!.ignoreClicks)}
+                />
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 {/* Inline flyout rather than a hover submenu -- the panel is
                     narrow and a side flyout would open off-screen as often as
                     not. */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setMoveToGroupOpen(o => !o) }}
-                  className="w-full text-left px-3 py-1.5 text-sm tracking-wider text-nier-strong hover:bg-nier-blackLight flex items-center justify-between"
+                <div
+                  className="relative"
+                  onMouseEnter={openMoveToGroup}
+                  onMouseLeave={scheduleCloseMoveToGroup}
                 >
-                  {/* The count, when this will move more than the row it was
-                      opened on. A bare number in brackets rather than a second
-                      phrasing of the label: it needs no translating, and the
-                      alternative is somebody moving eleven traces because the
-                      menu only mentioned one. */}
-                  <span>
-                    {t('atrium.layers.moveToGroup')}
-                    {menuTargets.length > 1 && <span className="text-nier-bg/80"> ({menuTargets.length})</span>}
-                  </span>
-                  <span className="text-nier-bg/80">{moveToGroupOpen ? '▾' : '▸'}</span>
-                </button>
-                {moveToGroupOpen && (
-                  <div className="max-h-40 overflow-y-auto border-y border-nier-border/30 my-1 bg-nier-black/60">
-                    {layers.length === 0 && (
-                      <div className="px-4 py-1.5 text-xs text-nier-bg/80 italic">{t('atrium.layers.noGroups')}</div>
-                    )}
-                    {layers.map(l => (
-                      <button
-                        key={l.id}
-                        // Off only when every target is already in there --
-                        // with a mixed selection there is still work to do.
-                        disabled={menuTargets.every(id => (traces.find(tr => tr.id === id)?.layerId ?? null) === l.id)}
-                        onClick={() => { moveTracesToLayer(menuTargets, l.id); closeRowMenu() }}
-                        className="w-full text-left px-4 py-1.5 text-xs tracking-wider text-nier-strong hover:bg-nier-blackLight disabled:opacity-30 disabled:cursor-not-allowed truncate"
-                      >
-                        {l.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full text-left px-3 py-1.5 text-sm tracking-wider text-nier-strong hover:bg-nier-blackLight flex items-center justify-between"
+                  >
+                    {/* The count, when this will move more than the row it was
+                        opened on. A bare number in brackets rather than a second
+                        phrasing of the label: it needs no translating, and the
+                        alternative is somebody moving eleven traces because the
+                        menu only mentioned one. */}
+                    <span>
+                      {t('atrium.layers.moveToGroup')}
+                      {menuTargets.length > 1 && <span className="text-nier-bg/80"> ({menuTargets.length})</span>}
+                    </span>
+                    <span className="text-nier-bg/70 text-[9px]">▶</span>
+                  </button>
+                  {moveToGroupOpen && moveToGroupRect && (
+                    <div
+                      className="fixed w-max max-w-[220px] max-h-60 overflow-y-auto flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
+                      style={
+                        flyoutOnLeft
+                          ? { top: moveToGroupRect.top, right: window.innerWidth - moveToGroupRect.left + 1 }
+                          : { top: moveToGroupRect.top, left: moveToGroupRect.right + 1 }
+                      }
+                      onMouseEnter={keepMoveToGroupOpen}
+                      onMouseLeave={scheduleCloseMoveToGroup}
+                    >
+                      {layers.length === 0 && (
+                        <div className="px-4 py-1.5 text-xs text-nier-bg/80 italic whitespace-nowrap">{t('atrium.layers.noGroups')}</div>
+                      )}
+                      {layers.map(l => (
+                        <button
+                          key={l.id}
+                          // Off only when every target is already in there --
+                          // with a mixed selection there is still work to do.
+                          disabled={menuTargets.every(id => (traces.find(tr => tr.id === id)?.layerId ?? null) === l.id)}
+                          onClick={() => { moveTracesToLayer(menuTargets, l.id); closeRowMenu() }}
+                          className="px-4 py-1.5 text-left text-xs tracking-wider text-nier-strong hover:bg-nier-blackLight disabled:opacity-30 disabled:cursor-not-allowed truncate"
+                        >
+                          {l.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {menuTargets.some(id => traces.find(tr => tr.id === id)?.layerId) && (
                   <MenuItem
                     label={

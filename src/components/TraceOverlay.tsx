@@ -9024,6 +9024,80 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   )
                 })()}
 
+                {/* Shape colours, which are not the border and fill above.
+                    A shape carries its own set -- shapeColor, shapeOutlineColor,
+                    shapeOutlineWidth -- and the controls below this one write
+                    borderColor and fillColor, which a shape never reads. So
+                    batch-editing a dozen rectangles appeared to do nothing:
+                    the fields were there, they took the colour, and it went
+                    somewhere the shape does not look.
+
+                    Gated on any selected trace being a shape, like Text Sizing
+                    above, rather than on the seed happening to be one. */}
+                {(() => {
+                  const shapeSeed = batchIds
+                    .map(id => traces.find(t => t.id === id))
+                    .find((t): t is Trace => !!t && t.type === 'shape')
+                  if (!shapeSeed) return null
+                  return (
+                    <>
+                      <div>
+                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="color"
+                            value={shapeSeed.shapeColor || '#3b82f6'}
+                            onChange={(e) => updateTraceCustomizationForMany(batchIds, { shapeColor: e.target.value })}
+                            className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                          />
+                          <button
+                            onClick={() => updateTraceCustomizationForMany(batchIds, { shapeColor: '#3b82f6' })}
+                            className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                            title={t('atrium.customize.resetDefault')}
+                          >
+                            ↺
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.outlineColour')}</label>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="color"
+                            value={shapeSeed.shapeOutlineColor || shapeSeed.shapeColor || '#3b82f6'}
+                            onChange={(e) => updateTraceCustomizationForMany(batchIds, { shapeOutlineColor: e.target.value })}
+                            className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                          />
+                          <button
+                            onClick={() => updateTraceCustomizationForMany(batchIds, { shapeOutlineColor: undefined })}
+                            className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                            title={t('atrium.customize.resetDefault')}
+                          >
+                            ↺
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
+                          {t('atrium.customize.outlineWidth', { value: shapeSeed.shapeOutlineWidth ?? 2 })}
+                        </label>
+                        <input
+                          type="range"
+                          min="1"
+                          max="20"
+                          step="1"
+                          value={shapeSeed.shapeOutlineWidth ?? 2}
+                          onChange={(e) => updateTraceCustomizationForMany(batchIds, { shapeOutlineWidth: parseInt(e.target.value) })}
+                          className="w-full accent-nier-bg"
+                          title={t('atrium.customize.outlineThickness')}
+                        />
+                      </div>
+                    </>
+                  )
+                })()}
+
                 {/* Border Color & Opacity */}
                 {(seedTrace.showBorder ?? true) && (
                   <div>
