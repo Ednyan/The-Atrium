@@ -62,7 +62,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
       setPins(result)
       setStep('confirm')
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to load pins from that board')
+      setErrorMessage(err.message || t('atrium.pinterest.errLoadPins'))
       setStep('error')
     }
   }
@@ -120,7 +120,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
         const { data, error } = await supabase.from('traces').insert(chunk as any).select()
         if (error) {
           console.error('[PinterestImportPanel] bulk insert error:', error)
-          setErrorMessage(error.message || 'Failed to import some pins')
+          setErrorMessage(error.message || t('atrium.pinterest.errImportSome'))
           setStep('error')
           return
         }
@@ -136,7 +136,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
       // otherwise be describing while covering it up.
       onClose()
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to import pins')
+      setErrorMessage(err.message || t('atrium.pinterest.errImport'))
       setStep('error')
     }
   }
@@ -177,7 +177,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
               {boardsLoading ? (
                 <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">{t('atrium.pinterest.loadingBoards')}</p>
               ) : boards.length === 0 ? (
-                <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">No boards found on this Pinterest account.</p>
+                <p className="text-nier-bg/75 text-xs tracking-wider text-center py-8">{t('atrium.pinterest.noBoards')}</p>
               ) : (
                 <div className="grid grid-cols-3 gap-3">
                   {boards.map(board => (
@@ -195,7 +195,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
                       </div>
                       <div className="p-2">
                         <p className="text-nier-bg text-[11px] tracking-wide truncate">{board.name}</p>
-                        <p className="text-nier-bg/70 text-[9px] tracking-wider">{board.pinCount} pins</p>
+                        <p className="text-nier-bg/70 text-[9px] tracking-wider">{t('atrium.pinterest.pinCount', { count: board.pinCount })}</p>
                       </div>
                     </button>
                   ))}
@@ -206,31 +206,31 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
 
           {step === 'pins-loading' && (
             <div className="py-12 text-center">
-              <p className="text-nier-bg text-sm tracking-wider mb-2">Fetching pins from "{selectedBoard?.name}"...</p>
-              <p className="text-nier-bg/70 text-xs tracking-wider">{pinsFetched} pins found so far</p>
+              <p className="text-nier-bg text-sm tracking-wider mb-2">{t('atrium.pinterest.fetching', { board: selectedBoard?.name ?? '' })}</p>
+              <p className="text-nier-bg/70 text-xs tracking-wider">{t('atrium.pinterest.foundSoFar', { count: pinsFetched })}</p>
             </div>
           )}
 
           {step === 'confirm' && selectedBoard && (
             <div className="py-8 text-center space-y-4">
               <p className="text-nier-bg text-sm tracking-wider">
-                Import {pins.length} pin{pins.length === 1 ? '' : 's'} from "{selectedBoard.name}"?
+                {t('atrium.pinterest.confirmImport', { count: pins.length, board: selectedBoard.name })}
               </p>
               <p className="text-nier-bg/70 text-xs tracking-wider">
-                Each pin becomes an embed trace, laid out around your current view. Pins whose image fails to hotlink show as a link card back to the original pin instead.
+                {t('atrium.pinterest.confirmNote')}
               </p>
               <div className="flex gap-2 justify-center pt-2">
                 <button
                   onClick={handleImport}
                   className="px-6 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                 >
-                  Import {pins.length} Pins
+                  {t('atrium.pinterest.importAction', { count: pins.length })}
                 </button>
                 <button
                   onClick={() => { setStep('boards'); setSelectedBoard(null); setPins([]) }}
                   className="px-6 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
-                  Back
+                  {t('common.back')}
                 </button>
               </div>
             </div>
@@ -238,7 +238,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
 
           {step === 'importing' && (
             <div className="py-12 text-center">
-              <p className="text-nier-bg text-sm tracking-wider mb-3">Importing pins...</p>
+              <p className="text-nier-bg text-sm tracking-wider mb-3">{t('atrium.pinterest.importing')}</p>
               <p className="text-nier-bg/70 text-xs tracking-wider mb-3">{importDone} / {pins.length}</p>
               <div className="w-64 h-[3px] bg-nier-border/10 overflow-hidden mx-auto">
                 <div
@@ -256,7 +256,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
                 onClick={onClose}
                 className="px-6 py-2 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           )}

@@ -15,6 +15,7 @@ import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
+import { readRecentThanksName } from './lib/pendingContribution'
 import { consumeSignInIntent } from './lib/signInIntent'
 import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
@@ -899,6 +900,19 @@ function AppInner() {
   const [thanksName, setThanksName] = useState('')
   useEffect(() => watchPendingContribution(() => setContributionConfirmed(true)), [])
 
+  // Arriving on the thanks with nothing left to claim.
+  //
+  // The effect below only runs when a donation is confirmed here. The tab
+  // Stripe redirects can load after the tab it was opened from has already
+  // confirmed and cleared the record -- so there is nothing pending, the
+  // watcher never fires, and that effect never runs. This is the same lookup,
+  // for the page that has the donor on it either way.
+  useEffect(() => {
+    if (route.page !== 'contributed' || thanksName) return
+    const recent = readRecentThanksName()
+    if (recent !== null) setThanksName(recent)
+  }, [route.page, thanksName])
+
   // Confirmed is not the same as ready to show. Trace edits are deferred until
   // a save, so navigating out of an open atrium would throw away work someone
   // has queued -- to say thank you, of all things. The confirmation keeps until
@@ -911,7 +925,16 @@ function AppInner() {
     // Claimed here, and only here: taking it clears the record, so the thanks
     // is shown exactly once no matter how many times this runs.
     const claimed = takeCompletedContribution()
-    if (!claimed) return
+    if (!claimed) {
+      // Another tab claimed it first -- see readRecentThanksName. If this is
+      // the page Stripe sent them to, it still has a donor in front of it and
+      // should still know their name.
+      if (route.page === 'contributed') {
+        const recent = readRecentThanksName()
+        if (recent !== null) setThanksName(recent)
+      }
+      return
+    }
     setThanksName(claimed.displayName)
 
     // Confirmed money, so the appeal goes quiet for three months whichever

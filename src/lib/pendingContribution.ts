@@ -99,7 +99,50 @@ export function takeCompletedContribution(): { displayName: string } | null {
   const pending = read()
   if (!pending?.completed) return null
   write(null)
+  rememberThanksName(pending.displayName)
   return { displayName: pending.displayName }
+}
+
+// The name, kept briefly after the record it came from has been cleared.
+//
+// On the web, checkout happens in a second tab, and both tabs poll this same
+// storage. Whichever notices first claims the donation and wipes it -- and that
+// is often the tab left behind, not the one Stripe redirected to the thanks.
+// The page the donor is actually looking at then had nothing to thank them by
+// name with, and greeted them anonymously for money they had just given.
+//
+// Claiming still happens exactly once; this only means the answer survives long
+// enough for the other tab to read it too.
+const THANKS_KEY = 'atrium_thanks_name_v1'
+
+// Long enough for the other tab to notice and paint, short enough that it
+// cannot resurface weeks later against a visit that has nothing to do with it.
+const THANKS_TTL_MS = 10 * 60 * 1000
+
+function rememberThanksName(displayName: string) {
+  try {
+    localStorage.setItem(THANKS_KEY, JSON.stringify({ displayName, at: Date.now() }))
+  } catch {
+    // Same as write() above: the donation happened regardless.
+  }
+}
+
+// Null means there is nothing recent to say. An empty string means somebody
+// gave anonymously, which is a name-shaped answer and not the absence of one --
+// telling those two apart is the whole point of the return type.
+export function readRecentThanksName(): string | null {
+  try {
+    const raw = localStorage.getItem(THANKS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.at !== 'number' || Date.now() - parsed.at > THANKS_TTL_MS) {
+      localStorage.removeItem(THANKS_KEY)
+      return null
+    }
+    return typeof parsed.displayName === 'string' ? parsed.displayName : ''
+  } catch {
+    return null
+  }
 }
 
 // Polls until there is an answer, then calls back. Returns a teardown.

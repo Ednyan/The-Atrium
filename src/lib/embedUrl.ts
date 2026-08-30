@@ -8,7 +8,16 @@
 // Every conversion here is idempotent: an already-embeddable URL passes
 // through unchanged, so running this twice is harmless.
 
-const YOUTUBE = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?\s]+)/
+// Shorts and live carry the id in the path rather than in ?v=, and neither
+// form can be framed as it stands -- youtube.com/shorts/ID refuses to embed and
+// shows nothing. The id is the same id, so all four shapes fold into the one
+// /embed/ URL that works.
+//
+// The id stops at a slash as well as at ? and &, or a trailing segment would be
+// swallowed into it.
+const YOUTUBE = /(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([^&?\s/]+)/
+// Only Shorts, which are the vertical ones.
+const YOUTUBE_SHORT = /youtube\.com\/shorts\//
 // Drive file ids appear either after /d/ or as an id= query parameter,
 // depending on which share dialog produced the link.
 const DRIVE_FILE = /drive\.google\.com\/file\/d\/([\w-]+)/
@@ -60,7 +69,12 @@ export function toEmbedUrl(rawUrl: string): string {
 export function defaultEmbedBox(rawUrl: string): { width: number; height: number } | null {
   const url = rawUrl.trim()
 
-  // Slides and video keep the 16:9 default.
+  // A Short is shot vertically, so a 16:9 box gives it two black pillars and a
+  // postage stamp between them. Roughly 9:16 instead, at about the height the
+  // page-shaped embeds below use.
+  if (YOUTUBE_SHORT.test(url)) return { width: 338, height: 600 }
+
+  // Slides and ordinary video keep the 16:9 default.
   if (/presentation|youtube|youtu\.be/.test(url)) return null
 
   // Documents, spreadsheets and Drive files are usually pages: A4-ish
