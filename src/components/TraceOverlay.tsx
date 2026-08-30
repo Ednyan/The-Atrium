@@ -10,6 +10,7 @@ import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
 import { isEditableTarget as isEditableTargetShared } from '../lib/editableTarget'
 import { newestUndoAt, newestRedoAt, undo as historyUndo, redo as historyRedo, clearHistory } from '../lib/history'
+import { recordPlacementChange } from '../lib/tracePlacement'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
 // Video and audio stream from the vault rather than being read into memory --
@@ -950,19 +951,33 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (targetLayerId && !targetLayer) return
     const baseZ = targetLayer ? getTraceBaseZIndex(targetLayer.zIndex) : 0
     const idSet = new Set(traceIds)
-    let order = allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)).length
+
+    // Both ends: the group being joined, and every group being left. Recorded
+    // through the shared helper so this path is undoable like the layer
+    // panel's -- it was not, which meant sending a trace to a group from the
+    // canvas menu could not be reversed while doing the same thing from the
+    // panel could.
+    const touched: (string | null)[] = [targetLayerId]
     for (const id of traceIds) {
       const trace = allTraces.find(t => t.id === id)
-      if (!trace || (trace.layerId ?? null) === targetLayerId) continue
-      const newZ = baseZ + order + 1
-      order++
-      const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: targetLayerId, z_index: newZ })
-        .eq('id', id)
-      if (!error) {
-        store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
-      }
+      if (trace) touched.push(trace.layerId ?? null)
     }
+
+    await recordPlacementChange('move to group', touched, async () => {
+      let order = allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)).length
+      for (const id of traceIds) {
+        const trace = allTraces.find(t => t.id === id)
+        if (!trace || (trace.layerId ?? null) === targetLayerId) continue
+        const newZ = baseZ + order + 1
+        order++
+        const { error } = await (supabase!.from('traces') as any)
+          .update({ layer_id: targetLayerId, z_index: newZ })
+          .eq('id', id)
+        if (!error) {
+          store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
+        }
+      }
+    })
   }, [canEdit, groupLayers])
 
   // Which imports are still being copied into the vault. Their media is left

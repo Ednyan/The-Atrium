@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
-import { record } from '../lib/history'
+import { recordPlacementChange } from '../lib/tracePlacement'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { Layer } from '../types/database'
 import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
@@ -611,64 +611,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // by calling moveTraceToLayer in a loop, which would recompute the "next
   // free" z-index from the same stale traces snapshot each time and collide
   // every moved trace onto the same slot).
-  // Where a set of traces sits: which group, and where in it.
-  //
-  // Read from the store rather than from the `traces` prop, because an undo
-  // runs long after the closure that recorded it and the prop it captured is
-  // stale by then.
-  //
-  // Snapshots cover whole layers, not just the traces named: reordering one
-  // trace renumbers its neighbours, so putting only the moved one back would
-  // leave the rest holding the z-indexes they were given to make room for it.
-  type Placement = { id: string; layerId: string | null; zIndex: number }
-
-  const placementSnapshot = (layerIds: (string | null)[]): Placement[] => {
-    const key = (id: string | null) => id ?? '\u0000ungrouped'
-    const wanted = new Set(layerIds.map(key))
-    return useGameStore.getState().traces
-      .filter(t => wanted.has(key(t.layerId ?? null)))
-      .map(t => ({ id: t.id, layerId: t.layerId ?? null, zIndex: t.zIndex ?? 0 }))
-  }
-
-  const restorePlacement = async (snapshot: Placement[]) => {
-    if (!supabase) return
-    for (const item of snapshot) {
-      const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: item.layerId, z_index: item.zIndex })
-        .eq('id', item.id)
-      if (error) {
-        console.error('Error restoring placement:', error)
-        continue
-      }
-      const trace = useGameStore.getState().traces.find(t => t.id === item.id)
-      if (trace) addTrace({ ...trace, layerId: item.layerId, zIndex: item.zIndex })
-    }
-  }
-
-  // Runs a layer operation and puts it on the shared timeline.
-  //
-  // Layer work writes to the database as it happens, unlike trace edits which
-  // are deferred until a save -- so reversing one means writing the old
-  // placement back, not just changing what is in memory. That is why the
-  // timeline holds closures: this and an in-memory trace undo look the same
-  // from its side.
-  const recordedPlacementChange = async (
-    label: string,
-    touchedLayers: (string | null)[],
-    run: () => Promise<void>,
-  ) => {
-    const before = placementSnapshot(touchedLayers)
-    await run()
-    const after = placementSnapshot(touchedLayers)
-    // Nothing moved -- a no-op should not occupy a step in the history.
-    if (JSON.stringify(before) === JSON.stringify(after)) return
-    record({
-      label,
-      undo: () => restorePlacement(before),
-      redo: () => restorePlacement(after),
-    })
-  }
-
   const moveTracesToLayer = async (traceIds: string[], layerId: string | null) => {
     if (!supabase || traceIds.length === 0 || !canEdit) return
 
@@ -678,7 +620,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     // Both ends: the groups being left, and the one being joined.
     const touched = [layerId, ...tracesToMove.map(t => t.layerId ?? null)]
-    await recordedPlacementChange('move to group', touched, async () => {
+    await recordPlacementChange('move to group', touched, async () => {
 
     const baseLayerZIndex = layerId === null ? 0 : (layers.find(l => l.id === layerId)?.zIndex ?? 0)
     const existingInTarget = getTracesForLayer(layerId).filter(t => !idsToMove.has(t.id))
@@ -772,7 +714,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const layerZIndex = layerId === null ? undefined : layers.find(l => l.id === layerId)?.zIndex
     setIsReordering(true)
     try {
-      await recordedPlacementChange('reorder', [layerId], async () => {
+      await recordPlacementChange('reorder', [layerId], async () => {
         await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
       })
     } finally {
@@ -793,7 +735,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     const targetLayerId = targetTrace.layerId ?? null
 
-    await recordedPlacementChange('reorder', [targetLayerId, draggedTrace.layerId ?? null], async () => {
+    await recordPlacementChange('reorder', [targetLayerId, draggedTrace.layerId ?? null], async () => {
 
     if ((draggedTrace.layerId ?? null) !== targetLayerId) {
       const { error } = await (supabase.from('traces') as any)
