@@ -594,42 +594,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  // One trace is a batch of one.
+  //
+  // This used to be a second implementation of moveTracesToLayer below,
+  // arriving at the same z-index by its own route. Two functions that do the
+  // same thing drift, and this pair drifted the moment one of them started
+  // recording undo history and the other did not -- so dragging a single trace
+  // into a group could not be reversed, while dragging three could. Delegating
+  // means there is one path, and anything true of it is true of both.
   const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
-    if (!supabase || !canEdit) return
-
-    const currentLayerId = traces.find(t => t.id === traceId)?.layerId ?? null
-    if (currentLayerId === layerId) return
-
-    // Calculate the z-index for this trace
-    let newZIndex: number
-    if (layerId === null) {
-      const ungroupedTraces = getTracesForLayer(null).filter(t => t.id !== traceId)
-      newZIndex = getTraceZIndexForOrder(null, ungroupedTraces.length, ungroupedTraces.length)
-    } else {
-      // Find the layer and calculate base z-index
-      const targetLayer = layers.find(l => l.id === layerId)
-      if (!targetLayer) return
-      
-      // Get existing traces in this layer
-      const layerTraces = traces.filter(t => t.layerId === layerId && t.id !== traceId)
-      
-      newZIndex = getTraceZIndexForOrder(layerId, targetLayer.zIndex, layerTraces.length)
-    }
-
-    const { error } = await (supabase.from('traces') as any)
-      .update({ layer_id: layerId, z_index: newZIndex })
-      .eq('id', traceId)
-
-    if (error) {
-      console.error('Error moving trace:', error)
-    } else {
-      // Optimistic local update - realtime subscription may drop this
-      // due to pendingChanges guard, so update the store directly
-      const trace = traces.find(t => t.id === traceId)
-      if (trace) {
-        addTrace({ ...trace, layerId: layerId, zIndex: newZIndex })
-      }
-    }
+    await moveTracesToLayer([traceId], layerId)
   }
 
   // Moves every trace in the batch to layerId together, computing each
@@ -798,7 +772,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const layerZIndex = layerId === null ? undefined : layers.find(l => l.id === layerId)?.zIndex
     setIsReordering(true)
     try {
-      await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
+      await recordedPlacementChange('reorder', [layerId], async () => {
+        await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
+      })
     } finally {
       setIsReordering(false)
     }
@@ -816,6 +792,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (!draggedTrace || !targetTrace) return
 
     const targetLayerId = targetTrace.layerId ?? null
+
+    await recordedPlacementChange('reorder', [targetLayerId, draggedTrace.layerId ?? null], async () => {
 
     if ((draggedTrace.layerId ?? null) !== targetLayerId) {
       const { error } = await (supabase.from('traces') as any)
@@ -839,6 +817,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     const layerZIndex = targetLayerId === null ? undefined : layers.find(l => l.id === targetLayerId)?.zIndex
     await persistTraceOrder(targetLayerId, finalOrder, layerZIndex)
+    })
   }
 
   const handleTraceDragStart = (e: React.DragEvent<HTMLElement>, traceId: string) => {
