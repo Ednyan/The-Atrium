@@ -569,6 +569,30 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  // Whether an embed can be used in place, rather than only looked at.
+  //
+  // Embeds render with pointer-events off by default, so a click selects the
+  // trace instead of reaching the page inside it -- which is right for a wall
+  // of videos and wrong for the one you want to actually play. The toggle
+  // existed on the canvas menu only, and an interactive embed is exactly the
+  // trace that is awkward to right-click, because the pointer goes into the
+  // iframe rather than to the trace under it.
+  const setTracesEnableInteraction = async (traceIds: string[], enabled: boolean) => {
+    if (!supabase || !canEdit || traceIds.length === 0) return
+
+    for (const traceId of traceIds) {
+      const { error } = await (supabase.from('traces') as any)
+        .update({ enable_interaction: enabled })
+        .eq('id', traceId)
+      if (error) {
+        console.error('Error updating interaction:', error)
+        continue
+      }
+      const trace = traces.find(t => t.id === traceId)
+      if (trace) addTrace({ ...trace, enableInteraction: enabled })
+    }
+  }
+
   const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
     if (!supabase || !canEdit) return
 
@@ -1828,6 +1852,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   label={trace!.ignoreClicks ? t('atrium.menu.enableClicks') : t('atrium.menu.ignoreClicks')}
                   onClick={() => setTracesIgnoreClicks(menuTargets, !trace!.ignoreClicks)}
                 />
+                {/* Embeds only: nothing else has a page inside it to interact
+                    with, and offering the toggle on an image would be a
+                    control that does nothing. */}
+                {trace!.type === 'embed' && (
+                  <MenuItem
+                    label={trace!.enableInteraction ? t('atrium.menu.disableInteraction') : t('atrium.menu.enableInteraction')}
+                    onClick={() => setTracesEnableInteraction(
+                      menuTargets.filter(id => traces.find(tr => tr.id === id)?.type === 'embed'),
+                      !trace!.enableInteraction,
+                    )}
+                  />
+                )}
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 {/* Inline flyout rather than a hover submenu -- the panel is
                     narrow and a side flyout would open off-screen as often as

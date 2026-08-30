@@ -4840,11 +4840,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
         return (
           <div key={trace.id} className="contents">
-            {/* Light overlay FIRST so it renders below the trace */}
+            {/* The light, just under the trace that casts it.
+
+                Coming first in the DOM is not enough, and was the bug: this is
+                positioned but had no z-index, while every trace sets one from
+                trace.zIndex. A positioned element without a z-index paints
+                below every positioned sibling that has one -- so a light did
+                not sit under its own trace, it sat under ALL of them, and
+                lighting something meant washing the floor beneath the whole
+                atrium instead.
+
+                One below its own trace puts it above everything the trace is
+                above, and below the trace itself. z-indexes here are
+                layer*100 + order (see layerZIndex.ts), so there is always room
+                for the light in the gap between one trace and the next. */}
             {trace.illuminate && (
               <div
                 className="absolute pointer-events-none"
                 style={{
+                  zIndex: (trace.zIndex ?? 0) - 1,
                   left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
                   top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
                   width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
