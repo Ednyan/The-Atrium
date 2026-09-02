@@ -196,25 +196,33 @@ The only real test is a version gap between an installed app and a release:
 unset, which meant Tauri's default of `currentUser` and a silent install into
 `%LOCALAPPDATA%`.
 
-**This breaks the automatic update once, for anyone already on a per-user
-install**, and that includes every copy of v1.9.1 and earlier. The updater
-downloads the new installer and runs it silently; a per-machine install needs
-elevation, and a silent installer cannot ask for it. So the first update across
-this change is expected to fail, or to install a second copy into Program Files
-while the old one carries on running from `%LOCALAPPDATA%`.
+Two consequences, and the first one is permanent.
 
-There is no way to avoid that from inside the app: the version that has to
-perform the update is the old one, and it is already unelevated by the time it
-learns anything.
+**Every update now asks for admin.** The updater launches the installer with
+`ShellExecuteW` and the `open` verb (see `install_inner` in
+`tauri-plugin-updater`), and ShellExecute honours the executable's manifest —
+unlike `CreateProcess`, which would simply fail. A per-machine NSIS installer
+requests administrator, so Windows shows a UAC prompt. The update then proceeds
+normally once it is accepted.
+
+That is the ongoing price of installing into Program Files, and it does not go
+away with later releases. A per-user install never prompts; that is the whole
+reason Tauri defaults to it. If the prompt every time turns out to be worse
+than the default location, `installMode` is the one line to change back.
+
+**And the move across, once.** Anyone on v1.9.1 or earlier is on a per-user
+install in `%LOCALAPPDATA%`. The new installer is per-machine, so it looks for
+a previous install in the machine-wide registry, finds none, and installs
+fresh into Program Files — leaving the old copy where it is. Two installs then
+coexist, both checking for updates, and the stale one keeps offering them.
 
 So for the first release after this change:
 
-1. Say in the release notes that it must be installed by hand.
-2. Uninstall the old copy first — otherwise two installs coexist, both of them
-   checking for updates, and the stale one keeps offering them.
+1. Say in the release notes that it should be installed by hand.
+2. Uninstall the old copy first.
 
-Every release after that updates normally, because both sides are per-machine
-by then and the installer is replacing something it already owns.
+Every release after that replaces something the installer already owns, and
+behaves normally apart from the UAC prompt.
 
 ## Notes
 
