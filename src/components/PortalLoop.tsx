@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+
 interface PortalLoopProps {
   // Tailwind height classes, e.g. "h-32 md:h-40". Width follows the aspect.
   className?: string
@@ -10,72 +12,141 @@ interface PortalLoopProps {
 
 // The looping portal from the atrium-entry animation, reused as page ornament.
 //
-// Transparency is done with an SVG filter that derives alpha from luminance:
-// the source is white line-art on pure black, so mapping luminance to alpha
-// makes the black genuinely transparent and leaves the highlights solid.
+// The source is white line-art on pure black, and the black has to become
+// genuinely transparent so grid lines, particles and scanlines show through
+// rather than being covered by an opaque plate. Getting there has taken three
+// attempts, and the two that failed are worth recording because each looks
+// like the obvious answer:
 //
-// This replaced mix-blend-mode: screen, which looked correct in isolation but
-// did nothing on either page. A blend mode composites against the backdrop of
-// its nearest stacking context, and both pages nest this inside a
-// `relative z-10` container -- which creates one. Nothing is painted behind the
-// video inside that context, so black was blending against transparency and
-// stayed black.
+//   mix-blend-mode: screen composites against the backdrop of its nearest
+//   stacking context. Both pages nest this inside a `relative z-10` container,
+//   which creates one, and nothing is painted behind the video inside it -- so
+//   black blended against transparency and stayed black.
 //
-// The filter has no such dependency: it produces real alpha, so the video
-// composites correctly wherever it sits, and whatever is behind it (grid lines,
-// particles, scanlines) shows through instead of being covered by an opaque
-// backing plate.
-const LUMA_TO_ALPHA_FILTER_ID = 'portal-luma-alpha'
+//   An SVG filter deriving alpha from luminance produced real alpha and worked
+//   everywhere the app was tested. WebKit will not composite a video through
+//   an SVG filter: on macOS the element rendered as a placeholder with a play
+//   glyph on it, which is what the desktop app showed while the entering
+//   animation -- the same clip, no filter -- played perfectly beside it.
+//
+// So the conversion happens here instead, a frame at a time, into a canvas.
+// No filter, no blend mode, and no dependence on what is painted behind it:
+// the pixels arrive already carrying their own alpha, which every browser
+// composites the same way.
+//
+// HEVC-with-alpha was the other candidate and is worse for this. Only Safari
+// decodes it, so it would mean two encodes of the same clip, kept in sync,
+// with source-switching around them -- to avoid a per-frame loop over a small
+// image that a decade-old machine can do without noticing.
 
-// The same trick with the colour thrown away.
-//
-// The source is white line-art, which is correct on a dark page and invisible
-// on a light one. Rather than a second video, the RGB rows are replaced with
-// constants -- the drawing keeps the alpha it derives from its own luminance
-// and comes out as ink instead of light. Not pure black: the page it lands on
-// is warm paper, and #000 on it reads as a hole.
-const LUMA_TO_INK_FILTER_ID = 'portal-luma-ink'
+// Rec. 709. The same coefficients the SVG filter used, for the same reason:
+// green carries most of what the eye reads as brightness, so a luma-weighted
+// sum keeps the line-art's own falloff instead of flattening it.
+const LUMA_R = 0.2126
+const LUMA_G = 0.7152
+const LUMA_B = 0.0722
+
+// Not pure black for the ink variant: the page it lands on is warm paper, and
+// #000 on it reads as a hole.
+const INK = { r: 28, g: 26, b: 23 }
 
 export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 1, ink = false }: PortalLoopProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  // Held in a ref so the draw loop reads the current value without being torn
+  // down and rebuilt every time the theme flips.
+  const inkRef = useRef(ink)
+  inkRef.current = ink
+
+  // Until the first frame is drawn the canvas is empty, and an empty canvas
+  // still occupies its box -- so the layout is right from the start and
+  // nothing jumps when the video begins.
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    let frame = 0
+    let context: CanvasRenderingContext2D | null = null
+
+    const draw = () => {
+      frame = requestAnimationFrame(draw)
+
+      const canvas = canvasRef.current
+      if (!canvas || video.readyState < 2 || !video.videoWidth) return
+
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        context = null
+      }
+      // willReadFrequently, because getImageData every frame on a canvas the
+      // browser has put on the GPU means reading it back across the bus each
+      // time. This asks for a CPU-backed surface instead, which is the right
+      // trade when every frame is going to be read anyway.
+      if (!context) context = canvas.getContext('2d', { willReadFrequently: true })
+      if (!context) return
+
+      context.drawImage(video, 0, 0)
+      const image = context.getImageData(0, 0, canvas.width, canvas.height)
+      const pixels = image.data
+      const asInk = inkRef.current
+
+      for (let i = 0; i < pixels.length; i += 4) {
+        const luma = LUMA_R * pixels[i] + LUMA_G * pixels[i + 1] + LUMA_B * pixels[i + 2]
+        if (asInk) {
+          // The drawing keeps the alpha it derives from its own luminance and
+          // comes out as ink instead of light.
+          pixels[i] = INK.r
+          pixels[i + 1] = INK.g
+          pixels[i + 2] = INK.b
+        }
+        pixels[i + 3] = luma
+      }
+
+      context.putImageData(image, 0, 0)
+    }
+
+    const onReady = () => {
+      video.playbackRate = playbackRate
+      if (video.videoWidth) setSize({ width: video.videoWidth, height: video.videoHeight })
+      // Autoplay can still be refused -- a muted inline loop is allowed
+      // everywhere the app runs, but a refusal should leave a still frame
+      // rather than an exception.
+      video.play().catch(() => { /* the first frame is drawn regardless */ })
+    }
+
+    video.addEventListener('loadeddata', onReady)
+    if (video.readyState >= 2) onReady()
+    frame = requestAnimationFrame(draw)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      video.removeEventListener('loadeddata', onReady)
+    }
+  }, [playbackRate])
+
   return (
     <div className="mx-auto w-fit leading-none" aria-hidden="true">
-      {/* Rec. 709 luma coefficients in the alpha row; RGB passes through
-          untouched so the highlights keep their colour and glow. */}
-      <svg width="0" height="0" className="absolute" aria-hidden="true" focusable="false">
-        <defs>
-          <filter id={LUMA_TO_ALPHA_FILTER_ID} colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="1 0 0 0 0
-                      0 1 0 0 0
-                      0 0 1 0 0
-                      0.2126 0.7152 0.0722 0 0"
-            />
-          </filter>
-
-          <filter id={LUMA_TO_INK_FILTER_ID} colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="0 0 0 0 0.11
-                      0 0 0 0 0.10
-                      0 0 0 0 0.09
-                      0.2126 0.7152 0.0722 0 0"
-            />
-          </filter>
-        </defs>
-      </svg>
-
+      {/* The video itself is never shown. It is the frame source, and hiding
+          it with display:none would stop it decoding in some browsers -- so it
+          is taken out of layout and made invisible instead. */}
       <video
+        ref={videoRef}
         src="/idle-animation.mp4"
-        // Ref callback rather than an effect: it runs on mount and playbackRate
-        // survives loop restarts, so this is the whole implementation.
-        ref={el => { if (el) el.playbackRate = playbackRate }}
         autoPlay
         loop
         muted
         playsInline
+        aria-hidden="true"
+        className="absolute w-px h-px opacity-0 pointer-events-none -z-10"
+      />
+      <canvas
+        ref={canvasRef}
+        width={size?.width ?? 16}
+        height={size?.height ?? 16}
         className={`${className} w-auto pointer-events-none select-none block`}
-        style={{ filter: `url(#${ink ? LUMA_TO_INK_FILTER_ID : LUMA_TO_ALPHA_FILTER_ID})` }}
       />
     </div>
   )
