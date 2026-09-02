@@ -108,6 +108,32 @@ fn claim_vault(base_path: &std::path::Path, lock: &VaultLock) -> Result<(), Stri
     }
 }
 
+// Where a vault goes when nobody has said otherwise.
+//
+// Documents, on Windows and Linux: it is the folder people already think of as
+// theirs, it is backed up by whatever backs up their machine, and a vault they
+// can find is a vault they can copy.
+//
+// Not on macOS. ~/Documents is one of the folders macOS guards with TCC, so
+// touching it makes the system put a consent dialog in front of the app -- and
+// the app touches it at startup, before there is anything to consent about.
+// Application Support is the folder an app is expected to keep its own data in
+// and needs no permission for, so choosing it means the prompt never happens
+// rather than happening once.
+//
+// This only changes the default. Anyone who has set a folder keeps it:
+// current_vault_base_path reads vault-settings.json first and never comes here.
+// A mac that already has a vault in Documents will not be found automatically,
+// though -- checking would mean reaching into the guarded folder to look, which
+// is the thing being avoided. Point the vault setting at it once and it is
+// remembered.
+#[cfg(target_os = "macos")]
+fn default_vault_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let base_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(base_dir.join("Digital_Atrium_Vault"))
+}
+
+#[cfg(not(target_os = "macos"))]
 fn default_vault_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let base_dir = app
         .path()
