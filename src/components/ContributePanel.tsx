@@ -5,7 +5,7 @@ import SupportCreatorCard from './SupportCreatorCard'
 import { openContributors } from '../lib/contributorsRoute'
 import { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
-import { useCurrency, currencyByCode, minorPerUnit } from '../lib/currency'
+import { useCurrency, currencyByCode, minorPerUnit, isAllowedStep } from '../lib/currency'
 import CurrencyToggle from './CurrencyToggle'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
@@ -111,6 +111,9 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   const amountValid = Number.isFinite(chosenMinor)
     && chosenMinor >= money.min
     && chosenMinor <= money.max
+    // HUF only, and checked here as well as on the server so the field says so
+    // rather than the checkout page failing to open.
+    && isAllowedStep(chosenMinor, currency)
 
   const taken = displayName.trim().length > 0 && wallNames.has(fold(displayName))
 

@@ -19,7 +19,7 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
-import { sortByLastVisited } from '../lib/recentAtriums'
+import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
@@ -300,9 +300,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
       // Get usernames and player counts
       // Most recently opened first, falling back to the newest-first order the
-      // query already returned for anything never opened on this device. The
-      // query still asks for created_at DESC, which is both that fallback and
-      // what a fresh install sees.
+      // query already returned for anything never opened here. The query still
+      // asks for created_at DESC, which is both that fallback and what a fresh
+      // install sees.
+      //
+      // The merge runs first so a browser signing in for the first time gets
+      // the order from the account rather than an empty one. It is awaited
+      // because sorting before it lands would show the wrong order and then
+      // reshuffle the list under the pointer; on desktop it returns at once.
+      await mergeRemoteVisits()
       const enrichedOwned = await enrichLobbiesWithData(
         sortByLastVisited(ownedLobbies || [], lobby => lobby.id),
       )

@@ -15,13 +15,14 @@ import {
   BASE_CURRENCY,
   currencyByCode,
   currencyForRegion,
+  isAllowedStep,
   isCurrencyCode,
   minorPerUnit,
   type Currency,
   type CurrencyCode,
 } from '../../supabase/functions/_shared/currencies.ts'
 
-export { CURRENCIES, BASE_CURRENCY, currencyByCode, minorPerUnit }
+export { CURRENCIES, BASE_CURRENCY, currencyByCode, minorPerUnit, isAllowedStep }
 export type { Currency, CurrencyCode }
 
 const KEY = 'lobby_currency'
@@ -228,7 +229,11 @@ export function formatMoney(
 ): string {
   const per = minorPerUnit(code)
   const value = minor / per
-  const zeroDecimal = per === 1
+  // A currency with no minor unit, or one whose amounts are always whole units
+  // anyway. HUF is the second kind: Intl gives it two decimals because the
+  // currency has them, but every amount here is a whole number of forint by
+  // construction, so those two digits are only ever ".00".
+  const zeroDecimal = per === 1 || currencyByCode(code).step === 100
   try {
     return new Intl.NumberFormat(locale || undefined, {
       style: 'currency',

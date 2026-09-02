@@ -13,7 +13,13 @@
 // it -- so every conversion in the app is one multiplication from a rate
 // somebody else computed, never a cross-rate assembled here.
 
-export type CurrencyCode = 'EUR' | 'USD' | 'GBP' | 'JPY' | 'CNY' | 'BRL' | 'CHF'
+// The set Stripe will actually take from this account. CNY and BRL were here
+// and are not in it -- a currency the checkout page refuses is worse than one
+// that was never offered.
+export type CurrencyCode =
+  | 'EUR' | 'CHF' | 'GBP' | 'JPY' | 'USD'
+  | 'AUD' | 'CAD' | 'CZK' | 'DKK' | 'HKD' | 'HUF'
+  | 'NOK' | 'NZD' | 'PLN' | 'RON' | 'SEK' | 'SGD' | 'ZAR'
 
 export interface Currency {
   code: CurrencyCode
@@ -29,6 +35,19 @@ export interface Currency {
    * is in MINOR units, and for these that means the unit itself.
    */
   zeroDecimal?: boolean
+  /**
+   * A step the amount in minor units has to land on.
+   *
+   * HUF is Stripe's other special case: it is not zero-decimal, so amounts are
+   * still given in fillér, but Stripe requires the value to be evenly
+   * divisible by 100 -- whole forint, written in hundredths. An amount that is
+   * not is rejected at the API, which a donor experiences as a checkout page
+   * that will not open, with no reason given.
+   *
+   * Every preset and both limits for such a currency are multiples of this,
+   * and a typed amount is checked against it.
+   */
+  step?: number
   /** Offered as buttons. Round numbers in each currency rather than a
    *  conversion of the euro ones, because "$5" is a donation and "$5.79" is an
    *  exchange rate someone is being asked to look at. */
@@ -42,16 +61,36 @@ export interface Currency {
   max: number
 }
 
+// Presets are round numbers in each currency at roughly the euro amounts they
+// replace, not conversions of them: "50 kr" is a donation and "41.87 kr" is an
+// exchange rate somebody is being asked to read. The maxima are typo guards at
+// roughly 5000 euros, so they need no precision and will not need revisiting as
+// rates move.
 export const CURRENCIES: Currency[] = [
-  { code: 'EUR', symbol: '€',   presets: [300, 500, 1000, 2500],     presetsMonthly: [100, 300, 500, 1000],   min: 100,  max: 500000 },
-  { code: 'USD', symbol: '$',   presets: [300, 500, 1000, 2500],     presetsMonthly: [100, 300, 500, 1000],   min: 100,  max: 500000 },
-  { code: 'GBP', symbol: '£',   presets: [300, 500, 1000, 2000],     presetsMonthly: [100, 300, 500, 1000],   min: 100,  max: 500000 },
-  { code: 'CHF', symbol: 'CHF', presets: [300, 500, 1000, 2500],     presetsMonthly: [100, 300, 500, 1000],   min: 100,  max: 500000 },
-  { code: 'BRL', symbol: 'R$',  presets: [1500, 2500, 5000, 10000],  presetsMonthly: [500, 1000, 2500, 5000], min: 500,  max: 2500000 },
-  { code: 'CNY', symbol: '¥',   presets: [2000, 5000, 10000, 20000], presetsMonthly: [1000, 2000, 5000, 10000], min: 1000, max: 3500000 },
+  { code: 'EUR', symbol: '€',   presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
+  { code: 'USD', symbol: '$',   presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
+  { code: 'GBP', symbol: '£',   presets: [300, 500, 1000, 2000],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
+  { code: 'CHF', symbol: 'CHF', presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
+  { code: 'AUD', symbol: 'A$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 900000 },
+  { code: 'CAD', symbol: 'C$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 800000 },
+  { code: 'NZD', symbol: 'NZ$', presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 1000000 },
+  { code: 'SGD', symbol: 'S$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 150,   max: 800000 },
+  { code: 'HKD', symbol: 'HK$', presets: [2500, 5000, 10000, 20000],    presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 4500000 },
+  { code: 'DKK', symbol: 'kr',  presets: [2500, 5000, 10000, 20000],    presetsMonthly: [1000, 2500, 5000, 10000],  min: 800,   max: 3700000 },
+  { code: 'NOK', symbol: 'kr',  presets: [5000, 10000, 20000, 50000],   presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 5800000 },
+  { code: 'SEK', symbol: 'kr',  presets: [5000, 10000, 20000, 50000],   presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 5500000 },
+  { code: 'CZK', symbol: 'Kč',  presets: [10000, 20000, 50000, 100000], presetsMonthly: [2500, 5000, 10000, 25000], min: 2500,  max: 12000000 },
+  { code: 'PLN', symbol: 'zł',  presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2100000 },
+  { code: 'RON', symbol: 'lei', presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2500000 },
+  { code: 'ZAR', symbol: 'R',   presets: [5000, 10000, 20000, 50000],   presetsMonthly: [2000, 5000, 10000, 20000], min: 2000,  max: 10000000 },
+
   // Zero-decimal: these are yen, not sen. 500 here is ¥500, and sending it to
   // Stripe as if it had cents would charge ¥50,000.
-  { code: 'JPY', symbol: '¥',   presets: [500, 1000, 2000, 5000],    presetsMonthly: [200, 500, 1000, 2000],  min: 100,  max: 700000, zeroDecimal: true },
+  { code: 'JPY', symbol: '¥',   presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 100,   max: 900000, zeroDecimal: true },
+
+  // Not zero-decimal, but Stripe requires HUF amounts to be divisible by 100 --
+  // whole forint written in fillér. Every figure on this line is.
+  { code: 'HUF', symbol: 'Ft',  presets: [100000, 200000, 500000, 1000000], presetsMonthly: [50000, 100000, 200000, 500000], min: 40000, max: 200000000, step: 100 },
 ]
 
 export const BASE_CURRENCY: CurrencyCode = 'EUR'
@@ -74,6 +113,19 @@ export function minorPerUnit(code: CurrencyCode): number {
 }
 
 /**
+ * Whether an amount in minor units is one Stripe will accept for this currency.
+ *
+ * Only HUF has anything to say here, and it is worth catching before the
+ * request rather than after: Stripe rejects an indivisible HUF amount at the
+ * API, which a donor experiences as a checkout page that will not open.
+ */
+export function isAllowedStep(amountMinor: number, code: CurrencyCode): boolean {
+  const step = currencyByCode(code).step
+  if (!step) return true
+  return amountMinor % step === 0
+}
+
+/**
  * The region-to-currency table behind the default.
  *
  * Only regions whose currency this app actually offers. Anywhere else falls
@@ -90,9 +142,20 @@ const REGION_CURRENCY: Record<string, CurrencyCode> = {
   US: 'USD', EC: 'USD', SV: 'USD', PA: 'USD', PR: 'USD',
   GB: 'GBP',
   JP: 'JPY',
-  CN: 'CNY',
-  BR: 'BRL',
   CH: 'CHF', LI: 'CHF',
+  AU: 'AUD',
+  CA: 'CAD',
+  NZ: 'NZD',
+  SG: 'SGD',
+  HK: 'HKD',
+  DK: 'DKK', GL: 'DKK', FO: 'DKK',
+  NO: 'NOK', SJ: 'NOK',
+  SE: 'SEK',
+  CZ: 'CZK',
+  PL: 'PLN',
+  RO: 'RON',
+  HU: 'HUF',
+  ZA: 'ZAR',
 }
 
 /**

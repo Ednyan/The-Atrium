@@ -21,6 +21,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 import {
   BASE_CURRENCY,
   currencyByCode,
+  isAllowedStep,
   isCurrencyCode,
   minorPerUnit,
 } from '../_shared/currencies.ts'
@@ -75,6 +76,13 @@ Deno.serve(async (req: Request) => {
       return json({
         error: `Choose an amount between ${money.symbol}${money.min / per} and ${money.symbol}${money.max / per}.`,
       }, 400)
+    }
+
+    // HUF only. Stripe refuses an amount that is not divisible by 100 for it,
+    // and refusing here means an error next to the field rather than a checkout
+    // page that will not open.
+    if (!isAllowedStep(amount, code)) {
+      return json({ error: `Choose a whole number of ${code}.` }, 400)
     }
 
     const name = typeof displayName === 'string' ? displayName.trim() : ''
