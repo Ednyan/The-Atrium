@@ -1200,7 +1200,7 @@ const de: Catalogue = {
   'donate.minimum': 'Das Minimum ist {amount}.',
   'currency.label': 'Währung',
   'currency.rateNote': 'Währung umgerechnet zum heutigen Kurs der Europäischen Zentralbank.',
-  'appeal.title': 'Eine kleine Bitte',
+  'appeal.title': 'Eine Erinnerung',
   'appeal.enjoying': 'Es sieht so aus, als würdest du dich hier wohlfühlen.',
   'appeal.reminder': 'Das hier ist nur eine Erinnerung: Spenden ermöglichen die laufende Entwicklung und Pflege von The Digital Atrium.',
   'appeal.credited': 'Wenn du spendest, erscheint dein Beitrag auf der Unterstützerseite.',

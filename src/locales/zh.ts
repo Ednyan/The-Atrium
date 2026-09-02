@@ -1186,7 +1186,7 @@ const zh: Catalogue = {
   'donate.minimum': '最低 {amount}。',
   'currency.label': '货币',
   'currency.rateNote': '货币按欧洲央行今日汇率换算。',
-  'appeal.title': '一个小小的请求',
+  'appeal.title': '一个提醒',
   'appeal.enjoying': '看来你在这里过得还不错。',
   'appeal.reminder': '这只是一个提醒：捐赠让 The Digital Atrium 能够持续开发和维护。',
   'appeal.credited': '当你捐赠时，你的贡献会显示在支持者页面上。',

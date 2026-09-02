@@ -1183,7 +1183,7 @@ const ja: Catalogue = {
   'donate.minimum': '最低 {amount} です。',
   'currency.label': '通貨',
   'currency.rateNote': '通貨は欧州中央銀行の本日のレートで換算しています。',
-  'appeal.title': 'ささやかなお願い',
+  'appeal.title': 'お知らせ',
   'appeal.enjoying': 'ここでの時間を楽しんでいただけているようです。',
   'appeal.reminder': 'これは、寄付が The Digital Atrium の開発と運営を続ける支えになっている、というお知らせです。',
   'appeal.credited': '寄付をしていただくと、その支援が支援者ページに表示されます。',

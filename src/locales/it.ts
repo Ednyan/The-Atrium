@@ -1201,7 +1201,7 @@ const it: Catalogue = {
   'donate.minimum': 'Il minimo è {amount}.',
   'currency.label': 'Valuta',
   'currency.rateNote': 'Valuta convertita al cambio odierno della Banca centrale europea.',
-  'appeal.title': 'Una piccola richiesta',
+  'appeal.title': 'Un promemoria',
   'appeal.enjoying': 'Sembra che ti stia trovando bene qui.',
   'appeal.reminder': 'Questo è solo un promemoria: le donazioni permettono lo sviluppo e la manutenzione continui di The Digital Atrium.',
   'appeal.credited': 'Quando fai una donazione, il tuo contributo compare nella pagina dei sostenitori.',
