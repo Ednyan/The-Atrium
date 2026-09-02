@@ -114,13 +114,9 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
           />
         ))}
 
-        {/* Narrower and taller than before: a gauge wants to be a column, and
-            34px across was reading as a box that happened to be upright.
-            isolate so the difference blend below has this box as its backdrop
-            and nothing further out -- the button's transform already makes a
-            stacking context, so this is belt and braces, but a blend mode that
-            quietly reaches past its container is horrible to debug. */}
-        <div className="relative isolate w-[26px] h-[clamp(190px,46vh,430px)] border border-nier-border/30 bg-nier-black overflow-hidden">
+        {/* Narrower and taller than a box that happened to be upright: a
+            gauge wants to be a column. */}
+        <div className="relative w-[26px] h-[clamp(190px,46vh,430px)] border border-nier-border/30 bg-nier-black overflow-hidden">
           <div
             className="absolute inset-x-0 bottom-0 bg-nier-bg/75 group-hover:bg-nier-bg transition-[height,background-color] duration-[1600ms] ease-out overflow-hidden"
             style={{ height: filled ? `${percent}%` : '0%' }}
@@ -156,26 +152,44 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
               the sentence beside it -- the two were turning opposite ways,
               which is the sort of thing you see immediately and cannot unsee.
               rotate(180) after the centring translate, so it turns about its
-              own middle and stays over the tube.
+              own middle and stays over the tube. */}
+          {/* Written twice, each copy clipped to one side of the surface.
 
-              difference blending rather than a chosen colour, because the fill
-              rises past this text: at 90% it sits on the fill, at 10% on the
-              empty ground, and around the surface it lies across both at once.
-              White differenced against whatever is behind it inverts, so it
-              stays legible on either -- and it keeps working in light mode,
-              where the two grounds swap over. Any fixed colour is wrong half
-              the month. */}
-          <span
-            className="absolute top-2 left-1/2 text-[10px] tracking-[0.15em] uppercase whitespace-nowrap pointer-events-none tabular-nums"
-            style={{
-              writingMode: 'vertical-rl',
-              transform: 'translateX(-50%) rotate(180deg)',
-              color: '#ffffff',
-              mixBlendMode: 'difference',
-            }}
-          >
-            {t('goal.funded', { percent })}
-          </span>
+              It was one copy blended with mix-blend-mode: difference, which
+              inverted against whatever was behind it and so stayed legible
+              wherever the fill happened to be. Correct, and blurry: a blend
+              mode promotes the element to its own composited layer, so the
+              text rasterises once at its natural size and is then scaled as a
+              bitmap by the column's transform. Plain text under a transform
+              re-rasterises at the final size and stays sharp.
+
+              Two clipped copies get the same result by construction rather
+              than by arithmetic on colours -- the half over the fill is drawn
+              in the ground colour, the half over the empty tube in the fill
+              colour -- and neither needs a layer of its own. inset() from the
+              bottom is the fill's own height, so the two always meet exactly
+              at the surface however full it is. */}
+          {([
+            // Over the empty part, above the surface.
+            { clip: `inset(0 0 ${filled ? percent : 0}% 0)`, className: 'text-nier-bg' },
+            // Over the fill, below it.
+            { clip: `inset(${100 - (filled ? percent : 0)}% 0 0 0)`, className: 'text-nier-black' },
+          ] as const).map(({ clip, className }, index) => (
+            <span
+              key={index}
+              className={`absolute top-2 left-1/2 text-[10px] tracking-[0.15em] uppercase whitespace-nowrap pointer-events-none tabular-nums ${className}`}
+              style={{
+                writingMode: 'vertical-rl',
+                transform: 'translateX(-50%) rotate(180deg)',
+                clipPath: clip,
+                // Matches the fill's own travel, so the halves move with the
+                // surface rather than snapping to it when it arrives.
+                transition: 'clip-path 1600ms ease-out',
+              }}
+            >
+              {t('goal.funded', { percent })}
+            </span>
+          ))}
         </div>
       </div>
     </button>

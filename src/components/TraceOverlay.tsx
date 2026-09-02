@@ -3813,6 +3813,41 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // see. A rotated trace is aligned by its centre, which is the one point
   // rotation does not move.
   const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, _zoom = 1) => {
+    // A path is where its points are, not where it was drawn.
+    //
+    // Every other trace keeps its extent in x/y/width/height. A path keeps
+    // only its points, in world space, and they are what moves when one is
+    // edited -- dragging a point, adding one, extending the line -- while
+    // x/y/width/height stay at whatever they were when it was created. So the
+    // box for a path that has been worked on describes a rectangle nothing is
+    // in any more, and it sits wherever the path first happened to start.
+    //
+    // Measured from the points instead. Handled here rather than in
+    // getTraceSize because that one is also read by the scale drag, and its
+    // arithmetic is written against the stored width and height -- changing
+    // what it means there is a separate question from where the box is.
+    if (trace.type === 'shape' && trace.shapeType === 'path') {
+      const points = trace.shapePoints ?? []
+      if (points.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const point of points) {
+          if (point.x < minX) minX = point.x
+          if (point.x > maxX) maxX = point.x
+          if (point.y < minY) minY = point.y
+          if (point.y > maxY) maxY = point.y
+        }
+        // Half the stroke, so the box holds the line rather than its centre.
+        const halfStroke = (trace.shapeOutlineWidth ?? 2) / 2
+        return {
+          cx: at?.x ?? (minX + maxX) / 2,
+          cy: at?.y ?? (minY + maxY) / 2,
+          halfW: (maxX - minX) / 2 + halfStroke,
+          halfH: (maxY - minY) / 2 + halfStroke,
+          rotated: (trace.rotation ?? 0) % 360 !== 0,
+        }
+      }
+    }
+
     const size = getTraceSize(trace)
     const transform = getTraceTransform(trace)
     const w = (trace.type === 'shape' ? (trace.width || 200) : size.width * (trace.cropWidth ?? 1))
