@@ -29,6 +29,7 @@ import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
+import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
@@ -2519,15 +2520,32 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 // bin-packing is a reasonable stand-in for hit-testing).
                 const matchedIds = tracesDataRef.current
                   .filter(trace => {
-                    const size = (trace.width && trace.height) ? { width: trace.width, height: trace.height } : getDefaultTraceBoxSize(trace.type)
-                    const scaleX = trace.scaleX ?? trace.scale ?? 1
-                    const scaleY = trace.scaleY ?? trace.scale ?? 1
-                    const halfW = (size.width * scaleX) / 2
-                    const halfH = (size.height * scaleY) / 2
-                    const left = trace.x - halfW
-                    const right = trace.x + halfW
-                    const top = trace.y - halfH
-                    const bottom = trace.y + halfH
+                    let left: number, right: number, top: number, bottom: number
+
+                    // A path is where its points are. Its stored
+                    // x/y/width/height describe where it was first drawn and do
+                    // not move with it, so measuring one from them tests the
+                    // box against a rectangle the path left long ago: dragging
+                    // over the line selected nothing, and dragging over the
+                    // empty space it came from selected it. See pathBounds.
+                    const pathBox = isPathTrace(trace)
+                      ? pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2)
+                      : null
+
+                    if (pathBox) {
+                      ;({ minX: left, minY: top, maxX: right, maxY: bottom } = pathBox)
+                    } else {
+                      const size = (trace.width && trace.height) ? { width: trace.width, height: trace.height } : getDefaultTraceBoxSize(trace.type)
+                      const scaleX = trace.scaleX ?? trace.scale ?? 1
+                      const scaleY = trace.scaleY ?? trace.scale ?? 1
+                      const halfW = (size.width * scaleX) / 2
+                      const halfH = (size.height * scaleY) / 2
+                      left = trace.x - halfW
+                      right = trace.x + halfW
+                      top = trace.y - halfH
+                      bottom = trace.y + halfH
+                    }
+
                     return left < wx2 && right > wx1 && top < wy2 && bottom > wy1
                   })
                   .map(trace => trace.id)

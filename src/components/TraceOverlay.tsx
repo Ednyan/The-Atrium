@@ -31,6 +31,7 @@ import { toEmbedUrl } from '../lib/embedUrl'
 import { getTraceBaseZIndex } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
+import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -3826,23 +3827,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // getTraceSize because that one is also read by the scale drag, and its
     // arithmetic is written against the stored width and height -- changing
     // what it means there is a separate question from where the box is.
-    if (trace.type === 'shape' && trace.shapeType === 'path') {
-      const points = trace.shapePoints ?? []
-      if (points.length > 0) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        for (const point of points) {
-          if (point.x < minX) minX = point.x
-          if (point.x > maxX) maxX = point.x
-          if (point.y < minY) minY = point.y
-          if (point.y > maxY) maxY = point.y
-        }
-        // Half the stroke, so the box holds the line rather than its centre.
-        const halfStroke = (trace.shapeOutlineWidth ?? 2) / 2
+    if (isPathTrace(trace)) {
+      // Stroke included, so the box holds the line rather than its centre.
+      const box = pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2)
+      if (box) {
         return {
-          cx: at?.x ?? (minX + maxX) / 2,
-          cy: at?.y ?? (minY + maxY) / 2,
-          halfW: (maxX - minX) / 2 + halfStroke,
-          halfH: (maxY - minY) / 2 + halfStroke,
+          cx: at?.x ?? (box.minX + box.maxX) / 2,
+          cy: at?.y ?? (box.minY + box.maxY) / 2,
+          halfW: (box.maxX - box.minX) / 2,
+          halfH: (box.maxY - box.minY) / 2,
           rotated: (trace.rotation ?? 0) % 360 !== 0,
         }
       }
@@ -3983,13 +3976,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       if (!trace) continue
       const transform = localTraceTransforms[id] || getTraceTransform(trace)
 
-      if (trace.type === 'shape' && trace.shapeType === 'path') {
-        const points = localShapePoints[id] || trace.shapePoints
-        if (points && points.length > 0) {
-          for (const p of points) {
-            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
-            minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
-          }
+      if (isPathTrace(trace)) {
+        // No stroke here, unlike traceBoxFor. These bounds are the anchor a
+        // group scale and rotate measure from, and growing the box by half a
+        // stroke would move that anchor -- a different question from where a
+        // selection outline is drawn.
+        const box = pathWorldBounds(localShapePoints[id] || trace.shapePoints)
+        if (box) {
+          minX = Math.min(minX, box.minX); maxX = Math.max(maxX, box.maxX)
+          minY = Math.min(minY, box.minY); maxY = Math.max(maxY, box.maxY)
           continue
         }
       }
