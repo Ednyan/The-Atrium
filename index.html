@@ -51,6 +51,23 @@
     <!-- What the thing is, in the form a search engine reads without inferring
          it from prose. Free is stated because it is true and because it is the
          first question anybody asks; contributing is a donation, not a price. -->
+    <!-- The site's own name, which is a separate question from what the app
+         is. Google prints a site name above the title in a result, and with
+         nothing to go on it falls back to the bare domain -- so the listing
+         read "digitalatrium.org" instead of the name. WebSite with a name is
+         what it looks for. url and name have to agree with the canonical for
+         it to be trusted, and alternateName covers the shorter form people
+         actually search for. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Digital Atrium",
+      "alternateName": "The Digital Atrium",
+      "url": "https://digitalatrium.org/"
+    }
+    </script>
+
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",

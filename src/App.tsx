@@ -26,7 +26,7 @@ import { useTraces } from './hooks/useTraces'
 import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback, hasPendingDesktopPinterestFlow } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
-import { noteAppStarted, recordAppealResponse } from './lib/supportAppeal'
+import { noteAppStarted, noteVersionSeen, recordAppealResponse } from './lib/supportAppeal'
 import { useLandingTheme } from './lib/useLandingTheme'
 import {
   hasCompletedContribution,
@@ -35,6 +35,21 @@ import {
 } from './lib/pendingContribution'
 
 noteAppStarted()
+
+// Which build this is, asked of the binary rather than of the bundle.
+//
+// getVersion reports the executable actually running, which is the whole point
+// once the app can replace itself underneath the frontend: a number baked in at
+// build time would keep claiming the version the assets were compiled at.
+//
+// Desktop only. The web has no versions to notice arriving -- a reload is
+// always the newest one -- so there is nothing here to compare.
+if (isDesktop) {
+  import('@tauri-apps/api/app')
+    .then(({ getVersion }) => getVersion())
+    .then(noteVersionSeen)
+    .catch(() => { /* no version, no comparison, nothing asked */ })
+}
 
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'ready'
 

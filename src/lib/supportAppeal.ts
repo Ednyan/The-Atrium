@@ -80,21 +80,44 @@ export function recordTraceCreated() {
   write({ ...state, tracesCreated: state.tracesCreated + 1 })
 }
 
-// An update has just been installed, so ask on the way back in.
+// Notices that the app is running a different version than last time.
 //
-// Called from UpdateChecker immediately before the relaunch, which makes the
-// next launch the one that follows new work landing -- the moment somebody has
-// just been given something is a fair moment to ask, and it is the only moment
-// in this file that is not about counting.
+// This replaces asking UpdateChecker to remember, which never worked: that
+// call sat after downloadAndInstall, and on Windows the installer replaces the
+// running process, so the line after it is not reliably reached. The app was
+// gone before it could write anything down.
 //
-// Reuses remindNextLaunch rather than adding a second flag, because it already
-// means precisely this: show on the next launch, whatever the counters say.
-// Note where shouldShowAppeal tests it -- after silentUntil, never before. A
-// recent donor is not asked again because a new version shipped; they already
-// answered, and shipping is not a reason to re-open the question.
-export function noteUpdateInstalled() {
-  const state = read()
-  write({ ...state, remindNextLaunch: true })
+// Comparing versions at startup needs nothing to survive an install. Whatever
+// happened -- the in-app updater, an installer run by hand, a reinstall -- the
+// binary that comes up is either the one that was here before or it is not,
+// and it can see which for itself.
+//
+// The stored version is per install, in local storage, like everything else
+// here. A first run records the version and asks nothing: there is no update
+// to thank anyone for, and greeting a new arrival with an appeal is exactly
+// what the rest of this file exists to avoid.
+const VERSION_KEY = 'atrium_last_version_v1'
+
+export function noteVersionSeen(version: string) {
+  if (!version) return
+  let previous: string | null = null
+  try {
+    previous = localStorage.getItem(VERSION_KEY)
+    localStorage.setItem(VERSION_KEY, version)
+  } catch {
+    return
+  }
+  if (!previous || previous === version) return
+
+  // Set regardless of the silence a donation buys.
+  //
+  // Deliberate, and asked for: on desktop there is no account, so what this
+  // file knows about somebody's contributions is only what happened on this
+  // machine -- a donation made from the web, or from another computer, is
+  // invisible here. Suppressing the ask on that basis would be acting on an
+  // answer nobody gave. A version arriving is the one moment worth asking on
+  // regardless, and it happens rarely enough to be fair.
+  write({ ...read(), remindNextLaunch: true, silentUntil: 0 })
 }
 
 // Evaluated once per launch. Returning to the welcome screen after leaving an

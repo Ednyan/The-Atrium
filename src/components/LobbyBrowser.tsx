@@ -946,7 +946,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
                 <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.yours')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                <span className="text-nier-bg/70 text-xs tabular-nums">{userLobbies.length}/3</span>
+                {/* The three is a web limit, and was written into the
+                    markup rather than read from anywhere. A desktop vault has
+                    no such limit -- checkCanCreateLobby returns early there --
+                    so showing "2/3" told desktop users they were running out
+                    of something they cannot run out of. */}
+                <span className="text-nier-bg/70 text-xs tabular-nums">
+                  {isDesktop ? userLobbies.length : `${userLobbies.length}/3`}
+                </span>
               </div>
               <div className="grid gap-3">
                 {userLobbies.map(lobby => (
@@ -1029,11 +1036,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                         >
                           {t('browser.manage')}
                         </button>
+                        {/* A word rather than a cross, matching Manage
+                            beside it. The glyph was the only control here that
+                            had to be guessed at, and it sat next to the one
+                            action in this list that cannot be undone. */}
                         <button
                           onClick={() => setDeleteConfirmId(lobby.id)}
-                          className="px-3 py-2 border border-nier-red/40 text-nier-bg/80 text-xs hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                          className="px-3 py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
-                          ×
+                          {t('common.delete')}
                         </button>
                       </div>
                     </div>
