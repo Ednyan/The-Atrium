@@ -104,11 +104,17 @@ extension keeps working on both while the review sits in a queue.
 Contribution emails are sent from:
 
 ```
-The Atrium <contributions@mail.scenefoundry.studio>
+Digital Atrium <contributions@mail.digitalatrium.org>
 ```
 
-— set in `supabase/functions/moderate-contributors/index.ts`, with
-`reply_to: thedigitalatrium@gmail.com`.
+— set as `RESEND_FROM` in
+`supabase/functions/moderate-contributors/index.ts`, with
+`reply_to: thedigitalatrium@gmail.com`. Three other functions have their own
+`RESEND_FROM` with the same name and their own address: `send-feedback`
+(feedback@), `send-welcome` and `request-deletion-code` (both hello@).
+
+Each is a separate constant in a separate function, so the name only changes
+in a mailbox once that particular function is redeployed.
 
 **Note that this is already a different domain from the site**, and that is
 deliberate rather than an oversight. Resend can only send from a domain it has
