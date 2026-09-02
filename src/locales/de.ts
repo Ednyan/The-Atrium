@@ -13,6 +13,8 @@ import type { Catalogue } from './en'
 const de: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Abbrechen',
+  'common.saving': 'Wird gespeichert...',
+  'common.saved': 'Gespeichert',
   'common.save': 'Speichern',
   'common.close': 'Schließen',
   'common.okay': 'Alles klar',
@@ -879,6 +881,7 @@ const de: Catalogue = {
   'transfer.import.noticeMissing': '{count} Traces kamen ohne ihre Dateien an{reason}. {names}{more}. Sie haben ihren Platz auf der Leinwand behalten und werden als „Datei fehlt“ angezeigt.',
   'transfer.import.noticeMore': ' und {count} weitere',
   'transfer.import.noticeColumns': 'Diese Datenbank hat keine Spalte {columns}, daher wurden diese Werte verworfen.',
+  'names.monthlyGoal': 'Monatsziel',
   'names.title': 'Namen der Unterstützer',
   'names.nothingWaiting': 'Nichts wartet.',
   'names.section.waiting': 'Wartet',

@@ -17,6 +17,8 @@ import type { Catalogue } from './en'
 const ptPT: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Cancelar',
+  'common.saving': 'A guardar...',
+  'common.saved': 'Guardado',
   'common.save': 'Guardar',
   'common.close': 'Fechar',
   'common.okay': 'Está bem',
@@ -883,6 +885,7 @@ const ptPT: Catalogue = {
   'transfer.import.noticeMissing': '{count} traces entraram sem os ficheiros{reason}. {names}{more}. Mantiveram o lugar na tela e aparecem como "Ficheiro em falta".',
   'transfer.import.noticeMore': ' e mais {count}',
   'transfer.import.noticeColumns': 'Esta base de dados não tem a coluna {columns}, por isso esses valores foram descartados.',
+  'names.monthlyGoal': 'Objetivo mensal',
   'names.title': 'Nomes dos contribuidores',
   'names.nothingWaiting': 'Nada à espera.',
   'names.section.waiting': 'À espera',

@@ -27,6 +27,8 @@ import type { Catalogue } from './en'
 const zh: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': '取消',
+  'common.saving': '保存中…',
+  'common.saved': '已保存',
   'common.save': '保存',
   'common.close': '关闭',
   'common.okay': '好',
@@ -829,6 +831,7 @@ const zh: Catalogue = {
   'transfer.import.noticeColumns': '这个数据库里没有 {columns} 这一列，所以那些值被丢掉了。',
 
   // ------------------------------------------- the contributor-names tool
+  'names.monthlyGoal': '每月目标',
   'names.title': '支持者名字',
   'names.nothingWaiting': '没有待处理的。',
   'names.section.waiting': '待处理',

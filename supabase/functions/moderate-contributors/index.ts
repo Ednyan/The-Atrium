@@ -68,9 +68,41 @@ Deno.serve(async (req: Request) => {
     // here and tells everyone else nothing they couldn't already guess.
     if (!operator) return json({ error: 'Not allowed' }, 403)
 
-    const { action, id, reason, refund, displayName, amountEur, createdAt, message } = await req.json()
+    const { action, id, reason, refund, displayName, amountEur, createdAt, message, goalEur } = await req.json()
 
     switch (action) {
+      // The monthly goal the gauge fills towards.
+      //
+      // Read and written here rather than from the browser because
+      // atrium_settings has RLS on with no client policies -- the same shape
+      // the contributions table uses. The public view reads it as its owner;
+      // nothing else may touch it without passing the operator check above.
+      case 'get_settings': {
+        const { data, error } = await admin
+          .from('atrium_settings')
+          .select('monthly_goal_cents')
+          .eq('id', true)
+          .maybeSingle()
+        if (error) throw error
+        return json({ monthlyGoalCents: Number(data?.monthly_goal_cents ?? 5000) })
+      }
+
+      case 'set_goal': {
+        const cents = Math.round(Number(goalEur) * 100)
+        // Bounded on both sides. Zero would make the gauge either absent or
+        // permanently full depending on how the division lands, and a figure
+        // in the millions is a typo rather than an ambition.
+        if (!Number.isFinite(cents) || cents < 100 || cents > 100_000_000) {
+          return json({ error: 'That is not a usable goal.' }, 400)
+        }
+        const { error } = await admin
+          .from('atrium_settings')
+          .update({ monthly_goal_cents: cents, updated_at: new Date().toISOString() })
+          .eq('id', true)
+        if (error) throw error
+        return json({ ok: true, monthlyGoalCents: cents })
+      }
+
       // Everything still waiting on a decision. Rejected names keep their
       // reason and stay in the list, so a decision can be revisited -- and so
       // the same name arriving again is recognisable.

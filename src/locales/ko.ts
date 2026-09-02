@@ -28,6 +28,8 @@ import type { Catalogue } from './en'
 const ko: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': '취소',
+  'common.saving': '저장 중…',
+  'common.saved': '저장했습니다',
   'common.save': '저장',
   'common.close': '닫기',
   'common.okay': '확인',
@@ -830,6 +832,7 @@ const ko: Catalogue = {
   'transfer.import.noticeColumns': '이 데이터베이스에는 {columns} 열이 없어서, 그 값들은 버려졌어요.',
 
   // ------------------------------------------- the contributor-names tool
+  'names.monthlyGoal': '이번 달 목표',
   'names.title': '후원자 이름',
   'names.nothingWaiting': '기다리는 것이 없어요.',
   'names.section.waiting': '확인 대기',

@@ -24,6 +24,8 @@ import type { Catalogue } from './en'
 const ja: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'キャンセル',
+  'common.saving': '保存中…',
+  'common.saved': '保存しました',
   'common.save': '保存',
   'common.close': '閉じる',
   'common.okay': 'OK',
@@ -826,6 +828,7 @@ const ja: Catalogue = {
   'transfer.import.noticeColumns': 'このデータベースには {columns} の列がないため、その値は取り込まれませんでした。',
 
   // ------------------------------------------- the contributor-names tool
+  'names.monthlyGoal': '今月の目標',
   'names.title': '支援者の名前',
   'names.nothingWaiting': '待っているものはありません。',
   'names.section.waiting': '確認待ち',

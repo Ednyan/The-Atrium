@@ -16,6 +16,8 @@ import type { Catalogue } from './en'
 const ru: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Отмена',
+  'common.saving': 'Сохранение...',
+  'common.saved': 'Сохранено',
   'common.save': 'Сохранить',
   'common.close': 'Закрыть',
   'common.okay': 'Хорошо',
@@ -882,6 +884,7 @@ const ru: Catalogue = {
   'transfer.import.noticeMissing': 'traces ({count}) пришли без своих файлов{reason}. {names}{more}. Они сохранили место на холсте и показаны как «Файл отсутствует».',
   'transfer.import.noticeMore': ' и ещё {count}',
   'transfer.import.noticeColumns': 'В этой базе нет колонки {columns}, поэтому эти значения отброшены.',
+  'names.monthlyGoal': 'Цель на месяц',
   'names.title': 'Имена спонсоров',
   'names.nothingWaiting': 'Ничего не ожидает.',
   'names.section.waiting': 'Ожидают',

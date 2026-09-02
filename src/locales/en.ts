@@ -18,6 +18,8 @@
 export const en = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Cancel',
+  'common.saving': 'Saving...',
+  'common.saved': 'Saved',
   'common.save': 'Save',
   'common.close': 'Close',
   'common.okay': 'Okay',
@@ -782,6 +784,7 @@ export const en = {
   'transfer.import.noticeMissing': '{count} traces came in without their files{reason}. {names}{more}. They kept their place on the canvas and show as "Missing file".',
   'transfer.import.noticeMore': ' and {count} more',
   'transfer.import.noticeColumns': 'This database has no {columns} column, so those values were dropped.',
+  'names.monthlyGoal': 'Monthly goal',
   'names.title': 'Contributor Names',
   'names.nothingWaiting': 'Nothing waiting.',
   'names.section.waiting': 'Waiting',

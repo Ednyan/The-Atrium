@@ -14,6 +14,8 @@ import type { Catalogue } from './en'
 const it: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Annulla',
+  'common.saving': 'Salvataggio...',
+  'common.saved': 'Salvato',
   'common.save': 'Salva',
   'common.close': 'Chiudi',
   'common.okay': 'Va bene',
@@ -880,6 +882,7 @@ const it: Catalogue = {
   'transfer.import.noticeMissing': '{count} traces sono arrivati senza i loro file{reason}. {names}{more}. Hanno mantenuto il loro posto sulla tela e compaiono come "File mancante".',
   'transfer.import.noticeMore': ' e altri {count}',
   'transfer.import.noticeColumns': 'Questo database non ha la colonna {columns}, quindi quei valori sono stati scartati.',
+  'names.monthlyGoal': 'Obiettivo mensile',
   'names.title': 'Nomi dei sostenitori',
   'names.nothingWaiting': 'Nulla in attesa.',
   'names.section.waiting': 'In attesa',

@@ -14,6 +14,8 @@ import type { Catalogue } from './en'
 const ptBR: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Cancelar',
+  'common.saving': 'Salvando...',
+  'common.saved': 'Salvo',
   'common.save': 'Salvar',
   'common.close': 'Fechar',
   'common.okay': 'Ok',
@@ -880,6 +882,7 @@ const ptBR: Catalogue = {
   'transfer.import.noticeMissing': '{count} traces entraram sem os arquivos{reason}. {names}{more}. Mantiveram o lugar na tela e aparecem como "Arquivo ausente".',
   'transfer.import.noticeMore': ' e mais {count}',
   'transfer.import.noticeColumns': 'Este banco de dados não tem a coluna {columns}, então esses valores foram descartados.',
+  'names.monthlyGoal': 'Meta mensal',
   'names.title': 'Nomes dos contribuidores',
   'names.nothingWaiting': 'Nada aguardando.',
   'names.section.waiting': 'Aguardando',

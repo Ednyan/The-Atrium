@@ -69,6 +69,13 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
   const [deleting, setDeleting] = useState<Entry | null>(null)
   const [messaging, setMessaging] = useState<Entry | null>(null)
 
+  // The monthly goal, in euros, as the operator types it. Null until the
+  // settings have been read, so an empty box cannot be mistaken for a goal of
+  // nothing and saved over the real one.
+  const [goalEur, setGoalEur] = useState<string | null>(null)
+  const [goalSaving, setGoalSaving] = useState(false)
+  const [goalSaved, setGoalSaved] = useState(false)
+
   const call = async (action: string, body: Record<string, unknown> = {}) => {
     const baseUrl = import.meta.env.VITE_SUPABASE_URL
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -95,6 +102,11 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
     call('list')
       .then(body => setEntries(body.entries ?? []))
       .catch(e => { setError(e.message); setEntries([]) })
+    // Separately, and allowed to fail quietly: a goal that cannot be read is a
+    // field that stays disabled, not a panel that refuses to open.
+    call('get_settings')
+      .then(body => setGoalEur(String((body.monthlyGoalCents ?? 5000) / 100)))
+      .catch(() => { /* leave it null, which disables the field */ })
   }
 
   useEffect(load, [])
@@ -169,6 +181,45 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
           <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('names.title')}</h3>
+        </div>
+
+        {/* The monthly goal. It used to be a literal inside the SQL view, so
+            changing what the gauge fills towards meant editing a migration and
+            pasting it into the dashboard. */}
+        <div className="flex items-center gap-2 mb-5 pb-5 border-b border-nier-border/20">
+          <label className="text-nier-bg/70 text-[10px] tracking-[0.15em] uppercase whitespace-nowrap">
+            {t('names.monthlyGoal')}
+          </label>
+          <span className="text-nier-bg/70 text-sm">€</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={goalEur ?? ''}
+            disabled={goalEur === null || goalSaving}
+            onChange={(e) => { setGoalEur(e.target.value); setGoalSaved(false) }}
+            className="w-24 bg-nier-black border border-nier-border/30 text-nier-bg px-2 py-1 text-sm tabular-nums focus:outline-none focus:border-nier-border/60 disabled:opacity-40"
+          />
+          <button
+            onClick={async () => {
+              if (goalEur === null) return
+              setGoalSaving(true)
+              setError('')
+              try {
+                const body = await call('set_goal', { goalEur: Number(goalEur) })
+                setGoalEur(String((body.monthlyGoalCents ?? 0) / 100))
+                setGoalSaved(true)
+              } catch (e: any) {
+                setError(e.message)
+              } finally {
+                setGoalSaving(false)
+              }
+            }}
+            disabled={goalEur === null || goalSaving}
+            className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
+          >
+            {goalSaving ? t('common.saving') : goalSaved ? t('common.saved') : t('common.save')}
+          </button>
         </div>
 
         {entries === null && <p className="text-nier-bg/70 text-[10px] tracking-wider uppercase">{t('common.loading')}…</p>}

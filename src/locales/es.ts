@@ -10,6 +10,8 @@ import type { Catalogue } from './en'
 const es: Catalogue = {
   // ------------------------------------------------------------ everywhere
   'common.cancel': 'Cancelar',
+  'common.saving': 'Guardando...',
+  'common.saved': 'Guardado',
   'common.save': 'Guardar',
   'common.close': 'Cerrar',
   'common.okay': 'De acuerdo',
@@ -876,6 +878,7 @@ const es: Catalogue = {
   'transfer.import.noticeMissing': '{count} traces entraron sin sus archivos{reason}. {names}{more}. Conservaron su sitio en el lienzo y aparecen como "Falta el archivo".',
   'transfer.import.noticeMore': ' y {count} más',
   'transfer.import.noticeColumns': 'Esta base de datos no tiene la columna {columns}, así que esos valores se descartaron.',
+  'names.monthlyGoal': 'Objetivo mensual',
   'names.title': 'Nombres de los contribuyentes',
   'names.nothingWaiting': 'Nada pendiente.',
   'names.section.waiting': 'Pendiente',
