@@ -256,9 +256,27 @@ Protecting the machines still on 1.9.1 would mean overriding the default before
 the page is drawn, in `.onInit`, which is reachable only through
 `bundle.windows.nsis.template` -- a fork of the entire generated script,
 maintained against upstream. `installerHooks` cannot do it: `NSIS_HOOK_PREINSTALL`
-fires inside `Section Install`, long after the scope has been chosen. A hook
-could still uninstall an orphaned per-user copy, which addresses the duplicate
-without touching the location.
+fires inside `Section Install`, long after the scope has been chosen.
+
+What a hook *can* do is stop the machine being left with two, and
+`src-tauri/installer/hooks.nsh` does that from 1.9.3: installing all-users
+while a per-user install exists runs the old uninstaller silently and clears
+its HKCU key. It does not preserve the location -- nothing reachable from
+there can -- but the duplicate and the stale never-updating copy are the part
+that bites.
+
+Two things it turns on, both checked against the registry and the generated
+script rather than assumed:
+
+- `UninstallString` and `InstallLocation` are stored **with literal quotes
+  inside the value**, so the hook strips them before use. Left alone they
+  reach `ExecWait` as a doubly-quoted path and `_?=` as a quoted one, which
+  NSIS rejects.
+- The uninstaller removes app data only under
+  `${If} $DeleteAppDataCheckboxState = 1`, and that variable is assigned in
+  exactly one place: the checkbox on a page a silent uninstall never draws. It
+  stays empty, the comparison is false, **and the vault is not touched.** If
+  that ever changes upstream, this hook starts deleting people's atriums.
 
 `perMachine` was tried first, to make Program Files the default. It works, but
 it makes **every** update prompt for admin forever -- the updater launches the
