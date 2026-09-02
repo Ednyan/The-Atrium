@@ -9,7 +9,7 @@
 // No Products or Prices exist in the dashboard. Checkout accepts an inline
 // price_data per session, including a recurring block, so the amount someone
 // chooses becomes the price on the spot. Pre-made tiers would only get in the
-// way of "any amount from 1 euro".
+// way of "any amount, in any of the currencies offered".
 //
 // Deliberately open to anyone, signed in or not. Requiring an account to give
 // money would lose more contributions than it protects, and there is nothing
@@ -18,9 +18,13 @@
 // trusts Stripe's signature rather than this call.
 
 import { corsHeaders } from '../_shared/cors.ts'
+import {
+  BASE_CURRENCY,
+  currencyByCode,
+  isCurrencyCode,
+  minorPerUnit,
+} from '../_shared/currencies.ts'
 
-const MINIMUM_CENTS = 100 // 1 euro, as stated in the app
-const MAXIMUM_CENTS = 500000 // 5000 euros; a typo guard, not a policy
 const MAX_NAME_LENGTH = 40
 
 // Rejected the moment it's typed, so nobody discovers their chosen name was
@@ -54,11 +58,23 @@ Deno.serve(async (req: Request) => {
     })
 
   try {
-    const { amountCents, monthly, displayName } = await req.json()
+    const { amountCents, monthly, displayName, currency } = await req.json()
 
+    // An unknown or missing currency is the base, not an error: an older client
+    // that has not been reloaded since this shipped posts no currency at all,
+    // and it was sending euros.
+    const code = isCurrencyCode(currency) ? currency : BASE_CURRENCY
+    const money = currencyByCode(code)
+    const per = minorPerUnit(code)
+
+    // Minor units throughout, which for a zero-decimal currency is the unit
+    // itself. The limits come from the same table the client offers its presets
+    // from, so the two cannot disagree about what is allowed.
     const amount = Math.round(Number(amountCents))
-    if (!Number.isFinite(amount) || amount < MINIMUM_CENTS || amount > MAXIMUM_CENTS) {
-      return json({ error: `Choose an amount between €${MINIMUM_CENTS / 100} and €${MAXIMUM_CENTS / 100}.` }, 400)
+    if (!Number.isFinite(amount) || amount < money.min || amount > money.max) {
+      return json({
+        error: `Choose an amount between ${money.symbol}${money.min / per} and ${money.symbol}${money.max / per}.`,
+      }, 400)
     }
 
     const name = typeof displayName === 'string' ? displayName.trim() : ''
@@ -80,7 +96,7 @@ Deno.serve(async (req: Request) => {
     form.set('success_url', `${siteUrl}/#/contributed`)
     form.set('cancel_url', `${siteUrl}/#/welcome`)
     form.set('line_items[0][quantity]', '1')
-    form.set('line_items[0][price_data][currency]', 'eur')
+    form.set('line_items[0][price_data][currency]', code.toLowerCase())
     form.set('line_items[0][price_data][unit_amount]', String(amount))
     form.set('line_items[0][price_data][product_data][name]',
       monthly ? 'Monthly contribution to The Digital Atrium' : 'Contribution to The Digital Atrium')

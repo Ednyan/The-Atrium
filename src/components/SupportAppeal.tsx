@@ -1,4 +1,5 @@
 import { recordAppealResponse, type AppealResponse } from '../lib/supportAppeal'
+import { formatMoney, currencyByCode, currentCurrency } from '../lib/currency'
 
 interface SupportAppealProps {
   onDonate: () => void
@@ -48,7 +49,11 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
             to keeping those paid for and the work going.
           </p>
           <p className="text-nier-bg/70">
-            Even €1 helps. Nothing here is locked, and nothing will be.
+            {/* The floor in whatever currency the reader is being shown, so the
+                figure agrees with the buttons they are about to see rather
+                than naming a currency they are not giving in. */}
+            Even {formatMoney(currencyByCode(currentCurrency()).min, currentCurrency(), { whole: true })} helps.
+            Nothing here is locked, and nothing will be.
           </p>
         </div>
 

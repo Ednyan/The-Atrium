@@ -4,6 +4,8 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import { supabase, isDesktop } from '../lib/supabase'
 import NameApprovalPanel from './NameApprovalPanel'
 import ThemeToggle from './ThemeToggle'
+import CurrencyToggle from './CurrencyToggle'
+import { useCurrency } from '../lib/currency'
 import HeartRush from './HeartRush'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
@@ -284,6 +286,11 @@ const normalise = (value: string) =>
 
 export default function ContributorsAtrium({ onClose, onContribute, thanks = false, thanksName = '' }: ContributorsAtriumProps) {
   const { t } = useTranslation()
+  // Every figure on this wall is stored in euros -- what each payment actually
+  // settled as, recorded from Stripe rather than converted after the fact --
+  // and converted here for display only. Moving the picker changes what is
+  // shown and nothing about what was given.
+  const { formatBase, converted } = useCurrency()
   // The wall follows the same light or dark choice the website does. It is a
   // page people are sent to from a browser, not a surface inside the app.
   const theme = useLandingTheme()
@@ -854,8 +861,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                       rate after it -- one number saying what they have given,
                       one saying what they are still giving. */}
                   <span className="text-xs tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
-                    €{person.amountEur}
-                    {person.monthlyActive && person.monthlyEur ? ` + €${person.monthlyEur} / month` : ''}
+                    {formatBase(person.amountEur * 100, { whole: true })}
+                    {person.monthlyActive && person.monthlyEur
+                      ? ` + ${formatBase(person.monthlyEur * 100, { whole: true })} / month`
+                      : ''}
                   </span>
                   <span className="text-xs tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">
                     {person.monthlyActive ? t('contrib.since', { date: formatDate(person.since) }) : formatDate(person.since)}
@@ -976,6 +985,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           </div>
         )}
 
+        {/* Beside the theme and language switches, because it is the same kind
+            of preference and this is where this page keeps them. */}
+        <CurrencyToggle />
         <ThemeToggle />
         <button
           type="button"
@@ -1068,6 +1080,15 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           <p className="text-[11px] text-nier-bg/60 tracking-[0.15em] uppercase mt-1.5">
             {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
           </p>
+          {/* Said once, at the foot of the page, rather than marked on every
+              figure. What was given was given in euros; these are today's
+              equivalents, and somebody comparing them against a bank statement
+              should know why they will not match to the cent. */}
+          {converted && (
+            <p className="text-[10px] text-nier-bg/45 tracking-[0.12em] mt-1">
+              {t('currency.rateNote')}
+            </p>
+          )}
         </div>
       )}
 

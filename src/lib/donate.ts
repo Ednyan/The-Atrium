@@ -5,6 +5,8 @@
 // actually received happens later, in the webhook, which trusts Stripe's
 // signature rather than anything that passed through here.
 
+import type { CurrencyCode } from './currency'
+
 const FUNCTION_URL = 'create-contribution'
 const STATUS_FUNCTION_URL = 'contribution-status'
 
@@ -42,9 +44,17 @@ export function checkDisplayName(name: string): NameProblem | null {
 }
 
 export interface ContributionRequest {
+  /**
+   * Minor units of `currency` -- cents, or whole yen where the currency has no
+   * minor unit. The server validates it against the same table the panel took
+   * its presets from.
+   */
   amountCents: number
   monthly: boolean
   displayName: string
+  /** Omitted by a client that predates the currency picker, and read as the
+   *  base there, which is what such a client was sending. */
+  currency?: CurrencyCode
 }
 
 // Called directly rather than through supabase.functions, which desktop's

@@ -5,6 +5,8 @@ import SupportCreatorCard from './SupportCreatorCard'
 import { openContributors } from '../lib/contributorsRoute'
 import { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
+import { useCurrency, currencyByCode, minorPerUnit } from '../lib/currency'
+import CurrencyToggle from './CurrencyToggle'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
 import { getCachedContributions, refreshContributions } from '../lib/contributions'
@@ -21,8 +23,6 @@ interface ContributePanelProps {
 const fold = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
-const PRESETS_ONE_TIME = [3, 5, 10, 25]
-const PRESETS_MONTHLY = [1, 3, 5, 10]
 
 // Choosing an amount, and where to send it.
 //
@@ -32,6 +32,13 @@ const PRESETS_MONTHLY = [1, 3, 5, 10]
 // Function that builds the session.
 export default function ContributePanel({ onClose, onStarted }: ContributePanelProps) {
   const { t } = useTranslation()
+  // Every amount below this line is in MINOR units -- cents, or whole yen for
+  // a currency with no minor unit. Units would have read more naturally and
+  // would have needed a * 100 somewhere, which is exactly the multiply that
+  // charges a yen donor a hundred times what they chose.
+  const { currency, format } = useCurrency()
+  const money = currencyByCode(currency)
+  const per = minorPerUnit(currency)
   // Whether the name field is being typed in, which is when the explanation
   // beside it should get out of the way.
   const [nameFocused, setNameFocused] = useState(false)
@@ -44,7 +51,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
   const [monthly, setMonthly] = useState(false)
-  const [amount, setAmount] = useState(5)
+  const [amount, setAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -79,15 +86,31 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   const [confirmingCollision, setConfirmingCollision] = useState(false)
   const [collisionAccepted, setCollisionAccepted] = useState(false)
 
-  const presets = monthly ? PRESETS_MONTHLY : PRESETS_ONE_TIME
+  // A preset chosen in one currency is not a preset in the next -- 500 is a
+  // sensible yen button and a strange euro one -- so changing currency drops
+  // back to the default rather than carrying a number across.
+  useEffect(() => { setAmount(null) }, [currency])
+
+  const presets = monthly ? money.presetsMonthly : money.presets
+  // The second preset is the default, which is where 5 euros used to be. Left
+  // null until something is chosen rather than held as a number, so switching
+  // currency does not leave a yen amount selected in dollars.
+  const selected = amount ?? presets[1]
 
   // Checked as it's typed, so nobody discovers their chosen name was refused
   // only after paying. The same rules run again on the server, which is the
   // one that counts -- this is courtesy, not enforcement.
   const nameProblem = checkDisplayName(displayName)
 
-  const chosenAmount = customAmount.trim() ? Number(customAmount.replace(',', '.')) : amount
-  const amountValid = Number.isFinite(chosenAmount) && chosenAmount >= 1
+  // The field is typed in units, because that is how people write money. It
+  // becomes minor units here and stays that way.
+  const typed = Number(customAmount.replace(',', '.'))
+  const chosenMinor = customAmount.trim()
+    ? (Number.isFinite(typed) ? Math.round(typed * per) : NaN)
+    : selected
+  const amountValid = Number.isFinite(chosenMinor)
+    && chosenMinor >= money.min
+    && chosenMinor <= money.max
 
   const taken = displayName.trim().length > 0 && wallNames.has(fold(displayName))
 
@@ -105,9 +128,10 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
     setError('')
 
     const result = await startContribution({
-      amountCents: Math.round(chosenAmount * 100),
+      amountCents: chosenMinor,
       monthly,
       displayName: displayName.trim(),
+      currency,
     })
 
     if ('error' in result) {
@@ -261,7 +285,13 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           ))}
         </div>
 
-        <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('donate.amount')}</label>
+        {/* The picker sits on the Amount row rather than at the top of the
+            panel, because it is part of choosing the amount: the presets under
+            it are denominated by it and change when it does. */}
+        <div className="flex items-end justify-between gap-3 mb-2">
+          <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('donate.amount')}</label>
+          <CurrencyToggle />
+        </div>
         <div className="flex gap-2 mb-3">
           {presets.map(preset => (
             <button
@@ -269,22 +299,26 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
               type="button"
               onClick={() => { setAmount(preset); setCustomAmount('') }}
               className={`flex-1 py-2 text-sm tracking-wider border transition-colors ${
-                !customAmount.trim() && amount === preset
+                !customAmount.trim() && selected === preset
                   ? 'donate-chosen'
                   : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
               }`}
             >
-              €{preset}
+              {format(preset, { whole: true })}
             </button>
           ))}
         </div>
 
-        {/* The euro sits inside the field rather than in the placeholder, so it
-            is still there once something has been typed over it. A bare number
-            in a box that takes money reads as unfinished. */}
+        {/* The symbol sits inside the field rather than in the placeholder, so
+            it is still there once something has been typed over it. A bare
+            number in a box that takes money reads as unfinished.
+
+            The table's symbol, not Intl's: this one has to sit to the LEFT of
+            a field whatever the language, where Intl would put it after the
+            number in French and leave the field labelled with nothing. */}
         <div className="relative mb-1">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
-            €
+            {money.symbol}
           </span>
           <input
             type="text"
@@ -292,12 +326,14 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             value={customAmount}
             onChange={e => setCustomAmount(e.target.value)}
             placeholder={t('donate.otherAmount')}
-            className="w-full pl-9 pr-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+            className={`w-full pr-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors ${
+              money.symbol.length > 1 ? 'pl-14' : 'pl-9'
+            }`}
           />
         </div>
         {customAmount.trim() && !amountValid && (
           <p className="text-xs tracking-wider mb-2" style={{ color: '#FF6161' }}>
-            {t('donate.minimum')}
+            {t('donate.minimum', { amount: format(money.min, { whole: true }) })}
           </p>
         )}
 
@@ -367,7 +403,10 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
           disabled={busy || !amountValid || !!nameProblem || !supabase}
           className="donate-commit w-full mt-5 py-3 text-xs tracking-[0.15em] uppercase disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {busy ? t('donate.opening') : t(monthly ? 'donate.submitMonthly' : 'donate.submit', { amount: chosenAmount || 0 })}
+          {/* Exact, not rounded like the preset buttons above: this one names
+              what is about to be charged, and "Donate $8" over a typed 7.50 is
+              a button that misstates the amount it is taking. */}
+          {busy ? t('donate.opening') : t(monthly ? 'donate.submitMonthly' : 'donate.submit', { amount: format(Number.isFinite(chosenMinor) ? chosenMinor : 0) })}
         </button>
 
         {/* Was a paragraph listing every payment method by name, which nobody
