@@ -1,5 +1,5 @@
 import { recordAppealResponse, type AppealResponse } from '../lib/supportAppeal'
-import { formatMoney, currencyByCode, currentCurrency } from '../lib/currency'
+import { useTranslation } from '../lib/i18n'
 
 interface SupportAppealProps {
   onDonate: () => void
@@ -18,6 +18,8 @@ interface SupportAppealProps {
 // things, and collapsing them forces anyone willing to be asked again into
 // declining outright.
 export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps) {
+  const { t } = useTranslation()
+
   const answer = (response: AppealResponse) => {
     recordAppealResponse(response)
     if (response === 'donated') onDonate()
@@ -34,27 +36,18 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">A small ask</h3>
+          <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('appeal.title')}</h3>
         </div>
 
+        {/* Every string here now comes from the catalogue, the title and the
+            buttons included. Translating the paragraphs and leaving "Donate"
+            and "Not now" in English would have read worse than leaving all of
+            it in English. */}
         <div className="space-y-3 text-xs text-nier-bg/80 tracking-wide leading-relaxed mb-6">
-          <p>
-            You've been building here for a while, which is the only reason this is
-            being asked at all.
-          </p>
-          <p>
-            The Digital Atrium is made by one person, and runs on things that cost
-            money every month — the database your atriums live in, the email that
-            handles new accounts, the domain it all sits on. Anything you give goes
-            to keeping those paid for and the work going.
-          </p>
-          <p className="text-nier-bg/70">
-            {/* The floor in whatever currency the reader is being shown, so the
-                figure agrees with the buttons they are about to see rather
-                than naming a currency they are not giving in. */}
-            Even {formatMoney(currencyByCode(currentCurrency()).min, currentCurrency(), { whole: true })} helps.
-            Nothing here is locked, and nothing will be.
-          </p>
+          <p>{t('appeal.enjoying')}</p>
+          <p>{t('appeal.reminder')}</p>
+          <p>{t('appeal.credited')}</p>
+          <p className="text-nier-bg/70">{t('appeal.feedback')}</p>
         </div>
 
         <button
@@ -63,7 +56,7 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
           className="cut-corner w-full inline-flex items-center justify-center h-[2.375rem] text-[11px] tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
           style={{ background: '#FF8A3D', color: 'rgb(var(--c-ground))', boxShadow: '0 0 22px rgba(255,138,61,0.30)' }}
         >
-          ◇ Donate
+          ◇ {t('appeal.donate')}
         </button>
 
         <div className="flex gap-2 mt-2">
@@ -72,14 +65,14 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
             onClick={() => answer('remind_later')}
             className="cut-corner flex-1 inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase leading-none hover:border-nier-border/70 hover:text-nier-strong transition-colors"
           >
-            Remind me later
+            {t('appeal.remindLater')}
           </button>
           <button
             type="button"
             onClick={() => answer('not_now')}
             className="cut-corner flex-1 inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase leading-none hover:border-nier-border/70 hover:text-nier-strong transition-colors"
           >
-            Not now
+            {t('appeal.notNow')}
           </button>
         </div>
       </div>
