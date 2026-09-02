@@ -24,8 +24,8 @@
     <!-- Also the browser tab, which is the same string and cannot be a
          different one. A tab truncates from the end, so the name has to come
          first and survive it: "Digital Atrium —…" reads, "The Digital Atri…"
-         does not. The definite article costs nothing in a search result and a
-         whole word of a narrow tab. -->
+         does not. Dropping the article here loses nothing in a result, because
+         the line above it carries the full name -- see the WebSite block. -->
     <title>Digital Atrium — Your ideas in one place</title>
     <meta name="description" content="An interactive space where ideas take shape, are seen, shared and built on. A fast, flexible tool for brainstorming, references, diagrams and much more." />
     <link rel="canonical" href="https://digitalatrium.org/" />
@@ -53,26 +53,37 @@
     <meta name="twitter:image" content="https://digitalatrium.org/og-card.png" />
     <meta name="twitter:image:alt" content="The Digital Atrium mark: a wireframe portal beneath a point of light." />
 
-    <!-- What the thing is, in the form a search engine reads without inferring
-         it from prose. Free is stated because it is true and because it is the
-         first question anybody asks; contributing is a donation, not a price. -->
-    <!-- The site's own name, which is a separate question from what the app
-         is. Google prints a site name above the title in a result, and with
-         nothing to go on it falls back to the bare domain -- so the listing
-         read "digitalatrium.org" instead of the name. WebSite with a name is
-         what it looks for. url and name have to agree with the canonical for
-         it to be trusted, and alternateName covers the shorter form people
-         actually search for. -->
+    <!-- The site's own name, which is a separate question from both what the
+         app is and what the title says. Google prints a site name on its own
+         line above the title in a result, and with nothing to go on it falls
+         back to the bare domain -- so the listing read "digitalatrium.org".
+
+         Because it is a separate line from a separate field, the full name
+         lives here and the title is free to drop the article for the sake of
+         the browser tab. The result reads
+
+             The Digital Atrium
+             Digital Atrium - Your ideas in one place
+
+         which is the one arrangement that gets the article into the search
+         listing and the name into a truncated tab. Putting "The" in the title
+         instead would have bought nothing: this line would still have said it.
+
+         url and name have to agree with the canonical for it to be trusted,
+         and alternateName covers the shorter form people also search for. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      "name": "Digital Atrium",
-      "alternateName": "The Digital Atrium",
+      "name": "The Digital Atrium",
+      "alternateName": "Digital Atrium",
       "url": "https://digitalatrium.org/"
     }
     </script>
 
+    <!-- What the thing is, in the form a search engine reads without inferring
+         it from prose. Free is stated because it is true and because it is the
+         first question anybody asks; contributing is a donation, not a price. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
