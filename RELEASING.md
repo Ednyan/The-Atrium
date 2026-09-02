@@ -189,40 +189,41 @@ The only real test is a version gap between an installed app and a release:
 3. Launch the installed copy. The prompt should appear bottom-right.
 4. Click **Update Now** — it downloads, installs, and relaunches itself.
 
-## The switch to a per-machine install
+## Install scope
 
-`bundle.windows.nsis.installMode` is `perMachine`, so the installer defaults to
-`C:\Program Files\The Digital Atrium` and asks for admin. It used to be
-unset, which meant Tauri's default of `currentUser` and a silent install into
-`%LOCALAPPDATA%`.
+`bundle.windows.nsis.installMode` is `both`. It was unset, which meant Tauri's
+default of `currentUser`: a silent install into `%LOCALAPPDATA%` with no way to
+choose Program Files.
 
-Two consequences, and the first one is permanent.
+`both` lets the installer decide per machine rather than per build, and it does
+it by itself. From the generated script (`target/release/nsis/x64/installer.nsi`,
+worth reading if this ever misbehaves):
 
-**Every update now asks for admin.** The updater launches the installer with
-`ShellExecuteW` and the `open` verb (see `install_inner` in
-`tauri-plugin-updater`), and ShellExecute honours the executable's manifest —
-unlike `CreateProcess`, which would simply fail. A per-machine NSIS installer
-requests administrator, so Windows shows a UAC prompt. The update then proceeds
-normally once it is accepted.
+- `MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_KEY` points at the uninstall key, so
+  the installer reads how this app was installed here last time and defaults to
+  the same scope.
+- `RestorePreviousInstallLocation` puts it back in the same directory.
+- `MULTIUSER_EXECUTIONLEVEL Highest` asks for administrator only when the
+  all-users scope is actually chosen.
+- `MULTIUSER_INSTALLMODE_COMMANDLINE` accepts `/AllUsers` and `/CurrentUser`,
+  if a scope ever has to be forced from a script.
 
-That is the ongoing price of installing into Program Files, and it does not go
-away with later releases. A per-user install never prompts; that is the whole
-reason Tauri defaults to it. If the prompt every time turns out to be worse
-than the default location, `installMode` is the one line to change back.
+So an update inherits whatever scope is already on the machine: a per-user
+install keeps updating silently, an all-users install prompts for admin because
+it must, and nobody gets a second copy in the other location. A fresh install
+shows a page and asks.
 
-**And the move across, once.** Anyone on v1.9.1 or earlier is on a per-user
-install in `%LOCALAPPDATA%`. The new installer is per-machine, so it looks for
-a previous install in the machine-wide registry, finds none, and installs
-fresh into Program Files — leaving the old copy where it is. Two installs then
-coexist, both checking for updates, and the stale one keeps offering them.
+`perMachine` was tried first, to make Program Files the default. It works, but
+it makes **every** update prompt for admin forever -- the updater launches the
+installer with `ShellExecuteW` and the `open` verb, which honours the manifest
+rather than failing -- and it would have orphaned every existing per-user
+install in `%LOCALAPPDATA%` while installing fresh into Program Files.
 
-So for the first release after this change:
-
-1. Say in the release notes that it should be installed by hand.
-2. Uninstall the old copy first.
-
-Every release after that replaces something the installer already owns, and
-behaves normally apart from the UAC prompt.
+One thing `both` does not do: preselect all-users on that page. NSIS defaults
+to the per-user option and Tauri exposes no setting for it. Changing that means
+supplying a custom NSIS template through `bundle.windows.nsis.template`, which
+is a whole file to maintain against upstream -- worth it only if the
+preselection matters more than that does.
 
 ## Notes
 

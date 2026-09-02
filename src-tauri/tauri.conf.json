@@ -47,7 +47,7 @@
     ],
     "windows": {
       "nsis": {
-        "installMode": "perMachine",
+        "installMode": "both",
         "installerIcon": "icons/icon.ico",
         "headerImage": "installer/installer-header.bmp",
         "sidebarImage": "installer/installer-sidebar.bmp"
