@@ -46,10 +46,6 @@ export interface HistoryEntry {
   label: string
   undo: () => void | Promise<void>
   redo: () => void | Promise<void>
-  // Stamped by record(). Trace history still lives in TraceOverlay for now, so
-  // the two stacks have to agree on which of them holds the newer action --
-  // see newestUndoAt below.
-  at?: number
 }
 
 // Deep enough to cover a working session, bounded so a long one cannot grow
@@ -75,7 +71,7 @@ function announce() {
 // way a recorded entry always describes something that actually happened --
 // there is no path where the history believes in a change the app never made.
 export function record(entry: HistoryEntry) {
-  past.push({ ...entry, at: Date.now() })
+  past.push(entry)
   if (past.length > MAX_DEPTH) past.shift()
   // A new action discards the redo branch, as in every editor: once you have
   // done something else, the future you did not take is no longer reachable.
@@ -142,21 +138,4 @@ export function clearHistory() {
 export function subscribeToHistory(listener: () => void): () => void {
   listeners.add(listener)
   return () => { listeners.delete(listener) }
-}
-
-// When the newest thing on each side happened, so a second stack can work out
-// whether it or this one owns the next reversal.
-//
-// This exists because the trace history has not moved here yet. It keeps its
-// own stack, with its own coalescing and configurable depth, and until it
-// moves the only way for Ctrl+Z to reach the right one is to compare when
-// each last recorded something. Both sides stamp their entries; the newer one
-// answers. When traces move onto this timeline, these two go with the reason
-// for them.
-export function newestUndoAt(): number {
-  return past.length > 0 ? (past[past.length - 1].at ?? 0) : 0
-}
-
-export function newestRedoAt(): number {
-  return future.length > 0 ? (future[future.length - 1].at ?? 0) : 0
 }

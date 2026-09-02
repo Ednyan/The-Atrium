@@ -8,9 +8,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
-import { isEditableTarget as isEditableTargetShared } from '../lib/editableTarget'
-import { newestUndoAt, newestRedoAt, undo as historyUndo, redo as historyRedo, clearHistory } from '../lib/history'
-import { recordPlacementChange } from '../lib/tracePlacement'
+import { isEditableTarget } from '../lib/editableTarget'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
 // Video and audio stream from the vault rather than being read into memory --
@@ -951,33 +949,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (targetLayerId && !targetLayer) return
     const baseZ = targetLayer ? getTraceBaseZIndex(targetLayer.zIndex) : 0
     const idSet = new Set(traceIds)
-
-    // Both ends: the group being joined, and every group being left. Recorded
-    // through the shared helper so this path is undoable like the layer
-    // panel's -- it was not, which meant sending a trace to a group from the
-    // canvas menu could not be reversed while doing the same thing from the
-    // panel could.
-    const touched: (string | null)[] = [targetLayerId]
+    let order = allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)).length
     for (const id of traceIds) {
       const trace = allTraces.find(t => t.id === id)
-      if (trace) touched.push(trace.layerId ?? null)
-    }
-
-    await recordPlacementChange('move to group', touched, async () => {
-      let order = allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)).length
-      for (const id of traceIds) {
-        const trace = allTraces.find(t => t.id === id)
-        if (!trace || (trace.layerId ?? null) === targetLayerId) continue
-        const newZ = baseZ + order + 1
-        order++
-        const { error } = await (supabase!.from('traces') as any)
-          .update({ layer_id: targetLayerId, z_index: newZ })
-          .eq('id', id)
-        if (!error) {
-          store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
-        }
+      if (!trace || (trace.layerId ?? null) === targetLayerId) continue
+      const newZ = baseZ + order + 1
+      order++
+      const { error } = await (supabase.from('traces') as any)
+        .update({ layer_id: targetLayerId, z_index: newZ })
+        .eq('id', id)
+      if (!error) {
+        store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
       }
-    })
+    }
   }, [canEdit, groupLayers])
 
   // Which imports are still being copied into the vault. Their media is left
@@ -1430,7 +1414,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         // open on a successfully-finished path so its arrow-config section
         // (right above Path Points there) is immediately at hand.
         const target = e.target as HTMLElement | null
-        const typingHere = isEditableTargetShared(target)
+        const typingHere = isEditableTarget(target)
         if (typingHere) return
         e.preventDefault()
         setPathCreationMode(false)
@@ -1617,14 +1601,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // drop/paste, etc.) is one atomic undo step instead of N separate 'add'
     // ops -- see the "detect new traces" effect below.
     | { kind: 'batchAdd'; traces: Trace[] }
-  // When this was pushed. Only the layer timeline needs it, and only until
-  // trace history moves onto that timeline too: with two stacks live, Ctrl+Z
-  // has to ask which of them holds the newer action. An intersection rather
-  // than a field on each member, so the union above stays as it reads.
-  type TimedUndoOp = UndoOp & { at: number }
 
-  const undoStackRef = useRef<TimedUndoOp[]>([])
-  const redoStackRef = useRef<TimedUndoOp[]>([])
+  const undoStackRef = useRef<UndoOp[]>([])
+  const redoStackRef = useRef<UndoOp[]>([])
   const maxUndoDepthRef = useRef(getStoredUndoDepth())
   const knownTraceIdsRef = useRef<Set<string> | null>(null)
 
@@ -1662,7 +1641,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const handleSaveCompleted = () => {
       undoStackRef.current = []
       redoStackRef.current = []
-      clearHistory()
       setLocalTraceTransforms({})
       setLocalShapePoints({})
     }
@@ -1690,7 +1668,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const handleDiscardCompleted = () => {
       undoStackRef.current = []
       redoStackRef.current = []
-      clearHistory()
       setEditingTrace(null)
       setShowBatchEditPanel(false)
       setContextMenu(null)
@@ -1711,10 +1688,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (last && last.kind === 'update' && last.traceId === traceId && (now - last.ts) < UNDO_COALESCE_WINDOW_MS) {
       last.after = { ...last.after, ...after }
       last.ts = now
-      last.at = now
       return
     }
-    stack.push({ kind: 'update', traceId, before, after: { ...after }, ts: now, at: now })
+    stack.push({ kind: 'update', traceId, before, after: { ...after }, ts: now })
     if (stack.length > maxUndoDepthRef.current) stack.shift()
     redoStackRef.current = []
   }, [])
@@ -1726,13 +1702,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (ops.length === 0) return
     if (ops.length === 1) {
       const stack = undoStackRef.current
-      stack.push({ kind: 'update', traceId: ops[0].traceId, before: ops[0].before, after: { ...ops[0].after }, ts: Date.now(), at: Date.now() })
+      stack.push({ kind: 'update', traceId: ops[0].traceId, before: ops[0].before, after: { ...ops[0].after }, ts: Date.now() })
       if (stack.length > maxUndoDepthRef.current) stack.shift()
       redoStackRef.current = []
       return
     }
     const stack = undoStackRef.current
-    stack.push({ kind: 'batch', ops, ts: Date.now(), at: Date.now() })
+    stack.push({ kind: 'batch', ops, ts: Date.now() })
     if (stack.length > maxUndoDepthRef.current) stack.shift()
     redoStackRef.current = []
   }, [])
@@ -1743,18 +1719,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const pushBatchAddOp = useCallback((newTraces: Trace[]) => {
     if (newTraces.length === 0) return
     if (newTraces.length === 1) {
-      undoStackRef.current.push({ kind: 'add', traceId: newTraces[0].id, trace: cloneTraceSnapshot(newTraces[0]), at: Date.now() })
+      undoStackRef.current.push({ kind: 'add', traceId: newTraces[0].id, trace: cloneTraceSnapshot(newTraces[0]) })
       if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
       redoStackRef.current = []
       return
     }
-    undoStackRef.current.push({ kind: 'batchAdd', traces: newTraces.map(cloneTraceSnapshot), at: Date.now() })
+    undoStackRef.current.push({ kind: 'batchAdd', traces: newTraces.map(cloneTraceSnapshot) })
     if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
     redoStackRef.current = []
   }, [])
 
   const pushDeleteOp = useCallback((trace: Trace) => {
-    undoStackRef.current.push({ kind: 'delete', trace: cloneTraceSnapshot(trace), at: Date.now() })
+    undoStackRef.current.push({ kind: 'delete', trace: cloneTraceSnapshot(trace) })
     if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
     redoStackRef.current = []
   }, [])
@@ -1910,10 +1886,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const redo = useCallback(() => {
     const op = redoStackRef.current.pop()
     if (!op) return
-    // Redoing makes this the newest thing that can be undone again, so it has
-    // to be stamped as such or the comparison above would keep preferring the
-    // layer timeline.
-    op.at = Date.now()
     undoStackRef.current.push(op)
     applyUndoOp(op, 'redo')
   }, [applyUndoOp])
@@ -1926,10 +1898,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   useEffect(() => {
     const isEditableTarget = (eventTarget: EventTarget | null) => {
       const element = eventTarget as HTMLElement | null
-      // Delegates rather than repeating the test: a hand-written copy here
-      // counted a focused slider as typing, which is how the drawing keys
-      // came to die whenever the brush width was touched.
-      return isEditableTargetShared(element)
+      const tag = element?.tagName
+      return element?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     }
     const handleUndoRedoShortcut = (e: KeyboardEvent) => {
       // Drawing mode owns Ctrl+Z/Ctrl+Shift+Z for stroke undo while active
@@ -1938,25 +1908,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       if (isEditableTarget(e.target)) return
       if (!(e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
-
-      // Whichever stack holds the newer action answers.
-      //
-      // Layer work -- reordering, moving between groups -- is recorded on the
-      // shared timeline in lib/history, and until trace history moves there
-      // too the two are separate stacks that both want this key. Comparing
-      // when each last recorded something is what makes them behave as one:
-      // an action is undone because it was the most recent, not because of
-      // which subsystem happened to perform it.
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        const mine = undoStackRef.current[undoStackRef.current.length - 1]?.at ?? 0
-        if (newestUndoAt() > mine) void historyUndo()
-        else undo()
+        undo()
       } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
         e.preventDefault()
-        const mine = redoStackRef.current[redoStackRef.current.length - 1]?.at ?? 0
-        if (newestRedoAt() > mine) void historyRedo()
-        else redo()
+        redo()
       }
     }
     window.addEventListener('keydown', handleUndoRedoShortcut)
@@ -2128,10 +2085,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
     const isEditableTarget = (eventTarget: EventTarget | null) => {
       const element = eventTarget as HTMLElement | null
-      // Delegates rather than repeating the test: a hand-written copy here
-      // counted a focused slider as typing, which is how the drawing keys
-      // came to die whenever the brush width was touched.
-      return isEditableTargetShared(element)
+      const tag = element?.tagName
+      return element?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -3650,7 +3605,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // panel's text content field) -- otherwise pressing Delete to remove
       // a character deletes the entire trace instead.
       const target = e.target as HTMLElement | null
-      const typingHere = isEditableTargetShared(target)
+      const typingHere = isEditableTarget(target)
       if (e.key === 'Delete' && !isDrawingModeRef.current && canEdit && !typingHere && (selectedTraceId || multiSelectedIds.size > 0)) {
         e.preventDefault()
         deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
