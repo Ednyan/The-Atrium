@@ -861,9 +861,14 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                       rate after it -- one number saying what they have given,
                       one saying what they are still giving. */}
                   <span className="text-xs tracking-wider whitespace-nowrap" style={{ color: draw.metaColor, opacity: 0.85 }}>
-                    {formatBase(person.amountEur * 100, { whole: true })}
+                    {/* Two decimals, because these are converted: 25 euros is
+                        $28.95 and rounding it to $29 states a figure nobody
+                        gave. A currency with no minor unit still shows none --
+                        formatMoney takes that from the currency, not from
+                        here. */}
+                    {formatBase(person.amountEur * 100)}
                     {person.monthlyActive && person.monthlyEur
-                      ? ` + ${formatBase(person.monthlyEur * 100, { whole: true })} / month`
+                      ? ` + ${formatBase(person.monthlyEur * 100)} / month`
                       : ''}
                   </span>
                   <span className="text-xs tracking-wider uppercase text-nier-bg/70 whitespace-nowrap">

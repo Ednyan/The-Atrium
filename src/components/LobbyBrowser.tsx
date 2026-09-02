@@ -19,6 +19,7 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
+import { sortByLastVisited } from '../lib/recentAtriums'
 
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
@@ -298,7 +299,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       if (ownedError) throw ownedError
 
       // Get usernames and player counts
-      const enrichedOwned = await enrichLobbiesWithData(ownedLobbies || [])
+      // Most recently opened first, falling back to the newest-first order the
+      // query already returned for anything never opened on this device. The
+      // query still asks for created_at DESC, which is both that fallback and
+      // what a fresh install sees.
+      const enrichedOwned = await enrichLobbiesWithData(
+        sortByLastVisited(ownedLobbies || [], lobby => lobby.id),
+      )
       setUserLobbies(enrichedOwned)
 
       // Load lobbies the user administers but doesn't own -- these get the

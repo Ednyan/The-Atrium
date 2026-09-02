@@ -28,6 +28,7 @@ import { handlePinterestCallback, hasPendingDesktopPinterestFlow } from './lib/p
 import { isGhostEntry } from './lib/operatorGhost'
 import { noteAppStarted, noteVersionSeen, recordAppealResponse } from './lib/supportAppeal'
 import { useLandingTheme } from './lib/useLandingTheme'
+import { markAtriumVisited } from './lib/recentAtriums'
 import {
   hasCompletedContribution,
   takeCompletedContribution,
@@ -1747,6 +1748,11 @@ function AppInner() {
       if (currentLobbyId) {
         localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, currentLobbyId)
         sessionStorage.setItem(SESSION_IN_ATRIUM, '1')
+        // Every way into an atrium ends up setting this state -- joining,
+        // opening a link, restoring a refresh -- so stamping it here catches
+        // all of them, where stamping each entry point would eventually miss
+        // one.
+        markAtriumVisited(currentLobbyId)
       } else {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
         sessionStorage.removeItem(SESSION_IN_ATRIUM)
