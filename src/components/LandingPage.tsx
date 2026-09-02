@@ -382,7 +382,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
               weight. It carries the section you are in beside it where there
               is room, so the bar still answers "where am I" without the menu
               being open. */}
-          <div ref={menuRef} className="relative 2xl:hidden shrink-0">
+          <div ref={menuRef} className="relative xl:hidden shrink-0">
             <button
               type="button"
               onClick={() => setMenuOpen(open => !open)}
@@ -434,17 +434,20 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
 
           {/* The sections, two ways.
 
-              Inline from 2xl up, and a menu below that. The wordmark now
-              holds its place on the left at every width, which costs the row
-              about 200px -- enough that the longest language (Spanish, a
-              quarter longer than English) no longer fits beside it at 1280.
-              Rather than drop the name the moment a language gets wordy, the
-              inline row waits for a screen with room for both.
+              Inline from xl (1280) up, and a menu below that. It used to
+              wait for 2xl, because the wordmark holds its place on the left at
+              every width and the longest language -- Spanish, a quarter longer
+              than English -- did not fit beside it at 1280.
+
+              The titles are set tighter between xl and 2xl to buy that back:
+              less padding either side of each and less letter-spacing, which
+              is roughly the 200px the wordmark costs. English has room to
+              spare; Spanish is the one to look at if this ever crowds.
 
               Separated by rules, because seven titles in one typeface at one
               size with even spacing read as a sentence of unrelated words
               rather than as seven things you can choose between. */}
-          <nav className="hidden 2xl:flex col-start-2 items-center justify-self-center min-w-0">
+          <nav className="hidden xl:flex col-start-2 items-center justify-self-center min-w-0">
             {items.map(({ id, index }, i) => {
               const isActive = activeSection === index
               return (
@@ -455,7 +458,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                   <button
                     type="button"
                     onClick={() => onJump(index)}
-                    className={`relative whitespace-nowrap px-3 py-2 text-[11px] tracking-[0.1em] uppercase transition-colors ${
+                    className={`relative whitespace-nowrap px-2 2xl:px-3 py-2 text-[11px] tracking-[0.06em] 2xl:tracking-[0.1em] uppercase transition-colors ${
                       isActive ? 'text-nier-strong' : 'text-nier-bg/65 hover:text-nier-bg'
                     }`}
                   >
@@ -474,7 +477,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
 
           {/* Placed in the third column rather than left to land there.
 
-              The nav between these two is `hidden` below 2xl, and hidden means
+              The nav between these two is `hidden` below xl, and hidden means
               display:none -- so it stops being a grid item at all, and
               auto-placement put this group in the middle column instead.
               justify-self-end then pushed it to the end of *that* column,

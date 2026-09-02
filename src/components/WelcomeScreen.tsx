@@ -4,6 +4,7 @@ import ProfileSettings from './ProfileSettings'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
 import PinterestMark from './PinterestMark'
 import SupportAppeal from './SupportAppeal'
+import { ReportFeedbackModal } from './ReportFeedbackModal'
 import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
@@ -85,6 +86,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   // once per launch -- coming back here after leaving an atrium is not a new
   // launch, and this must never appear over the canvas.
   const [showAppeal, setShowAppeal] = useState(() => shouldShowAppeal())
+  const [showFeedback, setShowFeedback] = useState(false)
   // Read from cache on mount and refreshed behind the screen, so the bar is
   // there on the first frame and offline, rather than appearing a moment later
   // and pushing the menu down.
@@ -690,6 +692,19 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             setShowAppeal(false)
             setShowContribute(true)
           }}
+          onFeedback={() => {
+            setShowAppeal(false)
+            setShowFeedback(true)
+          }}
+        />
+      )}
+
+      {/* The same modal the atrium and the browser use, so feedback sent from
+          here arrives by the route everything else does. */}
+      {showFeedback && (
+        <ReportFeedbackModal
+          onClose={() => setShowFeedback(false)}
+          username={username}
         />
       )}
     </>

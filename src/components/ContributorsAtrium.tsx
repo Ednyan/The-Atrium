@@ -948,60 +948,73 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </p>
       </div>
 
-      <div className="absolute top-6 right-6 flex items-center gap-2">
-        {/* Shaped like the donation ranks in the other corner: a diamond that
-            turns, and a list that appears under it. One idiom for "this panel
-            opens", used twice. */}
-        {rangeAvailable && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setRangeOpen(open => !open)}
-              className="cut-corner flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
-              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-            >
-              <span
-                className="inline-block transition-transform duration-200"
-                style={{ transform: rangeOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
+      {/* The buttons, and under them what the figures on this wall are
+          denominated in. It belongs with the currency picker rather than
+          at the foot of the page: it explains that control, and a caption
+          six hundred pixels away from the thing it captions is a caption
+          nobody connects to anything. */}
+      <div className="absolute top-6 right-6 flex flex-col items-end gap-1.5">
+        <div className="flex items-center gap-2">
+          {/* Shaped like the donation ranks in the other corner: a diamond that
+              turns, and a list that appears under it. One idiom for "this panel
+              opens", used twice. */}
+          {rangeAvailable && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setRangeOpen(open => !open)}
+                className="cut-corner flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
+                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
               >
-                ◇
-              </span>
-              {t((RANGES.find(entry => entry.id === range)?.labelKey ?? 'wall.rangeAll') as TranslationKey)}
-            </button>
+                <span
+                  className="inline-block transition-transform duration-200"
+                  style={{ transform: rangeOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
+                >
+                  ◇
+                </span>
+                {t((RANGES.find(entry => entry.id === range)?.labelKey ?? 'wall.rangeAll') as TranslationKey)}
+              </button>
 
-            {rangeOpen && (
-              <div className="absolute right-0 mt-1 w-full min-w-[9.5rem] border border-nier-border/40 bg-nier-black">
-                {RANGES.map(entry => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onClick={() => { setRange(entry.id); setRangeOpen(false) }}
-                    className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
-                      entry.id === range
-                        ? 'text-nier-strong bg-nier-bg/10'
-                        : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
-                    }`}
-                  >
-                    {t(entry.labelKey as TranslationKey)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              {rangeOpen && (
+                <div className="absolute right-0 mt-1 w-full min-w-[9.5rem] border border-nier-border/40 bg-nier-black">
+                  {RANGES.map(entry => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => { setRange(entry.id); setRangeOpen(false) }}
+                      className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
+                        entry.id === range
+                          ? 'text-nier-strong bg-nier-bg/10'
+                          : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
+                      }`}
+                    >
+                      {t(entry.labelKey as TranslationKey)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Beside the theme and language switches, because it is the same kind
+              of preference and this is where this page keeps them. */}
+          <CurrencyToggle />
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={closeWithTransition}
+            className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          >
+            ← {t('common.back')}
+          </button>
+        </div>
+
+        {converted && (
+          <p className="self-stretch text-center text-[10px] tracking-[0.12em] text-nier-bg/45 pointer-events-none">
+            {t('currency.rateNote')}
+          </p>
         )}
-
-        {/* Beside the theme and language switches, because it is the same kind
-            of preference and this is where this page keeps them. */}
-        <CurrencyToggle />
-        <ThemeToggle />
-        <button
-          type="button"
-          onClick={closeWithTransition}
-          className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
-          style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-        >
-          ← {t('common.back')}
-        </button>
       </div>
 
       {/* Bottom left, where an atrium keeps its controls.
@@ -1085,15 +1098,6 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           <p className="text-[11px] text-nier-bg/60 tracking-[0.15em] uppercase mt-1.5">
             {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
           </p>
-          {/* Said once, at the foot of the page, rather than marked on every
-              figure. What was given was given in euros; these are today's
-              equivalents, and somebody comparing them against a bank statement
-              should know why they will not match to the cent. */}
-          {converted && (
-            <p className="text-[10px] text-nier-bg/45 tracking-[0.12em] mt-1">
-              {t('currency.rateNote')}
-            </p>
-          )}
         </div>
       )}
 

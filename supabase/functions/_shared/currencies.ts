@@ -17,9 +17,9 @@
 // and are not in it -- a currency the checkout page refuses is worse than one
 // that was never offered.
 export type CurrencyCode =
-  | 'EUR' | 'CHF' | 'GBP' | 'JPY' | 'USD'
-  | 'AUD' | 'BRL' | 'CAD' | 'CZK' | 'DKK' | 'HKD' | 'HUF'
-  | 'NOK' | 'NZD' | 'PLN' | 'RON' | 'SEK' | 'SGD' | 'ZAR'
+  | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CNY' | 'CHF' | 'CAD'
+  | 'AUD' | 'HKD' | 'SGD' | 'SEK' | 'NOK' | 'DKK' | 'NZD'
+  | 'PLN' | 'BRL' | 'ZAR' | 'CZK' | 'HUF' | 'RON'
 
 export interface Currency {
   code: CurrencyCode
@@ -61,37 +61,46 @@ export interface Currency {
   max: number
 }
 
+// In rough order of how widely each is used, because that IS the order the
+// picker lists them in -- there is no second array to fall out of step with
+// this one. The reader's own currency is lifted to the top of the list at the
+// point of display, which is a question about one reader rather than about the
+// table.
+//
 // Presets are round numbers in each currency at roughly the euro amounts they
 // replace, not conversions of them: "50 kr" is a donation and "41.87 kr" is an
 // exchange rate somebody is being asked to read. The maxima are typo guards at
 // roughly 5000 euros, so they need no precision and will not need revisiting as
 // rates move.
 export const CURRENCIES: Currency[] = [
-  { code: 'EUR', symbol: '€',   presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
   { code: 'USD', symbol: '$',   presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
+  { code: 'EUR', symbol: '€',   presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
   { code: 'GBP', symbol: '£',   presets: [300, 500, 1000, 2000],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
-  { code: 'CHF', symbol: 'CHF', presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
-  { code: 'AUD', symbol: 'A$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 900000 },
-  { code: 'BRL', symbol: 'R$',  presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2500000 },
-  { code: 'CAD', symbol: 'C$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 800000 },
-  { code: 'NZD', symbol: 'NZ$', presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 1000000 },
-  { code: 'SGD', symbol: 'S$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 150,   max: 800000 },
-  { code: 'HKD', symbol: 'HK$', presets: [2500, 5000, 10000, 20000],    presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 4500000 },
-  { code: 'DKK', symbol: 'kr',  presets: [2500, 5000, 10000, 20000],    presetsMonthly: [1000, 2500, 5000, 10000],  min: 800,   max: 3700000 },
-  { code: 'NOK', symbol: 'kr',  presets: [5000, 10000, 20000, 50000],   presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 5800000 },
-  { code: 'SEK', symbol: 'kr',  presets: [5000, 10000, 20000, 50000],   presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 5500000 },
-  { code: 'CZK', symbol: 'Kč',  presets: [10000, 20000, 50000, 100000], presetsMonthly: [2500, 5000, 10000, 25000], min: 2500,  max: 12000000 },
-  { code: 'PLN', symbol: 'zł',  presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2100000 },
-  { code: 'RON', symbol: 'lei', presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2500000 },
-  { code: 'ZAR', symbol: 'R',   presets: [5000, 10000, 20000, 50000],   presetsMonthly: [2000, 5000, 10000, 20000], min: 2000,  max: 10000000 },
 
   // Zero-decimal: these are yen, not sen. 500 here is ¥500, and sending it to
   // Stripe as if it had cents would charge ¥50,000.
   { code: 'JPY', symbol: '¥',   presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 100,   max: 900000, zeroDecimal: true },
 
+  { code: 'CNY', symbol: '¥',   presets: [2000, 5000, 10000, 20000],    presetsMonthly: [1000, 2000, 5000, 10000],  min: 800,   max: 3500000 },
+  { code: 'CHF', symbol: 'CHF', presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
+  { code: 'CAD', symbol: 'C$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 800000 },
+  { code: 'AUD', symbol: 'A$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 900000 },
+  { code: 'HKD', symbol: 'HK$', presets: [2500, 5000, 10000, 20000],    presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 4500000 },
+  { code: 'SGD', symbol: 'S$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 150,   max: 800000 },
+  { code: 'SEK', symbol: 'kr',  presets: [5000, 10000, 20000, 50000],   presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 5500000 },
+  { code: 'NOK', symbol: 'kr',  presets: [5000, 10000, 20000, 50000],   presetsMonthly: [1000, 2500, 5000, 10000],  min: 1000,  max: 5800000 },
+  { code: 'DKK', symbol: 'kr',  presets: [2500, 5000, 10000, 20000],    presetsMonthly: [1000, 2500, 5000, 10000],  min: 800,   max: 3700000 },
+  { code: 'NZD', symbol: 'NZ$', presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 1000000 },
+  { code: 'PLN', symbol: 'zł',  presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2100000 },
+  { code: 'BRL', symbol: 'R$',  presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2500000 },
+  { code: 'ZAR', symbol: 'R',   presets: [5000, 10000, 20000, 50000],   presetsMonthly: [2000, 5000, 10000, 20000], min: 2000,  max: 10000000 },
+  { code: 'CZK', symbol: 'Kč',  presets: [10000, 20000, 50000, 100000], presetsMonthly: [2500, 5000, 10000, 25000], min: 2500,  max: 12000000 },
+
   // Not zero-decimal, but Stripe requires HUF amounts to be divisible by 100 --
   // whole forint written in fillér. Every figure on this line is.
   { code: 'HUF', symbol: 'Ft',  presets: [100000, 200000, 500000, 1000000], presetsMonthly: [50000, 100000, 200000, 500000], min: 40000, max: 200000000, step: 100 },
+
+  { code: 'RON', symbol: 'lei', presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2500000 },
 ]
 
 export const BASE_CURRENCY: CurrencyCode = 'EUR'
@@ -158,6 +167,7 @@ const REGION_CURRENCY: Record<string, CurrencyCode> = {
   HU: 'HUF',
   ZA: 'ZAR',
   BR: 'BRL',
+  CN: 'CNY',
 }
 
 /**

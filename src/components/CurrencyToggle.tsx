@@ -169,6 +169,7 @@ export default function CurrencyToggle({ className = '', variant = 'panel' }: {
       {open && (
         <div
           role="listbox"
+          onWheel={event => event.stopPropagation()}
           className="panel-in absolute right-0 top-[calc(100%+6px)] z-[10000200] min-w-[12rem] border border-nier-border/40 py-1 max-h-[60vh] overflow-y-auto"
           style={{ backgroundColor: 'rgb(var(--c-surface))' }}
         >

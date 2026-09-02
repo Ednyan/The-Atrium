@@ -4,6 +4,7 @@ import { useTranslation } from '../lib/i18n'
 interface SupportAppealProps {
   onDonate: () => void
   onClose: () => void
+  onFeedback: () => void
 }
 
 // The one time the app asks for money.
@@ -17,13 +18,22 @@ interface SupportAppealProps {
 // Three answers rather than two. "Not now" and "remind me later" are different
 // things, and collapsing them forces anyone willing to be asked again into
 // declining outright.
-export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps) {
+export default function SupportAppeal({ onDonate, onClose, onFeedback }: SupportAppealProps) {
   const { t } = useTranslation()
 
   const answer = (response: AppealResponse) => {
     recordAppealResponse(response)
     if (response === 'donated') onDonate()
     else onClose()
+  }
+
+  // Writing in is not declining, so it records the same fortnight of silence as
+  // "remind me later" rather than the months a donation buys or the longer
+  // quiet of "not now". Somebody who took the trouble to say something should
+  // be asked again, just not tomorrow.
+  const sendFeedback = () => {
+    recordAppealResponse('remind_later')
+    onFeedback()
   }
 
   return (
@@ -75,6 +85,19 @@ export default function SupportAppeal({ onDonate, onClose }: SupportAppealProps)
             {t('appeal.notNow')}
           </button>
         </div>
+
+        {/* The fourth, and deliberately the quietest. The panel is built around
+            three answers to one question -- give, later, no -- and this is not
+            a fourth answer to it, it is the invitation in the last paragraph
+            made clickable. Borderless, so the row of three above still reads as
+            the choice being offered. */}
+        <button
+          type="button"
+          onClick={sendFeedback}
+          className="w-full mt-3 text-[11px] tracking-[0.15em] uppercase text-nier-bg/55 hover:text-nier-strong transition-colors"
+        >
+          {t('appeal.feedbackButton')} →
+        </button>
       </div>
     </div>
   )

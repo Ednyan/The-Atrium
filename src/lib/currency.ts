@@ -69,6 +69,22 @@ function readStored(): CurrencyCode | null {
   }
 }
 
+/**
+ * What the browser's region implies, whatever has since been chosen.
+ *
+ * Distinct from currentCurrency, which is the choice. The picker lists this one
+ * first, and it has to stay put as somebody moves through the list -- ordering
+ * by the *selection* would reshuffle the list under the pointer on every click.
+ *
+ * Computed once. navigator does not change mid-visit, and a stable order is the
+ * entire point.
+ */
+let detected: CurrencyCode | null = null
+export function detectedCurrency(): CurrencyCode {
+  if (!detected) detected = browserCurrency()
+  return detected
+}
+
 /** The currency in force, for code that needs it once rather than continuously. */
 export function currentCurrency(): CurrencyCode {
   if (current) return current
@@ -276,9 +292,19 @@ export function useCurrency() {
   }, [])
 
   const code = currentCurrency()
+
+  // Most widely used first -- the order CURRENCIES is written in -- with the
+  // reader's own lifted to the top, because a list of twenty is a list somebody
+  // has to search unless the answer is already at the front.
+  const home = detectedCurrency()
+  const ordered = [
+    ...CURRENCIES.filter(entry => entry.code === home),
+    ...CURRENCIES.filter(entry => entry.code !== home),
+  ]
+
   return {
     currency: code,
-    currencies: CURRENCIES,
+    currencies: ordered,
     setCurrency,
     followingLocale: isFollowingLocale(),
     /** Minor units in `currency`, formatted. */
