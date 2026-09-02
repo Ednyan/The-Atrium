@@ -631,10 +631,36 @@ function AtriumRevealOverlay() {
 // closing the desktop app inside an atrium put you straight back in it on the
 // next launch, having never really left.
 //
-// The atrium id itself stays in localStorage. It is what Continue to Atrium
-// resumes, and losing the ability to go back on purpose is not the same as
-// not being sent back automatically.
+// The stored id does not outlive a cold start any more. It used to, so that
+// Enter could resume it deliberately -- but "closing the app leaves the
+// atrium" and "Enter puts you back in the atrium you did not leave" cannot
+// both be true, and the first is the one that was asked for. On a cold start
+// the id is cleared and Enter goes to the browser.
 const SESSION_IN_ATRIUM = 'lobby_sessionActive'
+
+// Read at import, before React renders, and never read again.
+//
+// This has to be a snapshot. The effect that writes the mark answers to
+// currentLobbyId, and currentLobbyId used to be seeded straight out of
+// localStorage -- so on a cold start the effect ran on mount, wrote the mark
+// from the persisted value, and every later read saw '1'. The mark was set by
+// the same state it existed to distinguish, so it always said "refresh" and
+// the feature never worked at all.
+//
+// Reading once, here, is what makes it mean anything: at this point nothing in
+// the app has run, so a '1' can only have come from a previous render of this
+// same window -- which is exactly what a refresh is and what a cold start is
+// not.
+const RESUMED_SESSION = (() => {
+  try {
+    return sessionStorage.getItem(SESSION_IN_ATRIUM) === '1'
+  } catch {
+    // No session storage, so nothing was resumed. Treated as a cold start,
+    // which is the safe direction: the cost is one extra click, not being put
+    // somewhere you did not ask to be.
+    return false
+  }
+})()
 
 // Storage keys for persisting navigation state
 const STORAGE_KEYS = {
@@ -903,6 +929,12 @@ function AppInner() {
   }, [])
   const [loading, setLoading] = useState(true)
   const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(() => {
+    // Only a session that was already in an atrium is still in one. On a cold
+    // start this is null, the effect below clears the stored id to match, and
+    // Enter falls through to the browser -- which is what closing the app
+    // leaving the atrium has to mean. Seeded unconditionally, it meant the
+    // opposite: Enter read a stale id and went straight back in.
+    if (!RESUMED_SESSION) return null
     return localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
   })
   
@@ -1422,15 +1454,10 @@ function AppInner() {
               // start is somebody arriving, not somebody returning, and
               // closing the app is how you leave: being put back where you
               // were is the opposite of having left.
-              let wasInAtriumThisSession = false
-              try {
-                wasInAtriumThisSession = sessionStorage.getItem(SESSION_IN_ATRIUM) === '1'
-              } catch {
-                // No session storage, so nothing was resumed. Treated as a
-                // cold start, which is the safe direction: the worst case is
-                // one extra click, not being trapped somewhere.
-              }
-              const storedLobbyId = wasInAtriumThisSession
+              // The snapshot, not a fresh read. This runs after auth resolves,
+              // by which time the persist effect has long since written the
+              // mark -- reading it here always found '1'.
+              const storedLobbyId = RESUMED_SESSION
                 ? localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
                 : null
               // Also check URL for lobby ID
