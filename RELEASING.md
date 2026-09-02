@@ -208,10 +208,57 @@ worth reading if this ever misbehaves):
 - `MULTIUSER_INSTALLMODE_COMMANDLINE` accepts `/AllUsers` and `/CurrentUser`,
   if a scope ever has to be forced from a script.
 
-So an update inherits whatever scope is already on the machine: a per-user
-install keeps updating silently, an all-users install prompts for admin because
-it must, and nobody gets a second copy in the other location. A fresh install
-shows a page and asks.
+So an update inherits whatever scope is already on the machine -- **but only
+from an install that a `both` build made.** That qualifier is the whole story
+and it was missing here at first, which produced exactly the failure this
+section claimed could not happen.
+
+The marker is written on line 636 of the generated script:
+
+```nsis
+!if "${INSTALLMODE}" == "both"
+  WriteRegStr SHCTX "${UNINSTKEY}" $MultiUser.InstallMode 1
+!endif
+```
+
+Inside the `both` guard, with `$MultiUser.InstallMode` as the *value name* --
+so it lands as `CurrentUser=1` or `AllUsers=1` under whichever hive was used.
+A `currentUser` build never reaches that line, because it does not include
+MultiUser.nsh at all.
+
+Every install made before the switch to `both` therefore has no marker.
+MultiUser finds nothing to read, falls back to its own default, and with
+`MULTIUSER_EXECUTIONLEVEL Highest` and an administrator running it that default
+is **AllUsers**. The result on the first machine to cross over:
+
+| | HKCU | HKLM |
+|---|---|---|
+| `InstallLocation` | `%LOCALAPPDATA%\The Digital Atrium` | `C:\Program Files\The Digital Atrium` |
+| `DisplayVersion` | 1.9.1 | 1.9.2 |
+| marker | *(empty)* | `AllUsers=1` |
+
+A second copy in Program Files, the old one orphaned in `%LOCALAPPDATA%` --
+still installed, still listed in Apps, and never updated again, because the
+updater only ever installs over the copy the installer decides on.
+
+It is a one-time crossing and it is self-correcting: HKLM now carries
+`AllUsers=1`, so every later update reads it and stays put. But it happens once
+per machine, to anyone whose install predates 1.9.2, and the only remedy after
+the fact is to uninstall the leftover by hand.
+
+`RestorePreviousInstallLocation` does not rescue this either. It reads
+`SHCTX "${MANUPRODUCTKEY}"` -- SHCTX, the hive belonging to the mode already
+chosen -- so once the mode defaults to AllUsers it looks in HKLM and never sees
+the per-user path sitting in HKCU. The mode decision comes first and everything
+else follows it.
+
+Protecting the machines still on 1.9.1 would mean overriding the default before
+the page is drawn, in `.onInit`, which is reachable only through
+`bundle.windows.nsis.template` -- a fork of the entire generated script,
+maintained against upstream. `installerHooks` cannot do it: `NSIS_HOOK_PREINSTALL`
+fires inside `Section Install`, long after the scope has been chosen. A hook
+could still uninstall an orphaned per-user copy, which addresses the duplicate
+without touching the location.
 
 `perMachine` was tried first, to make Program Files the default. It works, but
 it makes **every** update prompt for admin forever -- the updater launches the
