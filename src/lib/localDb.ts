@@ -1706,19 +1706,40 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
   return { data: null, error: { message: 'Unknown operation' } }
 }
 
+// A value on its way into a WHERE clause.
+//
+// Booleans are stored as integers here -- convertRowToSql turns them into 1 and
+// 0 on the way in, convertRowFromSql turns them back on the way out -- and this
+// path did neither. So a filter written the way the Supabase client expects,
+// .eq('is_public', true), compared a boolean against a column holding 1.
+//
+// What that cost: the atrium browser lists public atriums with exactly that
+// filter, and lists your own with .eq('owner_user_id', id). The second is a
+// string and needed no conversion, so it worked -- which meant everyone saw
+// their own atriums and nobody saw anybody else's, and the shared-vault feature
+// looked like it had never been built. The one query that was broken was the
+// one nothing else could stand in for.
+//
+// Null is left alone: `= ?` with a null bind never matches in SQL, which is
+// wrong, but it is wrong in the same way it was before and fixing comparison
+// against null is a different change (`IS NULL`) with its own callers to check.
+function toSqlFilterValue(value: any): any {
+  return typeof value === 'boolean' ? (value ? 1 : 0) : value
+}
+
 function buildWhereClauses(filters: QueryFilter[], params: any[]): string {
   if (filters.length === 0) return ''
   return filters.map(f => {
     switch (f.op) {
       case 'eq':
-        params.push(f.value)
+        params.push(toSqlFilterValue(f.value))
         return `${f.column} = ?`
       case 'neq':
-        params.push(f.value)
+        params.push(toSqlFilterValue(f.value))
         return `${f.column} != ?`
       case 'in':
         const placeholders = f.value.map(() => '?').join(', ')
-        params.push(...f.value)
+        params.push(...f.value.map(toSqlFilterValue))
         return `${f.column} IN (${placeholders})`
       case 'ilike':
         params.push(f.value.replace(/%/g, '%'))

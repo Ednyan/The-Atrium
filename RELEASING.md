@@ -189,6 +189,33 @@ The only real test is a version gap between an installed app and a release:
 3. Launch the installed copy. The prompt should appear bottom-right.
 4. Click **Update Now** — it downloads, installs, and relaunches itself.
 
+## The switch to a per-machine install
+
+`bundle.windows.nsis.installMode` is `perMachine`, so the installer defaults to
+`C:\Program Files\The Digital Atrium` and asks for admin. It used to be
+unset, which meant Tauri's default of `currentUser` and a silent install into
+`%LOCALAPPDATA%`.
+
+**This breaks the automatic update once, for anyone already on a per-user
+install**, and that includes every copy of v1.9.1 and earlier. The updater
+downloads the new installer and runs it silently; a per-machine install needs
+elevation, and a silent installer cannot ask for it. So the first update across
+this change is expected to fail, or to install a second copy into Program Files
+while the old one carries on running from `%LOCALAPPDATA%`.
+
+There is no way to avoid that from inside the app: the version that has to
+perform the update is the old one, and it is already unelevated by the time it
+learns anything.
+
+So for the first release after this change:
+
+1. Say in the release notes that it must be installed by hand.
+2. Uninstall the old copy first — otherwise two installs coexist, both of them
+   checking for updates, and the stale one keeps offering them.
+
+Every release after that updates normally, because both sides are per-machine
+by then and the installer is replacing something it already owns.
+
 ## Notes
 
 - A failed check is deliberately silent: offline, no releases yet, or GitHub
