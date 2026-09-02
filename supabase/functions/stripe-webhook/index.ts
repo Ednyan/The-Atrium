@@ -84,7 +84,25 @@ async function settledEurCents(paymentIntentId: string, key: string): Promise<nu
     if (!balanceTransactionId) return null
 
     const balanceTransaction = await stripeGet('balance_transactions/' + balanceTransactionId, key)
-    if (balanceTransaction?.currency !== 'eur') return null
+
+    // Not in euros, which means this account did not convert the payment: it
+    // holds a balance in the currency it was paid in. There is no euro figure
+    // to record, and inventing one from a rate looked up now is exactly what
+    // this function exists to avoid.
+    //
+    // The caller stores 0, and 0 is invisible -- it counts nothing toward the
+    // monthly goal and shows the contributor as having given nothing. So it is
+    // said loudly here, because the alternative is a contribution that quietly
+    // does not exist. If this appears, the fix is on the Stripe account: settle
+    // these currencies into the euro balance rather than holding them.
+    if (balanceTransaction?.currency !== 'eur') {
+      console.error(
+        '[stripe-webhook] payment settled in ' + balanceTransaction?.currency +
+        ', not eur -- recording 0 euros for balance transaction ' + balanceTransactionId +
+        '. This contribution will not count toward the monthly goal.',
+      )
+      return null
+    }
     // `amount`, not `net`: the processing fee is the cost of collecting the
     // money, not something the contributor didn't give.
     return Number(balanceTransaction.amount) || null

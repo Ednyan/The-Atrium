@@ -18,7 +18,7 @@
 // that was never offered.
 export type CurrencyCode =
   | 'EUR' | 'CHF' | 'GBP' | 'JPY' | 'USD'
-  | 'AUD' | 'CAD' | 'CZK' | 'DKK' | 'HKD' | 'HUF'
+  | 'AUD' | 'BRL' | 'CAD' | 'CZK' | 'DKK' | 'HKD' | 'HUF'
   | 'NOK' | 'NZD' | 'PLN' | 'RON' | 'SEK' | 'SGD' | 'ZAR'
 
 export interface Currency {
@@ -72,6 +72,7 @@ export const CURRENCIES: Currency[] = [
   { code: 'GBP', symbol: '£',   presets: [300, 500, 1000, 2000],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
   { code: 'CHF', symbol: 'CHF', presets: [300, 500, 1000, 2500],        presetsMonthly: [100, 300, 500, 1000],      min: 100,   max: 500000 },
   { code: 'AUD', symbol: 'A$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 900000 },
+  { code: 'BRL', symbol: 'R$',  presets: [1500, 2500, 5000, 10000],     presetsMonthly: [500, 1000, 2500, 5000],    min: 500,   max: 2500000 },
   { code: 'CAD', symbol: 'C$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 800000 },
   { code: 'NZD', symbol: 'NZ$', presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 200,   max: 1000000 },
   { code: 'SGD', symbol: 'S$',  presets: [500, 1000, 2000, 5000],       presetsMonthly: [200, 500, 1000, 2000],     min: 150,   max: 800000 },
@@ -156,6 +157,7 @@ const REGION_CURRENCY: Record<string, CurrencyCode> = {
   RO: 'RON',
   HU: 'HUF',
   ZA: 'ZAR',
+  BR: 'BRL',
 }
 
 /**
