@@ -622,6 +622,20 @@ function AtriumRevealOverlay() {
 // The id this file needs is the one the session already reports, which is the
 // same value and always current.
 
+// Whether this browsing session was already inside an atrium.
+//
+// sessionStorage, not local: it survives a refresh and dies with the window,
+// which is exactly the line that needed drawing. Refreshing while in an atrium
+// should leave you in it; opening the app afresh should not, and until now
+// both read the same localStorage key and could not be told apart -- so
+// closing the desktop app inside an atrium put you straight back in it on the
+// next launch, having never really left.
+//
+// The atrium id itself stays in localStorage. It is what Continue to Atrium
+// resumes, and losing the ability to go back on purpose is not the same as
+// not being sent back automatically.
+const SESSION_IN_ATRIUM = 'lobby_sessionActive'
+
 // Storage keys for persisting navigation state
 const STORAGE_KEYS = {
   HAS_ENTERED: 'lobby_hasEntered',
@@ -1401,8 +1415,24 @@ function AppInner() {
               // doesn't mistake it for a fresh login and redirect.
               wasSignedInRef.current = true
 
-              // Verify persisted lobby still exists and user has access
-              const storedLobbyId = localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
+              // Verify persisted lobby still exists and user has access.
+              //
+              // Only offered to the restore below when this session was
+              // already in an atrium -- a refresh, in other words. A cold
+              // start is somebody arriving, not somebody returning, and
+              // closing the app is how you leave: being put back where you
+              // were is the opposite of having left.
+              let wasInAtriumThisSession = false
+              try {
+                wasInAtriumThisSession = sessionStorage.getItem(SESSION_IN_ATRIUM) === '1'
+              } catch {
+                // No session storage, so nothing was resumed. Treated as a
+                // cold start, which is the safe direction: the worst case is
+                // one extra click, not being trapped somewhere.
+              }
+              const storedLobbyId = wasInAtriumThisSession
+                ? localStorage.getItem(STORAGE_KEYS.CURRENT_LOBBY)
+                : null
               // Also check URL for lobby ID
               const urlRoute = parseRoute()
 
@@ -1681,11 +1711,21 @@ function AppInner() {
   }, [currentLobbyId])
 
   // Persist current lobby to localStorage
+  //
+  // And mark the session, which is the part that decides whether a launch
+  // resumes. One effect for both, since they answer to the same value and
+  // splitting them is how they would come to disagree.
   useEffect(() => {
-    if (currentLobbyId) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, currentLobbyId)
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+    try {
+      if (currentLobbyId) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, currentLobbyId)
+        sessionStorage.setItem(SESSION_IN_ATRIUM, '1')
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+        sessionStorage.removeItem(SESSION_IN_ATRIUM)
+      }
+    } catch {
+      // Storage disabled. The app still works; it just will not resume.
     }
   }, [currentLobbyId])
 
