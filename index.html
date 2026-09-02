@@ -21,7 +21,12 @@
          The description is kept near 155 characters, because that is roughly
          where Google truncates it and a sentence cut mid-clause reads as
          carelessness in the one place everybody looks. -->
-    <title>The Digital Atrium — Your ideas in one place</title>
+    <!-- Also the browser tab, which is the same string and cannot be a
+         different one. A tab truncates from the end, so the name has to come
+         first and survive it: "Digital Atrium —…" reads, "The Digital Atri…"
+         does not. The definite article costs nothing in a search result and a
+         whole word of a narrow tab. -->
+    <title>Digital Atrium — Your ideas in one place</title>
     <meta name="description" content="An interactive space where ideas take shape, are seen, shared and built on. A fast, flexible tool for brainstorming, references, diagrams and much more." />
     <link rel="canonical" href="https://digitalatrium.org/" />
     <meta name="theme-color" content="#191919" />
