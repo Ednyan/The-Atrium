@@ -3607,9 +3607,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // a character deletes the entire trace instead.
       const target = e.target as HTMLElement | null
       const typingHere = isEditableTarget(target)
-      if (e.key === 'Delete' && !isDrawingModeRef.current && canEdit && !typingHere && (selectedTraceId || multiSelectedIds.size > 0)) {
-        e.preventDefault()
-        deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
+      // Backspace as well as Delete, because on a Mac keyboard the key marked
+      // "delete" IS Backspace -- most of them have no Delete key at all, so the
+      // shortcut simply did not exist there.
+      //
+      // Worse than not existing: WebKit still treats an unhandled Backspace
+      // outside a text field as "go back", and every route here is a hash, so
+      // it left the atrium -- going nowhere near the leave path, which is why
+      // nothing asked about saving first. Prevented whether or not there is
+      // anything selected to delete, because the navigation is wrong either
+      // way.
+      const isDeleteKey = e.key === 'Delete' || e.key === 'Backspace'
+      if (isDeleteKey && !typingHere) {
+        if (e.key === 'Backspace') e.preventDefault()
+        if (!isDrawingModeRef.current && canEdit && (selectedTraceId || multiSelectedIds.size > 0)) {
+          e.preventDefault()
+          deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
+        }
       }
     }
 
@@ -6496,17 +6510,43 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           if (!trace || (trace.type === 'shape' && trace.shapeType === 'path' && !isPathInMultiSelect)) return null
           
           const transform = localTraceTransforms[trace.id] || getTraceTransform(trace)
-          const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
           const { width, height } = getTraceSize(trace)
-          
+
           // Get dimensions with scale and crop applied (same as in main trace rendering)
           const cropWidth = trace.cropWidth ?? 1
           const cropHeight = trace.cropHeight ?? 1
-          
+
+          // A path is where its points are. The nine handles below -- four
+          // corners, four edges, and the rotation one above them -- are all
+          // placed from screenX/screenY and borderWidth/borderHeight, so
+          // measuring those from the points moves the whole set at once.
+          //
+          // Without this they were drawn at the stored x/y, at the stored size,
+          // which for a path is the box it was created in and never moves
+          // again: a full set of handles floating around nothing, some distance
+          // from the line they belong to. Same cause as the selection box in
+          // c802cc4 and the marquee hit test in 237e52a, and the fourth place
+          // to make it -- which is why the measurement is one shared function.
+          const pathBox = isPathTrace(trace)
+            ? pathWorldBounds(localShapePoints[trace.id] || trace.shapePoints, trace.shapeOutlineWidth ?? 2)
+            : null
+
+          const { screenX, screenY } = getScreenPosition(
+            pathBox ? (pathBox.minX + pathBox.maxX) / 2 : transform.x,
+            pathBox ? (pathBox.minY + pathBox.maxY) / 2 : transform.y,
+          )
+
           const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
           const shapeHeight = trace.type === 'shape' ? (trace.height || 200) : height
-          const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
-          const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
+          // A path's points already carry whatever scaling it has been given,
+          // so its extent is not multiplied by scaleX/scaleY the way a stored
+          // width is.
+          const borderWidth = pathBox
+            ? (pathBox.maxX - pathBox.minX) * zoom
+            : (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
+          const borderHeight = pathBox
+            ? (pathBox.maxY - pathBox.minY) * zoom
+            : (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
           
           return (
             <>
