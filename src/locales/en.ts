@@ -1202,7 +1202,7 @@ export const en = {
   'landing.aboutCreator': 'About the creator',
   'landing.donate': 'Donate',
   'landing.or': 'or',
-  'landing.enter': 'Enter The Atrium',
+  'landing.enter': 'Enter the Atrium',
   'landing.continue': 'Enter The Digital Atrium',
   'landing.connect': 'My work and contact',
   'landing.privacy': 'Privacy Policy',

@@ -1,11 +1,11 @@
 {
-  "name": "the-lobby",
+  "name": "the-digital-atrium",
   "private": true,
   "version": "1.9.4",
   "type": "module",
-  "description": "A 2D collaborative creative space inspired by Habbo Hotel and old MMO chat rooms",
-  "author": "The Lobby Contributors",
-  "license": "MIT",
+  "description": "A collaborative infinite canvas, as a web app and a desktop app",
+  "author": "Eduardo Paranhos",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "node scripts/copy-pdfjs-assets.mjs && vite",
     "dev:tauri": "node scripts/copy-pdfjs-assets.mjs && vite --port 1420 --strictPort",
