@@ -1187,6 +1187,7 @@ const ko: Catalogue = {
   'donate.minimum': '최소 금액은 {amount}입니다.',
   'currency.label': '통화',
   'currency.rateNote': '통화는 유럽중앙은행의 오늘 환율로 환산했습니다.',
+  'currency.rateNoteOther': '통화는 오늘 환율로 환산했습니다.',
   'appeal.title': '알림',
   'appeal.enjoying': '이곳에서의 시간을 즐기고 계신 것 같네요.',
   'appeal.reminder': '이 메시지는 후원이 The Digital Atrium의 지속적인 개발과 유지를 가능하게 한다는 것을 알려드리는 것입니다.',

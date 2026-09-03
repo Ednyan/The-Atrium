@@ -122,14 +122,37 @@ export function setCurrency(code: CurrencyCode) {
 // Rates are a display concern only. What was given is recorded in the currency
 // it was given in and in what it settled as -- see the contributions table --
 // and none of that changes when somebody moves this dropdown.
-const RATES_URL = `https://api.frankfurter.dev/v1/latest?base=${BASE_CURRENCY}&symbols=`
-  + CURRENCIES.map(c => c.code).filter(c => c !== BASE_CURRENCY).join(',')
+const SYMBOLS = CURRENCIES.map(c => c.code).filter(c => c !== BASE_CURRENCY)
 const RATES_KEY = 'lobby_fxRates'
+
+/**
+ * Where rates come from, in the order they are tried.
+ *
+ * Two, because one free service with no SLA is a single point of failure for
+ * every figure on the contributors wall. The first is the ECB's own published
+ * reference rates and is what the wall says it used; the second is a different
+ * provider with its own numbers, so when it answers instead, the wall stops
+ * crediting the ECB. A note naming a source that was not consulted would be a
+ * small lie told confidently, which is worse than a vaguer true one.
+ */
+const RATE_SOURCES: Array<{ source: RateSource; url: string }> = [
+  {
+    source: 'ecb',
+    url: `https://api.frankfurter.dev/v1/latest?base=${BASE_CURRENCY}&symbols=${SYMBOLS.join(',')}`,
+  },
+  {
+    source: 'other',
+    url: `https://open.er-api.com/v6/latest/${BASE_CURRENCY}`,
+  },
+]
+
+export type RateSource = 'ecb' | 'other'
 
 export type Rates = Record<string, number>
 
 let rates: Rates = { [BASE_CURRENCY]: 1 }
 let ratesDate: string | null = null
+let ratesSource: RateSource = 'ecb'
 let fetching: Promise<void> | null = null
 
 /** The ECB publishes once per working day, so a date is the whole cache policy. */
@@ -145,6 +168,7 @@ function readCachedRates() {
     if (parsed && typeof parsed.date === 'string' && parsed.rates && typeof parsed.rates === 'object') {
       rates = { ...parsed.rates, [BASE_CURRENCY]: 1 }
       ratesDate = parsed.date
+      ratesSource = parsed.source === 'other' ? 'other' : 'ecb'
     }
   } catch {
     // Unreadable or unparseable. Treated as no cache.
@@ -166,23 +190,38 @@ export async function ensureRates(): Promise<void> {
   if (fetching) return fetching
   fetching = (async () => {
     try {
-      const response = await fetch(RATES_URL)
-      if (!response.ok) return
-      const body = await response.json()
-      if (!body || typeof body.rates !== 'object') return
-      rates = { ...body.rates, [BASE_CURRENCY]: 1 }
-      // The response's own date, not today's: on a weekend or a holiday the
-      // ECB publishes nothing and Frankfurter answers with Friday's, and
-      // storing today against Friday's numbers would hide that.
-      ratesDate = typeof body.date === 'string' ? body.date : today()
-      try {
-        localStorage.setItem(RATES_KEY, JSON.stringify({ date: ratesDate, rates }))
-      } catch {
-        // Rates still hold for this visit.
+      for (const { source, url } of RATE_SOURCES) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) continue
+          const body = await response.json()
+          if (!body || typeof body.rates !== 'object') continue
+          // Every currency, or none of them: a partial set would convert some
+          // figures on a wall and leave others in euros beside them.
+          if (!SYMBOLS.every(code => typeof body.rates[code] === 'number')) continue
+
+          rates = { ...body.rates, [BASE_CURRENCY]: 1 }
+          ratesSource = source
+          // The response's own date where it gives one, not today's: on a
+          // weekend or a holiday the ECB publishes nothing and Frankfurter
+          // answers with Friday's, and storing today against Friday's numbers
+          // would hide that.
+          ratesDate = typeof body.date === 'string' ? body.date : today()
+          try {
+            localStorage.setItem(RATES_KEY, JSON.stringify({
+              date: ratesDate, rates, source: ratesSource,
+            }))
+          } catch {
+            // Rates still hold for this visit.
+          }
+          announce()
+          return
+        } catch {
+          // This one is offline, blocked, or broken. Try the next.
+        }
       }
-      announce()
-    } catch {
-      // Offline, blocked, or the service is down. Cached rates stand.
+      // Neither answered. Whatever was cached stands, and if nothing was, every
+      // figure stays in euros -- which is the honest failure.
     } finally {
       fetching = null
     }
@@ -316,6 +355,8 @@ export function useCurrency() {
     /** What figures are actually being shown in, which is the base if today's
      *  rates could not be fetched. */
     shownIn: displayCurrency(code),
+    /** Which provider the rates came from, so a caption can name it or not. */
+    rateSource: ratesSource,
     converted: code !== BASE_CURRENCY,
     haveRate: haveRateFor(code),
   }

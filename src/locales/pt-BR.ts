@@ -1201,6 +1201,7 @@ const ptBR: Catalogue = {
   'donate.minimum': 'O mínimo é {amount}.',
   'currency.label': 'Moeda',
   'currency.rateNote': 'Moeda convertida pela taxa de hoje do Banco Central Europeu.',
+  'currency.rateNoteOther': 'Moeda convertida pela taxa de câmbio de hoje.',
   'appeal.title': 'Um lembrete',
   'appeal.enjoying': 'Parece que você está aproveitando o seu tempo por aqui.',
   'appeal.reminder': 'Esta mensagem é apenas um lembrete de que as doações permitem o desenvolvimento e a manutenção contínuos do The Digital Atrium.',

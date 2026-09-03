@@ -1131,6 +1131,7 @@ export const en = {
   'donate.minimum': 'The minimum is {amount}.',
   'currency.label': 'Currency',
   'currency.rateNote': "Currency converted using today's European Central Bank rate.",
+  'currency.rateNoteOther': "Currency converted using today's exchange rate.",
   'appeal.title': 'A reminder',
   'appeal.enjoying': 'It seems you are enjoying your time here.',
   'appeal.reminder': 'This is just a reminder that donations are what keep The Digital Atrium developed and maintained.',

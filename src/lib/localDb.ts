@@ -1483,6 +1483,21 @@ interface QueryOptions {
 class QueryBuilder {
   private opts: QueryOptions
 
+  /**
+   * A PostgREST method that was called and that this shim does not implement.
+   *
+   * The point is that calling one is no longer fatal. Every method the real
+   * client has now exists here; the ones with no implementation record their
+   * name and make the query resolve to an error, so `if (error)` sees it.
+   *
+   * Before this, a missing method was simply undefined, calling it threw a
+   * TypeError, and the throw escaped every `if (error)` check and took down
+   * whatever function was building the query. `.contains()` did exactly that
+   * to the desktop atrium browser once, and `.upsert()` would have done it
+   * again.
+   */
+  private unsupported: string | null = null
+
   constructor(table: string, operation: 'select' | 'insert' | 'update' | 'delete', data?: any, selectColumns?: string) {
     this.opts = {
       table,
@@ -1548,6 +1563,22 @@ class QueryBuilder {
   }
 
   async then(resolve: (result: any) => void, reject?: (err: any) => void): Promise<void> {
+    if (this.unsupported) {
+      // An error, not a throw. The caller checks `error` like it does for
+      // every other failure, and the screen degrades instead of disappearing.
+      resolve({
+        data: null,
+        error: {
+          message: `The local database does not support .${this.unsupported}() `
+            + `(on "${this.opts.table}"). Gate this call on !isDesktop, or add it `
+            + 'to the query builder in src/lib/localDb.ts.',
+          code: 'LOCALDB_UNSUPPORTED',
+          details: this.unsupported,
+        },
+        count: 0,
+      })
+      return
+    }
     try {
       const result = await executeQuery(this.opts)
       resolve(result)
@@ -1555,6 +1586,34 @@ class QueryBuilder {
       if (reject) reject(e)
       else throw e
     }
+  }
+}
+
+// Everything PostgREST's builder offers that this shim has not implemented.
+//
+// Installed as stubs so that calling one is a handled error rather than a
+// TypeError on undefined. Adding a real implementation is a matter of deleting
+// the name from this list and writing the method -- the list is also what the
+// test in tests/localDbSurface.test.ts reads, so the two cannot disagree.
+//
+// Methods that ARE implemented are deliberately absent: eq, neq, in, ilike,
+// order, limit, single, maybeSingle, select.
+const UNIMPLEMENTED_QUERY_METHODS = [
+  'gt', 'gte', 'lt', 'lte',
+  'like', 'likeAllOf', 'likeAnyOf', 'ilikeAllOf', 'ilikeAnyOf',
+  'is', 'contains', 'containedBy',
+  'rangeGt', 'rangeGte', 'rangeLt', 'rangeLte', 'rangeAdjacent',
+  'overlaps', 'textSearch', 'match', 'not', 'or', 'filter',
+  'range', 'abortSignal', 'csv', 'geojson', 'explain', 'rollback',
+  'maxAffected', 'onConflict', 'returns', 'throwOnError', 'setHeader',
+]
+
+for (const name of UNIMPLEMENTED_QUERY_METHODS) {
+  ;(QueryBuilder.prototype as any)[name] = function (this: any) {
+    // The first one wins: it is the one whose absence changed the query, and
+    // naming a later call would send somebody looking in the wrong place.
+    if (!this.unsupported) this.unsupported = name
+    return this
   }
 }
 
@@ -2096,6 +2155,13 @@ export const localClient = {
       },
       delete(): QueryBuilder {
         return new QueryBuilder(table, 'delete')
+      },
+      // Not implemented, but present: see the note on QueryBuilder.unsupported.
+      // Reaching this returns an error rather than throwing on `undefined`.
+      upsert(data: any): QueryBuilder {
+        const builder = new QueryBuilder(table, 'insert', data)
+        ;(builder as any).unsupported = 'upsert'
+        return builder
       },
     }
   },

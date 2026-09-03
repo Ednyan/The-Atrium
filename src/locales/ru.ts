@@ -1203,6 +1203,7 @@ const ru: Catalogue = {
   'donate.minimum': 'Минимум — {amount}.',
   'currency.label': 'Валюта',
   'currency.rateNote': 'Валюта пересчитана по сегодняшнему курсу Европейского центрального банка.',
+  'currency.rateNoteOther': 'Валюта пересчитана по сегодняшнему курсу.',
   'appeal.title': 'Напоминание',
   'appeal.enjoying': 'Похоже, вам здесь нравится.',
   'appeal.reminder': 'Это просто напоминание: пожертвования позволяют продолжать разработку и поддержку The Digital Atrium.',

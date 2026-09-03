@@ -5,7 +5,27 @@
 # dashboard.
 #
 # The desktop app does not use this. It has its own policy, in
-# src-tauri/tauri.conf.json, and the two have to be kept roughly in step.
+# src-tauri/tauri.conf.json, and the two have to be kept in step by hand --
+# nothing checks them, and they had drifted badly before anybody compared them
+# directive by directive.
+#
+# They now match except where the platform forces a difference:
+#
+#   asset:, http://asset.localhost, ipc:, http://ipc.localhost
+#       How a Tauri webview reaches local files and the Rust side. Meaningless
+#       on the web and absent there.
+#
+#   script-src 'unsafe-inline' 'unsafe-eval'
+#       Still on desktop, not on the web. Worth removing -- the web proves Pixi
+#       does not need eval, because @pixi/unsafe-eval is why the web policy can
+#       leave it out -- but it cannot be removed without launching a desktop
+#       build to check, and getting it wrong is a blank window rather than a
+#       degraded one.
+#
+#   img-src/media-src/frame-src http:
+#       Plain http is allowed on desktop and not here, where
+#       upgrade-insecure-requests rewrites it instead. A hotlinked http image
+#       loads in the desktop app and silently does not on the web.
 
 /*
   # Unambiguously safe, so enforced from the start.

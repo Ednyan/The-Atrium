@@ -290,7 +290,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // settled as, recorded from Stripe rather than converted after the fact --
   // and converted here for display only. Moving the picker changes what is
   // shown and nothing about what was given.
-  const { formatBase, converted } = useCurrency()
+  const { formatBase, converted, rateSource } = useCurrency()
   // The wall follows the same light or dark choice the website does. It is a
   // page people are sent to from a browser, not a surface inside the app.
   const theme = useLandingTheme()
@@ -1012,7 +1012,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
         {converted && (
           <p className="self-stretch text-center text-[10px] tracking-[0.12em] text-nier-bg/45 pointer-events-none">
-            {t('currency.rateNote')}
+            {t(rateSource === 'ecb' ? 'currency.rateNote' : 'currency.rateNoteOther')}
           </p>
         )}
       </div>
