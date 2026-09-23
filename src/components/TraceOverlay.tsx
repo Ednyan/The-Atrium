@@ -5063,7 +5063,26 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     // Determine fill and stroke based on options (independent)
                     const fill = noFill ? 'none' : shapeColor
                     const stroke = hasOutline ? outlineColor : 'none'
-                    const strokeWidth = hasOutline ? outlineWidth : 0
+                    // World units, like a path's thickness and a frame's border
+                    // (both multiplied by zoom). non-scaling-stroke below makes
+                    // strokeWidth mean SCREEN pixels, so it has to carry the zoom
+                    // itself -- without it the outline stayed one fixed pixel
+                    // width at every zoom, the same bug paths had.
+                    const strokeWidth = hasOutline ? Math.max(outlineWidth * zoom, 0.5) : 0
+                    // How far to pull the shape in so the whole stroke stays in
+                    // the box, in viewBox units -- per axis, because the viewBox
+                    // is 0-100 stretched to borderWidth x borderHeight pixels.
+                    //
+                    // This used to be strokeWidth / 2 in viewBox units, which is
+                    // a percentage of the box while the stroke is in pixels: the
+                    // two only agree on a box exactly 100px across. Smaller (a
+                    // small shape, or any shape zoomed out) and the stroke
+                    // overhung the box and was cut off by the container's
+                    // overflow: hidden; larger, and the fill shrank away from
+                    // the box edge. Capped at the centre so a stroke wider than
+                    // the shape collapses it rather than turning it inside out.
+                    const insetX = hasOutline ? Math.min((strokeWidth / 2 / borderWidth) * 100, 50) : 0
+                    const insetY = hasOutline ? Math.min((strokeWidth / 2 / borderHeight) * 100, 50) : 0
                     
                     // Convert corner radius to viewBox percentage separately for x and y to keep circles circular.
                     // Also has to divide out scaleX/scaleY (the resize-handle stretch applied as a CSS transform
@@ -5088,10 +5107,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           style={{ clipPath: clipPathStyle }}
                         >
                           <rect
-                            x={hasOutline ? strokeWidth / 2 : 0}
-                            y={hasOutline ? strokeWidth / 2 : 0}
-                            width={hasOutline ? 100 - strokeWidth : 100}
-                            height={hasOutline ? 100 - strokeWidth : 100}
+                            x={insetX}
+                            y={insetY}
+                            width={100 - insetX * 2}
+                            height={100 - insetY * 2}
                             rx={radiusPercentX}
                             ry={radiusPercentY}
                             fill={fill}
@@ -5114,8 +5133,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           <ellipse
                             cx="50"
                             cy="50"
-                            rx={hasOutline ? 50 - strokeWidth / 2 : 50}
-                            ry={hasOutline ? 50 - strokeWidth / 2 : 50}
+                            rx={50 - insetX}
+                            ry={50 - insetY}
                             fill={fill}
                             stroke={stroke}
                             strokeWidth={strokeWidth}
@@ -5126,7 +5145,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         </svg>
                       )
                     } else if (shapeType === 'triangle') {
-                      const inset = hasOutline ? strokeWidth / 2 : 0
                       // Triangle edges aren't axis-aligned, so there's no
                       // clean separate X/Y radius the way a rectangle has --
                       // averaging the two keeps it consistent with the
@@ -5143,9 +5161,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           <path
                             d={roundedPolygonPath(
                               [
-                                { x: 50, y: 15 + inset },
-                                { x: 85 - inset, y: 85 - inset },
-                                { x: 15 + inset, y: 85 - inset },
+                                { x: 50, y: 15 + insetY },
+                                { x: 85 - insetX, y: 85 - insetY },
+                                { x: 15 + insetX, y: 85 - insetY },
                               ],
                               triangleRadiusPercent
                             )}
