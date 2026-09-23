@@ -2,6 +2,7 @@ import PinterestMark from './PinterestMark'
 import type { TranslationKey } from '../locales/en'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import ShapeStyleControls from './ShapeStyleControls'
+import TraceNameField from './TraceNameField'
 import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -614,6 +615,23 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.trace.title')}</h2>
       </div>
 
+      {/* The name first, exactly as the customize panel shows it. It is the one
+          field -- content -- that this panel used to ask for in four places:
+          a text's message, a file's caption, an embed's description and a
+          shape's label, each somewhere different. Hidden when the panel is
+          about to make many traces at once, where one name would not apply. */}
+      {!(traceType === 'embed' && batchMode) && pickedFiles.length <= 1 && !(traceType === 'document' && pdfMode === 'pages') && (
+        <TraceNameField
+          label={t('atrium.customize.layerName')}
+          value={content}
+          placeholder={t('atrium.layers.untitled')}
+          maxLength={traceType === 'shape' ? 50 : 256}
+          readOnly={traceType === 'text'}
+          onChange={setContent}
+          onCommit={setContent}
+        />
+      )}
+
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
           {/* Trace Type Selector */}
           <div>
@@ -844,14 +862,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 placeholder={`https://example.com/${traceType}.${traceType === 'audio' ? 'mp3' : traceType === 'video' ? 'mp4' : 'jpg'}`}
                 className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
               />
-              <input
-                type="text"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder={t('atrium.trace.captionPlaceholder')}
-                maxLength={100}
-                className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-              />
             </div>
           )}
 
@@ -939,14 +949,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   <p className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase mt-1.5">
                     {t('atrium.trace.embedHint')}
                   </p>
-                  <input
-                    type="text"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder={t('atrium.trace.descriptionPlaceholder')}
-                    maxLength={100}
-                    className="w-full px-4 py-2 mt-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                  />
                 </>
               )}
             </div>
@@ -955,61 +957,18 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {/* Shape Controls */}
           {traceType === 'shape' && (
             <div className="space-y-4">
-              <ShapeStyleControls value={shapeStyle} onChange={changeShapeStyle} />
+              <ShapeStyleControls
+                value={shapeStyle}
+                onChange={changeShapeStyle}
+                size={{ width: shapeWidth, height: shapeHeight }}
+                onSizeChange={applyShapeSize}
+              />
 
-              {/* Size Controls -- meaningless for a path, which is sized by
-                  the points you place, not a fixed box */}
-              {shapeType !== 'path' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.width')}</label>
-                  {/* No maximum.
-                      1000px capped the spinner and marked anything larger as
-                      invalid, which made a shape meant to sit behind a whole
-                      cluster of traces impossible to type in -- while dragging
-                      one out on the canvas had never been limited at all, and
-                      neither is resizing it afterwards. The floor is 1 rather
-                      than 20 for the same reason: it is there so a stray
-                      keystroke cannot produce a shape with no area, not to
-                      have an opinion about how small is useful. */}
-                  <input
-                    type="number"
-                    min="1"
-                    value={shapeWidth}
-                    onChange={(e) => applyShapeSize(parseInt(e.target.value) || 200, shapeHeight)}
-                    className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.height')}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={shapeHeight}
-                    onChange={(e) => applyShapeSize(shapeWidth, parseInt(e.target.value) || 200)}
-                    className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm focus:border-nier-border/60 transition-colors"
-                  />
-                </div>
-              </div>
-              )}
               {shapeType === 'path' && (
                 <p className="text-nier-bg/70 text-[9px] tracking-wider uppercase">
                   {t('atrium.trace.pathHint')}
                 </p>
               )}
-
-              {/* Optional Label */}
-              <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.layerName')}</label>
-                <input
-                  type="text"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder={t('atrium.trace.shapeLabelPlaceholder')}
-                  maxLength={50}
-                  className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                />
-              </div>
             </div>
           )}
 

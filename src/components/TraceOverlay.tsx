@@ -35,7 +35,7 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls from './ShapeStyleControls'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { shapeStyleOf } from '../lib/shapeStyle'
+import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeStyle'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -5036,13 +5036,20 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     height: `${borderHeight}px`,
                     pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
                     overflow: 'hidden',
-                    outline: isSelected
+                    // While its customize panel is open the shape wears the
+                    // placement frame instead (drawn in the SVG below), so a
+                    // selection outline on top of it would be two frames.
+                    outline: editingTrace?.id === trace.id && trace.shapeType !== 'path'
+                      ? 'none'
+                      : isSelected
                       ? '2px solid rgba(203, 203, 203, 0.9)'
                       : isMultiSelected
                       ? '2px solid rgba(134, 239, 172, 0.95)'
                       : 'none',
                     outlineOffset: '2px',
-                    boxShadow: isSelected
+                    boxShadow: editingTrace?.id === trace.id && trace.shapeType !== 'path'
+                      ? 'none'
+                      : isSelected
                       ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
                       : isMultiSelected
                       ? '0 0 0 2px rgba(134, 239, 172, 0.9), 0 0 22px rgba(134, 239, 172, 0.65), 0 0 34px rgba(134, 239, 172, 0.35)'
@@ -5086,6 +5093,27 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     // the shape collapses it rather than turning it inside out.
                     const insetX = hasOutline ? Math.min((strokeWidth / 2 / borderWidth) * 100, 50) : 0
                     const insetY = hasOutline ? Math.min((strokeWidth / 2 / borderHeight) * 100, 50) : 0
+
+                    // While its customize panel is open, the shape looks exactly
+                    // as it did while it was being placed: drawn at the preview's
+                    // opacity, with the same breathing frame, in the same colour
+                    // (PREVIEW_OPACITY and previewFrameColour are shared with the
+                    // placement preview in LobbyScene). Editing and creating are
+                    // the same act, and now read as one.
+                    const editing = editingTrace?.id === trace.id
+                    const k = editing ? PREVIEW_OPACITY : 1
+                    // 1.5 world units, like the preview frame, kept inside the box.
+                    const frameWidth = Math.max(1.5 * zoom, 1)
+                    const frameX = Math.min((frameWidth / 2 / borderWidth) * 100, 50)
+                    const frameY = Math.min((frameWidth / 2 / borderHeight) * 100, 50)
+                    const frameColour = '#' + previewFrameColour(atriumBackground).toString(16).padStart(6, '0')
+                    const frameProps = {
+                      className: 'shape-editing-frame',
+                      fill: 'none',
+                      stroke: frameColour,
+                      strokeWidth: frameWidth,
+                      vectorEffect: 'non-scaling-stroke' as const,
+                    }
                     
                     // Convert corner radius to viewBox percentage separately for x and y to keep circles circular.
                     // Also has to divide out scaleX/scaleY (the resize-handle stretch applied as a CSS transform
@@ -5120,9 +5148,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             stroke={stroke}
                             strokeWidth={strokeWidth}
                             vectorEffect="non-scaling-stroke"
-                            fillOpacity={shapeOpacity}
-                            strokeOpacity={outlineOpacity}
+                            fillOpacity={shapeOpacity * k}
+                            strokeOpacity={outlineOpacity * k}
                           />
+                          {editing && (
+                            <rect
+                              {...frameProps}
+                              x={frameX} y={frameY}
+                              width={100 - frameX * 2} height={100 - frameY * 2}
+                              rx={radiusPercentX} ry={radiusPercentY}
+                            />
+                          )}
                         </svg>
                       )
                     } else if (shapeType === 'circle') {
@@ -5142,9 +5178,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             stroke={stroke}
                             strokeWidth={strokeWidth}
                             vectorEffect="non-scaling-stroke"
-                            fillOpacity={shapeOpacity}
-                            strokeOpacity={outlineOpacity}
+                            fillOpacity={shapeOpacity * k}
+                            strokeOpacity={outlineOpacity * k}
                           />
+                          {editing && (
+                            <ellipse {...frameProps} cx="50" cy="50" rx={50 - frameX} ry={50 - frameY} />
+                          )}
                         </svg>
                       )
                     } else if (shapeType === 'triangle') {
@@ -5175,9 +5214,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                             strokeWidth={strokeWidth}
                             strokeLinejoin="round"
                             vectorEffect="non-scaling-stroke"
-                            fillOpacity={shapeOpacity}
-                            strokeOpacity={outlineOpacity}
+                            fillOpacity={shapeOpacity * k}
+                            strokeOpacity={outlineOpacity * k}
                           />
+                          {editing && (
+                            <path
+                              {...frameProps}
+                              strokeLinejoin="round"
+                              d={roundedPolygonPath(
+                                [
+                                  { x: 50, y: 15 + frameY },
+                                  { x: 85 - frameX, y: 85 - frameY },
+                                  { x: 15 + frameX, y: 85 - frameY },
+                                ],
+                                triangleRadiusPercent
+                              )}
+                            />
+                          )}
                         </svg>
                       )
                     } else if (shapeType === 'path') {
@@ -7435,6 +7488,81 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             />
             
             <div className="space-y-5">
+              {/* Shape controls first, directly under the name -- where the create
+                  panel has them, and the same component, so the two are one panel.
+                  The point editor is the one part only an existing trace can have,
+                  so it goes in through pathExtra. */}
+              {editingTrace.type === 'shape' && (
+                <ShapeStyleControls
+                  value={shapeStyleOf(editingTrace)}
+                  // The size as drawn. Resize handles change scale, not width,
+                  // so a typed size is divided back through the scale; the
+                  // column is an integer, so it is rounded on the way.
+                  size={(() => {
+                    const live = traces.find(tr => tr.id === editingTrace.id) ?? editingTrace
+                    const tf = localTraceTransforms[live.id] || getTraceTransform(live)
+                    return {
+                      width: (live.width || 200) * ((tf as any).scaleX || 1),
+                      height: (live.height || 200) * ((tf as any).scaleY || 1),
+                    }
+                  })()}
+                  onSizeChange={(w, h) => {
+                    const live = traces.find(tr => tr.id === editingTrace.id) ?? editingTrace
+                    const tf = localTraceTransforms[live.id] || getTraceTransform(live)
+                    const width = Math.max(1, Math.round(w / ((tf as any).scaleX || 1)))
+                    const height = Math.max(1, Math.round(h / ((tf as any).scaleY || 1)))
+                    setEditingTrace({ ...editingTrace, width, height })
+                    updateTraceCustomization(editingTrace.id, { width, height })
+                  }}
+                  onChange={(patch) => {
+                    setEditingTrace({ ...editingTrace, ...patch })
+                    updateTraceCustomization(editingTrace.id, patch)
+                  }}
+                  pathExtra={
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                      {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPathCreationMode(!pathCreationMode)
+                        }}
+                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
+                          pathCreationMode
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
+                            : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        {pathCreationMode ? t('atrium.controls.doneAdding') : t('atrium.controls.addPoints')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentPoints = editingTrace.shapePoints || []
+                          if (currentPoints.length > 2) {
+                            const newPoints = currentPoints.slice(0, -1)
+                            const updated = { ...editingTrace, shapePoints: newPoints }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
+                      >
+                        {t('atrium.customize.remove')}
+                      </button>
+                    </div>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      {pathCreationMode 
+                        ? t('atrium.controls.addPointsOn')
+                        : t('atrium.controls.addPointsOff')}
+                    </p>
+                  </div>
+                  }
+                />
+              )}
+
               <div className="flex items-baseline gap-3 pt-1">
                 <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.content')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
@@ -7748,60 +7876,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   </div>
 
                 </>
-              )}
-              {/* Shape Customization -- the same controls the create panel uses; see
-                  ShapeStyleControls. The point editor is the one part only an
-                  existing trace can have, so it goes in through pathExtra. */}
-              {editingTrace.type === 'shape' && (
-                <ShapeStyleControls
-                  value={shapeStyleOf(editingTrace)}
-                  onChange={(patch) => {
-                    setEditingTrace({ ...editingTrace, ...patch })
-                    updateTraceCustomization(editingTrace.id, patch)
-                  }}
-                  pathExtra={
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPathCreationMode(!pathCreationMode)
-                        }}
-                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
-                          pathCreationMode
-                            ? 'bg-nier-bg text-nier-black border-nier-bg'
-                            : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
-                        }`}
-                      >
-                        {pathCreationMode ? t('atrium.controls.doneAdding') : t('atrium.controls.addPoints')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentPoints = editingTrace.shapePoints || []
-                          if (currentPoints.length > 2) {
-                            const newPoints = currentPoints.slice(0, -1)
-                            const updated = { ...editingTrace, shapePoints: newPoints }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
-                          }
-                        }}
-                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
-                      >
-                        {t('atrium.customize.remove')}
-                      </button>
-                    </div>
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      {pathCreationMode 
-                        ? t('atrium.controls.addPointsOn')
-                        : t('atrium.controls.addPointsOff')}
-                    </p>
-                  </div>
-                  }
-                />
               )}
               {/* Border & Fill Color Controls (for text and embed traces) */}
               {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (

@@ -90,3 +90,24 @@ export function colourToNumber(colour: string | undefined): number {
   const value = parseInt(full, 16)
   return /^[0-9a-f]{6}$/i.test(full) && Number.isFinite(value) ? value : 0x3b82f6
 }
+
+/**
+ * How opaque a shape is drawn while it is still being made or edited -- the
+ * placement preview and a shape whose customize panel is open use the same, so
+ * the two states read as one.
+ */
+export const PREVIEW_OPACITY = 0.6
+
+/**
+ * The breathing frame's colour: near-black on a light atrium, white on a dark
+ * one, so it is always the far end of the range from what it is drawn on.
+ * Rec. 709 luminance -- green dominates perceived brightness, so a plain
+ * average would call a saturated green background dark.
+ */
+export function previewFrameColour(background: string | undefined): number {
+  const value = colourToNumber(background ?? '#0a0a0f')
+  const r = (value >> 16) & 255
+  const g = (value >> 8) & 255
+  const b = value & 255
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5 ? 0x1a1a1a : 0xffffff
+}

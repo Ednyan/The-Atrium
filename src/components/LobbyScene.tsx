@@ -30,7 +30,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
-import { colourToNumber, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
@@ -623,22 +623,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Lives here rather than beside the ref because the dependency array is
   // evaluated during render, so it can't reference currentLobby any earlier.
   useEffect(() => {
-    const hex = currentLobby?.themeSettings?.backgroundColor ?? '#0a0a0f'
-    const value = parseInt(hex.replace('#', ''), 16)
-    if (Number.isNaN(value)) return
-    const r = (value >> 16) & 255
-    const g = (value >> 8) & 255
-    const b = value & 255
-    // Rec. 709 relative luminance -- green dominates perceived brightness, so
-    // a plain average would call a saturated green background "dark".
-    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
     // One colour, not two. A second, brighter accent in the middle is what
     // made the marker read as an alert rather than a hint. Near-black rather
     // than pure black on a light background, so it reads as drawn on the
-    // canvas rather than as a hole punched in it.
-    indicatorColorRef.current = luminance > 0.5
-      ? { primary: 0x1a1a1a }
-      : { primary: 0xffffff }
+    // canvas rather than as a hole punched in it. Shared with the frame a
+    // shape wears while its customize panel is open -- see shapeStyle.
+    indicatorColorRef.current = { primary: previewFrameColour(currentLobby?.themeSettings?.backgroundColor) }
   }, [currentLobby?.themeSettings?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
@@ -2848,7 +2838,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           // thickness, corner radius -- but at reduced opacity, so it still
           // reads as something being made rather than something made. Every
           // value is the panel's, updating as it is changed.
-          const PREVIEW = 0.6
           if (draftSize.shapeOutlineOnly) {
             // alignment 0: drawn inside the edge, as the finished shape keeps
             // its outline inside its box. The width is in world units, and
@@ -2857,13 +2846,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             g.lineStyle({
               width: draftSize.shapeOutlineWidth,
               color: colourToNumber(draftSize.shapeOutlineColor || draftSize.shapeColor),
-              alpha: draftSize.shapeOutlineOpacity * PREVIEW,
+              alpha: draftSize.shapeOutlineOpacity * PREVIEW_OPACITY,
               alignment: 0,
             })
           } else {
             g.lineStyle(0)
           }
-          if (!draftSize.shapeNoFill) g.beginFill(colourToNumber(draftSize.shapeColor), draftSize.shapeOpacity * PREVIEW)
+          if (!draftSize.shapeNoFill) g.beginFill(colourToNumber(draftSize.shapeColor), draftSize.shapeOpacity * PREVIEW_OPACITY)
           drawGeometry()
           if (!draftSize.shapeNoFill) g.endFill()
 

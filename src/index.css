@@ -476,6 +476,19 @@ body.dragging * {
   position: relative;
 }
 
+/* The frame a shape wears while its customize panel is open -- the same one
+   the placement preview draws in LobbyScene, so editing a shape looks like
+   making it. The Pixi frame advances 0.02 rad a frame between opacities 0.35
+   and 0.55: one full breath per ~5.2s at 60fps, so 2.6s each way here. */
+.shape-editing-frame {
+  animation: shape-editing-breath 2.6s ease-in-out infinite alternate;
+}
+
+@keyframes shape-editing-breath {
+  from { opacity: 0.35; }
+  to { opacity: 0.55; }
+}
+
 .trace-nier-type-badge {
   position: absolute;
   left: 6px;

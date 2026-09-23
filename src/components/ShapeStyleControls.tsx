@@ -138,9 +138,42 @@ function Slider({ label, hint, min, max, step, value, onChange }: {
   )
 }
 
-export default function ShapeStyleControls({ value, onChange, pathExtra }: {
+/**
+ * A size in pixels, applied when finished rather than per keystroke -- so
+ * clearing the field to type "350" does not resize the shape to 3 and then 35
+ * on the way. No maximum: a shape meant to sit behind a whole cluster of traces
+ * has to be allowed to be that big, and dragging one out never had a limit.
+ */
+function SizeInput({ label, value, onCommit }: { label: string; value: number; onCommit: (size: number) => void }) {
+  const [draft, setDraft] = useState(String(Math.round(value)))
+  useEffect(() => { setDraft(String(Math.round(value))) }, [value])
+  const commit = () => {
+    const size = Math.round(Number(draft))
+    if (Number.isFinite(size) && size >= 1) onCommit(size)
+    else setDraft(String(Math.round(value)))
+  }
+  return (
+    <div>
+      <label className={LABEL}>{label}</label>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={draft}
+        onChange={e => setDraft(e.target.value.replace(/[^\d]/g, ''))}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit() }}
+        className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+      />
+    </div>
+  )
+}
+
+export default function ShapeStyleControls({ value, onChange, size, onSizeChange, pathExtra }: {
   value: ShapeStyle
   onChange: (patch: Partial<ShapeStyle>) => void
+  /** The shape's box as drawn. Given by both panels, so both show it in the same place. */
+  size?: { width: number; height: number }
+  onSizeChange?: (width: number, height: number) => void
   /** Rendered among the path options: the point editor, which needs a trace that exists. */
   pathExtra?: ReactNode
 }) {
@@ -179,6 +212,14 @@ export default function ShapeStyleControls({ value, onChange, pathExtra }: {
           ))}
         </div>
       </div>
+
+      {/* A path is sized by the points it passes through, not by a box. */}
+      {size && onSizeChange && !isPath && (
+        <div className="grid grid-cols-2 gap-4">
+          <SizeInput label={t('atrium.trace.width')} value={size.width} onCommit={w => onSizeChange(w, size.height)} />
+          <SizeInput label={t('atrium.trace.height')} value={size.height} onCommit={h => onSizeChange(size.width, h)} />
+        </div>
+      )}
 
       {/* Circles have no corners; paths are shaped by their points. */}
       {(value.shapeType === 'rectangle' || value.shapeType === 'triangle') && (
