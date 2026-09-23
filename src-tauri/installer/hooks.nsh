@@ -20,6 +20,70 @@
 ; Declining the prompt is not an error. The new copy installs regardless, the
 ; old one stays until removed from Apps, and the next update asks again.
 
+; ---------------------------------------------------------------------------
+; The folder page: keep people out of folders they cannot write to.
+; ---------------------------------------------------------------------------
+;
+; The installer runs without admin rights, so a folder under Program Files or
+; Windows fails halfway through with "Error opening file for writing". Asking
+; for elevation at that point is no answer: the folder is remembered and every
+; update reinstalls into it, so every update would need an administrator again
+; -- the exact problem per-user installs exist to avoid -- and on a standard
+; account the elevated copy would run as whoever typed the admin password.
+;
+; So Next stays disabled on those folders, and the page text says why. Anywhere
+; else works without admin: the user's own folder, elsewhere on C:\ such as
+; C:\Apps, or another drive.
+;
+; Both pieces are set from here because this file is included (line 28 of the
+; generated script) before the folder page is declared: MUI reads
+; MUI_DIRECTORYPAGE_TEXT_TOP when that page is inserted, and .onVerifyInstDir is
+; a global callback NSIS runs whenever the folder on that page changes. Neither
+; is defined by Tauri's template -- checked -- so nothing is overridden. The
+; updater runs the installer passively, which skips this page altogether.
+
+!define MUI_DIRECTORYPAGE_TEXT_TOP "Setup will install The Digital Atrium in the following folder. To use a different one, click Browse.$\r$\n$\r$\nProgram Files and Windows need administrator rights, so Next stays disabled there. Any folder in your user folder, elsewhere on C:\ (such as C:\Apps) or on another drive works."
+
+Var AtriumBlockedDir
+
+; Sets AtriumBlockedDir to 1 when $INSTDIR is PREFIX itself or anything inside
+; it. The character after the prefix must be "\" or nothing, so that
+; "C:\Program Files2" is not mistaken for "C:\Program Files". Comparison is
+; case-insensitive, as Windows paths are.
+; ponytail: known system folders by prefix, not a real write test -- an 8.3
+; short path (C:\PROGRA~1) or another user's profile still gets through and
+; fails at copy time. Swap for a create-and-delete probe if that ever happens.
+!macro _AtriumUnder PREFIX
+  StrLen $R8 "${PREFIX}"
+  StrCpy $R7 $INSTDIR $R8
+  ${If} $R7 == "${PREFIX}"
+    StrCpy $R7 $INSTDIR 1 $R8
+    ${If} $R7 == ""
+    ${OrIf} $R7 == "\"
+      StrCpy $AtriumBlockedDir 1
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+Function .onVerifyInstDir
+  Push $R7
+  Push $R8
+  StrCpy $AtriumBlockedDir 0
+  !insertmacro _AtriumUnder "$PROGRAMFILES64"
+  !insertmacro _AtriumUnder "$PROGRAMFILES"
+  !insertmacro _AtriumUnder "$WINDIR"
+  Pop $R8
+  Pop $R7
+  ; Abort here disables Next rather than ending anything.
+  ${If} $AtriumBlockedDir == 1
+    Abort
+  ${EndIf}
+FunctionEnd
+
+; ---------------------------------------------------------------------------
+; Moving an all-users install
+; ---------------------------------------------------------------------------
+
 ; Strip one leading and one trailing double quote, in place. The uninstall
 ; values are stored WITH literal quotes -- checked in the registry -- and
 ; ExecShellWait wants the bare path.
