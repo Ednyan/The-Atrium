@@ -56,3 +56,7 @@ latest.json
 # pdfjs runtime assets, copied from node_modules at build time
 public/pdfjs/
 build-extension/
+
+# graphify knowledge graph: a readable map of the source, derived and local.
+# Kept out of a public repo whose code is all-rights-reserved.
+graphify-out/

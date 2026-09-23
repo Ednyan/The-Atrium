@@ -231,7 +231,7 @@ const fr: Catalogue = {
   'landing.support.body1': 'Votre soutien permet le développement et la maintenance continus de The Digital Atrium.',
   'landing.support.body2': 'En faisant un don, vous pourrez voir votre contribution sur la page des contributeurs.',
   'landing.support.thisMonth': 'Ce mois-ci',
-  'goal.noneYet': "Personne pour l'instant ce mois-ci",
+  'goal.noneYet': "Personne n'a encore fait de don ce mois-ci",
   'goal.countOne': '{count} contribution ce mois-ci',
   'goal.countFew': '{count} contributions ce mois-ci',
   'goal.countMany': '{count} contributions ce mois-ci',

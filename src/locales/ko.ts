@@ -1273,7 +1273,7 @@ const ko: Catalogue = {
   'landing.support.body1': '당신의 후원이 The Digital Atrium을 계속 만들고 돌보게 해 줘요.',
   'landing.support.body2': '후원하시면 그 마음이 후원자 페이지에 올라가요.',
   'landing.support.thisMonth': '이번 달',
-  'goal.noneYet': '이번 달은 아직 아무도 없어요',
+  'goal.noneYet': '이번 달에는 아직 후원한 사람이 없어요',
   'goal.countOne': '이번 달 {count}건의 후원',
   'goal.countFew': '이번 달 {count}건의 후원',
   'goal.countMany': '이번 달 {count}건의 후원',

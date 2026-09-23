@@ -1269,7 +1269,7 @@ const ja: Catalogue = {
   'landing.support.body1': 'あなたの支援が、The Digital Atrium の開発と維持を続けさせてくれます。',
   'landing.support.body2': '寄付していただくと、そのご支援が支援者ページに載ります。',
   'landing.support.thisMonth': '今月',
-  'goal.noneYet': '今月はまだ誰もいません',
+  'goal.noneYet': '今月はまだ誰も寄付していません',
   'goal.countOne': '今月 {count} 件のご支援',
   'goal.countFew': '今月 {count} 件のご支援',
   'goal.countMany': '今月 {count} 件のご支援',

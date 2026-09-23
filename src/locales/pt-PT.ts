@@ -236,7 +236,7 @@ const ptPT: Catalogue = {
   'landing.support.body1': 'O teu suporte permite o desenvolvimento e manutenção contínuo do Digital Atrium.',
   'landing.support.body2': 'Ao doar poderás ver a tua contribuição na página de colaboradores.',
   'landing.support.thisMonth': 'Este mês',
-  'goal.noneYet': 'Ainda ninguém este mês',
+  'goal.noneYet': 'Ainda ninguém doou este mês',
   'goal.countOne': '{count} contribuição este mês',
   'goal.countFew': '{count} contribuições este mês',
   'goal.countMany': '{count} contribuições este mês',

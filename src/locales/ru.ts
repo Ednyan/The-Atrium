@@ -235,7 +235,7 @@ const ru: Catalogue = {
   'landing.support.body1': 'Ваша поддержка обеспечивает непрерывную разработку и поддержку The Digital Atrium.',
   'landing.support.body2': 'Сделав пожертвование, вы сможете увидеть свой вклад на странице участников.',
   'landing.support.thisMonth': 'В этом месяце',
-  'goal.noneYet': 'В этом месяце пока никого',
+  'goal.noneYet': 'В этом месяце ещё никто не пожертвовал',
   'goal.countOne': '{count} вклад в этом месяце',
   'goal.countFew': '{count} вклада в этом месяце',
   'goal.countMany': '{count} вкладов в этом месяце',

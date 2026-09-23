@@ -1272,7 +1272,7 @@ const zh: Catalogue = {
   'landing.support.body1': '你的支持让 The Digital Atrium 得以持续开发和维护。',
   'landing.support.body2': '你捐赠之后，这笔支持会出现在支持者页面上。',
   'landing.support.thisMonth': '本月',
-  'goal.noneYet': '本月还没有人',
+  'goal.noneYet': '本月还没有人捐赠',
   'goal.countOne': '本月 {count} 笔支持',
   'goal.countFew': '本月 {count} 笔支持',
   'goal.countMany': '本月 {count} 笔支持',

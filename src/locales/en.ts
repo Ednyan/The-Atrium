@@ -1217,7 +1217,7 @@ export const en = {
   'landing.support.body1': 'Your support enables the continuous development and maintenance of The Digital Atrium.',
   'landing.support.body2': 'When you donate, your contribution shows up on the contributors page.',
   'landing.support.thisMonth': 'This month',
-  'goal.noneYet': 'Nobody yet this month',
+  'goal.noneYet': 'Nobody has donated yet this month',
   'goal.countOne': '{count} contribution this month',
   'goal.countFew': '{count} contributions this month',
   'goal.countMany': '{count} contributions this month',
