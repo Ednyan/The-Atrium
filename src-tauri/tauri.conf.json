@@ -32,7 +32,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "app", "dmg", "appimage", "deb", "rpm"],
     "createUpdaterArtifacts": true,
     "publisher": "Digital Atrium",
     "copyright": "Digital Atrium",
@@ -47,7 +47,7 @@
     ],
     "windows": {
       "nsis": {
-        "installMode": "both",
+        "installMode": "currentUser",
         "installerHooks": "installer/hooks.nsh",
         "installerIcon": "icons/icon.ico",
         "headerImage": "installer/installer-header.bmp",

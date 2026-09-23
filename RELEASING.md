@@ -191,104 +191,53 @@ The only real test is a version gap between an installed app and a release:
 
 ## Install scope
 
-`bundle.windows.nsis.installMode` is `both`. It was unset, which meant Tauri's
-default of `currentUser`: a silent install into `%LOCALAPPDATA%` with no way to
-choose Program Files.
+Windows installs **per user only**: `bundle.windows.nsis.installMode` is
+`currentUser`. The app goes into `%LOCALAPPDATA%\The Digital Atrium`, the
+installer asks for no admin rights and shows no "everyone or just me" page, and
+updates install silently.
 
-`both` lets the installer decide per machine rather than per build, and it does
-it by itself. From the generated script (`target/release/nsis/x64/installer.nsi`,
-worth reading if this ever misbehaves):
+That last point is the reason. An all-users install in Program Files can only
+be updated by an administrator: every update raises a UAC prompt, and a
+standard account cannot update it at all -- on a shared or family PC it stays
+on whatever version was first installed. Per-user is what VS Code, Discord,
+Slack and Spotify do, for the same reason. The cost is that each Windows
+account installs its own copy; sharing a vault between accounts is unaffected,
+since the vault's location has nothing to do with where the app is installed.
 
-- `MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_KEY` points at the uninstall key, so
-  the installer reads how this app was installed here last time and defaults to
-  the same scope.
-- `RestorePreviousInstallLocation` puts it back in the same directory.
-- `MULTIUSER_EXECUTIONLEVEL Highest` asks for administrator only when the
-  all-users scope is actually chosen.
-- `MULTIUSER_INSTALLMODE_COMMANDLINE` accepts `/AllUsers` and `/CurrentUser`,
-  if a scope ever has to be forced from a script.
+Only the NSIS `setup.exe` is built. `bundle.targets` is an explicit list without
+`msi`: the MSI installed as a separate product in Apps & Features, the updater's
+default `windows-x86_64` entry pointed at it, and it had no downloads. It is the
+format IT departments deploy with Intune or Group Policy -- add `"msi"` back to
+the list if one ever asks.
 
-So an update inherits whatever scope is already on the machine -- **but only
-from an install that a `both` build made.** That qualifier is the whole story
-and it was missing here at first, which produced exactly the failure this
-section claimed could not happen.
+### History, and the migration it needs
 
-The marker is written on line 636 of the generated script:
+- Up to 1.9.1: `currentUser`.
+- 1.9.2 to 1.9.5: `both`, which put administrators -- most home accounts -- in
+  Program Files, with the uninstall key in HKLM.
+- From the next release: `currentUser` again.
 
-```nsis
-!if "${INSTALLMODE}" == "both"
-  WriteRegStr SHCTX "${UNINSTKEY}" $MultiUser.InstallMode 1
-!endif
-```
+A per-user installer reads HKCU and cannot see a Program Files copy, so on its
+own it would install a second one beside it and leave the old one in Apps,
+never updating. `src-tauri/installer/hooks.nsh` handles this: before
+installing, it looks for an all-users uninstall key and, if there is one, runs
+that uninstaller elevated -- one UAC prompt, once, for the move. Declining it is
+not an error; the new copy installs regardless and the next update asks again.
 
-Inside the `both` guard, with `$MultiUser.InstallMode` as the *value name* --
-so it lands as `CurrentUser=1` or `AllUsers=1` under whichever hive was used.
-A `currentUser` build never reaches that line, because it does not include
-MultiUser.nsh at all.
+Things it depends on, each checked rather than assumed:
 
-Every install made before the switch to `both` therefore has no marker.
-MultiUser finds nothing to read, falls back to its own default, and with
-`MULTIUSER_EXECUTIONLEVEL Highest` and an administrator running it that default
-is **AllUsers**. The result on the first machine to cross over:
+- **The 64-bit registry view.** The all-users key was written in MultiUser
+  mode, which switches to it; a per-user installer never does, so a plain HKLM
+  read lands in WOW6432Node and finds nothing. The hook sets `SetRegView 64`
+  for that one read.
+- **Literal quotes** inside `UninstallString`, stripped before use.
+- **The vault is not touched.** The uninstaller deletes app data only under
+  `${If} $DeleteAppDataCheckboxState = 1`, assigned solely by a checkbox on a
+  page a silent uninstall never shows. If that changes upstream, the hook starts
+  deleting people's atriums.
 
-| | HKCU | HKLM |
-|---|---|---|
-| `InstallLocation` | `%LOCALAPPDATA%\The Digital Atrium` | `C:\Program Files\The Digital Atrium` |
-| `DisplayVersion` | 1.9.1 | 1.9.2 |
-| marker | *(empty)* | `AllUsers=1` |
-
-A second copy in Program Files, the old one orphaned in `%LOCALAPPDATA%` --
-still installed, still listed in Apps, and never updated again, because the
-updater only ever installs over the copy the installer decides on.
-
-It is a one-time crossing and it is self-correcting: HKLM now carries
-`AllUsers=1`, so every later update reads it and stays put. But it happens once
-per machine, to anyone whose install predates 1.9.2, and the only remedy after
-the fact is to uninstall the leftover by hand.
-
-`RestorePreviousInstallLocation` does not rescue this either. It reads
-`SHCTX "${MANUPRODUCTKEY}"` -- SHCTX, the hive belonging to the mode already
-chosen -- so once the mode defaults to AllUsers it looks in HKLM and never sees
-the per-user path sitting in HKCU. The mode decision comes first and everything
-else follows it.
-
-Protecting the machines still on 1.9.1 would mean overriding the default before
-the page is drawn, in `.onInit`, which is reachable only through
-`bundle.windows.nsis.template` -- a fork of the entire generated script,
-maintained against upstream. `installerHooks` cannot do it: `NSIS_HOOK_PREINSTALL`
-fires inside `Section Install`, long after the scope has been chosen.
-
-What a hook *can* do is stop the machine being left with two, and
-`src-tauri/installer/hooks.nsh` does that from 1.9.3: installing all-users
-while a per-user install exists runs the old uninstaller silently and clears
-its HKCU key. It does not preserve the location -- nothing reachable from
-there can -- but the duplicate and the stale never-updating copy are the part
-that bites.
-
-Two things it turns on, both checked against the registry and the generated
-script rather than assumed:
-
-- `UninstallString` and `InstallLocation` are stored **with literal quotes
-  inside the value**, so the hook strips them before use. Left alone they
-  reach `ExecWait` as a doubly-quoted path and `_?=` as a quoted one, which
-  NSIS rejects.
-- The uninstaller removes app data only under
-  `${If} $DeleteAppDataCheckboxState = 1`, and that variable is assigned in
-  exactly one place: the checkbox on a page a silent uninstall never draws. It
-  stays empty, the comparison is false, **and the vault is not touched.** If
-  that ever changes upstream, this hook starts deleting people's atriums.
-
-`perMachine` was tried first, to make Program Files the default. It works, but
-it makes **every** update prompt for admin forever -- the updater launches the
-installer with `ShellExecuteW` and the `open` verb, which honours the manifest
-rather than failing -- and it would have orphaned every existing per-user
-install in `%LOCALAPPDATA%` while installing fresh into Program Files.
-
-One thing `both` does not do: preselect all-users on that page. NSIS defaults
-to the per-user option and Tauri exposes no setting for it. Changing that means
-supplying a custom NSIS template through `bundle.windows.nsis.template`, which
-is a whole file to maintain against upstream -- worth it only if the
-preselection matters more than that does.
+`perMachine` is not an option for the reason above: every update would need an
+administrator, permanently.
 
 ## Notes
 
