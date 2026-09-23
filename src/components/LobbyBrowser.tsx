@@ -460,6 +460,11 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           is_public: newLobbyIsPublic,
           max_players: 50,
           theme_settings: startingTheme,
+          // A desktop atrium lives in one vault on one disk, with nobody else
+          // saving it, so auto-save starts on -- every five minutes -- rather
+          // than leaving closing the app as the only save. The web keeps the
+          // column default (off), and both stay changeable in Manage Atrium.
+          ...(isDesktop ? { autosave_enabled: true, autosave_interval_seconds: 300 } : {}),
         })
         .select()
         .single()
