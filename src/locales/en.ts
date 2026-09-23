@@ -837,6 +837,7 @@ export const en = {
   'contrib.previewBanner': 'Preview — {count} false donations, visible only to you',
   'contrib.since': 'since {date}',
   'atrium.customize.title': 'Customize Trace',
+  'atrium.customize.layerName': 'Layer name',
   'atrium.customize.preparing': 'Preparing…',
   'atrium.customize.deleteConfirmOne': 'Are you sure you want to delete this trace? This can be undone with Ctrl+Z, but only until you save.',
   'atrium.customize.deleteConfirmMany': 'Are you sure you want to delete these {count} traces? This can be undone with Ctrl+Z, but only until you save.',

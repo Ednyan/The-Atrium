@@ -887,6 +887,7 @@ const ko: Catalogue = {
 
   // ------------------------------------------------- customize a trace
   'atrium.customize.title': 'Trace 꾸미기',
+  'atrium.customize.layerName': '레이어 이름',
   'atrium.customize.preparing': '준비하는 중…',
   'atrium.customize.deleteConfirmOne': '이 trace를 삭제할까요? Ctrl+Z로 되돌릴 수 있지만, 저장하기 전까지만이에요.',
   'atrium.customize.deleteConfirmMany': '이 trace {count}개를 삭제할까요? Ctrl+Z로 되돌릴 수 있지만, 저장하기 전까지만이에요.',

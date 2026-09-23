@@ -937,6 +937,7 @@ const ru: Catalogue = {
   'contrib.previewBanner': 'Предпросмотр — ложных взносов: {count}, видно только вам',
   'contrib.since': 'с {date}',
   'atrium.customize.title': 'Настроить Trace',
+  'atrium.customize.layerName': 'Название слоя',
   'atrium.customize.preparing': 'Подготовка…',
   'atrium.customize.deleteConfirmOne': 'Точно удалить этот trace? Отменить можно через Ctrl+Z, но только до сохранения.',
   'atrium.customize.deleteConfirmMany': 'Точно удалить эти {count} traces? Отменить можно через Ctrl+Z, но только до сохранения.',

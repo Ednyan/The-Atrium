@@ -1,6 +1,8 @@
 import PinterestMark from './PinterestMark'
 import type { TranslationKey } from '../locales/en'
 import { useTranslation, pluralCategory } from '../lib/i18n'
+import ShapeStyleControls from './ShapeStyleControls'
+import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -19,8 +21,6 @@ import type { Trace } from '../types/database'
 // trace's real (loaded) font size.
 const DEFAULT_TEXT_FONT_SIZE = 16
 
-const DEFAULT_SHAPE_COLOR = '#3b82f6'
-const DEFAULT_PATH_COLOR = '#9ca3af'
 const DEFAULT_PATH_HALF_LENGTH = 30
 
 // Caps a single batch-embed paste -- each link is a sequential insert (see
@@ -29,9 +29,7 @@ const DEFAULT_PATH_HALF_LENGTH = 30
 // limits before the user even realizes it.
 const MAX_BATCH_EMBED_LINKS = 30
 
-const getDefaultShapeColor = (shapeType: 'rectangle' | 'circle' | 'triangle' | 'path') => (
-  shapeType === 'path' ? DEFAULT_PATH_COLOR : DEFAULT_SHAPE_COLOR
-)
+const getDefaultShapeColor = defaultShapeColor
 
 const getDefaultPathPoints = (position: { x: number; y: number }) => ([
   { x: position.x - DEFAULT_PATH_HALF_LENGTH, y: position.y },
@@ -50,7 +48,7 @@ interface TracePanelProps {
   // point-by-point drawing mode so the user starts placing the path (and
   // lands on its arrow controls) immediately. Optional so TracePanel doesn't
   // hard-depend on this -- falls back to the old static-line insert if unset.
-  onCreatePath?: (color: string, opacity: number) => void
+  onCreatePath?: (style: ShapeStyle) => void
   // "Batch Placement" toggle on the Embed type: one URL per line becomes its
   // own embed trace, bin-packed around the placement point by LobbyScene
   // instead of the normal single insert-and-done flow.
@@ -78,12 +76,7 @@ interface TracePanelProps {
   shapeDraftSize?: { width: number; height: number } | null
   // The whole draft, not just its size: the preview draws the actual shape,
   // so it needs the type and corner radius too.
-  onShapeDraftChange?: (draft: {
-    width: number
-    height: number
-    cornerRadius: number
-    shapeType: 'rectangle' | 'circle' | 'triangle'
-  }) => void
+  onShapeDraftChange?: (draft: ShapeDraft) => void
   // Tells LobbyScene when to arm drag-to-size on the canvas. Paths are
   // excluded: they're sized by the points you place, not by a box.
   onShapeModeChange?: (active: boolean) => void
@@ -229,10 +222,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   }, [initialPdfFile])
 
   // Shape-specific state
-  const [shapeType, setShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path'>(initialShapeType || 'rectangle')
-  const [shapeColor, setShapeColor] = useState(getDefaultShapeColor(initialShapeType || 'rectangle'))
-  const [shapeOpacity, setShapeOpacity] = useState(1.0)
-  const [cornerRadius, setCornerRadius] = useState(0)
+  // Every option a shape has, the same set the customize panel edits -- see
+  // ShapeStyleControls. It used to be four loose values here, so an outline,
+  // no-fill or a path's arrows could only be added after creating the shape.
+  const [shapeStyle, setShapeStyle] = useState<ShapeStyle>(() => shapeStyleOf({ shapeType: initialShapeType || 'rectangle' }))
+  const { shapeType } = shapeStyle
   const [shapeWidth, setShapeWidth] = useState(200)
   const [shapeHeight, setShapeHeight] = useState(200)
 
@@ -270,13 +264,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   // above doesn't re-fire. Without that guard the two would bounce forever.
   useEffect(() => {
     if (!shapeDragArmed) return
-    onShapeDraftChange?.({
-      width: shapeWidth,
-      height: shapeHeight,
-      cornerRadius,
-      shapeType: shapeType as 'rectangle' | 'circle' | 'triangle',
-    })
-  }, [shapeDragArmed, shapeWidth, shapeHeight, cornerRadius, shapeType, onShapeDraftChange])
+    onShapeDraftChange?.({ ...shapeStyle, width: shapeWidth, height: shapeHeight })
+  }, [shapeDragArmed, shapeWidth, shapeHeight, shapeStyle, onShapeDraftChange])
   
   const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes, traces } = useGameStore()
   const lobbyFull = isLobbyFull()
@@ -284,11 +273,16 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   // Use trace position if provided, otherwise fall back to character position
   const finalPosition = tracePosition || position
 
-  const handleShapeTypeChange = (nextShapeType: 'rectangle' | 'circle' | 'triangle' | 'path') => {
-    if (shapeColor === getDefaultShapeColor(shapeType)) {
-      setShapeColor(getDefaultShapeColor(nextShapeType))
-    }
-    setShapeType(nextShapeType)
+  const changeShapeStyle = (patch: Partial<ShapeStyle>) => {
+    setShapeStyle(current => {
+      const next = { ...current, ...patch }
+      // Switching type carries the colour across only if it was chosen. An
+      // untouched default follows the type, since a path's default is grey.
+      if (patch.shapeType && current.shapeColor === getDefaultShapeColor(current.shapeType)) {
+        next.shapeColor = getDefaultShapeColor(patch.shapeType)
+      }
+      return next
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -305,7 +299,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     // Hand off to the point-by-point drawing flow instead of inserting a
     // static pre-made line -- see the onCreatePath prop's doc comment.
     if (traceType === 'shape' && shapeType === 'path' && onCreatePath) {
-      onCreatePath(shapeColor, shapeOpacity)
+      onCreatePath(shapeStyle)
       return
     }
 
@@ -474,10 +468,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),
         // Shape properties
         ...(traceType === 'shape' && {
-          shapeType,
-          shapeColor,
-          shapeOpacity,
-          cornerRadius,
+          ...shapeStyle,
           width: shapeWidth,
           height: shapeHeight,
           showBorder: false,
@@ -536,10 +527,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),
           // Shape properties
           ...(traceType === 'shape' && {
-            shape_type: shapeType,
-            shape_color: shapeColor,
-            shape_opacity: shapeOpacity,
-            corner_radius: cornerRadius,
+            ...shapeStyleColumns(shapeStyle),
             width: shapeWidth,
             height: shapeHeight,
             show_border: false,
@@ -967,66 +955,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           {/* Shape Controls */}
           {traceType === 'shape' && (
             <div className="space-y-4">
-              {/* Shape Type */}
-              <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.shapeType')}</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => handleShapeTypeChange(type)}
-                      className={`px-3 py-2 text-[10px] tracking-wider uppercase capitalize transition-all ${
-                        shapeType === type
-                          ? 'bg-nier-bg text-nier-black'
-                          : 'bg-nier-black border border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
-                      }`}
-                    >
-                      {type === 'rectangle' && '◻'}
-                      {type === 'circle' && '○'}
-                      {type === 'triangle' && '△'}
-                      {type === 'path' && '~'}
-                      {' '}{t(`atrium.trace.shape.${type}` as const)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Color Picker */}
-              <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.colour')}</label>
-                <div className="flex gap-2 items-center">
-                  <input
-                    type="color"
-                    value={shapeColor}
-                    onChange={(e) => setShapeColor(e.target.value)}
-                    className="w-12 h-10 cursor-pointer bg-nier-black border border-nier-border/30"
-                  />
-                  <input
-                    type="text"
-                    value={shapeColor}
-                    onChange={(e) => setShapeColor(e.target.value)}
-                    placeholder="#3b82f6"
-                    className="flex-1 px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Opacity Slider */}
-              <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                  {t('atrium.trace.opacityLabel', { value: shapeOpacity.toFixed(2) })}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={shapeOpacity}
-                  onChange={(e) => setShapeOpacity(parseFloat(e.target.value))}
-                  className="w-full accent-nier-bg"
-                />
-              </div>
+              <ShapeStyleControls value={shapeStyle} onChange={changeShapeStyle} />
 
               {/* Size Controls -- meaningless for a path, which is sized by
                   the points you place, not a fixed box */}
@@ -1069,27 +998,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 </p>
               )}
 
-              {/* Corner Radius (Rectangle and Triangle only) */}
-              {(shapeType === 'rectangle' || shapeType === 'triangle') && (
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                    {t('atrium.customize.cornerRadiusLabel', { value: cornerRadius })}
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={cornerRadius}
-                    onChange={(e) => setCornerRadius(parseInt(e.target.value))}
-                    className="w-full accent-nier-bg"
-                  />
-                </div>
-              )}
-
               {/* Optional Label */}
               <div>
-                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.labelOptional')}</label>
+                <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.layerName')}</label>
                 <input
                   type="text"
                   value={content}

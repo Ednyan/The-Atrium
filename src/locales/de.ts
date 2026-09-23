@@ -934,6 +934,7 @@ const de: Catalogue = {
   'contrib.previewBanner': 'Vorschau — {count} falsche Zuwendungen, nur für dich sichtbar',
   'contrib.since': 'seit {date}',
   'atrium.customize.title': 'Trace anpassen',
+  'atrium.customize.layerName': 'Ebenenname',
   'atrium.customize.preparing': 'Wird vorbereitet…',
   'atrium.customize.deleteConfirmOne': 'Diesen Trace wirklich löschen? Mit Strg+Z rückgängig zu machen, aber nur bis zum Speichern.',
   'atrium.customize.deleteConfirmMany': 'Diese {count} Traces wirklich löschen? Mit Strg+Z rückgängig zu machen, aber nur bis zum Speichern.',

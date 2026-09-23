@@ -32,6 +32,10 @@ import { getTraceBaseZIndex } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
+import ShapeStyleControls from './ShapeStyleControls'
+import FontSizeField from './FontSizeField'
+import TraceNameField from './TraceNameField'
+import { shapeStyleOf } from '../lib/shapeStyle'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -1042,7 +1046,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [colorPickerCallback, setColorPickerCallback] = useState<((color: string) => void) | null>(null) // For fallback color picker
   const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
   const copiedTraceClipboardRef = useRef<TraceClipboardPayload | null>(null)
-  const hasEyeDropperSupport = typeof window !== 'undefined' && 'EyeDropper' in window
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
   const [showBatchEditPanel, setShowBatchEditPanel] = useState(false) // Batch-edit shared properties across multiSelectedIds
@@ -7417,6 +7420,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
               <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.customize.title')}</h2>
             </div>
+
+            {/* The layer's name, first -- the one field that used to be called a
+                label, a caption or a description depending on the trace. */}
+            <TraceNameField
+              label={t('atrium.customize.layerName')}
+              value={editingTrace.content ?? ''}
+              placeholder={t('atrium.layers.untitled')}
+              // A shape's name is drawn on the shape, and was capped at 50 for that.
+              maxLength={editingTrace.type === 'shape' ? 50 : 256}
+              readOnly={editingTrace.type === 'text'}
+              onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
+              onCommit={(value) => updateTraceCustomization(editingTrace.id, { content: value })}
+            />
             
             <div className="space-y-5">
               <div className="flex items-baseline gap-3 pt-1">
@@ -7473,67 +7489,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     </p>
                   </div>
 
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.descriptionTitle')}</label>
-                    <textarea
-                      value={editingTrace.content ?? ''}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, content: e.target.value }
-                        setEditingTrace(updated)
-                      }}
-                      onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { content: e.target.value })
-                      }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder={t('atrium.trace.descriptionPlaceholder')}
-                      rows={3}
-                      maxLength={256}
-                    />
-                  </div>
-
                 </>
-              )}
-
-              {/* Description/Caption for Media Traces */}
-              {(editingTrace.type === 'image' || editingTrace.type === 'audio' || editingTrace.type === 'video') && (
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.descriptionCaption')}</label>
-                  <textarea
-                    value={editingTrace.content ?? ''}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, content: e.target.value }
-                      setEditingTrace(updated)
-                    }}
-                    onBlur={(e) => {
-                      updateTraceCustomization(editingTrace.id, { content: e.target.value })
-                    }}
-                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    placeholder={t('atrium.trace.descriptionPlaceholder')}
-                    rows={3}
-                    maxLength={256}
-                  />
-                </div>
-              )}
-
-              {/* Shape Label */}
-              {editingTrace.type === 'shape' && (
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.trace.labelOptional')}</label>
-                  <input
-                    type="text"
-                    value={editingTrace.content || ''}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, content: e.target.value }
-                      setEditingTrace(updated)
-                    }}
-                    onBlur={(e) => {
-                      updateTraceCustomization(editingTrace.id, { content: e.target.value })
-                    }}
-                    placeholder={t('atrium.trace.shapeLabelPlaceholder')}
-                    maxLength={50}
-                    className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
-                  />
-                </div>
               )}
 
               {/* Clickable -- text, embed and shape only. Image, audio and
@@ -7621,13 +7577,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontSize')}</label>
-                    <input
-                      type="number"
+                    <FontSizeField
                       min={8}
                       max={200}
                       value={typeof editingTrace.fontSize === 'number' ? editingTrace.fontSize : (editingTrace.fontSize === 'small' ? 12 : editingTrace.fontSize === 'large' ? 24 : 16)}
-                      onChange={e => {
-                        const value = parseInt(e.target.value) || 16;
+                      onChange={value => {
                         const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
                         const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
                         const textSize = computeAutoFitTextSize(editingTrace.content ?? '', value, { fontFamily: effectiveFontFamily })
@@ -7640,7 +7594,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                           markTraceChanged(editingTrace.id);
                         }
                       }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       placeholder={t('atrium.customize.fontSizeHint')}
                     />
                   </div>
@@ -7796,178 +7749,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
                 </>
               )}
-              {/* Shape Customization */}
+              {/* Shape Customization -- the same controls the create panel uses; see
+                  ShapeStyleControls. The point editor is the one part only an
+                  existing trace can have, so it goes in through pathExtra. */}
               {editingTrace.type === 'shape' && (
-                <div className="space-y-4">
-
-                  <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.shape')}</span>
-                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                  </div>
-
-                  {/* Shape Type */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.shapeType')}</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['rectangle', 'circle', 'triangle', 'path'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, shapeType: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeType: type })
-                          }}
-                          className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.shapeType || 'rectangle') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'rectangle' && '⬛ '}
-                          {type === 'circle' && '⚫ '}
-                          {type === 'triangle' && '▲ '}
-                          {type === 'path' && '〰 '}
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Corner Radius (Rectangle and Triangle only -- circles have no corners, paths use point editing) */}
-                  {((editingTrace.shapeType || 'rectangle') === 'rectangle' || editingTrace.shapeType === 'triangle') && (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        {t('atrium.customize.cornerRadiusLabel', { value: editingTrace.cornerRadius || 0 })}
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={editingTrace.cornerRadius || 0}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value)
-                          const updated = { ...editingTrace, cornerRadius: value }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { cornerRadius: value })
-                        }}
-                        className="w-full accent-nier-bg"
-                      />
-                      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                        {t('atrium.customize.roundsCorners')}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Path Thickness Control */}
-                  {editingTrace.shapeType === 'path' && (
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      {t('atrium.customize.pathThicknessLabel', { value: editingTrace.shapeOutlineWidth ?? 2 })}
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="20"
-                      step="1"
-                      value={editingTrace.shapeOutlineWidth ?? 2}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value)
-                        const updated = { ...editingTrace, shapeOutlineWidth: value }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
-                      }}
-                      className="w-full accent-nier-bg"
-                    />
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      {t('atrium.customize.pathThickness')}
-                    </p>
-                  </div>
-                  )}
-
-                  {/* Path Point Editing */}
-                  {editingTrace.shapeType === 'path' && (
-                  <>
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.pathStyle')}</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['straight', 'bezier'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, pathCurveType: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { pathCurveType: type })
-                          }}
-                          className={`px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.pathCurveType || 'straight') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'straight' && '━ Straight'}
-                          {type === 'bezier' && '〰 Curved'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Arrow Start */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.arrowStart')}</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['none', 'triangle', 'diamond'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, pathArrowStart: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { pathArrowStart: type })
-                          }}
-                          className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.pathArrowStart || 'none') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'none' && '— None'}
-                          {type === 'triangle' && '◄ Arrow'}
-                          {type === 'diamond' && '◆ Diamond'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Arrow End */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.arrowEnd')}</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['none', 'triangle', 'diamond'] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, pathArrowEnd: type }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { pathArrowEnd: type })
-                          }}
-                          className={`px-2 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-                            (editingTrace.pathArrowEnd || 'none') === type
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-                          }`}
-                        >
-                          {type === 'none' && '— None'}
-                          {type === 'triangle' && '► Arrow'}
-                          {type === 'diamond' && '◆ Diamond'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
+                <ShapeStyleControls
+                  value={shapeStyleOf(editingTrace)}
+                  onChange={(patch) => {
+                    setEditingTrace({ ...editingTrace, ...patch })
+                    updateTraceCustomization(editingTrace.id, patch)
+                  }}
+                  pathExtra={
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                       {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
@@ -8008,287 +7800,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                         : t('atrium.controls.addPointsOff')}
                     </p>
                   </div>
-                  </>
-                  )}
-
-                  <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.colour')}</span>
-                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                  </div>
-
-                  {/* Color Picker */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
-                    
-                    {/* Color preset palette */}
-                    <div className="grid grid-cols-8 gap-1.5 mb-3">
-                      {['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
-                        '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-                        '#f43f5e', '#ffffff', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#000000'].map(color => (
-                        <button
-                          key={color}
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...editingTrace, shapeColor: color }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeColor: color })
-                          }}
-                          className="w-7 h-7 border border-nier-border/30 hover:border-nier-border/60 transition-all hover:scale-110"
-                          style={{ backgroundColor: color }}
-                          title={color}
-                        />
-                      ))}
-                    </div>
-                    
-                    <div className="flex gap-2 items-center">
-                      {/* Eyedropper button */}
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation()
-                          e.preventDefault()
-                          
-                          if (!hasEyeDropperSupport) {
-                            showToast(t('atrium.error.pickerUnsupported'))
-                            return
-                          }
-                          
-                          try {
-                            const eyeDropper = new (window as any).EyeDropper()
-                            const result = await eyeDropper.open()
-                            const color = result.sRGBHex
-                            const updated = { ...editingTrace, shapeColor: color }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeColor: color })
-                          } catch (err) {
-                            // User cancelled or error - silently ignore
-                          }
-                        }}
-                        className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
-                        title={t('atrium.customize.pickColour')}
-                      >
-                        💧
-                      </button>
-                      
-                      <input
-                        type="color"
-                        value={editingTrace.shapeColor || '#3b82f6'}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, shapeColor: e.target.value }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
-                        }}
-                        className="w-14 h-9 cursor-pointer bg-nier-black border border-nier-border/30"
-                      />
-                      <input
-                        type="text"
-                        value={editingTrace.shapeColor || '#3b82f6'}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, shapeColor: e.target.value }
-                          setEditingTrace(updated)
-                        }}
-                        onBlur={(e) => {
-                          updateTraceCustomization(editingTrace.id, { shapeColor: e.target.value })
-                        }}
-                        placeholder="#3b82f6"
-                        className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Fill Opacity Slider -- outline has its own opacity, see
-                      the Outline Opacity slider further down */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      {t('atrium.customize.fillOpacity', { value: ((editingTrace.shapeOpacity ?? 1.0) * 100).toFixed(0) })}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={editingTrace.shapeOpacity ?? 1.0}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value)
-                        const updated = { ...editingTrace, shapeOpacity: value }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { shapeOpacity: value })
-                      }}
-                      className="w-full accent-nier-bg"
-                    />
-                  </div>
-
-                  {/* Fill Options -- outline is configured further down, in
-                      the "Outline Mode" section that also gates outline
-                      width (a "Show Outline" toggle used to be duplicated
-                      here too, bound to the same shapeOutlineOnly state) */}
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeNoFill ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                        {(editingTrace.shapeNoFill ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={editingTrace.shapeNoFill ?? false}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, shapeNoFill: e.target.checked }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { shapeNoFill: e.target.checked })
-                        }}
-                        className="hidden"
-                      />
-                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.noFill')}</span>
-                    </label>
-                  </div>
-
-                  {/* Outline Mode (hidden for path as it's always outline) */}
-                  {editingTrace.shapeType !== 'path' && (
-                  <div>
-                    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-2 group">
-                      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.shapeOutlineOnly ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                        {(editingTrace.shapeOutlineOnly ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={editingTrace.shapeOutlineOnly ?? false}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, shapeOutlineOnly: e.target.checked }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { shapeOutlineOnly: e.target.checked })
-                        }}
-                        className="hidden"
-                      />
-                      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showOutline')}</span>
-                    </label>
-                    
-                    {editingTrace.shapeOutlineOnly && (
-                      <div className="ml-6">
-                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                          {t('atrium.customize.outlineWidth', { value: editingTrace.shapeOutlineWidth ?? 2 })}
-                        </label>
-                        <input
-                          type="range"
-                          min="1"
-                          max="20"
-                          step="1"
-                          value={editingTrace.shapeOutlineWidth ?? 2}
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value)
-                            const updated = { ...editingTrace, shapeOutlineWidth: value }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeOutlineWidth: value })
-                          }}
-                          className="w-full"
-                        />
-                        <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                          {t('atrium.customize.outlineThickness')}
-                        </p>
-
-                        <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2 mt-3">
-                          {t('atrium.customize.outlineOpacity', { value: ((editingTrace.shapeOutlineOpacity ?? 1.0) * 100).toFixed(0) })}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={editingTrace.shapeOutlineOpacity ?? 1.0}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value)
-                            const updated = { ...editingTrace, shapeOutlineOpacity: value }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeOutlineOpacity: value })
-                          }}
-                          className="w-full accent-nier-bg"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  )}
-
-                  {/* Outline Color (only show if outline is enabled) */}
-                  {editingTrace.shapeOutlineOnly && (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.outlineColour')}</label>
-                      
-                      {/* Color preset palette */}
-                      <div className="grid grid-cols-8 gap-1.5 mb-3">
-                        {['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
-                          '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-                          '#f43f5e', '#ffffff', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#000000'].map(color => (
-                          <button
-                            key={color}
-                            type="button"
-                            onClick={() => {
-                              const updated = { ...editingTrace, shapeOutlineColor: color }
-                              setEditingTrace(updated)
-                              updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
-                            }}
-                            className="w-7 h-7 border border-nier-border/30 hover:border-nier-border/60 transition-all hover:scale-110"
-                            style={{ backgroundColor: color }}
-                            title={color}
-                          />
-                        ))}
-                      </div>
-                      
-                      <div className="flex gap-2 items-center">
-                        {/* Eyedropper button */}
-                        <button
-                          type="button"
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            e.preventDefault()
-                            
-                            if (!hasEyeDropperSupport) {
-                              showToast(t('atrium.error.pickerUnsupported'))
-                              return
-                            }
-                            
-                            try {
-                              const eyeDropper = new (window as any).EyeDropper()
-                              const result = await eyeDropper.open()
-                              const color = result.sRGBHex
-                              const updated = { ...editingTrace, shapeOutlineColor: color }
-                              setEditingTrace(updated)
-                              updateTraceCustomization(editingTrace.id, { shapeOutlineColor: color })
-                            } catch (err) {
-                              // User cancelled or error - silently ignore
-                            }
-                          }}
-                          className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
-                          title={t('atrium.customize.pickColour')}
-                        >
-                          💧
-                        </button>
-                        
-                        <input
-                          type="color"
-                          value={editingTrace.shapeOutlineColor || editingTrace.shapeColor || '#3b82f6'}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, shapeOutlineColor: e.target.value }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
-                          }}
-                          className="w-14 h-9 cursor-pointer bg-nier-black border border-nier-border/30"
-                        />
-                        <input
-                          type="text"
-                          value={editingTrace.shapeOutlineColor || editingTrace.shapeColor || '#3b82f6'}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, shapeOutlineColor: e.target.value }
-                            setEditingTrace(updated)
-                          }}
-                          onBlur={(e) => {
-                            updateTraceCustomization(editingTrace.id, { shapeOutlineColor: e.target.value })
-                          }}
-                          placeholder="#3b82f6"
-                          className="flex-1 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                </div>
+                  }
+                />
               )}
               {/* Border & Fill Color Controls (for text and embed traces) */}
               {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (

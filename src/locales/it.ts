@@ -935,6 +935,7 @@ const it: Catalogue = {
   'contrib.previewBanner': 'Anteprima — {count} donazioni false, visibili solo a te',
   'contrib.since': 'dal {date}',
   'atrium.customize.title': 'Personalizza Trace',
+  'atrium.customize.layerName': 'Nome del livello',
   'atrium.customize.preparing': 'Preparazione…',
   'atrium.customize.deleteConfirmOne': 'Vuoi davvero eliminare questo trace? Puoi annullare con Ctrl+Z, ma solo fino al salvataggio.',
   'atrium.customize.deleteConfirmMany': 'Vuoi davvero eliminare questi {count} traces? Puoi annullare con Ctrl+Z, ma solo fino al salvataggio.',

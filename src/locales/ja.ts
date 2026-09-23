@@ -883,6 +883,7 @@ const ja: Catalogue = {
 
   // ------------------------------------------------- customize a trace
   'atrium.customize.title': 'Trace をカスタマイズ',
+  'atrium.customize.layerName': 'レイヤー名',
   'atrium.customize.preparing': '準備中…',
   'atrium.customize.deleteConfirmOne': 'この trace を削除しますか？ Ctrl+Z で戻せますが、保存するまでの間だけです。',
   'atrium.customize.deleteConfirmMany': 'この {count} 件の trace を削除しますか？ Ctrl+Z で戻せますが、保存するまでの間だけです。',

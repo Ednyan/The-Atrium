@@ -933,6 +933,7 @@ const fr: Catalogue = {
   'contrib.previewBanner': 'Aperçu — {count} faux dons, visibles seulement par vous',
   'contrib.since': 'depuis {date}',
   'atrium.customize.title': 'Personnaliser le Trace',
+  'atrium.customize.layerName': 'Nom du calque',
   'atrium.customize.preparing': 'Préparation…',
   'atrium.customize.deleteConfirmOne': 'Voulez-vous vraiment supprimer ce trace ? Vous pouvez annuler avec Ctrl+Z, mais seulement avant d’enregistrer.',
   'atrium.customize.deleteConfirmMany': 'Voulez-vous vraiment supprimer ces {count} traces ? Vous pouvez annuler avec Ctrl+Z, mais seulement avant d’enregistrer.',

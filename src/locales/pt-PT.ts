@@ -938,6 +938,7 @@ const ptPT: Catalogue = {
   'contrib.previewBanner': 'Pré-visualização — {count} donativos falsos, visíveis só para si',
   'contrib.since': 'desde {date}',
   'atrium.customize.title': 'Personalizar Trace',
+  'atrium.customize.layerName': 'Nome da camada',
   'atrium.customize.preparing': 'A preparar…',
   'atrium.customize.deleteConfirmOne': 'Tem a certeza de que quer eliminar este trace? Pode desfazer com Ctrl+Z, mas só até guardar.',
   'atrium.customize.deleteConfirmMany': 'Tem a certeza de que quer eliminar estes {count} traces? Pode desfazer com Ctrl+Z, mas só até guardar.',

@@ -30,6 +30,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
+import { colourToNumber, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
@@ -469,12 +470,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   //
   // Size only -- the centre is clickedTracePosition, which the drag also sets,
   // so the existing placement plumbing keeps working unchanged.
-  type ShapeDraft = {
-    width: number
-    height: number
-    cornerRadius: number
-    shapeType: 'rectangle' | 'circle' | 'triangle'
-  }
   // How far through a batch import we are, or null when nothing is importing.
   // Drives the panel that covers the atrium while files are being written.
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
@@ -507,15 +502,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // canvas drag, so without this the two would keep handing the same values
   // back and forth and never settle.
   const handleShapeDraftChange = useCallback((draft: ShapeDraft) => {
-    setShapeDraftSize(prev => (
-      prev &&
-      prev.width === draft.width &&
-      prev.height === draft.height &&
-      prev.cornerRadius === draft.cornerRadius &&
-      prev.shapeType === draft.shapeType
-        ? prev
-        : draft
-    ))
+    setShapeDraftSize(prev => (sameShapeDraft(prev, draft) ? prev : draft))
     setClickedTracePosition(prev => prev ?? { x: positionRef.current.x, y: positionRef.current.y })
   }, [])
 
@@ -1532,7 +1519,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // hands off to TraceOverlay's point-placing mode (see newPathTraceId /
   // the "Special handles for path shapes" section there), landing right on
   // the arrow controls once the user finishes.
-  const handleCreatePath = async (color: string, opacity: number) => {
+  // The whole style from the create panel, not only its colour: thickness,
+  // curve and arrows used to be settable only after the path existed.
+  const handleCreatePath = async (style: ShapeStyle) => {
     if (!supabase || !userId) return
     if (!ensureLobbyHasSpace()) return
 
@@ -1562,13 +1551,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       lobby_id: lobbyId,
       show_description: false,
       show_filename: false,
-      shape_type: 'path',
-      shape_color: color,
-      shape_opacity: opacity,
+      ...shapeStyleColumns({ ...style, shapeType: 'path' }),
       show_border: false,
       show_background: false,
       shape_points: [{ x: startPosition.x, y: startPosition.y }],
-      path_curve_type: 'straight',
       ...layerFields,
     } as any).select()
 
@@ -2452,14 +2438,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           const width = Math.abs(currentX - start.x)
           const height = Math.abs(currentY - start.y)
 
-          // Merged, not replaced: the drag only decides the size. The shape
-          // and corner radius belong to the panel and must survive it.
-          setShapeDraftSize(prev => ({
-            shapeType: prev?.shapeType ?? 'rectangle',
-            cornerRadius: prev?.cornerRadius ?? 0,
-            width,
-            height,
-          }))
+          // Merged, not replaced: the drag only decides the size. Everything
+          // else -- type, colours, outline, radius -- belongs to the panel and
+          // must survive it. Spread rather than listed, so a style field added
+          // later cannot be dropped here by being forgotten.
+          setShapeDraftSize(prev => ({ ...(prev ?? shapeStyleOf({})), width, height }))
           setClickedTracePosition({
             x: (start.x + currentX) / 2,
             y: (start.y + currentY) / 2,
@@ -2830,34 +2813,65 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
           const g = tracePlacementIndicatorRef.current
           g.clear()
-          g.lineStyle(1.5, indicator.primary, 0.35 + breath * 0.2)
-          g.beginFill(indicator.primary, 0.05)
 
           const left = placementPos.x - halfW
           const top = placementPos.y - halfH
 
-          if (draftSize.shapeType === 'circle') {
-            g.drawEllipse(placementPos.x, placementPos.y, halfW, halfH)
-          } else if (draftSize.shapeType === 'triangle') {
-            // Corner radius isn't drawn for a triangle: rounding a polygon's
-            // corners needs arc construction this preview doesn't warrant, and
-            // a rounded rectangle here would misrepresent the shape entirely.
-            g.drawPolygon([
-              placementPos.x, top,
-              placementPos.x + halfW, placementPos.y + halfH,
-              placementPos.x - halfW, placementPos.y + halfH,
-            ])
-          } else if (draftSize.cornerRadius > 0) {
-            // Clamped to half the shorter side: past that Pixi draws nothing
-            // at all, so a large radius on a small shape made the preview
-            // vanish rather than round off.
-            const radius = Math.min(draftSize.cornerRadius, halfW, halfH)
-            g.drawRoundedRect(left, top, draftSize.width, draftSize.height, radius)
-          } else {
-            g.drawRect(left, top, draftSize.width, draftSize.height)
+          const drawGeometry = () => {
+            if (draftSize.shapeType === 'circle') {
+              g.drawEllipse(placementPos.x, placementPos.y, halfW, halfH)
+            } else if (draftSize.shapeType === 'triangle') {
+              // The finished triangle's own proportions -- apex 15% down, base
+              // 15% up, 15% in from each side (see the SVG in TraceOverlay) --
+              // so the preview is the shape that will appear, not a bigger
+              // one. Corner radius isn't drawn: rounding a polygon's corners
+              // needs arc construction this preview doesn't warrant.
+              const w = draftSize.width
+              const h = draftSize.height
+              g.drawPolygon([
+                left + w * 0.5, top + h * 0.15,
+                left + w * 0.85, top + h * 0.85,
+                left + w * 0.15, top + h * 0.85,
+              ])
+            } else if (draftSize.cornerRadius > 0) {
+              // Clamped to half the shorter side: past that Pixi draws nothing
+              // at all, so a large radius on a small shape made the preview
+              // vanish rather than round off.
+              const radius = Math.min(draftSize.cornerRadius, halfW, halfH)
+              g.drawRoundedRect(left, top, draftSize.width, draftSize.height, radius)
+            } else {
+              g.drawRect(left, top, draftSize.width, draftSize.height)
+            }
           }
 
-          g.endFill()
+          // The shape as it will look -- fill colour, outline colour and
+          // thickness, corner radius -- but at reduced opacity, so it still
+          // reads as something being made rather than something made. Every
+          // value is the panel's, updating as it is changed.
+          const PREVIEW = 0.6
+          if (draftSize.shapeOutlineOnly) {
+            // alignment 0: drawn inside the edge, as the finished shape keeps
+            // its outline inside its box. The width is in world units, and
+            // this graphics object lives in the world, so it scales with zoom
+            // exactly as the real outline does.
+            g.lineStyle({
+              width: draftSize.shapeOutlineWidth,
+              color: colourToNumber(draftSize.shapeOutlineColor || draftSize.shapeColor),
+              alpha: draftSize.shapeOutlineOpacity * PREVIEW,
+              alignment: 0,
+            })
+          } else {
+            g.lineStyle(0)
+          }
+          if (!draftSize.shapeNoFill) g.beginFill(colourToNumber(draftSize.shapeColor), draftSize.shapeOpacity * PREVIEW)
+          drawGeometry()
+          if (!draftSize.shapeNoFill) g.endFill()
+
+          // Over it, the breathing frame that has always marked a shape being
+          // placed -- the "not finished yet" signal, and still visible when
+          // the shape has no fill and no outline to show.
+          g.lineStyle(1.5, indicator.primary, 0.35 + breath * 0.2)
+          drawGeometry()
           // Centre mark, so a rectangle dragged out very small is still
           // visible as a placement.
           g.lineStyle(0)

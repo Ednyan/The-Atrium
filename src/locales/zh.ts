@@ -886,6 +886,7 @@ const zh: Catalogue = {
 
   // ------------------------------------------------- customize a trace
   'atrium.customize.title': '自定义 Trace',
+  'atrium.customize.layerName': '图层名称',
   'atrium.customize.preparing': '准备中…',
   'atrium.customize.deleteConfirmOne': '确定要删除这个 trace 吗？可以用 Ctrl+Z 撤销，但保存之后就不行了。',
   'atrium.customize.deleteConfirmMany': '确定要删除这 {count} 个 trace 吗？可以用 Ctrl+Z 撤销，但保存之后就不行了。',
