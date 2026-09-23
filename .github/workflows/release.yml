@@ -81,7 +81,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: Node 20 reached end of life in April 2026 and stopped
+          # getting security fixes, and this job builds what users install.
+          node-version: 22
           cache: 'npm'
 
       - run: npm ci
