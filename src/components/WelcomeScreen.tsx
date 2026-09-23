@@ -20,6 +20,7 @@ import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
+import { goTo } from '../lib/route'
 
 // Lazy load desktop-only components to avoid importing Tauri deps in web mode
 
@@ -141,7 +142,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
     await supabase.auth.signOut()
 
     // Force navigation to landing page
-    window.location.hash = '/'
+    goTo('/')
     window.location.reload()
   }
 

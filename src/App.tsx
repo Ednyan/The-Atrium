@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
@@ -29,12 +29,15 @@ import { isGhostEntry } from './lib/operatorGhost'
 import { noteAppStarted, noteVersionSeen, recordAppealResponse } from './lib/supportAppeal'
 import { useLandingTheme } from './lib/useLandingTheme'
 import { markAtriumVisited } from './lib/recentAtriums'
+import { adoptLegacyHashRoute, currentRoutePath, goTo, onRouteChange } from './lib/route'
 import {
   hasCompletedContribution,
   takeCompletedContribution,
   watchPendingContribution,
 } from './lib/pendingContribution'
 
+// Before anything reads the route: an old /#/welcome link becomes /welcome.
+adoptLegacyHashRoute()
 noteAppStarted()
 
 // Which build this is, asked of the binary rather than of the bundle.
@@ -682,7 +685,8 @@ const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contri
 
 // Route parsing helper
 function parseRoute(): { page: string; lobbyId?: string; section?: string } {
-  const hash = window.location.hash.slice(1) || '/'
+  // The path on the web, the hash on desktop -- see lib/route.
+  const hash = currentRoutePath()
   
   if (hash.startsWith('/atrium/')) {
     const lobbyId = hash.replace('/atrium/', '')
@@ -716,9 +720,9 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
     // atrium's "local files not supported" panel, in a new tab, so somebody
     // mid-canvas is shown the desktop app without their own page moving.
     //
-    // A named route rather than a bare "#desktop" anchor: the hash is the
-    // router's, so an anchor would only land here by falling through to the
-    // default, and would break the day a real /desktop route is added.
+    // A named route rather than a "#desktop" anchor, which on desktop -- where
+    // the hash is still the router's -- would only land here by falling
+    // through to the default.
     case '/desktop':
       return { page: 'landing', section: 'desktop' }
     default:
@@ -730,7 +734,7 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
 let setRouteCallback: ((route: { page: string; lobbyId?: string }) => void) | null = null
 
 function navigate(path: string) {
-  window.location.hash = path
+  goTo(path)
   // Also immediately update route state to avoid render-time navigate calls
   if (setRouteCallback) {
     setRouteCallback(parseRoute())
@@ -914,8 +918,8 @@ function AppInner() {
   const [oauthError, setOauthError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Supabase puts these in the query string; the app's own routing lives in
-    // the hash, so both can be present at once.
+    // Supabase puts these in the query string, separately from the route, so
+    // both can be present at once.
     const params = new URLSearchParams(window.location.search)
     const description = params.get('error_description')
     const code = params.get('error')
@@ -923,7 +927,7 @@ function AppInner() {
 
     setOauthError(description || code)
     // Strip them so a refresh doesn't keep re-reporting a stale failure,
-    // preserving the hash route.
+    // preserving the route (the path on the web, the hash on desktop).
     const cleaned = window.location.pathname + window.location.hash
     window.history.replaceState({}, '', cleaned)
     navigate('/login')
@@ -1016,7 +1020,7 @@ function AppInner() {
     // that returned you to the page you were already looking at, minus the
     // thanks. Leaving the stored value alone sends them where they came from
     // before they opened the wall at all.
-    const origin = window.location.hash.replace(/^#/, '')
+    const origin = currentRoutePath()
     if (origin !== '/contributors' && origin !== '/contributed') {
       rememberContributorsReturn(origin || '/welcome')
     }
@@ -1085,16 +1089,19 @@ function AppInner() {
     })
   }, [isAuthenticated])
 
-  // Listen for hash changes (browser back/forward)
-  useEffect(() => {
-    const handleHashChange = () => {
-      setRoute(parseRoute())
-      // Reset access verification when route changes
-      setLobbyAccessError(null)
-    }
-    window.addEventListener('hashchange', handleHashChange)
-    return () => window.removeEventListener('hashchange', handleHashChange)
-  }, [])
+  // Follow the route however it changes: Back and Forward, and moves made
+  // outside navigate() by components that call goTo themselves.
+  //
+  // A layout effect, so it is subscribed before any ordinary effect runs. On
+  // the web goTo announces the move synchronously, and the Pinterest callback
+  // effect above calls it on mount -- with useEffect, that announcement went
+  // out before anyone was listening, and the page stayed on the landing
+  // screen with /welcome in the address bar.
+  useLayoutEffect(() => onRouteChange(() => {
+    setRoute(parseRoute())
+    // Reset access verification when route changes
+    setLobbyAccessError(null)
+  }), [])
 
   // Reset and track transition state for each atrium entry.
   useEffect(() => {

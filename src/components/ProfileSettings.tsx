@@ -12,6 +12,7 @@ import {
   readPackingShape,
   writePackingShape,
 } from '../lib/atriumPreferences'
+import { goTo } from '../lib/route'
 
 // The same five the in-atrium panel offers, from the palette the rest of the
 // app is drawn in. The picker under them still takes anything.
@@ -368,7 +369,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     localStorage.removeItem('lobby_currentLobbyId')
     localStorage.removeItem('lobby_showBrowser')
 
-    window.location.hash = '/'
+    goTo('/')
     window.location.reload()
   }
 

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Only real URLs belong here. The app's #/ routes are not pages: search
-     engines have ignored fragments for indexing since 2015, so #/browse and /
-     are the same URL to a crawler. privacy.html and terms.html are genuine
-     static files, and the only prose on the site readable without running
-     any JavaScript. -->
+<!-- Only real pages belong here. The app's screens have their own paths now
+     (/welcome, /contributors), but every one of them is index.html with a
+     canonical pointing at the root, so listing them would contradict that.
+     privacy.html and terms.html are genuine static files, and the only prose
+     on the site readable without running any JavaScript. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://digitalatrium.org/</loc>

@@ -10,6 +10,7 @@ import CurrencyToggle from './CurrencyToggle'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
 import { getCachedContributions, refreshContributions } from '../lib/contributions'
+import { currentRoutePath } from '../lib/route'
 
 interface ContributePanelProps {
   onClose: () => void
@@ -255,7 +256,7 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
             type="button"
             onClick={() => {
               onClose()
-              openContributors(window.location.hash.replace(/^#/, '') || '/welcome')
+              openContributors(currentRoutePath() || '/welcome')
             }}
             className="support-action w-full py-2.5 border text-[11px] tracking-[0.15em] uppercase"
             style={{ clipPath: DONATE_CUT }}

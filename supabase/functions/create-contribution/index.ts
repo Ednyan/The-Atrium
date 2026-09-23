@@ -101,8 +101,8 @@ Deno.serve(async (req: Request) => {
     // dependency for a function that makes exactly one call.
     const form = new URLSearchParams()
     form.set('mode', monthly ? 'subscription' : 'payment')
-    form.set('success_url', `${siteUrl}/#/contributed`)
-    form.set('cancel_url', `${siteUrl}/#/welcome`)
+    form.set('success_url', `${siteUrl}/contributed`)
+    form.set('cancel_url', `${siteUrl}/welcome`)
     form.set('line_items[0][quantity]', '1')
     form.set('line_items[0][price_data][currency]', code.toLowerCase())
     form.set('line_items[0][price_data][unit_amount]', String(amount))

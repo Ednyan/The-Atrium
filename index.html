@@ -7,10 +7,11 @@
 
     <!-- What a search engine and a link preview get.
 
-         The app routes on the hash (#/browse, #/contributors), and search
-         engines have ignored fragments for indexing since 2015 -- so there is
-         exactly one indexable page however many screens the app has, and
-         everything below has to do the work for all of them.
+         Every screen has a real path (/welcome, /contributors), but they
+         are all this one file, rendered by JavaScript, and the canonical
+         below names the root for all of them -- so as far as a search engine
+         is concerned there is still one page, and everything below has to do
+         the work for all of them.
 
          og:image is og-card.png, built by scripts/make-og-image.mjs. It used
          to be glass_dome.png, which is 2780x2503 and so arrived cropped to its

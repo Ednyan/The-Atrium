@@ -2,11 +2,13 @@
 //
 // The page is reachable from the landing page, the welcome screen and the
 // atrium browser, and returning to a screen the visitor was never on reads as
-// being thrown somewhere rather than going back. The hash carries no history of
+// being thrown somewhere rather than going back. The route carries no history of
 // its own here, so the origin is remembered when leaving.
 //
 // Session storage rather than local: it describes this visit, and a return
 // destination remembered from last week would be worse than the default.
+
+import { goTo } from './route'
 
 const RETURN_KEY = 'atrium_contributors_return'
 const DEFAULT_RETURN = '/welcome'
@@ -21,7 +23,7 @@ export function rememberContributorsReturn(from: string) {
 
 export function openContributors(from: string) {
   rememberContributorsReturn(from)
-  window.location.hash = '/contributors'
+  goTo('/contributors')
 }
 
 export function contributorsReturnPath(): string {

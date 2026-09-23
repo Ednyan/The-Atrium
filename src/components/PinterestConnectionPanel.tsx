@@ -125,7 +125,7 @@ export default function PinterestConnectionPanel({ onClose }: { onClose: () => v
               </p>
               <button
                 type="button"
-                onClick={() => openExternalUrl(`${ATRIUM_WEBSITE}/#/link-pinterest`)}
+                onClick={() => openExternalUrl(`${ATRIUM_WEBSITE}/link-pinterest`)}
                 className="w-full py-2 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
               >
                 {t('profile.pinterestOpenBrowser')} ↗

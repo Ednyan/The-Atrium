@@ -12,6 +12,7 @@ import {
   getDesktopPinterestStatus,
   unlinkDesktopPinterest,
 } from './pinterestDesktop'
+import { currentRoutePath, goTo } from './route'
 
 const PINTEREST_AUTHORIZE_URL = 'https://www.pinterest.com/oauth/'
 // Read-only scopes only -- boards/pins for import, plus the account's own
@@ -42,11 +43,11 @@ export function isPinterestConfigured(): boolean {
 // App.tsx picks up ?code= on mount, wherever the app has landed.
 // Where to put the user back after Pinterest has finished with them.
 //
-// This app routes on the HASH -- an atrium is #/atrium/<id> -- and a fragment
-// never survives an OAuth round trip: it is not sent to the server and not
-// returned in the redirect. So connecting from inside an atrium came back to
-// the bare origin and landed on the landing page, having quietly lost the only
-// part of the URL that said where you were.
+// The redirect URI is the bare origin -- it has to match what is registered
+// with Pinterest exactly, so it cannot carry the route -- which means
+// connecting from inside an atrium came back to the landing page, having
+// quietly lost the part of the URL that said where you were. So the route is
+// remembered on the way out and put back on the way in.
 //
 // Session storage, for the same reason the contributors page uses it: it
 // describes this visit, and a destination remembered from last week would be
@@ -62,18 +63,18 @@ const DESKTOP_CODE_KEY = 'atrium_pinterest_desktop_code'
 export const DESKTOP_CODE_EVENT = 'atrium-pinterest-desktop-code'
 
 const RETURN_KEY = 'atrium_pinterest_return'
-const DEFAULT_RETURN = '#/welcome'
+const DEFAULT_RETURN = '/welcome'
 
 function rememberPinterestReturn() {
   try {
-    sessionStorage.setItem(RETURN_KEY, window.location.hash || DEFAULT_RETURN)
+    sessionStorage.setItem(RETURN_KEY, currentRoutePath() || DEFAULT_RETURN)
   } catch {
     // Private browsing, or storage disabled. The default is still sensible.
   }
 }
 
-// Restores the hash and clears it, so a later reload is an ordinary page load
-// rather than a second trip back to wherever this once pointed.
+// Restores the route and clears it, so a later reload is an ordinary page
+// load rather than a second trip back to wherever this once pointed.
 function restorePinterestReturn() {
   let target = DEFAULT_RETURN
   try {
@@ -82,8 +83,10 @@ function restorePinterestReturn() {
   } catch {
     // Keep the default.
   }
-  if (window.location.hash !== target) {
-    window.location.hash = target
+  // A value stored before routes moved out of the hash still reads "#/...".
+  if (target.startsWith('#')) target = target.slice(1)
+  if (currentRoutePath() !== target) {
+    goTo(target)
   }
 }
 
