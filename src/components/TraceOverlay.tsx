@@ -3628,6 +3628,22 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
         }
       }
+
+      // G: select the selected trace's whole group -- exactly the right-click
+      // menu's Select > Select group, anchored on the same trace. An ungrouped
+      // trace's "group" is every ungrouped trace, as in the menu. No modifier,
+      // so Ctrl+G and the like stay the browser's, and a held key does no more
+      // than a pressed one.
+      if ((e.key === 'g' || e.key === 'G') && !typingHere && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && !isDrawingModeRef.current) {
+        const anchorId = selectedTraceId ?? (multiSelectedIds.size > 0 ? Array.from(multiSelectedIds)[0] : null)
+        const anchor = anchorId ? traces.find(t => t.id === anchorId) : undefined
+        if (anchor) {
+          e.preventDefault()
+          const groupId = anchor.layerId ?? null
+          setMultiSelectedIds(new Set(traces.filter(t => (t.layerId ?? null) === groupId).map(t => t.id)))
+          setSelectedTraceId(anchor.id)
+        }
+      }
     }
 
     // Captured (not bubbled) so it's recorded even if some element's mousedown
@@ -7393,14 +7409,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                       onMouseLeave={scheduleCloseSelectFlyout}
                     >
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center justify-between gap-6"
                         onClick={() => {
                           setMultiSelectedIds(new Set(inGroup.map(t => t.id)))
                           setSelectedTraceId(trace.id)
                           setContextMenu(null)
                         }}
                       >
-                        {t('atrium.menu.selectGroup', { count: inGroup.length })}
+                        <span>{t('atrium.menu.selectGroup', { count: inGroup.length })}</span>
+                        {/* The key, shown where the action is -- there is no shortcut
+                            list anywhere else to find it in. */}
+                        <span className="text-nier-bg/50 text-[10px] tracking-normal">G</span>
                       </button>
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
