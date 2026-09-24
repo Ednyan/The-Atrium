@@ -2184,13 +2184,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const ox = rawX * k, oy = rawY * k
       // Leaning into the pull, as a card held by its top edge does: dragged
       // right, the trailing side swings back and it tips clockwise.
-      const lean = (Math.max(-5, Math.min(5, -ox * 0.15)) * Math.PI) / 180
-      const cos = Math.cos(lean), sin = Math.sin(lean)
+      const leanFor = (Math.max(-5, Math.min(5, -ox * 0.15)) * Math.PI) / 180
       for (const id of ids) {
         const box = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
         if (!box) continue
         let size = sizes.get(box)
         if (!size) sizes.set(box, size = { w: box.offsetWidth, h: box.offsetHeight })
+        // The same tilt swings a big trace's corners much further than a small
+        // one's, so it's capped by size: no corner travels more than about
+        // 12 pixels, whatever the trace.
+        const limit = Math.min(Math.abs(leanFor), 12 / (Math.hypot(size.w, size.h) / 2 || 1))
+        const lean = Math.sign(leanFor) * limit
+        const cos = Math.cos(lean), sin = Math.sin(lean)
         // A rotate pivots on the element's layout box's centre, but the trace
         // is drawn shifted back half its size from there; the extra translate
         // turns it about its own centre instead.
