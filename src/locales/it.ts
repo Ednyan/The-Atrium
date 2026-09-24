@@ -389,6 +389,7 @@ const it: Catalogue = {
   'atrium.draw.size': 'Dimensione',
   'atrium.draw.width': 'Spessore',
   'atrium.draw.smooth': 'Levigatura',
+  'atrium.draw.hardness': 'Durezza',
   'atrium.draw.save': 'Salva disegno',
   'atrium.draw.exit': 'Esci dal disegno',
   'atrium.draw.hint': 'Clicca e trascina per disegnare • E gomma • Ctrl+Z annulla, Ctrl+Shift+Z ripeti • Canc pulisce • Invio lo salva come trace • Esc esce',

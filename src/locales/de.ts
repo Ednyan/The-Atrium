@@ -388,6 +388,7 @@ const de: Catalogue = {
   'atrium.draw.size': 'Größe',
   'atrium.draw.width': 'Stärke',
   'atrium.draw.smooth': 'Glättung',
+  'atrium.draw.hardness': 'Härte',
   'atrium.draw.save': 'Zeichnung speichern',
   'atrium.draw.exit': 'Zeichnen beenden',
   'atrium.draw.hint': 'Klicken und ziehen zum Zeichnen • E Radierer • Strg+Z rückgängig, Strg+Umschalt+Z wiederholen • Entf leert • Enter speichert es als Trace • Esc beendet',

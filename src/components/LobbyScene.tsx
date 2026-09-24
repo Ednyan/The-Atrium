@@ -908,6 +908,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [drawingColor, setDrawingColor] = useState('#ffffff')
   const [drawingWidth, setDrawingWidth] = useState(3)
   const [drawingSmoothing, setDrawingSmoothing] = useState(30)
+  // 100 is a hard edge, 0 as soft as it goes -- see drawStroke.
+  const [drawingHardness, setDrawingHardness] = useState(100)
+  const drawingHardnessRef = useRef(100)
+  const [pointerOnDrawingCanvas, setPointerOnDrawingCanvas] = useState(false)
   const [isSavingDrawing, setIsSavingDrawing] = useState(false)
   const currentStrokeRef = useRef<StrokePoint[]>([])
   const isDrawingModeRef = useRef(false)
@@ -1002,19 +1006,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Keep the brush/eraser size-preview circle in sync with the current size and mode.
   // Position is updated directly via the ref in the canvas mouse handlers (not React
   // state) to avoid a re-render on every pixel of mouse movement.
+  //
+  // Black or white by the atrium's background, never the brush colour: a
+  // colour close to the background -- or the background colour itself --
+  // made the circle vanish. The same near-black/white the shape preview uses.
+  const brushRingColour = `#${previewFrameColour(currentLobby?.themeSettings?.backgroundColor).toString(16).padStart(6, '0')}`
   useEffect(() => {
     const el = brushCursorRef.current
     if (!el) return
     el.style.width = `${drawingWidth}px`
     el.style.height = `${drawingWidth}px`
-    el.style.borderColor = isEraserMode ? 'rgba(200,200,200,0.9)' : drawingColor
+    el.style.borderColor = brushRingColour
     el.style.borderStyle = isEraserMode ? 'dashed' : 'solid'
-  }, [drawingWidth, isEraserMode, drawingColor])
+  }, [drawingWidth, isEraserMode, brushRingColour, isDrawingMode])
   useEffect(() => {
     completedStrokesRef.current = completedStrokes
     renderDrawingCanvas()
   }, [completedStrokes])
   useEffect(() => { drawingBrushRef.current = drawingBrush }, [drawingBrush])
+  useEffect(() => { drawingHardnessRef.current = drawingHardness }, [drawingHardness])
+  // The canvas goes away without a pointerleave, so the flag would outlive it.
+  useEffect(() => { if (!isDrawingMode) setPointerOnDrawingCanvas(false) }, [isDrawingMode])
 
   // Imported brushes live in the vault, so only desktop has any. Read once,
   // the first time drawing opens, and only what makeBrushTip would have made.
@@ -1085,6 +1097,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         isEraser: isEraserModeRef.current,
         brush: drawingBrushRef.current,
         seed: currentSeedRef.current,
+        hardness: drawingHardnessRef.current / 100,
       }])
     }
     currentStrokeRef.current = []
@@ -1144,6 +1157,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         isEraser: isEraserModeRef.current,
         brush: drawingBrushRef.current,
         seed: currentSeedRef.current,
+        hardness: drawingHardnessRef.current / 100,
       })
     }
   }
@@ -4304,8 +4318,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (allPoints.length === 0) { setIsSavingDrawing(false); return }
 
       // Room for the widest stroke's edge beyond its centre line, or a
-      // thick one came out with its sides sliced off.
-      const padding = Math.max(20, Math.ceil(Math.max(...completedStrokes.map(s => s.width)) / 2) + 4)
+      // thick one came out with its sides sliced off -- and past that, room
+      // for a soft stroke's fade, up to three quarters of a width further out.
+      const padding = Math.max(20, Math.ceil(Math.max(...completedStrokes.map(s => s.width)) * 1.3) + 4)
       const minSX = Math.min(...allPoints.map(p => p.x)) - padding
       const maxSX = Math.max(...allPoints.map(p => p.x)) + padding
       const minSY = Math.min(...allPoints.map(p => p.y)) - padding
@@ -4449,6 +4464,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
             isDrawingMode={isDrawingMode}
+            hideCursor={isDrawingMode && pointerOnDrawingCanvas}
             onMultiSelectionChange={setMultiSelectedTraceIds}
             canEdit={canEdit}
           />
@@ -5151,6 +5167,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   <span className="text-nier-bg/80 text-xs w-4">{drawingSmoothing}%</span>
                 </div>
 
+                {/* Hardness: how sharp the edge is. The eraser has one too. */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.hardness')}</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={drawingHardness}
+                    onChange={(e) => setDrawingHardness(Number(e.target.value))}
+                    className="w-16 h-1 cursor-pointer accent-white"
+                  />
+                  <span className="text-nier-bg/80 text-xs w-4">{drawingHardness}%</span>
+                </div>
+
                 {/* Quick colours.
 
                     They were the corners of the RGB cube -- pure red, pure
@@ -5253,7 +5283,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             style={{
               width: `${drawingWidth}px`,
               height: `${drawingWidth}px`,
-              border: `1px solid ${isEraserMode ? 'rgba(200,200,200,0.9)' : drawingColor}`,
+              border: `1px solid ${brushRingColour}`,
               borderStyle: isEraserMode ? 'dashed' : 'solid',
               transform: 'translate(-50%, -50%)',
               display: 'none',
@@ -5279,9 +5309,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             // touch alike, and the only ones that carry pen pressure.
             onPointerEnter={() => {
               if (brushCursorRef.current) brushCursorRef.current.style.display = 'block'
+              setPointerOnDrawingCanvas(true)
             }}
             onPointerLeave={() => {
               if (brushCursorRef.current) brushCursorRef.current.style.display = 'none'
+              setPointerOnDrawingCanvas(false)
             }}
             onPointerDown={(e) => {
               // A second finger is not a second brush.

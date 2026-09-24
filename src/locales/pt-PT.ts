@@ -392,6 +392,7 @@ const ptPT: Catalogue = {
   'atrium.draw.size': 'Tamanho',
   'atrium.draw.width': 'Espessura',
   'atrium.draw.smooth': 'Suavizar',
+  'atrium.draw.hardness': 'Dureza',
   'atrium.draw.save': 'Guardar desenho',
   'atrium.draw.exit': 'Sair do desenho',
   'atrium.draw.hint': 'Clique e arraste para desenhar • E borracha • Ctrl+Z desfazer, Ctrl+Shift+Z refazer • Del limpa • Enter guarda como trace • Esc sai',

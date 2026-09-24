@@ -385,6 +385,7 @@ const es: Catalogue = {
   'atrium.draw.size': 'Tamaño',
   'atrium.draw.width': 'Grosor',
   'atrium.draw.smooth': 'Suavizado',
+  'atrium.draw.hardness': 'Dureza',
   'atrium.draw.save': 'Guardar dibujo',
   'atrium.draw.exit': 'Salir del dibujo',
   'atrium.draw.hint': 'Haz clic y arrastra para dibujar • E borrador • Ctrl+Z deshacer, Ctrl+Shift+Z rehacer • Supr limpia • Enter lo guarda como trace • Esc sale',

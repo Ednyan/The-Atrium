@@ -291,6 +291,7 @@ export const en = {
   'atrium.draw.size': 'Size',
   'atrium.draw.width': 'Width',
   'atrium.draw.smooth': 'Smooth',
+  'atrium.draw.hardness': 'Hardness',
   'atrium.draw.save': 'Save drawing',
   'atrium.draw.exit': 'Exit drawing',
   'atrium.draw.hint': 'Click and drag to draw • E eraser • Ctrl+Z undo, Ctrl+Shift+Z redo • Del clears • Enter saves it as a trace • Esc exits',

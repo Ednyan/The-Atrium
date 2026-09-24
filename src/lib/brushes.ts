@@ -26,6 +26,8 @@ export interface Stroke {
   // before there was a choice, which was a pen.
   brush?: string
   seed?: number
+  // 1 is a hard edge (and what a stroke without one has), 0 the softest.
+  hardness?: number
 }
 
 export const BUILTIN_BRUSHES = ['pen', 'pencil', 'marker', 'airbrush', 'calligraphy'] as const
@@ -286,7 +288,7 @@ function drawCalligraphy(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   ctx.restore()
 }
 
-export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+function paintStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   const { points, color, width, isEraser } = stroke
   if (points.length === 0) return
   // The eraser is always round and hard, whatever brush was chosen before it.
@@ -323,6 +325,57 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   }
   // Pen, and any brush whose tip isn't here to paint with.
   drawPen(ctx, points, color, width, isEraser)
+}
+
+// Reused between strokes; grown when one needs more room than it has.
+let scratch: HTMLCanvasElement | null = null
+
+export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+  const hardness = Math.min(1, Math.max(0, stroke.hardness ?? 1))
+  if (hardness >= 1 || stroke.points.length === 0) return paintStroke(ctx, stroke)
+
+  // A soft edge: the stroke painted hard on a scratch canvas, then blurred on
+  // the way across. One blur of the whole stroke, not one per piece, so where
+  // a line's segments or stamps overlap the fade doesn't bead.
+  //
+  // The blur is a canvas shadow rather than ctx.filter, which the macOS
+  // webview only has from Safari 18: the stroke is drawn far off to the side
+  // with its shadow offset back onto the spot, so only the blurred shadow
+  // lands. At no hardness the fade runs about three quarters of the brush
+  // width out past the edge (shadowBlur is twice the blur's sigma).
+  const blur = (1 - hardness) * stroke.width * 0.75
+  const pad = Math.ceil(stroke.width + blur * 2 + 2)
+  const xs = stroke.points.map(p => p.x)
+  const ys = stroke.points.map(p => p.y)
+  const minX = Math.floor(Math.min(...xs)) - pad
+  const minY = Math.floor(Math.min(...ys)) - pad
+  const w = Math.ceil(Math.max(...xs)) + pad - minX
+  const h = Math.ceil(Math.max(...ys)) + pad - minY
+
+  scratch ??= document.createElement('canvas')
+  if (scratch.width < w || scratch.height < h) {
+    scratch.width = Math.max(scratch.width, w)
+    scratch.height = Math.max(scratch.height, h)
+  }
+  const sctx = scratch.getContext('2d')
+  if (!sctx) return paintStroke(ctx, stroke)
+  sctx.setTransform(1, 0, 0, 1, 0, 0)
+  sctx.clearRect(0, 0, w, h)
+  sctx.translate(-minX, -minY)
+  // Painted as ink either way; an eraser's ink is what gets taken away below.
+  paintStroke(sctx, { ...stroke, isEraser: false, brush: stroke.isEraser ? 'pen' : stroke.brush, hardness: 1 })
+
+  // A shadow takes its colour from shadowColor and only the alpha from what
+  // casts it -- right here, since every brush paints in the one colour.
+  const off = ctx.canvas.width + w + 100
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  if (stroke.isEraser) ctx.globalCompositeOperation = 'destination-out'
+  ctx.shadowColor = stroke.isEraser ? '#000' : stroke.color
+  ctx.shadowBlur = blur
+  ctx.shadowOffsetX = off
+  ctx.drawImage(scratch, 0, 0, w, h, minX - off, minY, w, h)
+  ctx.restore()
 }
 
 // ---- Imported brushes -------------------------------------------------------

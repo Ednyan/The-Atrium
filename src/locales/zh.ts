@@ -304,6 +304,7 @@ const zh: Catalogue = {
   'atrium.draw.size': '大小',
   'atrium.draw.width': '粗细',
   'atrium.draw.smooth': '平滑',
+  'atrium.draw.hardness': '硬度',
   'atrium.draw.save': '保存这幅画',
   'atrium.draw.exit': '退出绘制',
   'atrium.draw.hint': '按住并拖动即可作画 • E 橡皮擦 • Ctrl+Z 撤销、Ctrl+Shift+Z 重做 • Del 清空 • Enter 存为 trace • Esc 退出',

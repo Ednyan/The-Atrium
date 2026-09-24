@@ -301,6 +301,7 @@ const ja: Catalogue = {
   'atrium.draw.size': '大きさ',
   'atrium.draw.width': '太さ',
   'atrium.draw.smooth': 'なめらかさ',
+  'atrium.draw.hardness': '硬さ',
   'atrium.draw.save': '描いたものを保存',
   'atrium.draw.exit': '描画をやめる',
   'atrium.draw.hint': 'ドラッグで描く • E 消しゴム • Ctrl+Z 取り消し、Ctrl+Shift+Z やり直し • Del で全消去 • Enter で trace として保存 • Esc で終了',

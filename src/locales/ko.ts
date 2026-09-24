@@ -305,6 +305,7 @@ const ko: Catalogue = {
   'atrium.draw.size': '크기',
   'atrium.draw.width': '굵기',
   'atrium.draw.smooth': '부드럽게',
+  'atrium.draw.hardness': '경도',
   'atrium.draw.save': '그림 저장',
   'atrium.draw.exit': '그리기 끝내기',
   'atrium.draw.hint': '끌어서 그려요 • E 지우개 • Ctrl+Z 되돌리기, Ctrl+Shift+Z 다시 실행 • Del 모두 지우기 • Enter trace로 저장 • Esc 나가기',

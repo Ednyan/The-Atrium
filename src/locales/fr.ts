@@ -387,6 +387,7 @@ const fr: Catalogue = {
   'atrium.draw.size': 'Taille',
   'atrium.draw.width': 'Épaisseur',
   'atrium.draw.smooth': 'Lissage',
+  'atrium.draw.hardness': 'Dureté',
   'atrium.draw.save': 'Enregistrer le dessin',
   'atrium.draw.exit': 'Quitter le dessin',
   'atrium.draw.hint': 'Cliquez et faites glisser pour dessiner • E gomme • Ctrl+Z annuler, Ctrl+Shift+Z rétablir • Suppr efface • Entrée l’enregistre comme trace • Échap quitte',

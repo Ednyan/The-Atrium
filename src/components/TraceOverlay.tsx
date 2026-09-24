@@ -197,6 +197,9 @@ interface TraceOverlayProps {
   // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
   // undo (see LobbyScene) instead of this file's trace undo/redo history.
   isDrawingMode?: boolean
+  // True while the pointer is over the drawing canvas, where the brush circle
+  // stands in for the cursor.
+  hideCursor?: boolean
   // Reports this file's current multi-selection up to LobbyScene so the
   // Layer panel (a sibling, not a child, of this component) can highlight
   // every multi-selected trace/group, not just the single selectedTraceId.
@@ -364,7 +367,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -4661,9 +4664,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       {sortedItems
           .map((item) => {
             if (item.type === 'player') {
-              // While drawing, the brush circle is the cursor; a second one
-              // beside it only hides what is being drawn.
-              if (isDrawingMode) return null
+              // Over the drawing canvas the brush circle is the cursor; a
+              // second one beside it only hides what is being drawn. Off it --
+              // on the drawing panel, a button -- the cursor is needed again.
+              if (hideCursor) return null
               // Render player cursor
               const playerScreenX = position.x * zoom + worldOffset.x
               const playerScreenY = position.y * zoom + worldOffset.y

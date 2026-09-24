@@ -391,6 +391,7 @@ const ru: Catalogue = {
   'atrium.draw.size': 'Размер',
   'atrium.draw.width': 'Толщина',
   'atrium.draw.smooth': 'Сглаживание',
+  'atrium.draw.hardness': 'Жёсткость',
   'atrium.draw.save': 'Сохранить рисунок',
   'atrium.draw.exit': 'Выйти из рисования',
   'atrium.draw.hint': 'Нажмите и ведите, чтобы рисовать • E ластик • Ctrl+Z отменить, Ctrl+Shift+Z вернуть • Del очищает • Enter сохраняет как trace • Esc выходит',
