@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atrium Code Growth</title>
+<!-- Template for scripts/graph-growth.py, which fills in the data. -->
+<style>
+  :root { --bg: #07070b; --fg: #dcdce4; --dim: #8b8b98; --line: #262631; --accent: #ff8a3d; --pregit: #8b7cf0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  #hud { position: fixed; left: 18px; top: 14px; pointer-events: none; max-width: min(640px, calc(100vw - 36px)); }
+  #date { font-size: 30px; letter-spacing: .06em; }
+  #stats { color: var(--dim); margin-top: 2px; }
+  #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
+  #legend { position: fixed; right: 18px; top: 16px; color: var(--dim); text-align: right; pointer-events: none; }
+  #legend b { font-weight: normal; }
+  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  #bar button, #bar select { background: #13131a; color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
+  #bar button:hover, #bar select:hover { border-color: var(--accent); }
+  #track { flex: 1; position: relative; }
+  #era { position: absolute; left: 0; top: -14px; height: 3px; background: var(--pregit); }
+  #eraLabel { position: absolute; left: 0; top: -30px; color: var(--pregit); font-size: 11px; white-space: nowrap; }
+  #slider { width: 100%; accent-color: var(--accent); }
+  #tip { position: fixed; pointer-events: none; background: #13131af0; border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
+  #tip small { color: var(--dim); display: block; }
+  #hud, #legend, #bar { transition: opacity 1.2s ease; }
+  body.intro #hud, body.intro #legend, body.intro #bar { opacity: 0; pointer-events: none; }
+  #intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           gap: 14px; padding: 0 24px; text-align: center; pointer-events: none; opacity: 0; transition: opacity 1.4s ease; }
+  #intro small { color: var(--dim); font-size: 12px; letter-spacing: .32em; text-transform: uppercase; }
+  #intro strong { font: 300 clamp(30px, 5.5vw, 58px)/1.15 Georgia, 'Times New Roman', serif; letter-spacing: .03em; color: var(--fg); }
+</style>
+</head>
+<body class="intro">
+<canvas id="c"></canvas>
+<div id="intro"><small>You're about to see the history of</small><strong>The Digital Atrium</strong></div>
+<div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
+<div id="legend"><b style="color:#fff">white</b>: new &nbsp;·&nbsp; <b style="color:#ff5a4f">red</b>: removed &nbsp;·&nbsp; □ folder &nbsp;·&nbsp; <b style="color:#9a9aab">●</b> other file<br>scroll to zoom · drag to move · double-click to follow again · space to pause</div>
+<div id="tip"></div>
+<div id="bar">
+  <button id="play">Pause</button>
+  <div id="track"><div id="era"></div><div id="eraLabel">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
+  <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
+</div>
+<script>
+const D = /*DATA*/null
+const S = D.stages.length, last = S - 1
+const nodes = D.nodes, edges = D.edges, N = nodes.length
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d')
+const slider = document.getElementById('slider'), playBtn = document.getElementById('play'), speedSel = document.getElementById('speed')
+const dateEl = document.getElementById('date'), statsEl = document.getElementById('stats'), noteEl = document.getElementById('note'), tip = document.getElementById('tip')
+slider.max = last
+
+// Which stages each node and connection is in, one byte per stage.
+const presence = list => list.map(item => {
+  const p = new Uint8Array(S)
+  for (const [a, b] of item[item.length - 1]) p.fill(1, a, b)
+  return p
+})
+const nodeIn = presence(nodes), edgeIn = presence(edges)
+// Node kinds: 0 code (graphify's), 1 other file, 2 folder. Connection kinds:
+// 0 between code, 1 the file and folder tree.
+const kindOf = nodes.map(n => n[6])
+const counts = D.stages.map((_, s) => {
+  const files = new Set()
+  let code = 0, folders = 0, links = 0
+  nodes.forEach((node, i) => {
+    if (!nodeIn[i][s]) return
+    if (kindOf[i] === 2) folders++
+    else { files.add(node[5]); if (kindOf[i] === 0) code++ }
+  })
+  edges.forEach((edge, e) => { if (edgeIn[e][s] && !edge[2]) links++ })
+  return `${folders} folders · ${files.size} files · ${code} pieces of code · ${links} connections`
+})
+const preGit = D.stages.findIndex(s => s.git)
+if (preGit > 0) document.getElementById('era').style.width = (preGit / last * 100) + '%'
+else { document.getElementById('era').remove(); document.getElementById('eraLabel').remove() }
+
+// Colours are graphify's (or the script's own when it laid things out itself).
+const rgb = hex => [1, 3, 5].map(k => parseInt(hex.slice(k, k + 2), 16)).join(',')
+const colourOf = nodes.map(n => n[2])
+
+// ---- Physics ---------------------------------------------------------------
+// Every dot has a home: where graphify's page puts it (TX, TY). It is pulled
+// there on a spring, connections pull their ends toward the distance their
+// homes are apart, and dots too close push each other off. So new code shoots
+// out from what it connects to and settles where graphify would show it,
+// jostling its neighbours on the way -- the way Gource grows a tree.
+const X = new Float32Array(N), Y = new Float32Array(N), VX = new Float32Array(N), VY = new Float32Array(N)
+const TX = Float32Array.from(nodes, n => n[0]), TY = Float32Array.from(nodes, n => n[1])
+const live = new Uint8Array(N)
+// Held firmly to graphify's spot, so its shape survives -- tight clusters with
+// empty space between them. Only dots that actually overlap are pushed apart;
+// a longer reach spread every cluster to the same even density and filled the
+// gaps, which is what turned the picture into a disc.
+const HOME = 0.03, SPRING = 0.006, PUSH = 0.001, REACH = 0.012, DAMP = 0.85
+const neighbours = Array.from({ length: N }, () => [])
+const rest = new Float32Array(edges.length)
+edges.forEach(([a, b], i) => {
+  neighbours[a].push(b); neighbours[b].push(a)
+  rest[i] = Math.hypot(TX[a] - TX[b], TY[a] - TY[b])
+})
+
+function spawn(i) {
+  // Out of something already there that it connects to, as Gource's files
+  // come out of their folder; failing that, near its own home.
+  let from = -1
+  for (const j of neighbours[i]) if (live[j]) { from = j; break }
+  const a = Math.random() * Math.PI * 2
+  const ox = from >= 0 ? X[from] : TX[i] + Math.cos(a) * 0.04
+  const oy = from >= 0 ? Y[from] : TY[i] + Math.sin(a) * 0.04
+  X[i] = ox + Math.cos(a) * 0.002; Y[i] = oy + Math.sin(a) * 0.002
+  VX[i] = Math.cos(a) * 0.006; VY[i] = Math.sin(a) * 0.006
+}
+
+const grid = new Map()
+function step(s) {
+  for (let i = 0; i < N; i++) {
+    if (!live[i]) continue
+    VX[i] += (TX[i] - X[i]) * HOME
+    VY[i] += (TY[i] - Y[i]) * HOME
+  }
+  for (let e = 0; e < edges.length; e++) {
+    // The file tree is drawn but doesn't pull: its lines run between clusters,
+    // and as springs they drew the clusters together.
+    if (!edgeIn[e][s] || edges[e][2]) continue
+    const a = edges[e][0], b = edges[e][1]
+    if (!live[a] || !live[b]) continue
+    const dx = X[b] - X[a], dy = Y[b] - Y[a], d = Math.hypot(dx, dy) || 1e-6
+    const f = SPRING * (d - rest[e]) / d * 0.5
+    VX[a] += dx * f; VY[a] += dy * f; VX[b] -= dx * f; VY[b] -= dy * f
+  }
+  // Push apart what is too close, found through a grid so it isn't every pair.
+  grid.clear()
+  for (let i = 0; i < N; i++) {
+    if (!live[i]) continue
+    const key = Math.floor(X[i] / REACH) * 100003 + Math.floor(Y[i] / REACH)
+    const cell = grid.get(key)
+    cell ? cell.push(i) : grid.set(key, [i])
+  }
+  for (let i = 0; i < N; i++) {
+    if (!live[i]) continue
+    const gx = Math.floor(X[i] / REACH), gy = Math.floor(Y[i] / REACH)
+    for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+      const cell = grid.get((gx + ox) * 100003 + gy + oy)
+      if (!cell) continue
+      for (const j of cell) {
+        if (j <= i) continue
+        const dx = X[j] - X[i], dy = Y[j] - Y[i], d = Math.hypot(dx, dy)
+        if (d >= REACH) continue
+        const f = PUSH * (REACH - d) / (d || 1e-4) / REACH
+        const fx = (d ? dx : Math.random() - 0.5) * f, fy = (d ? dy : Math.random() - 0.5) * f
+        VX[i] -= fx; VY[i] -= fy; VX[j] += fx; VY[j] += fy
+      }
+    }
+  }
+  for (let i = 0; i < N; i++) {
+    if (!live[i]) continue
+    VX[i] *= DAMP; VY[i] *= DAMP
+    X[i] += VX[i]; Y[i] += VY[i]
+  }
+}
+
+// ---- Camera ----------------------------------------------------------------
+let W, H, dpr, home, view, follow = true
+function resize() {
+  dpr = window.devicePixelRatio || 1
+  W = innerWidth; H = innerHeight
+  canvas.width = W * dpr; canvas.height = H * dpr
+  home = { x: W / 2, y: H / 2 - 10, s: Math.min(W, H - 110) * 0.47 }
+  view = view || { ...home }
+}
+resize(); addEventListener('resize', resize)
+const sx = i => view.x + X[i] * view.s, sy = i => view.y + Y[i] * view.s
+const zoom = () => Math.min(2.2, Math.sqrt(view.s / home.s))
+
+// Framing what exists, easing toward it: close in at the start, pulling back
+// as the project grows.
+function frameCamera() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (let i = 0; i < N; i++) {
+    if (!live[i]) continue
+    if (X[i] < minX) minX = X[i]; if (X[i] > maxX) maxX = X[i]
+    if (Y[i] < minY) minY = Y[i]; if (Y[i] > maxY) maxY = Y[i]
+  }
+  if (minX === Infinity) return
+  const w = Math.max(maxX - minX, 0.25), h = Math.max(maxY - minY, 0.25)
+  const s = Math.min((W - 80) / w, (H - 190) / h)
+  const target = { s, x: W / 2 - (minX + maxX) / 2 * s, y: (H - 40) / 2 - (minY + maxY) / 2 * s }
+  view.s += (target.s - view.s) * 0.035
+  view.x += (target.x - view.x) * 0.035
+  view.y += (target.y - view.y) * 0.035
+}
+
+// ---- Time --------------------------------------------------------------------
+let pos = 0, playing = false, prev = performance.now(), lag = 0
+// About two and a half minutes for the whole history at 1x, whatever its
+// length, but never so quick a change can't be seen to land.
+const perStage = () => Math.min(330, Math.max(110, 150000 / S)) / Number(speedSel.value)
+const ease = t => t * t * (3 - 2 * t)
+
+// How visible something is between stage s and s+1, t of the way there:
+// [alpha, state] where state 1 = arriving, -1 = leaving.
+function fade(p, s, t) {
+  const a = p[s], b = s < last ? p[s + 1] : a
+  if (a && b) return [1, 0]
+  if (!a && !b) return [0, 0]
+  return a ? [1 - t, -1] : [t, 1]
+}
+
+function frame(now) {
+  if (playing) {
+    pos = Math.min(last, pos + (now - prev) / perStage())
+    if (pos >= last) { playing = false; playBtn.textContent = 'Replay' }
+    slider.value = pos
+  }
+  // Physics on a fixed step, so it behaves the same at any frame rate.
+  lag = Math.min(lag + (now - prev), 100)
+  prev = now
+  const s = Math.floor(pos)
+  for (let i = 0; i < N; i++) {
+    const on = nodeIn[i][s] || (s < last && nodeIn[i][s + 1])
+    if (on && !live[i]) spawn(i)
+    live[i] = on ? 1 : 0
+  }
+  while (lag >= 16) { step(s); lag -= 16 }
+  if (follow) frameCamera()
+  draw()
+  requestAnimationFrame(frame)
+}
+
+// A connection bows slightly to one side, as graphify draws them: straight
+// lines through a dense cluster read as a scribble, gentle curves as bundles.
+function curve(a, b) {
+  const x1 = sx(a), y1 = sy(a), x2 = sx(b), y2 = sy(b)
+  ctx.moveTo(x1, y1)
+  ctx.quadraticCurveTo((x1 + x2) / 2 - (y2 - y1) * 0.12, (y1 + y2) / 2 + (x2 - x1) * 0.12, x2, y2)
+}
+
+function draw() {
+  const s = Math.floor(pos), t = ease(pos - s), z = zoom()
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.fillStyle = '#07070b'; ctx.fillRect(0, 0, W, H)
+
+  // The file and folder tree first, faint, beneath the code.
+  const width = 0.6 * z
+  ctx.lineWidth = 0.5 * z
+  ctx.strokeStyle = 'rgba(190,190,215,0.09)'
+  ctx.beginPath()
+  const batches = new Map(), changing = []
+  for (let e = 0; e < edges.length; e++) {
+    const [alpha, state] = fade(edgeIn[e], s, t)
+    if (!alpha) continue
+    if (state) { changing.push([e, alpha, state]); continue }
+    if (edges[e][2]) { const [a, b] = edges[e]; ctx.moveTo(sx(a), sy(a)); ctx.lineTo(sx(b), sy(b)); continue }
+    const c = colourOf[edges[e][0]]
+    const list = batches.get(c)
+    list ? list.push(e) : batches.set(c, [e])
+  }
+  ctx.stroke()
+
+  // The code's own connections, added together ('lighter') so a bundle glows
+  // where many run side by side. Batched by colour; changing ones go alone.
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.lineWidth = width
+  for (const [c, list] of batches) {
+    ctx.strokeStyle = `rgba(${rgb(c)},0.3)`
+    ctx.beginPath()
+    for (const e of list) curve(edges[e][0], edges[e][1])
+    ctx.stroke()
+  }
+  ctx.lineWidth = width * 2
+  for (const [e, alpha, state] of changing) {
+    const [a, b] = edges[e]
+    const k = edges[e][2] ? 0.45 : 1
+    ctx.strokeStyle = state > 0 ? `rgba(255,255,255,${0.85 * alpha * k})` : `rgba(255,90,79,${0.8 * alpha * k})`
+    ctx.beginPath(); curve(a, b); ctx.stroke()
+  }
+
+  ctx.globalCompositeOperation = 'source-over'
+  const arriving = []
+  for (let i = 0; i < N; i++) {
+    const [alpha, state] = fade(nodeIn[i], s, t)
+    if (!alpha) continue
+    const kind = kindOf[i], x = sx(i), y = sy(i)
+    const r = (kind === 2 ? 1.6 + Math.sqrt(nodes[i][3]) * 0.25 : kind === 1 ? 1 : 1 + Math.sqrt(nodes[i][3]) * 0.4) * z
+    ctx.globalAlpha = alpha * (kind === 1 ? 0.6 : kind === 2 ? 0.55 : 1)
+    if (kind === 2) {
+      // Folders: small open squares, pale, so they read as the frame the
+      // code hangs from rather than as code.
+      ctx.strokeStyle = state < 0 ? '#ff5a4f' : '#cfcfe0'; ctx.lineWidth = 0.9
+      ctx.strokeRect(x - r, y - r, r * 2, r * 2)
+    } else {
+      ctx.fillStyle = state < 0 ? '#ff5a4f' : kind === 1 ? '#9a9aab' : colourOf[i]
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+    }
+    if (state > 0) {
+      arriving.push(i)
+      ctx.globalAlpha = 1 - t
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4
+      ctx.beginPath(); ctx.arc(x, y, r + 1.5 + t * 9, 0, Math.PI * 2); ctx.stroke()
+    }
+  }
+  // Names of what just arrived, as Gource shows its files -- unless a whole
+  // batch lands at once, when they would only be a smear.
+  if (arriving.length && arriving.length <= 30) {
+    ctx.font = '11px ui-monospace, Consolas, monospace'
+    ctx.globalAlpha = Math.min(1, 1.6 * (1 - t))
+    ctx.fillStyle = '#e8e8f0'
+    for (const i of arriving) if (nodes[i][4]) ctx.fillText(nodes[i][4], sx(i) + 6, sy(i) - 6)
+  }
+  ctx.globalAlpha = 1
+
+  const shown = Math.round(pos), stage = D.stages[shown]
+  dateEl.textContent = new Date(stage.t * 1000).toISOString().slice(0, 16).replace('T', '  ')
+  statsEl.textContent = counts[shown]
+  noteEl.textContent = stage.note
+}
+
+// ---- Controls ------------------------------------------------------------------
+function toggle() {
+  if (pos >= last) { pos = 0; live.fill(0); follow = true }
+  playing = !playing
+  playBtn.textContent = playing ? 'Pause' : 'Play'
+}
+playBtn.onclick = toggle
+addEventListener('keydown', e => {
+  if (!introDone) { endIntro(); return }
+  if (e.code === 'Space') { e.preventDefault(); toggle() }
+})
+slider.oninput = () => { pos = Number(slider.value); playing = false; playBtn.textContent = 'Play' }
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault()
+  follow = false
+  const k = Math.exp(-e.deltaY * 0.0015)
+  view.x = e.clientX - (e.clientX - view.x) * k
+  view.y = e.clientY - (e.clientY - view.y) * k
+  view.s *= k
+}, { passive: false })
+canvas.addEventListener('dblclick', () => { follow = true })
+let drag = null
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId) })
+canvas.addEventListener('pointerup', () => { drag = null; canvas.classList.remove('dragging') })
+canvas.addEventListener('pointermove', e => {
+  if (drag) {
+    follow = false
+    view.x += e.clientX - drag.x; view.y += e.clientY - drag.y
+    drag = { x: e.clientX, y: e.clientY }; tip.style.display = 'none'; return
+  }
+  let best = -1, bestD = 64
+  for (let i = 0; i < N; i++) {
+    if (!live[i]) continue
+    const dx = sx(i) - e.clientX, dy = sy(i) - e.clientY, d = dx * dx + dy * dy
+    if (d < bestD) { bestD = d; best = i }
+  }
+  if (best < 0) { tip.style.display = 'none'; return }
+  tip.replaceChildren(nodes[best][4] || '(unnamed)')
+  const small = document.createElement('small'); small.textContent = nodes[best][5] || 'package or concept'; tip.append(small)
+  tip.style.display = 'block'
+  tip.style.left = Math.min(e.clientX + 14, W - tip.offsetWidth - 8) + 'px'
+  tip.style.top = (e.clientY + 14) + 'px'
+})
+
+requestAnimationFrame(t => { prev = t; frame(t) })
+
+// The opening: a title over the empty canvas fades in, holds, fades out, and
+// only then do the controls appear and the history start. A click or a key
+// skips straight there.
+const intro = document.getElementById('intro')
+let introDone = false
+function endIntro() {
+  if (introDone) return
+  introDone = true
+  intro.style.opacity = 0
+  document.body.classList.remove('intro')
+  setTimeout(() => intro.remove(), 1400)
+  if (!playing) toggle()
+}
+requestAnimationFrame(() => requestAnimationFrame(() => { intro.style.opacity = 1 }))
+setTimeout(() => { intro.style.opacity = 0 }, 3400)
+setTimeout(endIntro, 4800)
+addEventListener('pointerdown', endIntro, { once: true })
+</script>
+</body>
+</html>
