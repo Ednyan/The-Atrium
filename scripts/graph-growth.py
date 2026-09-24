@@ -24,7 +24,7 @@ rebuilds what it hasn't seen. graphify now and then crashes on start or on
 exit; a stage whose graph didn't come out is retried.
 """
 
-import colorsys, html, io, json, math, os, random, re, shutil, subprocess, sys, tarfile, threading, time, urllib.parse, webbrowser
+import colorsys, difflib, html, io, json, math, os, random, re, shutil, subprocess, sys, tarfile, threading, time, urllib.parse, webbrowser
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -306,6 +306,98 @@ def with_tree(stage: dict, g: dict) -> dict:
     return {'nodes': nodes, 'edges': [list(e) for e in edges]}
 
 
+class Contents:
+    """What a file held at a stage: from git through one long-running
+    `git cat-file --batch`, or from VS Code's saved copy before git."""
+
+    def __init__(self) -> None:
+        self.git = subprocess.Popen(['git', 'cat-file', '--batch'], cwd=REPO,
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def paths(self, stage: dict) -> set[str]:
+        return set(git('ls-tree', '-r', '--name-only', stage['sha']).splitlines()) if 'sha' in stage else set(stage['files'])
+
+    def read(self, stage: dict, path: str) -> bytes | None:
+        if 'sha' not in stage:
+            blob = stage['files'].get(path)
+            return blob.read_bytes() if blob else None
+        self.git.stdin.write(f"{stage['sha']}:{path}\n".encode())
+        self.git.stdin.flush()
+        header = self.git.stdout.readline().split()
+        if header[-1] == b'missing':
+            return None
+        data = self.git.stdout.read(int(header[2]))
+        self.git.stdout.read(1)
+        return data
+
+
+# Where a named thing is defined: `function x`, `const x`, `class X`, `def x`,
+# `fn x`... or a method, `x(...) {` at the start of a line. First match wins.
+DEFINITION = re.compile(
+    r'\b(?:function\*?|const|let|var|class|interface|type|enum|def|fn|struct|trait|impl)\s+([A-Za-z_$][\w$]*)'
+    r'|^[ \t]*(?:(?:public|private|protected|static|async|export|default|readonly|get|set)\s+)*'
+    r'([A-Za-z_$][\w$]*)\s*\([^)\n]*\)\s*(?::[^{\n]*)?\{', re.M)
+
+
+def edited(before: bytes, after: bytes, nodes: list[tuple[str, str]]) -> list[str]:
+    """Which of a file's nodes (id, label) the edit from `before` to `after`
+    touched: each runs from the line it's defined on to the next one's, and
+    counts as edited if a changed line falls inside it."""
+    old = before.decode('utf-8', 'replace').splitlines()
+    text = after.decode('utf-8', 'replace')
+    new = text.splitlines()
+    changed = set()
+    for tag, _, _, j1, j2 in difflib.SequenceMatcher(None, old, new).get_opcodes():
+        if tag != 'equal':
+            changed.update(range(j1, max(j2, j1 + 1)))  # a deletion marks where it was
+    if not changed:
+        return []
+    line_of = {}
+    for m in DEFINITION.finditer(text):
+        line_of.setdefault(m.group(1) or m.group(2), text.count('\n', 0, m.start()))
+    starts = sorted({(line_of[name], n) for n, label in nodes
+                     if (name := re.sub(r'\(\)$', '', label).split('.')[-1]) in line_of})
+    touched = []
+    for k, (start, n) in enumerate(starts):
+        end = starts[k + 1][0] if k + 1 < len(starts) else len(new) + 1
+        if any(start <= line < end for line in changed):
+            touched.append(n)
+    return touched
+
+
+def changes_between(stages: list[dict], graphs: list[dict]) -> list[list[str]]:
+    """For each stage, what already existed and was edited since the stage
+    before: the pieces of code the changed lines fall in, and each changed
+    file itself. Cached, since it reads every edited file twice."""
+    store = WORK / 'changes.json'
+    cache = json.loads(store.read_text(encoding='utf-8')) if store.is_file() else {}
+    contents = Contents()
+    out: list[list[str]] = [[]]
+    for prev, cur, g_prev, g_cur in zip(stages, stages[1:], graphs, graphs[1:]):
+        key = f"{prev['key']}>{cur['key']}"
+        if key not in cache:
+            if 'sha' in prev and 'sha' in cur:
+                paths = set(git('diff', '--name-only', prev['sha'], cur['sha']).splitlines())
+            else:
+                paths = contents.paths(prev) & contents.paths(cur)
+            found = []
+            for path in sorted(paths):
+                before, after = contents.read(prev, path), contents.read(cur, path)
+                if before is None or after is None or before == after:
+                    continue
+                of_file = [(n, label) for n, (label, f) in g_cur['nodes'].items() if f == path and n in g_prev['nodes']]
+                # The file lights whenever it changes, whatever changed in it.
+                found += [n for n, label in of_file if KIND.get(n) == 1 or label == path.split('/')[-1]]
+                if b'\0' not in before and b'\0' not in after:
+                    code = [(n, label) for n, label in of_file if KIND.get(n, 0) == 0 and label != path.split('/')[-1]]
+                    found += edited(before, after, code)
+            cache[key] = found
+        out.append(cache[key])
+    store.with_suffix('.tmp').write_text(json.dumps(cache), encoding='utf-8')
+    os.replace(store.with_suffix('.tmp'), store)
+    return out
+
+
 def intervals(present: list[bool]) -> list[list[int]]:
     """[[start, end), ...] runs of True."""
     runs, start = [], None
@@ -353,9 +445,12 @@ def main() -> None:
             raise f.exception()
 
     graphs = [with_tree(s, json.loads(stored(s).read_text(encoding='utf-8'))) for s in stages]
+    print('finding what each stage edited', flush=True)
+    changes = changes_between(stages, graphs)
     # It starts from nothing: an empty folder, a minute before the first save.
     stages = [{'t': stages[0]['t'] - 60, 'note': 'an empty folder'}] + stages
     graphs = [{'nodes': {}, 'edges': []}] + graphs
+    changes = [[]] + changes
     # Every node and connection that ever existed, and the stages each was in.
     ids = sorted({n for g in graphs for n in g['nodes']})
     at = {n: i for i, n in enumerate(ids)}
@@ -380,6 +475,8 @@ def main() -> None:
 
     data = {
         'stages': [{'t': s['t'], 'note': s['note'], 'git': 'sha' in s} for s in stages],
+        # Per stage, the nodes that already existed and were edited in it.
+        'changes': [sorted({at[n] for n in ch}) for ch in changes],
         'nodes': [[round((pos[i][0] - cx) / half, 4), round((pos[i][1] - cy) / half, 4), colour[i],
                    union.degree(i), info[n][0], info[n][1], KIND.get(n, 0), intervals([n in ns for ns in node_sets])]
                   for i, n in enumerate(ids)],
