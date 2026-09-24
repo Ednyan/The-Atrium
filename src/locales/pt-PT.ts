@@ -1055,6 +1055,7 @@ const ptPT: Catalogue = {
   'atrium.layers.moveToGroup': 'Mover para grupo',
   'atrium.layers.deleteGroupConfirm': 'Eliminar este grupo e todos os traces dentro dele?',
   'atrium.layers.createGroup': 'Criar novo grupo',
+  'atrium.layers.numberedGroup': 'Grupo {n}',
   'atrium.layers.deleteTrace': 'Eliminar trace',
   'atrium.layers.emitsLight': 'Emite luz',
   'atrium.layers.goToTrace': 'Ir para o trace',

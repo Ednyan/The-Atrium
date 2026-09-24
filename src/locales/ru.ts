@@ -1054,6 +1054,7 @@ const ru: Catalogue = {
   'atrium.layers.moveToGroup': 'Переместить в группу',
   'atrium.layers.deleteGroupConfirm': 'Удалить эту группу и все traces внутри?',
   'atrium.layers.createGroup': 'Создать новую группу',
+  'atrium.layers.numberedGroup': 'Группа {n}',
   'atrium.layers.deleteTrace': 'Удалить trace',
   'atrium.layers.emitsLight': 'Излучает свет',
   'atrium.layers.goToTrace': 'Перейти к trace',

@@ -1048,6 +1048,7 @@ const es: Catalogue = {
   'atrium.layers.moveToGroup': 'Mover a grupo',
   'atrium.layers.deleteGroupConfirm': '¿Eliminar este grupo y todos los traces que contiene?',
   'atrium.layers.createGroup': 'Crear grupo nuevo',
+  'atrium.layers.numberedGroup': 'Grupo {n}',
   'atrium.layers.deleteTrace': 'Eliminar trace',
   'atrium.layers.emitsLight': 'Emite luz',
   'atrium.layers.goToTrace': 'Ir al trace',

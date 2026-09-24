@@ -16,7 +16,7 @@ export function getTraceBaseZIndex(layerZIndex: number): number {
 // between the user selecting it and the trace being created.
 export async function computeZIndexForNewTraceInLayer(
   layerId: string,
-  existingTracesInLayerCount: number
+  tracesInLayer: { zIndex?: number | null }[]
 ): Promise<number> {
   if (!supabase) return 0
 
@@ -24,7 +24,14 @@ export async function computeZIndexForNewTraceInLayer(
   const layerZIndex = (data as any)?.z_index
   if (layerZIndex === undefined || layerZIndex === null) return 0
 
-  return getTraceBaseZIndex(layerZIndex) + existingTracesInLayerCount + 1
+  return topOfLayer(getTraceBaseZIndex(layerZIndex), tracesInLayer)
+}
+
+// One above everything already in the layer. Base + count alone is not
+// enough: a deletion leaves the count lower than the highest z-index still
+// in use, and the new trace then tied with or sat under the top one.
+export function topOfLayer(baseZ: number, tracesInLayer: { zIndex?: number | null }[]): number {
+  return Math.max(baseZ + tracesInLayer.length, ...tracesInLayer.map(t => t.zIndex ?? 0)) + 1
 }
 
 // Places a new UNGROUPED trace at the top of the ungrouped section: one above

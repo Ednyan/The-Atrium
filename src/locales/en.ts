@@ -954,6 +954,7 @@ export const en = {
   'atrium.layers.moveToGroup': 'Move to Group',
   'atrium.layers.deleteGroupConfirm': 'Delete this group and all traces inside it?',
   'atrium.layers.createGroup': 'Create new group',
+  'atrium.layers.numberedGroup': 'Group {n}',
   'atrium.layers.deleteTrace': 'Delete trace',
   'atrium.layers.emitsLight': 'Emits light',
   'atrium.layers.goToTrace': 'Go to trace',

@@ -1615,7 +1615,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           layer_id: activeLayerId,
           z_index: await computeZIndexForNewTraceInLayer(
             activeLayerId,
-            traces.filter(t => t.layerId === activeLayerId).length
+            traces.filter(t => t.layerId === activeLayerId)
           ),
         }
       : { z_index: computeZIndexForNewUngroupedTrace(traces) }
@@ -4063,7 +4063,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             layer_id: activeLayerId,
             z_index: await computeZIndexForNewTraceInLayer(
               activeLayerId,
-              liveTraces.filter(t => t.layerId === activeLayerId).length
+              liveTraces.filter(t => t.layerId === activeLayerId)
             ),
           }
         : { z_index: computeZIndexForNewUngroupedTrace(liveTraces) }
@@ -4299,7 +4299,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               layer_id: activeLayerId,
               z_index: await computeZIndexForNewTraceInLayer(
                 activeLayerId,
-                traces.filter(t => t.layerId === activeLayerId).length
+                traces.filter(t => t.layerId === activeLayerId)
               ),
             }
           : {}
@@ -4325,29 +4325,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         } as any).select()
 
         if (!error && data && data[0]) {
-          const dbTrace = data[0] as any
-          const trace: Trace = {
-            id: dbTrace.id,
-            userId: dbTrace.user_id,
-            username: dbTrace.username,
-            type: dbTrace.type,
-            content: dbTrace.content,
-            x: dbTrace.position_x,
-            y: dbTrace.position_y,
-            createdAt: dbTrace.created_at,
-            scale: dbTrace.scale ?? 1.0,
-            scaleX: dbTrace.scale ?? 1.0,
-            scaleY: dbTrace.scale ?? 1.0,
-            rotation: dbTrace.rotation ?? 0.0,
-            width: dbTrace.width,
-            height: dbTrace.height,
-            mediaUrl: dbTrace.media_url,
-            showBorder: false,
-            showBackground: false,
-            showDescription: false,
-            lobbyId: dbTrace.lobby_id,
-          }
-          useGameStore.getState().addTrace(trace)
+          // From the saved row, like every other new trace: a hand-built copy
+          // here left out the group and z-index, so a new drawing sat at the
+          // bottom of the canvas, outside its group, until the next reload.
+          useGameStore.getState().addTrace(mapRowToTrace(data[0]))
         } else if (error) {
           console.error('Failed to save drawing:', error)
         }

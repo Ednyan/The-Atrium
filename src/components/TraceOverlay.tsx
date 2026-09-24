@@ -28,7 +28,7 @@ import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { toEmbedUrl } from '../lib/embedUrl'
-import { getTraceBaseZIndex } from '../lib/layerZIndex'
+import { getTraceBaseZIndex, topOfLayer } from '../lib/layerZIndex'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
@@ -900,6 +900,37 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [lobbyId, loadGroupLayers])
 
+  // Reassigns the given traces to a layer group (or Ungrouped when
+  // targetLayerId is null), placing them at the top of that group. Mirrors
+  // the z-index scheme in LayerPanel/layerZIndex (base = layerZIndex*100,
+  // then order within the layer).
+  //
+  // knownLayerZIndex is for a group made a moment ago: this render's
+  // groupLayers does not have it yet, and looking it up there failed quietly --
+  // which is why the New Group dialog said it would move the traces and then
+  // made an empty group.
+  const moveTracesToGroup = useCallback(async (traceIds: string[], targetLayerId: string | null, knownLayerZIndex?: number) => {
+    if (!supabase || !canEdit || traceIds.length === 0) return
+    const store = useGameStore.getState()
+    const allTraces = store.traces
+    const targetLayerZ = targetLayerId ? knownLayerZIndex ?? groupLayers.find(l => l.id === targetLayerId)?.zIndex : null
+    if (targetLayerId && targetLayerZ === undefined) return
+    const baseZ = targetLayerZ != null ? getTraceBaseZIndex(targetLayerZ) : 0
+    const idSet = new Set(traceIds)
+    let nextZ = topOfLayer(baseZ, allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)))
+    for (const id of traceIds) {
+      const trace = allTraces.find(t => t.id === id)
+      if (!trace || (trace.layerId ?? null) === targetLayerId) continue
+      const newZ = nextZ++
+      const { error } = await (supabase.from('traces') as any)
+        .update({ layer_id: targetLayerId, z_index: newZ })
+        .eq('id', id)
+      if (!error) {
+        store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
+      }
+    }
+  }, [canEdit, groupLayers])
+
   // Makes a group and drops the traces straight into it.
   //
   // Mirrors LayerPanel's createGroup -- same table, same shape, same z-index
@@ -934,40 +965,29 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       return
     }
 
-    await loadGroupLayers()
-
     const created = Array.isArray(data) ? data[0] : data
     if (created?.id && traceIds.length > 0) {
-      await moveTracesToGroup(traceIds, created.id)
+      await moveTracesToGroup(traceIds, created.id, created.z_index ?? newZIndex)
     }
-  }, [lobbyId, username, groupLayers, loadGroupLayers])
 
-  // Reassigns the given traces to a layer group (or Ungrouped when
-  // targetLayerId is null), placing them at the top of that group. Mirrors
-  // the z-index scheme in LayerPanel/layerZIndex (base = layerZIndex*100,
-  // then order within the layer).
-  const moveTracesToGroup = useCallback(async (traceIds: string[], targetLayerId: string | null) => {
-    if (!supabase || !canEdit || traceIds.length === 0) return
-    const store = useGameStore.getState()
-    const allTraces = store.traces
-    const targetLayer = targetLayerId ? groupLayers.find(l => l.id === targetLayerId) : null
-    if (targetLayerId && !targetLayer) return
-    const baseZ = targetLayer ? getTraceBaseZIndex(targetLayer.zIndex) : 0
-    const idSet = new Set(traceIds)
-    let order = allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)).length
-    for (const id of traceIds) {
-      const trace = allTraces.find(t => t.id === id)
-      if (!trace || (trace.layerId ?? null) === targetLayerId) continue
-      const newZ = baseZ + order + 1
-      order++
-      const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: targetLayerId, z_index: newZ })
-        .eq('id', id)
-      if (!error) {
-        store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
-      }
-    }
-  }, [canEdit, groupLayers])
+    await loadGroupLayers()
+    // The Layer panel hears about it from here. Its realtime subscription
+    // would do it on the web, but desktop has none, and an open panel went
+    // on showing the atrium as it was before the group existed.
+    window.dispatchEvent(new Event('atrium:layers-changed'))
+  }, [lobbyId, username, groupLayers, loadGroupLayers, moveTracesToGroup])
+
+  // Ctrl+G: the selection into a new group called "Group N", N the lowest
+  // number no group here already has. Names are read fresh rather than from
+  // groupLayers, which on desktop can miss a group the Layer panel just made.
+  const groupSelection = useCallback(async (traceIds: string[]) => {
+    if (!supabase || !lobbyId || !canEdit || traceIds.length === 0) return
+    const { data } = await (supabase.from('layers') as any).select('name').eq('lobby_id', lobbyId)
+    const taken = new Set(((data ?? []) as { name: string | null }[]).map(l => (l.name ?? '').trim().toLowerCase()))
+    let n = 1
+    while (taken.has(t('atrium.layers.numberedGroup', { n }).toLowerCase())) n++
+    await createGroupAndMove(traceIds, t('atrium.layers.numberedGroup', { n }))
+  }, [lobbyId, canEdit, createGroupAndMove])
 
   // Which imports are still being copied into the vault. Their media is left
   // alone until the file is whole -- see the resolver above.
@@ -3629,6 +3649,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         }
       }
 
+      // Ctrl+G (Cmd+G): group the selection. Also keeps the webview's own
+      // Ctrl+G, find-next, from opening over the atrium.
+      if ((e.key === 'g' || e.key === 'G') && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !typingHere && !e.repeat && !isDrawingModeRef.current && canEdit) {
+        const ids = multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : selectedTraceId ? [selectedTraceId] : []
+        if (ids.length > 0) {
+          e.preventDefault()
+          void groupSelection(ids)
+          return
+        }
+      }
+
       // G: select the selected trace's whole group -- exactly the right-click
       // menu's Select > Select group, anchored on the same trace. An ungrouped
       // trace's "group" is every ungrouped trace, as in the menu. No modifier,
@@ -3660,7 +3691,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('mousedown', handleMouseDownCapture, true)
     }
-  }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit])
+  }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit, groupSelection])
 
   // Auto-pan while dragging a trace toward the edge of the screen, so a trace
   // can be moved somewhere that isn't currently in view without dropping it,

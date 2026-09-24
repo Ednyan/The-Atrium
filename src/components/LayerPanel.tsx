@@ -283,6 +283,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     await loadLayers()
   }
 
+  // Groups made outside this panel -- the canvas's New Group and Ctrl+G --
+  // announce themselves, since on desktop there is no realtime to tell us.
+  useEffect(() => {
+    const reload = () => { void loadLayers() }
+    window.addEventListener('atrium:layers-changed', reload)
+    return () => window.removeEventListener('atrium:layers-changed', reload)
+  }, [loadLayers])
+
   // Load layers from database, scoped to this atrium only
   useEffect(() => {
     loadLayers()

@@ -1052,6 +1052,7 @@ const ptBR: Catalogue = {
   'atrium.layers.moveToGroup': 'Mover para grupo',
   'atrium.layers.deleteGroupConfirm': 'Excluir este grupo e todos os traces dentro dele?',
   'atrium.layers.createGroup': 'Criar novo grupo',
+  'atrium.layers.numberedGroup': 'Grupo {n}',
   'atrium.layers.deleteTrace': 'Excluir trace',
   'atrium.layers.emitsLight': 'Emite luz',
   'atrium.layers.goToTrace': 'Ir para o trace',

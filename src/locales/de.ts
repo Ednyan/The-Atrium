@@ -1051,6 +1051,7 @@ const de: Catalogue = {
   'atrium.layers.moveToGroup': 'In Gruppe verschieben',
   'atrium.layers.deleteGroupConfirm': 'Diese Gruppe und alle Traces darin löschen?',
   'atrium.layers.createGroup': 'Neue Gruppe erstellen',
+  'atrium.layers.numberedGroup': 'Gruppe {n}',
   'atrium.layers.deleteTrace': 'Trace löschen',
   'atrium.layers.emitsLight': 'Gibt Licht ab',
   'atrium.layers.goToTrace': 'Zum Trace springen',

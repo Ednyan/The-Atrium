@@ -1008,6 +1008,7 @@ const ko: Catalogue = {
   'atrium.layers.moveToGroup': '그룹으로 옮기기',
   'atrium.layers.deleteGroupConfirm': '이 그룹과 안의 trace를 모두 삭제할까요?',
   'atrium.layers.createGroup': '새 그룹 만들기',
+  'atrium.layers.numberedGroup': '그룹 {n}',
   'atrium.layers.deleteTrace': 'trace 삭제',
   'atrium.layers.emitsLight': '빛을 내고 있어요',
   'atrium.layers.goToTrace': '이 trace로 가기',

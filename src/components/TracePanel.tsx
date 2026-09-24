@@ -489,7 +489,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
               layer_id: activeLayerId,
               z_index: await computeZIndexForNewTraceInLayer(
                 activeLayerId,
-                traces.filter(t => t.layerId === activeLayerId).length
+                traces.filter(t => t.layerId === activeLayerId)
               ),
             }
           : { z_index: computeZIndexForNewUngroupedTrace(traces) }
