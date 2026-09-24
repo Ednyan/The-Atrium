@@ -69,10 +69,9 @@ const presence = list => list.map(item => {
 })
 const nodeIn = presence(nodes), edgeIn = presence(edges)
 // Edited, not new: per stage, the nodes that already existed and changed.
-// Each glows and trembles for a moment when its stage comes round.
+// Each swells and glows for a moment when its stage comes round.
 const changes = D.changes || [], PULSE = 750
 const pulseAt = new Float64Array(N).fill(-1e9)
-const shakeDir = Float32Array.from(nodes, () => Math.random() * Math.PI * 2)
 let lastFloor = 0
 // Node kinds: 0 code (graphify's), 1 other file, 2 folder. Connection kinds:
 // 0 between code, 1 the file and folder tree.
@@ -310,11 +309,12 @@ function draw() {
   for (let i = 0; i < N; i++) {
     const [alpha, state] = fade(nodeIn[i], s, t)
     if (!alpha) continue
-    // An edited piece trembles as it glows, the shake dying away with it.
+    // An edited piece swells a little and settles back -- up and down once,
+    // over the pulse -- glowing while it does.
     const age = performance.now() - pulseAt[i], k = age < PULSE ? 1 - age / PULSE : 0
-    const shake = k ? Math.sin(age * 0.07) * 2.2 * z * k : 0
-    const kind = kindOf[i], x = sx(i) + Math.cos(shakeDir[i]) * shake, y = sy(i) + Math.sin(shakeDir[i]) * shake
-    const r = (kind === 2 ? 1.6 + Math.sqrt(nodes[i][3]) * 0.25 : kind === 1 ? 1 : 1 + Math.sqrt(nodes[i][3]) * 0.4) * z
+    const swell = k ? Math.sin(Math.PI * age / PULSE) : 0
+    const kind = kindOf[i], x = sx(i), y = sy(i)
+    const r = (kind === 2 ? 1.6 + Math.sqrt(nodes[i][3]) * 0.25 : kind === 1 ? 1 : 1 + Math.sqrt(nodes[i][3]) * 0.4) * z * (1 + 0.6 * swell)
     ctx.globalAlpha = alpha * (kind === 1 ? 0.6 : kind === 2 ? 0.55 : 1)
     if (kind === 2) {
       // Folders: small open squares, pale, so they read as the frame the
@@ -327,10 +327,10 @@ function draw() {
     }
     if (k && state === 0) {
       ctx.globalCompositeOperation = 'lighter'
-      ctx.globalAlpha = 0.5 * k
+      ctx.globalAlpha = 0.45 * swell
       ctx.fillStyle = kind === 2 ? '#cfcfe0' : colourOf[i]
-      ctx.beginPath(); ctx.arc(x, y, r + (3 + 5 * k) * z, 0, Math.PI * 2); ctx.fill()
-      ctx.globalAlpha = 0.8 * k
+      ctx.beginPath(); ctx.arc(x, y, r + 4 * swell * z, 0, Math.PI * 2); ctx.fill()
+      ctx.globalAlpha = 0.8 * swell
       ctx.fillStyle = '#fff'
       ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.fill()
       ctx.globalCompositeOperation = 'source-over'
