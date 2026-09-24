@@ -527,3 +527,24 @@ export function drawPlacedPicture(ctx: CanvasRenderingContext2D, img: HTMLImageE
   ctx.drawImage(img, p.x, p.y, p.w, p.h)
   ctx.restore()
 }
+
+// The smallest box holding every pixel that isn't fully transparent, as
+// [min, max) in pixels -- or null when there is none. A saved drawing is
+// trimmed to it, so what was erased doesn't stay on as empty trace.
+export function alphaBounds(rgba: ArrayLike<number>, width: number, height: number) {
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4
+    for (let x = 0; x < width; x++) {
+      if (rgba[row + x * 4 + 3] === 0) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      maxY = y
+    }
+  }
+  return maxX < 0 ? null : { minX, minY, maxX: maxX + 1, maxY: maxY + 1 }
+}

@@ -373,6 +373,8 @@ const fr: Catalogue = {
   'atrium.draw.editingTitle': 'Modification du dessin',
   'atrium.draw.editLoadFailed': 'L\'image de ce dessin n\'a pas pu être ouverte pour la modifier.',
   'atrium.draw.editSaveFailed': 'Le dessin modifié n\'a pas pu être enregistré. Tes traits sont toujours là.',
+  'atrium.draw.nothingLeft': 'Tout a été effacé, il n\'y a donc rien à enregistrer.',
+  'atrium.draw.drawingRemoved': 'Tout a été effacé, donc le dessin a été retiré. « Ne pas enregistrer » le ramène.',
   'atrium.draw.brush': 'Pinceau',
   'atrium.draw.eraser': 'Gomme',
   'atrium.draw.brushPen': 'Stylo',

@@ -375,6 +375,8 @@ const ptBR: Catalogue = {
   'atrium.draw.editingTitle': 'Editando desenho',
   'atrium.draw.editLoadFailed': 'Não foi possível abrir a imagem deste desenho para editar.',
   'atrium.draw.editSaveFailed': 'Não foi possível salvar o desenho editado. Seus traços continuam aqui.',
+  'atrium.draw.nothingLeft': 'Tudo foi apagado, então não há nada para salvar.',
+  'atrium.draw.drawingRemoved': 'Tudo foi apagado, então o desenho foi removido. "Não salvar" traz ele de volta.',
   'atrium.draw.brush': 'Pincel',
   'atrium.draw.eraser': 'Borracha',
   'atrium.draw.brushPen': 'Caneta',

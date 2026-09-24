@@ -290,6 +290,8 @@ const zh: Catalogue = {
   'atrium.draw.editingTitle': '正在编辑这幅画',
   'atrium.draw.editLoadFailed': '无法打开这幅画的图片进行编辑。',
   'atrium.draw.editSaveFailed': '无法保存编辑后的画。你画的笔触都还在。',
+  'atrium.draw.nothingLeft': '全部都擦掉了，没有可保存的内容。',
+  'atrium.draw.drawingRemoved': '全部都擦掉了，所以这幅画已被移除。点“不保存”可以找回。',
   'atrium.draw.brush': '画笔',
   'atrium.draw.eraser': '橡皮擦',
   'atrium.draw.brushPen': '钢笔',

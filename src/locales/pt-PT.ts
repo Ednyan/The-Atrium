@@ -378,6 +378,8 @@ const ptPT: Catalogue = {
   'atrium.draw.editingTitle': 'A editar desenho',
   'atrium.draw.editLoadFailed': 'Não foi possível abrir a imagem deste desenho para a editar.',
   'atrium.draw.editSaveFailed': 'Não foi possível guardar o desenho editado. Os teus traços continuam aqui.',
+  'atrium.draw.nothingLeft': 'Foi tudo apagado, por isso não há nada para guardar.',
+  'atrium.draw.drawingRemoved': 'Foi tudo apagado, por isso o desenho foi removido. «Não guardar» trá-lo de volta.',
   'atrium.draw.brush': 'Pincel',
   'atrium.draw.eraser': 'Borracha',
   'atrium.draw.brushPen': 'Caneta',

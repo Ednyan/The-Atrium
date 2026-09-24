@@ -375,6 +375,8 @@ const it: Catalogue = {
   'atrium.draw.editingTitle': 'Modifica del disegno',
   'atrium.draw.editLoadFailed': 'Non è stato possibile aprire l’immagine di questo disegno per modificarla.',
   'atrium.draw.editSaveFailed': 'Non è stato possibile salvare il disegno modificato. I tuoi tratti sono ancora qui.',
+  'atrium.draw.nothingLeft': 'È stato cancellato tutto, quindi non c’è niente da salvare.',
+  'atrium.draw.drawingRemoved': 'È stato cancellato tutto, quindi il disegno è stato rimosso. «Non salvare» lo riporta indietro.',
   'atrium.draw.brush': 'Pennello',
   'atrium.draw.eraser': 'Gomma',
   'atrium.draw.brushPen': 'Penna',

@@ -377,6 +377,8 @@ const ru: Catalogue = {
   'atrium.draw.editingTitle': 'Редактирование рисунка',
   'atrium.draw.editLoadFailed': 'Не удалось открыть изображение этого рисунка для редактирования.',
   'atrium.draw.editSaveFailed': 'Не удалось сохранить отредактированный рисунок. Ваши штрихи на месте.',
+  'atrium.draw.nothingLeft': 'Всё стёрто, сохранять нечего.',
+  'atrium.draw.drawingRemoved': 'Всё стёрто, поэтому рисунок удалён. «Не сохранять» вернёт его.',
   'atrium.draw.brush': 'Кисть',
   'atrium.draw.eraser': 'Ластик',
   'atrium.draw.brushPen': 'Перо',

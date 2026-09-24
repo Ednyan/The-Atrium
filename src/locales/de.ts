@@ -374,6 +374,8 @@ const de: Catalogue = {
   'atrium.draw.editingTitle': 'Zeichnung bearbeiten',
   'atrium.draw.editLoadFailed': 'Das Bild dieser Zeichnung ließ sich nicht zum Bearbeiten öffnen.',
   'atrium.draw.editSaveFailed': 'Die bearbeitete Zeichnung konnte nicht gespeichert werden. Deine Striche sind noch da.',
+  'atrium.draw.nothingLeft': 'Alles wurde radiert, es gibt also nichts zu speichern.',
+  'atrium.draw.drawingRemoved': 'Alles wurde radiert, also wurde die Zeichnung entfernt. „Nicht speichern“ holt sie zurück.',
   'atrium.draw.brush': 'Pinsel',
   'atrium.draw.eraser': 'Radierer',
   'atrium.draw.brushPen': 'Stift',

@@ -287,6 +287,8 @@ const ja: Catalogue = {
   'atrium.draw.editingTitle': '描いたものを編集中',
   'atrium.draw.editLoadFailed': 'この描画の画像を編集用に開けませんでした。',
   'atrium.draw.editSaveFailed': '編集した描画を保存できませんでした。描いた線はそのまま残っています。',
+  'atrium.draw.nothingLeft': 'すべて消したので、保存するものがありません。',
+  'atrium.draw.drawingRemoved': 'すべて消したので、描いたものを取り除きました。「保存しない」で元に戻せます。',
   'atrium.draw.brush': 'ブラシ',
   'atrium.draw.eraser': '消しゴム',
   'atrium.draw.brushPen': 'ペン',

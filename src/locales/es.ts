@@ -371,6 +371,8 @@ const es: Catalogue = {
   'atrium.draw.editingTitle': 'Editando dibujo',
   'atrium.draw.editLoadFailed': 'No se pudo abrir la imagen de este dibujo para editarla.',
   'atrium.draw.editSaveFailed': 'No se pudo guardar el dibujo editado. Tus trazos siguen aquí.',
+  'atrium.draw.nothingLeft': 'Se borró todo, así que no hay nada que guardar.',
+  'atrium.draw.drawingRemoved': 'Se borró todo, así que el dibujo se quitó. «No guardar» lo recupera.',
   'atrium.draw.brush': 'Pincel',
   'atrium.draw.eraser': 'Borrador',
   'atrium.draw.brushPen': 'Pluma',

@@ -277,6 +277,8 @@ export const en = {
   'atrium.draw.editingTitle': 'Editing drawing',
   'atrium.draw.editLoadFailed': 'This drawing\'s picture couldn\'t be opened for editing.',
   'atrium.draw.editSaveFailed': 'The edited drawing couldn\'t be saved. Your strokes are still here.',
+  'atrium.draw.nothingLeft': 'Everything was erased, so there\'s nothing to save.',
+  'atrium.draw.drawingRemoved': 'Everything was erased, so the drawing was removed. Don\'t Save brings it back.',
   'atrium.draw.brush': 'Brush',
   'atrium.draw.eraser': 'Eraser',
   'atrium.draw.brushPen': 'Pen',

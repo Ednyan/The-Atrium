@@ -291,6 +291,8 @@ const ko: Catalogue = {
   'atrium.draw.editingTitle': '그림 편집 중',
   'atrium.draw.editLoadFailed': '이 그림의 이미지를 편집하려고 열 수 없었습니다.',
   'atrium.draw.editSaveFailed': '편집한 그림을 저장하지 못했습니다. 그린 선은 그대로 남아 있습니다.',
+  'atrium.draw.nothingLeft': '모두 지워서 저장할 것이 없습니다.',
+  'atrium.draw.drawingRemoved': '모두 지워서 그림을 없앴습니다. \'저장 안 함\'을 누르면 되돌아옵니다.',
   'atrium.draw.brush': '붓',
   'atrium.draw.eraser': '지우개',
   'atrium.draw.brushPen': '펜',

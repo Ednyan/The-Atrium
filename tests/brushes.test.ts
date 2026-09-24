@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { isCustomBrush, isDrawingTrace, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
+import { alphaBounds, isCustomBrush, isDrawingTrace, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
 
 test('stamps land at the spacing, whatever the segments are', () => {
   const xs = (points: { x: number; y: number }[]) => stampPositions(points, () => 2).map(s => s.x)
@@ -58,4 +58,13 @@ test('the picture lands where the trace shows it, crop and all', () => {
   // Turned a quarter, a wide box covers a tall area.
   const b = placementBounds({ ...base, rotation: 90 }, 200, 100)
   assert.ok(Math.abs(b.maxX - 50) < 1e-9 && Math.abs(b.maxY - 100) < 1e-9)
+})
+
+test('a saved drawing is trimmed to what is left of it', () => {
+  // 4x3, with ink at (1,1) and, faintly, at (2,2).
+  const px = new Array(4 * 3 * 4).fill(0)
+  px[(1 * 4 + 1) * 4 + 3] = 255
+  px[(2 * 4 + 2) * 4 + 3] = 1
+  assert.deepEqual(alphaBounds(px, 4, 3), { minX: 1, minY: 1, maxX: 3, maxY: 3 })
+  assert.equal(alphaBounds(new Array(4 * 3 * 4).fill(0), 4, 3), null)
 })

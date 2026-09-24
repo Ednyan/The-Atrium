@@ -33,7 +33,7 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
-import { BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
+import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
@@ -4389,9 +4389,40 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         })
       }
 
+      // Trimmed to what is actually there. The box above was sized from every
+      // point drawn and all of an edited drawing's picture, so whatever was
+      // erased -- and room left for a soft edge that turned out not to need
+      // it -- would otherwise stay on as empty space in the trace.
+      const found = alphaBounds(offCtx.getImageData(0, 0, offscreen.width, offscreen.height).data, offscreen.width, offscreen.height)
+      if (!found) {
+        setIsSavingDrawing(false)
+        resetDrawing()
+        if (editing) {
+          // All of it erased: the drawing goes, the way a delete does, so
+          // Don't Save still brings it back.
+          const store = useGameStore.getState()
+          store.removeTrace(editing.traceId)
+          store.markTraceDeleted(editing.traceId)
+          showToast(t('atrium.draw.drawingRemoved'))
+          setIsDrawingMode(false)
+        } else {
+          showToast(t('atrium.draw.nothingLeft'))
+        }
+        return
+      }
+      const picture = document.createElement('canvas')
+      picture.width = found.maxX - found.minX
+      picture.height = found.maxY - found.minY
+      picture.getContext('2d')!.drawImage(offscreen, -found.minX, -found.minY)
+      // The trimmed box, back in screen pixels.
+      const outMinX = minSX + found.minX / k
+      const outMinY = minSY + found.minY / k
+      const outW = picture.width / k
+      const outH = picture.height / k
+
       // Export as PNG blob and upload to Supabase Storage
       const blob = await new Promise<Blob>((resolve) => {
-        offscreen.toBlob((b) => resolve(b!), 'image/png')
+        picture.toBlob((b) => resolve(b!), 'image/png')
       })
       const fileName = `drawing_${userId}_${Date.now()}.png`
       const storagePath = `${lobbyId}/${fileName}`
@@ -4403,7 +4434,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       
       if (uploadError) {
         console.error('Storage upload failed, falling back to data URL:', uploadError)
-        imageUrl = offscreen.toDataURL('image/png')
+        imageUrl = picture.toDataURL('image/png')
       } else {
         const { data: { publicUrl } } = supabase!.storage
           .from('traces')
@@ -4415,10 +4446,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const panX = worldContainerRef.current?.x ?? 0
       const panY = worldContainerRef.current?.y ?? 0
       const zoom = zoomRef.current
-      const worldMinX = (minSX - panX) / zoom
-      const worldMinY = (minSY - panY) / zoom
-      const worldW = cropW / zoom
-      const worldH = cropH / zoom
+      const worldMinX = (outMinX - panX) / zoom
+      const worldMinY = (outMinY - panY) / zoom
+      const worldW = outW / zoom
+      const worldH = outH / zoom
       const worldCenterX = worldMinX + worldW / 2
       const worldCenterY = worldMinY + worldH / 2
 
