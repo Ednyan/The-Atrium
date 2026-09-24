@@ -32,6 +32,7 @@ import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probe
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
+import { hasTransparency } from '../lib/imageAlpha'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
@@ -2043,6 +2044,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // fall back to the default box.
     const probed = await Promise.all(urls.map(url => probeRemoteImageDimensions(url)))
     const boxes = urls.map(url => defaultEmbedBox(url))
+    // Only what loaded as a picture can be see-through.
+    const seeThrough = await Promise.all(urls.map((url, i) => probed[i]
+      ? hasTransparency(url, isDesktop ? undefined : `/api/proxy-image?url=${encodeURIComponent(url)}`)
+      : false))
     const sizes = probed.map((dims, i) => dims ? scaleToDisplayBox(dims) : boxes[i] ?? getDefaultTraceBoxSize('embed'))
     const offsets = packBoxesAroundCenter(sizes, 24, packingShapeRef.current)
 
@@ -2081,6 +2086,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // Stored for what isn't an image, so a pasted video opens at the size
         // it was packed at, as the single-link paths already do.
         ...(!probed[i] && boxes[i] ? boxes[i] : {}),
+        ...(seeThrough[i] ? { show_border: false, show_background: false } : {}),
         ...(layerFields ? layerFields[i] : {}),
       }))
 
@@ -3723,7 +3729,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (item.file) {
         const uploadedUrl = await uploadFile(item.file)
         if (uploadedUrl) {
-          await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY)
+          await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY, item.file)
         }
       } else {
         await insertDroppedTrace(item.traceType, item.content, item.mediaUrl, dropX, dropY)
@@ -3929,7 +3935,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       for (let i = 0; i < imageFiles.length; i++) {
         const uploadedUrl = await uploadFile(imageFiles[i])
         if (uploadedUrl) {
-          await insertDroppedTrace('image', imageFiles[i].name || 'pasted image', uploadedUrl, baseX + offsets[i].x, baseY + offsets[i].y)
+          await insertDroppedTrace('image', imageFiles[i].name || 'pasted image', uploadedUrl, baseX + offsets[i].x, baseY + offsets[i].y, imageFiles[i])
         }
       }
     }
@@ -4055,6 +4061,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     mediaUrl: string | undefined,
     x: number,
     y: number,
+    // The dropped or pasted file itself, when there is one: read locally,
+    // which is quicker and surer than reading it back from where it went.
+    file?: Blob,
   ) => {
     if (supabase) {
       // Read the live store (not the render-time `traces` closure) so a
@@ -4085,6 +4094,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ? defaultEmbedBox(mediaUrl || content)
         : null
 
+      // A picture with a see-through background arrives without the
+      // background and border that would fill it in. Not asked of a link
+      // already known to be a page (embedBox), which would only wait on it.
+      const seeThrough = (traceType === 'image' || (traceType === 'embed' && !embedBox))
+        && await hasTransparency(
+          file ?? mediaUrl ?? '',
+          !isDesktop && mediaUrl ? `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}` : undefined,
+        )
+
       // The atrium's house style, applied at birth. This path -- the quick
       // "leave a trace" flow -- writes straight to the database and never went
       // through the panel that knew about presets, which is why traces made
@@ -4097,8 +4115,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         type: traceType,
         border_color: preset.border,
         fill_color: preset.fill,
-        show_border: true,
-        show_background: true,
+        show_border: !seeThrough,
+        show_background: !seeThrough,
         font_family: 'mono',
         ...(preset.text ? { text_color: preset.text } : {}),
         content,

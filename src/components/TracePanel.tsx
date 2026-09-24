@@ -13,6 +13,7 @@ import { computeAutoFitTextSize } from '../lib/textFit'
 import { currentTracePreset } from '../lib/tracePresets'
 import { scaleToDisplayBox } from '../lib/binPack'
 import { defaultEmbedBox } from '../lib/embedUrl'
+import { hasTransparency } from '../lib/imageAlpha'
 import type { Trace } from '../types/database'
 
 // Matches mapRowToTrace's `row.font_size ?? 16` fallback -- a freshly
@@ -437,12 +438,21 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       // in a dark one.
       const preset = currentTracePreset(lobbyId)
 
+      // A picture with a see-through background arrives without the
+      // background and border that would fill it in. A link already known to
+      // be a page (a video, a Doc) isn't asked.
+      const seeThrough = (traceType === 'image' && file)
+        ? await hasTransparency(file)
+        : traceType === 'embed' && mediaUrl && !defaultEmbedBox(mediaUrl)
+          ? await hasTransparency(mediaUrl, isDesktop ? undefined : `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`)
+          : false
+
       const newTrace: Trace = {
         id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         borderColor: preset.border,
         fillColor: preset.fill,
-        showBorder: true,
-        showBackground: true,
+        showBorder: !seeThrough,
+        showBackground: !seeThrough,
         fontFamily: 'mono',
         ...(preset.text ? { textColor: preset.text } : {}),
         userId,
@@ -505,8 +515,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           // looking different depending on which branch made it.
           border_color: preset.border,
           fill_color: preset.fill,
-          show_border: true,
-          show_background: true,
+          show_border: !seeThrough,
+          show_background: !seeThrough,
           font_family: 'mono',
           ...(preset.text ? { text_color: preset.text } : {}),
           content: content.trim() || `${traceType} content`,
