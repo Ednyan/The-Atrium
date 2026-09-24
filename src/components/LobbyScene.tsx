@@ -33,6 +33,7 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
+import { BUILTIN_BRUSHES, customBrushKey, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
@@ -73,6 +74,37 @@ const DRAW_SWATCHES = [
   '#CBCBCB', '#191919', '#8F8F8F', '#FF8A3D', '#E8C15A',
   '#9AD4C4', '#A8B6D9', '#C77DFF', '#E87A6D', '#7FD1A6',
 ]
+
+const BRUSH_LABELS = {
+  pen: 'atrium.draw.brushPen',
+  pencil: 'atrium.draw.brushPencil',
+  marker: 'atrium.draw.brushMarker',
+  airbrush: 'atrium.draw.brushAirbrush',
+  calligraphy: 'atrium.draw.brushCalligraphy',
+} as const satisfies Record<BuiltinBrush, string>
+
+// Each built-in brush as a small picture of the mark it makes.
+function BrushGlyph({ brush }: { brush: BuiltinBrush }) {
+  const wave = 'M2 11 C 6 3, 10 3, 12 7 S 18 11, 22 3'
+  return (
+    <svg width="24" height="14" viewBox="0 0 24 14" fill="none" stroke="currentColor" strokeLinecap="round" aria-hidden="true">
+      {brush === 'pen' && <path d={wave} strokeWidth="1.8" />}
+      {brush === 'pencil' && <path d={wave} strokeWidth="1.4" strokeDasharray="0.6 1.4" />}
+      {brush === 'marker' && <path d={wave} strokeWidth="4" strokeOpacity="0.5" strokeLinecap="butt" />}
+      {brush === 'airbrush' && (
+        <>
+          <circle cx="12" cy="7" r="6" fill="currentColor" fillOpacity="0.15" stroke="none" />
+          <circle cx="12" cy="7" r="3.5" fill="currentColor" fillOpacity="0.35" stroke="none" />
+          <circle cx="12" cy="7" r="1.5" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {/* The same wave swept along a 45-degree nib, as the brush does. */}
+      {brush === 'calligraphy' && [-1.5, -0.9, -0.3, 0.3, 0.9, 1.5].map(o => (
+        <path key={o} d={wave} strokeWidth="0.9" transform={`translate(${o} ${-o})`} />
+      ))}
+    </svg>
+  )
+}
 
 const HUD_TEXT_OUTLINE =
   '0 0 4px rgb(var(--c-ground) / 0.95), 1px 0 2px rgb(var(--c-ground) / 0.94), -1px 0 2px rgb(var(--c-ground) / 0.94), 0 1px 2px rgb(var(--c-ground) / 0.94), 0 -1px 2px rgb(var(--c-ground) / 0.94)'
@@ -857,9 +889,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [isEraserMode, setIsEraserMode] = useState(false)
-  // p is pen pressure, 0..1, present only on points drawn with a pen.
-  type StrokePoint = { x: number; y: number; p?: number }
-  const [completedStrokes, setCompletedStrokes] = useState<Array<{ points: StrokePoint[]; color: string; width: number; isEraser: boolean }>>([])
+  const [completedStrokes, setCompletedStrokes] = useState<Stroke[]>([])
+  // A built-in brush's name or customBrushKey(id) -- see lib/brushes.
+  const [drawingBrush, setDrawingBrush] = useState<string>('pen')
+  const drawingBrushRef = useRef('pen')
+  // Brushes imported on desktop, read from the vault the first time drawing
+  // opens.
+  const [customBrushes, setCustomBrushes] = useState<CustomBrush[]>([])
+  const customBrushesLoadedRef = useRef(false)
+  const brushFileInputRef = useRef<HTMLInputElement>(null)
+  // The seed of the stroke being drawn, so its grain holds still as it grows.
+  const currentSeedRef = useRef(0)
+  // Every finished stroke, painted once into a layer of its own. Redrawing
+  // them all on every pointer move was fine for plain lines, but a stamped
+  // brush is hundreds of stamps a stroke; now only the stroke in progress is
+  // painted per move.
+  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null } | null>(null)
   const [drawingColor, setDrawingColor] = useState('#ffffff')
   const [drawingWidth, setDrawingWidth] = useState(3)
   const [drawingSmoothing, setDrawingSmoothing] = useState(30)
@@ -969,81 +1014,58 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     completedStrokesRef.current = completedStrokes
     renderDrawingCanvas()
   }, [completedStrokes])
+  useEffect(() => { drawingBrushRef.current = drawingBrush }, [drawingBrush])
 
-  // Canvas drawing helpers
-  // Width at a point: the brush width, scaled by pen pressure where there is
-  // any. The floor is a fifth of the width, so the lightest touch still leaves
-  // a line rather than nothing.
-  const pressureWidth = (width: number, p: number | undefined) =>
-    p === undefined ? width : width * (0.2 + 0.8 * Math.min(1, Math.max(0, p)))
+  // Imported brushes live in the vault, so only desktop has any. Read once,
+  // the first time drawing opens, and only what makeBrushTip would have made.
+  useEffect(() => {
+    if (!isDrawingMode || !isDesktop || customBrushesLoadedRef.current) return
+    customBrushesLoadedRef.current = true
+    void (async () => {
+      try {
+        const { readVaultBrushes } = await import('../lib/localDb')
+        const stored = await readVaultBrushes()
+        const brushes = (Array.isArray(stored) ? stored : []).filter(isCustomBrush)
+        const usable: CustomBrush[] = []
+        for (const brush of brushes) if (await registerCustomBrush(brush)) usable.push(brush)
+        setCustomBrushes(usable)
+      } catch (err) {
+        console.error('[brushes] could not read the vault\'s brushes:', err)
+      }
+    })()
+  }, [isDrawingMode])
 
-  const drawBezierStroke = (ctx: CanvasRenderingContext2D, points: StrokePoint[], color: string, width: number, isEraser: boolean) => {
-    if (points.length === 0) return
-    ctx.save()
-    ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over'
+  const saveCustomBrushes = async (next: CustomBrush[]) => {
+    setCustomBrushes(next)
+    try {
+      const { writeVaultBrushes } = await import('../lib/localDb')
+      await writeVaultBrushes(next)
+    } catch (err) {
+      console.error('[brushes] could not save to the vault:', err)
+      showToast(t('atrium.draw.brushSaveFailed'))
+    }
+  }
 
-    if (points.length === 1) {
-      // A click with no movement -- draw a single dot instead of nothing,
-      // matching what most drawing apps do for a stationary tap/click.
-      ctx.fillStyle = isEraser ? 'rgba(0,0,0,1)' : color
-      ctx.beginPath()
-      ctx.arc(points[0].x, points[0].y, pressureWidth(width, points[0].p) / 2, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
+  const importBrush = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // Cleared so choosing the same file again still counts as a change.
+    e.target.value = ''
+    if (!file) return
+    const tip = await makeBrushTip(file)
+    const brush: CustomBrush | null = tip
+      ? { id: crypto.randomUUID(), name: file.name.replace(/\.[^.]+$/, '').slice(0, 40) || 'Brush', tip }
+      : null
+    if (!brush || !(await registerCustomBrush(brush))) {
+      showToast(t('atrium.draw.brushImportFailed'))
       return
     }
+    setDrawingBrush(customBrushKey(brush.id))
+    await saveCustomBrushes([...customBrushes, brush])
+  }
 
-    ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : color
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-
-    const control = (i: number) => {
-      const p0 = i > 0 ? points[i - 1] : points[i]
-      const p1 = points[i]
-      const p2 = points[i + 1]
-      const p3 = i + 2 < points.length ? points[i + 2] : p2
-      const tension = 0.5
-      return {
-        cp1x: p1.x + (p2.x - p0.x) / 6 * tension,
-        cp1y: p1.y + (p2.y - p0.y) / 6 * tension,
-        cp2x: p2.x - (p3.x - p1.x) / 6 * tension,
-        cp2y: p2.y - (p3.y - p1.y) / 6 * tension,
-      }
-    }
-
-    // With pressure, one path per segment, each at the width the pen gave it;
-    // round caps make the joins seamless. Without it, the single path it has
-    // always been -- one path is also what keeps a translucent colour from
-    // darkening where segments would overlap.
-    if (points.some(pt => pt.p !== undefined)) {
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i]
-        const p2 = points[i + 1]
-        const { cp1x, cp1y, cp2x, cp2y } = control(i)
-        ctx.lineWidth = pressureWidth(width, ((p1.p ?? 0.5) + (p2.p ?? 0.5)) / 2)
-        ctx.beginPath()
-        ctx.moveTo(p1.x, p1.y)
-        if (points.length === 2) ctx.lineTo(p2.x, p2.y)
-        else ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
-        ctx.stroke()
-      }
-      ctx.restore()
-      return
-    }
-
-    ctx.lineWidth = width
-    ctx.beginPath()
-    ctx.moveTo(points[0].x, points[0].y)
-    if (points.length === 2) {
-      ctx.lineTo(points[1].x, points[1].y)
-    } else {
-      for (let i = 0; i < points.length - 1; i++) {
-        const { cp1x, cp1y, cp2x, cp2y } = control(i)
-        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, points[i + 1].x, points[i + 1].y)
-      }
-    }
-    ctx.stroke()
-    ctx.restore()
+  const removeCustomBrush = async (id: string) => {
+    if (drawingBrush === customBrushKey(id)) setDrawingBrush('pen')
+    await saveCustomBrushes(customBrushes.filter(b => b.id !== id))
   }
 
   // Pressure only from a pen. A mouse reports 0.5 whenever a button is down
@@ -1061,6 +1083,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         color: drawingColorRef.current,
         width: drawingWidthRef.current,
         isEraser: isEraserModeRef.current,
+        brush: drawingBrushRef.current,
+        seed: currentSeedRef.current,
       }])
     }
     currentStrokeRef.current = []
@@ -1089,14 +1113,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // Draw completed strokes
-    for (const stroke of completedStrokesRef.current) {
-      drawBezierStroke(ctx, stroke.points, stroke.color, stroke.width, stroke.isEraser)
+    const strokes = completedStrokesRef.current
+    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), strokes: null }
+    if (layer.canvas.width !== canvas.width || layer.canvas.height !== canvas.height) {
+      layer.canvas.width = canvas.width
+      layer.canvas.height = canvas.height
+      layer.strokes = null
     }
+    if (layer.strokes !== strokes) {
+      const layerCtx = layer.canvas.getContext('2d')
+      if (!layerCtx) return
+      const previous = layer.strokes
+      // A stroke added to the end -- the usual case -- is painted on top of
+      // what is there. Anything else (undo, clear, redo) repaints them all.
+      const appended = previous !== null
+        && strokes.length === previous.length + 1
+        && strokes[previous.length - 1] === previous[previous.length - 1]
+      if (!appended) layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+      for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, stroke)
+      layer.strokes = strokes
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(layer.canvas, 0, 0)
     // Draw current active stroke
     if (currentStrokeRef.current.length >= 1) {
-      drawBezierStroke(ctx, currentStrokeRef.current, drawingColorRef.current, drawingWidthRef.current, isEraserModeRef.current)
+      drawStroke(ctx, {
+        points: currentStrokeRef.current,
+        color: drawingColorRef.current,
+        width: drawingWidthRef.current,
+        isEraser: isEraserModeRef.current,
+        brush: drawingBrushRef.current,
+        seed: currentSeedRef.current,
+      })
     }
   }
 
@@ -4255,7 +4303,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // has to undo the flag itself or the button stays disabled for good.
       if (allPoints.length === 0) { setIsSavingDrawing(false); return }
 
-      const padding = 20
+      // Room for the widest stroke's edge beyond its centre line, or a
+      // thick one came out with its sides sliced off.
+      const padding = Math.max(20, Math.ceil(Math.max(...completedStrokes.map(s => s.width)) / 2) + 4)
       const minSX = Math.min(...allPoints.map(p => p.x)) - padding
       const maxSX = Math.max(...allPoints.map(p => p.x)) + padding
       const minSY = Math.min(...allPoints.map(p => p.y)) - padding
@@ -4270,9 +4320,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const offCtx = offscreen.getContext('2d')!
 
       // Draw strokes shifted so bounding box starts at (0,0)
+      // The spread keeps each point's pressure, which a bare {x, y} dropped.
       for (const stroke of completedStrokes) {
-        const shifted = stroke.points.map(p => ({ x: p.x - minSX, y: p.y - minSY }))
-        drawBezierStroke(offCtx, shifted, stroke.color, stroke.width, stroke.isEraser)
+        drawStroke(offCtx, { ...stroke, points: stroke.points.map(p => ({ ...p, x: p.x - minSX, y: p.y - minSY })) })
       }
 
       // Export as PNG blob and upload to Supabase Storage
@@ -4964,6 +5014,101 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   </button>
                 </div>
 
+                {/* Which brush. The built-ins as small pictures of their mark,
+                    then any imported ones as their own tip, and on desktop the
+                    way to import one. The name of the chosen one underneath,
+                    since five pictures at this size are not self-explanatory. */}
+                {!isEraserMode && (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="grid grid-cols-5 gap-1">
+                      {BUILTIN_BRUSHES.map(brush => (
+                        <button
+                          key={brush}
+                          type="button"
+                          onClick={() => setDrawingBrush(brush)}
+                          title={t(BRUSH_LABELS[brush])}
+                          aria-label={t(BRUSH_LABELS[brush])}
+                          aria-pressed={drawingBrush === brush}
+                          className={`h-7 flex items-center justify-center border transition-colors ${
+                            drawingBrush === brush
+                              ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                              : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'
+                          }`}
+                        >
+                          <BrushGlyph brush={brush} />
+                        </button>
+                      ))}
+                      {customBrushes.map(brush => (
+                        <div key={brush.id} className="relative group">
+                          <button
+                            type="button"
+                            onClick={() => setDrawingBrush(customBrushKey(brush.id))}
+                            title={brush.name}
+                            aria-label={brush.name}
+                            aria-pressed={drawingBrush === customBrushKey(brush.id)}
+                            className={`w-full h-7 flex items-center justify-center border transition-colors ${
+                              drawingBrush === customBrushKey(brush.id)
+                                ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                                : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'
+                            }`}
+                          >
+                            {/* The tip itself, in the text colour. */}
+                            <span
+                              className="block w-5 h-5"
+                              style={{
+                                backgroundColor: 'currentColor',
+                                WebkitMaskImage: `url("${brush.tip}")`,
+                                maskImage: `url("${brush.tip}")`,
+                                WebkitMaskSize: 'contain',
+                                maskSize: 'contain',
+                                WebkitMaskRepeat: 'no-repeat',
+                                maskRepeat: 'no-repeat',
+                                WebkitMaskPosition: 'center',
+                                maskPosition: 'center',
+                              }}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeCustomBrush(brush.id)}
+                            title={t('atrium.draw.removeBrush')}
+                            aria-label={t('atrium.draw.removeBrush')}
+                            className="absolute -top-1.5 -right-1.5 hidden group-hover:flex group-focus-within:flex w-3.5 h-3.5 items-center justify-center text-[9px] leading-none border border-nier-border/60 text-nier-strong"
+                            style={{ backgroundColor: 'rgb(var(--c-ground))' }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {isDesktop && (
+                        <button
+                          type="button"
+                          onClick={() => brushFileInputRef.current?.click()}
+                          title={t('atrium.draw.importBrushHint')}
+                          aria-label={t('atrium.draw.importBrush')}
+                          className="h-7 flex items-center justify-center border border-dashed border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong transition-colors"
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase truncate">
+                      {(BUILTIN_BRUSHES as readonly string[]).includes(drawingBrush)
+                        ? t(BRUSH_LABELS[drawingBrush as BuiltinBrush])
+                        : customBrushes.find(b => customBrushKey(b.id) === drawingBrush)?.name ?? t(BRUSH_LABELS.pen)}
+                    </span>
+                    {isDesktop && (
+                      <input
+                        ref={brushFileInputRef}
+                        type="file"
+                        accept="image/png,image/webp,image/gif,image/jpeg,image/bmp"
+                        className="hidden"
+                        onChange={importBrush}
+                      />
+                    )}
+                  </div>
+                )}
+
                 {/* Color picker - only shown in brush mode */}
                 {!isEraserMode && (
                   <div className="flex items-center gap-2">
@@ -4984,7 +5129,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   <input
                     type="range"
                     min="1"
-                    max={isEraserMode ? '60' : '20'}
+                    max="60"
                     value={drawingWidth}
                     onChange={(e) => setDrawingWidth(Number(e.target.value))}
                     className="w-16 h-1 cursor-pointer accent-white"
@@ -5149,6 +5294,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 e.currentTarget.setPointerCapture(e.pointerId)
                 const point = strokePoint(e.clientX, e.clientY, e.pointerType, e.pressure)
                 currentStrokeRef.current = [point]
+                currentSeedRef.current = newStrokeSeed()
                 smoothedPointRef.current = { x: point.x, y: point.y }
                 setIsDrawing(true)
                 renderDrawingCanvas()

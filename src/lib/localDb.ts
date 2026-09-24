@@ -92,6 +92,21 @@ export async function setVaultBasePath(path: string): Promise<string> {
   return vaultBasePath
 }
 
+// Brushes imported for drawing. They belong to the person, not to any atrium,
+// so they sit at the top of the vault in one file, each tip inline as a small
+// PNG, and go wherever the vault goes. Returned unchecked: the caller keeps
+// only what it recognises.
+export async function readVaultBrushes(): Promise<unknown> {
+  const path = await joinPathSegments(await getVaultBasePath(), ['brushes.json'])
+  if (!(await vaultPathExists(path))) return []
+  return JSON.parse(new TextDecoder().decode(await readBinaryFile(path)))
+}
+
+export async function writeVaultBrushes(brushes: unknown): Promise<void> {
+  const path = await joinPathSegments(await getVaultBasePath(), ['brushes.json'])
+  await writeVaultTextFile(path, JSON.stringify(brushes))
+}
+
 async function vaultPathExists(path: string): Promise<boolean> {
   return invoke<boolean>('vault_path_exists', { path })
 }
