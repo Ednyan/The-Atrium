@@ -856,12 +856,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [isEraserMode, setIsEraserMode] = useState(false)
-  const [completedStrokes, setCompletedStrokes] = useState<Array<{ points: Array<{ x: number; y: number }>; color: string; width: number; isEraser: boolean }>>([])
+  // p is pen pressure, 0..1, present only on points drawn with a pen.
+  type StrokePoint = { x: number; y: number; p?: number }
+  const [completedStrokes, setCompletedStrokes] = useState<Array<{ points: StrokePoint[]; color: string; width: number; isEraser: boolean }>>([])
   const [drawingColor, setDrawingColor] = useState('#ffffff')
   const [drawingWidth, setDrawingWidth] = useState(3)
   const [drawingSmoothing, setDrawingSmoothing] = useState(30)
   const [isSavingDrawing, setIsSavingDrawing] = useState(false)
-  const currentStrokeRef = useRef<Array<{ x: number; y: number }>>([])
+  const currentStrokeRef = useRef<StrokePoint[]>([])
   const isDrawingModeRef = useRef(false)
   const isEraserModeRef = useRef(false)
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -968,7 +970,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }, [completedStrokes])
 
   // Canvas drawing helpers
-  const drawBezierStroke = (ctx: CanvasRenderingContext2D, points: Array<{x: number; y: number}>, color: string, width: number, isEraser: boolean) => {
+  // Width at a point: the brush width, scaled by pen pressure where there is
+  // any. The floor is a fifth of the width, so the lightest touch still leaves
+  // a line rather than nothing.
+  const pressureWidth = (width: number, p: number | undefined) =>
+    p === undefined ? width : width * (0.2 + 0.8 * Math.min(1, Math.max(0, p)))
+
+  const drawBezierStroke = (ctx: CanvasRenderingContext2D, points: StrokePoint[], color: string, width: number, isEraser: boolean) => {
     if (points.length === 0) return
     ctx.save()
     ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over'
@@ -978,36 +986,101 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // matching what most drawing apps do for a stationary tap/click.
       ctx.fillStyle = isEraser ? 'rgba(0,0,0,1)' : color
       ctx.beginPath()
-      ctx.arc(points[0].x, points[0].y, width / 2, 0, Math.PI * 2)
+      ctx.arc(points[0].x, points[0].y, pressureWidth(width, points[0].p) / 2, 0, Math.PI * 2)
       ctx.fill()
       ctx.restore()
       return
     }
 
     ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : color
-    ctx.lineWidth = width
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
+
+    const control = (i: number) => {
+      const p0 = i > 0 ? points[i - 1] : points[i]
+      const p1 = points[i]
+      const p2 = points[i + 1]
+      const p3 = i + 2 < points.length ? points[i + 2] : p2
+      const tension = 0.5
+      return {
+        cp1x: p1.x + (p2.x - p0.x) / 6 * tension,
+        cp1y: p1.y + (p2.y - p0.y) / 6 * tension,
+        cp2x: p2.x - (p3.x - p1.x) / 6 * tension,
+        cp2y: p2.y - (p3.y - p1.y) / 6 * tension,
+      }
+    }
+
+    // With pressure, one path per segment, each at the width the pen gave it;
+    // round caps make the joins seamless. Without it, the single path it has
+    // always been -- one path is also what keeps a translucent colour from
+    // darkening where segments would overlap.
+    if (points.some(pt => pt.p !== undefined)) {
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i]
+        const p2 = points[i + 1]
+        const { cp1x, cp1y, cp2x, cp2y } = control(i)
+        ctx.lineWidth = pressureWidth(width, ((p1.p ?? 0.5) + (p2.p ?? 0.5)) / 2)
+        ctx.beginPath()
+        ctx.moveTo(p1.x, p1.y)
+        if (points.length === 2) ctx.lineTo(p2.x, p2.y)
+        else ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+        ctx.stroke()
+      }
+      ctx.restore()
+      return
+    }
+
+    ctx.lineWidth = width
     ctx.beginPath()
     ctx.moveTo(points[0].x, points[0].y)
     if (points.length === 2) {
       ctx.lineTo(points[1].x, points[1].y)
     } else {
       for (let i = 0; i < points.length - 1; i++) {
-        const p0 = i > 0 ? points[i - 1] : points[i]
-        const p1 = points[i]
-        const p2 = points[i + 1]
-        const p3 = i + 2 < points.length ? points[i + 2] : p2
-        const tension = 0.5
-        const cp1x = p1.x + (p2.x - p0.x) / 6 * tension
-        const cp1y = p1.y + (p2.y - p0.y) / 6 * tension
-        const cp2x = p2.x - (p3.x - p1.x) / 6 * tension
-        const cp2y = p2.y - (p3.y - p1.y) / 6 * tension
-        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+        const { cp1x, cp1y, cp2x, cp2y } = control(i)
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, points[i + 1].x, points[i + 1].y)
       }
     }
     ctx.stroke()
     ctx.restore()
+  }
+
+  // Pressure only from a pen. A mouse reports 0.5 whenever a button is down
+  // and a finger reports 0 or 1, and neither says anything about thickness.
+  const strokePoint = (x: number, y: number, pointerType: string, pressure: number): StrokePoint =>
+    pointerType === 'pen' ? { x, y, p: pressure } : { x, y }
+
+  const finishStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!e.isPrimary || !isDrawing) return
+    setIsDrawing(false)
+    const rawPoints = currentStrokeRef.current
+    if (rawPoints.length >= 1) {
+      commitDrawing(prev => [...prev, {
+        points: [...rawPoints],
+        color: drawingColorRef.current,
+        width: drawingWidthRef.current,
+        isEraser: isEraserModeRef.current,
+      }])
+    }
+    currentStrokeRef.current = []
+  }
+
+  const addStrokeSample = (raw: StrokePoint) => {
+    // Cap below 1.0 -- at exactly 100% alpha becomes 0 and the smoothed point
+    // never moves from its starting position, turning the stroke into a pile
+    // of coincident points.
+    const smoothing = computeSmoothingFactor(drawingSmoothingRef.current)
+    if (smoothing > 0 && smoothedPointRef.current) {
+      // Exponential moving average: lerp from smoothed toward raw
+      const alpha = 1 - smoothing
+      const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha
+      const sy = smoothedPointRef.current.y + (raw.y - smoothedPointRef.current.y) * alpha
+      smoothedPointRef.current = { x: sx, y: sy }
+      currentStrokeRef.current.push({ x: sx, y: sy, p: raw.p })
+    } else {
+      smoothedPointRef.current = { x: raw.x, y: raw.y }
+      currentStrokeRef.current.push(raw)
+    }
   }
 
   const renderDrawingCanvas = () => {
@@ -1493,6 +1566,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => clearInterval(interval)
   }, [lobbyId, onlinePlayerCount])
   
+  // One of Leave Trace, Layers and Locations at a time. They all dock on the
+  // right, so two open at once stack over each other and over the canvas.
+  // Enforced here, on whichever opens, rather than at each of the four places
+  // Leave Trace can be opened from -- the next one added would have been the
+  // one that forgot. Closing Leave Trace goes through its own close so its
+  // placement marker and pending file are cleared, as if it were dismissed.
+  useEffect(() => {
+    if (showTracePanel) closeSidePanels()
+  }, [showTracePanel, closeSidePanels])
+  useEffect(() => {
+    if (!showLayerPanel) return
+    setShowLocationsPanel(false)
+    if (showTracePanel) handleCloseTracePanel()
+  }, [showLayerPanel])
+  useEffect(() => {
+    if (!showLocationsPanel) return
+    setShowLayerPanel(false)
+    if (showTracePanel) handleCloseTracePanel()
+  }, [showLocationsPanel])
+
   // Handle closing trace panel
   const handleCloseTracePanel = () => {
     setShowTracePanel(false)
@@ -4391,7 +4484,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {!uiHidden && saveBarMounted && (
         <div
           data-hud="true"
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto flex items-stretch gap-2"
           style={{ opacity: saveBarShown ? 1 : 0, transition: `opacity ${SAVE_FADE_MS}ms ease-out` }}
         >
           <button
@@ -4412,6 +4505,54 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           >
             {shownSave.label}
           </button>
+
+          {/* Don't Save, beside Save rather than down in the left panel: the two
+              are answers to the same question, and the confirmation opens
+              where it was asked. Only while there is something unsaved --
+              not during the moment Save says "Saved". */}
+          {hasPendingChanges() && !isSavingChanges && (
+            showDiscardConfirm ? (
+              <>
+                <button
+                  type="button"
+                  data-ui-element="true"
+                  onClick={async () => {
+                    setIsDiscarding(true)
+                    await discardAllChanges(lobbyId)
+                    setIsDiscarding(false)
+                    setShowDiscardConfirm(false)
+                  }}
+                  disabled={isDiscarding || isSavingChanges}
+                  className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-red-900/60 border-red-500/60 hover:border-red-400 text-red-200"
+                  title={t('atrium.hud.discardHint')}
+                >
+                  {isDiscarding ? t('atrium.hud.discarding') : t('atrium.hud.confirmDiscard')}
+                </button>
+                <button
+                  type="button"
+                  data-ui-element="true"
+                  onClick={() => setShowDiscardConfirm(false)}
+                  disabled={isDiscarding}
+                  className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-nier-border/40 hover:border-nier-bg text-nier-strong"
+                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+                >
+                  {t('common.cancel')}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                data-ui-element="true"
+                onClick={() => setShowDiscardConfirm(true)}
+                disabled={isSavingChanges}
+                className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-nier-border/40 hover:border-red-400 text-nier-bg/80 hover:text-red-300"
+                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+                title={t('atrium.hud.discardHint')}
+              >
+                {t('atrium.hud.dontSave')}
+              </button>
+            )
+          )}
         </div>
       )}
 
@@ -4549,41 +4690,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <p className="text-nier-bg/80 text-[11px] tracking-wider">
           ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
         </p>
-        {hasPendingChanges() && (
-          showDiscardConfirm ? (
-            <div className="w-full mt-1 flex gap-1">
-              <button
-                onClick={async () => {
-                  setIsDiscarding(true)
-                  await discardAllChanges(lobbyId)
-                  setIsDiscarding(false)
-                  setShowDiscardConfirm(false)
-                }}
-                disabled={isDiscarding || isSavingChanges}
-                className="flex-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-red-900/40 border-red-500/60 hover:border-red-400 text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                title={t('atrium.hud.discardHint')}
-              >
-                {isDiscarding ? t('atrium.hud.discarding') : t('atrium.hud.confirmDiscard')}
-              </button>
-              <button
-                onClick={() => setShowDiscardConfirm(false)}
-                disabled={isDiscarding}
-                className="flex-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-nier-blackLight border-nier-border/40 hover:border-nier-bg text-nier-strong disabled:opacity-40"
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowDiscardConfirm(true)}
-              disabled={isSavingChanges}
-              className="w-full mt-1 border px-2 py-0.5 text-[11px] tracking-wider uppercase transition-all bg-nier-blackLight border-nier-border/40 hover:border-red-400 text-nier-bg/80 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={t('atrium.hud.discardHint')}
-            >
-              {t('atrium.hud.dontSave')}
-            </button>
-          )
-        )}
         <div className="flex gap-1 mt-1.5">
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
@@ -5014,20 +5120,33 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               cursor: 'none',
               width: '100vw',
               height: '100vh',
+              // Or the browser claims pen and finger drags for scrolling and
+              // gestures, and the canvas never hears them.
+              touchAction: 'none',
             }}
-            onMouseEnter={() => {
+            // Pointer events, not mouse and touch. A tablet pen arrives on
+            // Windows as touch, whose handlers drew the stroke but never moved
+            // the brush circle -- so the circle stayed behind while the pen drew
+            // somewhere else. Pointer events are one path for mouse, pen and
+            // touch alike, and the only ones that carry pen pressure.
+            onPointerEnter={() => {
               if (brushCursorRef.current) brushCursorRef.current.style.display = 'block'
             }}
-            onMouseLeave={() => {
+            onPointerLeave={() => {
               if (brushCursorRef.current) brushCursorRef.current.style.display = 'none'
             }}
-            onMouseDown={(e) => {
+            onPointerDown={(e) => {
+              // A second finger is not a second brush.
+              if (!e.isPrimary) return
               if (e.button === 0) {
                 e.preventDefault()
                 e.stopPropagation()
-                const point = { x: e.clientX, y: e.clientY }
+                // Keeps the stroke's events coming to the canvas even if the pen
+                // strays over a panel mid-line.
+                e.currentTarget.setPointerCapture(e.pointerId)
+                const point = strokePoint(e.clientX, e.clientY, e.pointerType, e.pressure)
                 currentStrokeRef.current = [point]
-                smoothedPointRef.current = { ...point }
+                smoothedPointRef.current = { x: point.x, y: point.y }
                 setIsDrawing(true)
                 renderDrawingCanvas()
               } else if (e.button === 2) {
@@ -5038,95 +5157,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 renderDrawingCanvas()
               }
             }}
-            onMouseMove={(e) => {
+            onPointerMove={(e) => {
+              if (!e.isPrimary) return
               if (brushCursorRef.current) {
                 brushCursorRef.current.style.left = `${e.clientX}px`
                 brushCursorRef.current.style.top = `${e.clientY}px`
               }
-              if (isDrawing) {
-                const raw = { x: e.clientX, y: e.clientY }
-                // Cap below 1.0 -- at exactly 100% alpha becomes 0 and the
-                // smoothed point never moves from its starting position,
-                // turning the stroke into a pile of coincident points.
-                const smoothing = computeSmoothingFactor(drawingSmoothingRef.current)
-                if (smoothing > 0 && smoothedPointRef.current) {
-                  // Exponential moving average: lerp from smoothed toward raw
-                  const alpha = 1 - smoothing
-                  const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha
-                  const sy = smoothedPointRef.current.y + (raw.y - smoothedPointRef.current.y) * alpha
-                  smoothedPointRef.current = { x: sx, y: sy }
-                  currentStrokeRef.current.push({ x: sx, y: sy })
-                } else {
-                  smoothedPointRef.current = { ...raw }
-                  currentStrokeRef.current.push(raw)
-                }
-                renderDrawingCanvas()
+              if (!isDrawing) return
+              // Every sample since the last frame, not just the newest: a pen
+              // reports far faster than the screen redraws, and dropping the
+              // in-between points is what makes a fast pen stroke angular.
+              const coalesced = e.nativeEvent.getCoalescedEvents?.() ?? []
+              for (const sample of coalesced.length ? coalesced : [e.nativeEvent]) {
+                addStrokeSample(strokePoint(sample.clientX, sample.clientY, sample.pointerType, sample.pressure))
               }
+              renderDrawingCanvas()
             }}
-            onMouseUp={(e) => {
-              if (e.button === 0 && isDrawing) {
-                setIsDrawing(false)
-                const rawPoints = currentStrokeRef.current
-                if (rawPoints.length >= 1) {
-                  commitDrawing(prev => [...prev, {
-                    points: [...rawPoints],
-                    color: drawingColorRef.current,
-                    width: drawingWidthRef.current,
-                    isEraser: isEraserModeRef.current,
-                  }])
-                }
-                currentStrokeRef.current = []
-              }
-            }}
+            onPointerUp={finishStroke}
+            // The system taking the pointer away -- a palm, a gesture -- keeps
+            // what was drawn rather than throwing it out.
+            onPointerCancel={finishStroke}
             onWheel={(e) => e.preventDefault()}
             onContextMenu={(e) => e.preventDefault()}
-            onTouchStart={(e) => {
-              if (e.touches.length === 1) {
-                e.preventDefault()
-                e.stopPropagation()
-                const touch = e.touches[0]
-                const point = { x: touch.clientX, y: touch.clientY }
-                currentStrokeRef.current = [point]
-                smoothedPointRef.current = { ...point }
-                setIsDrawing(true)
-                renderDrawingCanvas()
-              }
-            }}
-            onTouchMove={(e) => {
-              if (isDrawing && e.touches.length === 1) {
-                e.preventDefault()
-                const touch = e.touches[0]
-                const raw = { x: touch.clientX, y: touch.clientY }
-                const smoothing = computeSmoothingFactor(drawingSmoothingRef.current)
-                if (smoothing > 0 && smoothedPointRef.current) {
-                  const alpha = 1 - smoothing
-                  const sx = smoothedPointRef.current.x + (raw.x - smoothedPointRef.current.x) * alpha
-                  const sy = smoothedPointRef.current.y + (raw.y - smoothedPointRef.current.y) * alpha
-                  smoothedPointRef.current = { x: sx, y: sy }
-                  currentStrokeRef.current.push({ x: sx, y: sy })
-                } else {
-                  smoothedPointRef.current = { ...raw }
-                  currentStrokeRef.current.push(raw)
-                }
-                renderDrawingCanvas()
-              }
-            }}
-            onTouchEnd={(e) => {
-              if (isDrawing) {
-                e.preventDefault()
-                setIsDrawing(false)
-                const rawPoints = currentStrokeRef.current
-                if (rawPoints.length >= 1) {
-                  commitDrawing(prev => [...prev, {
-                    points: [...rawPoints],
-                    color: drawingColorRef.current,
-                    width: drawingWidthRef.current,
-                    isEraser: isEraserModeRef.current,
-                  }])
-                }
-                currentStrokeRef.current = []
-              }
-            }}
           />
         </>
       )}

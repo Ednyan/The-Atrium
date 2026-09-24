@@ -4602,6 +4602,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       {sortedItems
           .map((item) => {
             if (item.type === 'player') {
+              // While drawing, the brush circle is the cursor; a second one
+              // beside it only hides what is being drawn.
+              if (isDrawingMode) return null
               // Render player cursor
               const playerScreenX = position.x * zoom + worldOffset.x
               const playerScreenY = position.y * zoom + worldOffset.y
