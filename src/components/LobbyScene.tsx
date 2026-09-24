@@ -9,7 +9,7 @@ import { readPackingShape } from '../lib/atriumPreferences'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
-import TraceOverlay from './TraceOverlay'
+import TraceOverlay, { VIEW_FLOAT_MAX_PX } from './TraceOverlay'
 import LayerPanel, { TRACE_DRAG_DATA_KEY, LAYER_DRAG_DATA_KEY } from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
@@ -927,54 +927,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const smoothedPointRef = useRef<{ x: number; y: number } | null>(null)
   const drawingSmoothingRef = useRef(30)
   const brushCursorRef = useRef<HTMLDivElement>(null)
-  const sceneRootRef = useRef<HTMLDivElement>(null)
 
-  // Floating view (Profile > Animations). Once nothing has moved for a moment,
-  // the world -- grid and traces, not the panels -- drifts a few pixels, as if
-  // hovering. Any input settles it back quickly, so nothing is ever clicked or
-  // dragged while it's out of place; and it never runs while drawing, where
-  // the strokes are on a canvas of their own that doesn't drift with it.
-  //
-  // The two layers are moved directly. It used to set a custom property on
-  // the scene's root, which every element in the atrium inherits -- so every
-  // frame restyled all of them, and the drift stuttered.
+  // Floating view (Profile > Animations): the grid's layer here and the
+  // world's layer in TraceOverlay drift together, always, by the same CSS
+  // animation -- run by the compositor, so it stays smooth however busy the
+  // page is. Not while drawing: the strokes are on a canvas of their own.
   const viewFloat = useGameStore(s => s.viewFloat)
-  useEffect(() => {
-    const root = sceneRootRef.current
-    if (!root || viewFloat <= 0) return
-    const amp = (viewFloat / 100) * 18
-    let lastInput = performance.now(), weight = 0, raf = 0, prev = performance.now(), still = true
-    const touched = () => { lastInput = performance.now() }
-    const kinds = ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart'] as const
-    kinds.forEach(k => window.addEventListener(k, touched, { passive: true }))
-    const tick = (now: number) => {
-      const dt = Math.min(now - prev, 100)
-      prev = now
-      const idle = now - lastInput > 1500 && !isDrawingModeRef.current
-      // Eased by time, not by frame: in over about three seconds, out in a
-      // fifth of one.
-      weight += ((idle ? 1 : 0) - weight) * (1 - Math.exp(-dt / (idle ? 1000 : 70)))
-      const layers = root.querySelectorAll<HTMLElement>('.view-drift')
-      if (weight < 0.001) {
-        if (!still) layers.forEach(el => { el.style.translate = '' })
-        still = true
-      } else {
-        // Two slow swells a direction, out of step, so it never visibly loops.
-        const t = now / 1000
-        const x = weight * amp * (0.75 * Math.sin((t * 2 * Math.PI) / 9.7) + 0.25 * Math.sin((t * 2 * Math.PI) / 4.1 + 1.3))
-        const y = weight * amp * (0.7 * Math.sin((t * 2 * Math.PI) / 12.3 + 0.6) + 0.3 * Math.sin((t * 2 * Math.PI) / 5.3 + 2.1))
-        layers.forEach(el => { el.style.translate = `${x.toFixed(2)}px ${y.toFixed(2)}px` })
-        still = false
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(raf)
-      kinds.forEach(k => window.removeEventListener(k, touched))
-      root.querySelectorAll<HTMLElement>('.view-drift').forEach(el => { el.style.translate = '' })
-    }
-  }, [viewFloat])
 
   // Drawing history. Snapshots of the whole stroke list rather than a stack of
   // strokes, because "clear" has to be undoable too and there is no single
@@ -4647,7 +4605,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   return (
     <div
-      ref={sceneRootRef}
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
       // The atrium's own colour behind the grid, so the sliver the floating
       // view uncovers at the screen's edge matches it instead of showing black.
@@ -4659,7 +4616,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
         {/* Pixi Canvas */}
-        <div ref={canvasRef} className="absolute inset-0 view-drift" />
+        <div
+          ref={canvasRef}
+          className={`absolute inset-0 view-drift${viewFloat > 0 && !isDrawingMode ? ' view-floating' : ''}`}
+          style={{ ['--view-amp' as any]: `${(viewFloat / 100) * VIEW_FLOAT_MAX_PX}px` }}
+        />
         
         {/* Trace Content Overlay */}
         <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
