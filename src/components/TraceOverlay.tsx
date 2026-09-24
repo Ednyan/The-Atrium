@@ -2127,10 +2127,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // alongside the transform it already has -- so where the trace actually is,
   // what gets saved, snapped and aligned, still follows the pointer exactly.
   //
-  // Its handles and a selection's frame go with it.
+  // Its handles and everything else attached to it hide while it moves.
   const dragBounceRef = useRef(dragBounce)
   dragBounceRef.current = dragBounce
   const dragFeelRef = useRef<{ px: number; py: number; held: boolean; stop: () => void } | null>(null)
+  // Traces being moved -- set on the first movement of a drag, not on the
+  // press, so clicking a trace doesn't flicker its handles -- and cleared once
+  // they come to rest.
+  const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
+  const movingRef = useRef(false)
+  const endMoving = () => {
+    movingRef.current = false
+    setMovingIds(prev => (prev.size ? new Set() : prev))
+  }
 
   const startDragFeel = (ids: string[], px: number, py: number) => {
     dragFeelRef.current?.stop()
@@ -2143,27 +2152,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     let x = px, y = py, vx = 0, vy = 0, raf = 0, last = performance.now()
     const moved = new Set<HTMLElement>()
     const sizes = new Map<HTMLElement, { w: number; h: number }>()
-    const sizeOf = (el: HTMLElement) => {
-      let size = sizes.get(el)
-      if (!size) sizes.set(el, size = { w: el.offsetWidth, h: el.offsetHeight })
-      return size
-    }
-    // Moves an element by (ox, oy) and turns it by `lean` about the point
-    // (cx, cy) -- not about its own transform origin (ox0, oy0), which is
-    // where a rotate would otherwise pivot; the extra translate makes up the
-    // difference.
-    const place = (el: HTMLElement, ox0: number, oy0: number, cx: number, cy: number, ox: number, oy: number, lean: number) => {
-      const dx = cx - ox0, dy = cy - oy0, cos = Math.cos(lean), sin = Math.sin(lean)
-      el.style.translate = `${dx - (dx * cos - dy * sin) + ox}px ${dy - (dx * sin + dy * cos) + oy}px`
-      el.style.rotate = lean ? `${lean}rad` : ''
-      moved.add(el)
-    }
     const feel = {
       px, py, held: true,
       stop: () => {
         cancelAnimationFrame(raf)
         for (const el of moved) { el.style.translate = ''; el.style.rotate = '' }
         if (dragFeelRef.current === feel) dragFeelRef.current = null
+        if (!feel.held) endMoving()
       },
     }
     const tick = (now: number) => {
@@ -2181,27 +2176,20 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // Leaning into the pull, as a card held by its top edge does: dragged
       // right, the trailing side swings back and it tips clockwise.
       const lean = (Math.max(-5, Math.min(5, -ox * 0.15)) * Math.PI) / 180
+      const cos = Math.cos(lean), sin = Math.sin(lean)
       for (const id of ids) {
         const box = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
         if (!box) continue
-        // The trace is drawn centred on its left/top; its layout box, which a
-        // rotate pivots on, starts there.
-        const cx = parseFloat(box.style.left), cy = parseFloat(box.style.top)
-        const size = sizeOf(box)
-        place(box, cx + size.w / 2, cy + size.h / 2, cx, cy, ox, oy, lean)
-        // Its handles, one layer the size of the view, turned about the
-        // trace's centre too, so they stay on its corners.
-        const handles = document.querySelector<HTMLElement>(`[data-trace-handles="${CSS.escape(id)}"]`)
-        if (handles) {
-          const hs = sizeOf(handles)
-          place(handles, hs.w / 2, hs.h / 2, cx, cy, ox, oy, lean)
-        }
+        let size = sizes.get(box)
+        if (!size) sizes.set(box, size = { w: box.offsetWidth, h: box.offsetHeight })
+        // A rotate pivots on the element's layout box's centre, but the trace
+        // is drawn shifted back half its size from there; the extra translate
+        // turns it about its own centre instead.
+        const dx = -size.w / 2, dy = -size.h / 2
+        box.style.translate = `${dx - (dx * cos - dy * sin) + ox}px ${dy - (dx * sin + dy * cos) + oy}px`
+        box.style.rotate = `${lean}rad`
+        moved.add(box)
       }
-      // A selection's shared frame trails with them, without the lean: each
-      // trace leans about its own centre, and the frame has no one centre to
-      // lean about that would match them all.
-      const group = document.querySelector<HTMLElement>('[data-group-handles]')
-      if (group) place(group, 0, 0, 0, 0, ox, oy, 0)
       if (!feel.held && Math.hypot(ox, oy) < 0.3 && Math.hypot(vx, vy) < 0.01) {
         feel.stop()
         return
@@ -3036,6 +3024,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       samples.push({ x: e.clientX, y: e.clientY, t: performance.now() })
       if (samples.length > 8) samples.shift()
       dragShiftRef.current = !!e.shiftKey
+      if (!movingRef.current) {
+        movingRef.current = true
+        setMovingIds(new Set(isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : [activeSelectedTraceId]))
+      }
       if (dragFeelRef.current) {
         dragFeelRef.current.px = e.clientX
         dragFeelRef.current.py = e.clientY
@@ -3661,8 +3653,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const thrown = activeTransformMode === 'move'
       ? (isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : [])
       : []
-    // Let go: it settles toward where the pointer was released.
+    // Let go: it settles toward where the pointer was released, and its
+    // handles come back once it has; with no settling to wait for, now.
     if (dragFeelRef.current) dragFeelRef.current.held = false
+    else endMoving()
 
     // Cleared unconditionally: this runs before every early return below, so
     // the badge can't outlive its drag.
@@ -6351,10 +6345,10 @@ return (
     </div>
 
     {/* Transform controls (only for selected trace, not in crop mode, and only when this user can actually edit) */}
-    {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && (
-      // One layer for all of a trace's handles, so the drag feel can move
-      // them with it; above every trace, where each handle already sat.
-      <div data-trace-handles={trace.id} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 999998 }}>
+    {/* Hidden while the trace is on the move -- dragged, settling or
+        gliding -- so only the trace itself is seen moving. */}
+    {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && !movingIds.has(trace.id) && !glidingIds.has(trace.id) && (
+      <>
         {/* Special handles for path shapes */}
         {(trace.type === 'shape' && trace.shapeType === 'path') ? (
           <>
@@ -6601,7 +6595,7 @@ return (
           {isCropMode ? `✓ ${t('atrium.controls.cropDone')}` : `✂ ${t('atrium.controls.crop')}`}
         </button>
         ) : null}
-      </div>
+      </>
     )}
 
     {/* Controls for a trace that is currently interactive.
@@ -6621,7 +6615,7 @@ return (
         Below the trace, on the same line the crop button uses, and
         built from the same tokens so the row reads as one set of
         controls rather than three unrelated widgets. */}
-    {trace.enableInteraction && canEdit && (
+    {trace.enableInteraction && canEdit && !movingIds.has(trace.id) && (
       <div
         className="absolute z-10 flex items-stretch gap-2 pointer-events-none"
         // Scaled with the camera, like the frame around the trace.
@@ -7069,7 +7063,7 @@ return (
             pivoting on the box's center so the selection transforms as a
             single rigid unit. Corner-only (no edge handles): a non-uniform
             group scale would shear any child that has its own rotation. */}
-        {multiSelectedIds.size > 1 && canEdit && !isCropMode && (() => {
+        {multiSelectedIds.size > 1 && canEdit && !isCropMode && movingIds.size === 0 && glidingIds.size === 0 && (() => {
           const bounds = getGroupBounds(Array.from(multiSelectedIds))
           if (!bounds) return null
 
@@ -7081,7 +7075,7 @@ return (
           const boxHeight = bottomRight.screenY - topLeft.screenY
 
           return (
-            <div data-group-handles style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 999998 }}>
+            <>
               <div
                 className="absolute pointer-events-none z-[999998]"
                 style={{
@@ -7117,7 +7111,7 @@ return (
                 onMouseDown={(e) => handleGroupMouseDown(e, 'group-rotate')}
                 onTouchStart={(e) => handleGroupTouchDown(e, 'group-rotate')}
               />
-            </div>
+            </>
           )
         })()}
 
