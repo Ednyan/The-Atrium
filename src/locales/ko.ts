@@ -288,6 +288,9 @@ const ko: Catalogue = {
   // --------------------------------------------------------- freehand draw
   'atrium.draw.button': '그리기',
   'atrium.draw.title': '자유롭게 그리기',
+  'atrium.draw.editingTitle': '그림 편집 중',
+  'atrium.draw.editLoadFailed': '이 그림의 이미지를 편집하려고 열 수 없었습니다.',
+  'atrium.draw.editSaveFailed': '편집한 그림을 저장하지 못했습니다. 그린 선은 그대로 남아 있습니다.',
   'atrium.draw.brush': '붓',
   'atrium.draw.eraser': '지우개',
   'atrium.draw.brushPen': '펜',
@@ -968,6 +971,7 @@ const ko: Catalogue = {
   'atrium.menu.copyText': '텍스트 복사',
   'atrium.menu.copyEmbedLink': '임베드 링크 복사',
   'atrium.menu.convertToImage': '이미지로 바꾸기',
+  'atrium.menu.editDrawing': '그림 편집',
   'atrium.menu.transformations': '변형',
   'atrium.menu.flipHorizontal': '좌우 뒤집기',
   'atrium.menu.flipVertical': '위아래 뒤집기',

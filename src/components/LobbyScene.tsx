@@ -33,7 +33,7 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
-import { BUILTIN_BRUSHES, customBrushKey, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint } from '../lib/brushes'
+import { BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
@@ -905,6 +905,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // brush is hundreds of stamps a stroke; now only the stroke in progress is
   // painted per move.
   const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null } | null>(null)
+  // The saved drawing being edited: its trace, and its picture where the trace
+  // shows it, which sits under the new strokes as where they start from.
+  const editingDrawingRef = useRef<{ traceId: string; img: HTMLImageElement; placement: TracePlacement } | null>(null)
+  const [editingDrawingId, setEditingDrawingId] = useState<string | null>(null)
   const [drawingColor, setDrawingColor] = useState('#ffffff')
   const [drawingWidth, setDrawingWidth] = useState(3)
   const [drawingSmoothing, setDrawingSmoothing] = useState(30)
@@ -1026,7 +1030,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => { drawingBrushRef.current = drawingBrush }, [drawingBrush])
   useEffect(() => { drawingHardnessRef.current = drawingHardness }, [drawingHardness])
   // The canvas goes away without a pointerleave, so the flag would outlive it.
-  useEffect(() => { if (!isDrawingMode) setPointerOnDrawingCanvas(false) }, [isDrawingMode])
+  // And leaving drawing mode, whichever way, ends an edit.
+  useEffect(() => {
+    if (isDrawingMode) return
+    setPointerOnDrawingCanvas(false)
+    if (editingDrawingRef.current) {
+      editingDrawingRef.current = null
+      setEditingDrawingId(null)
+      if (committedLayerRef.current) committedLayerRef.current.strokes = null
+    }
+  }, [isDrawingMode])
 
   // Imported brushes live in the vault, so only desktop has any. Read once,
   // the first time drawing opens, and only what makeBrushTip would have made.
@@ -1142,7 +1155,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const appended = previous !== null
         && strokes.length === previous.length + 1
         && strokes[previous.length - 1] === previous[previous.length - 1]
-      if (!appended) layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+      if (!appended) {
+        layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+        // An edited drawing's picture goes in first, so the eraser reaches it.
+        const editing = editingDrawingRef.current
+        if (editing) drawPlacedPicture(layerCtx, editing.img, editing.placement)
+      }
       for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, stroke)
       layer.strokes = strokes
     }
@@ -4309,6 +4327,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // -- two ways in, one implementation.
   const saveDrawing = async () => {
     if (isSavingDrawing || completedStrokesRef.current.length === 0) return
+    const editing = editingDrawingRef.current
+    let editSaved = false
     setIsSavingDrawing(true)
     try {
       // Render all strokes to find tight bounding box
@@ -4321,23 +4341,52 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // thick one came out with its sides sliced off -- and past that, room
       // for a soft stroke's fade, up to three quarters of a width further out.
       const padding = Math.max(20, Math.ceil(Math.max(...completedStrokes.map(s => s.width)) * 1.3) + 4)
-      const minSX = Math.min(...allPoints.map(p => p.x)) - padding
-      const maxSX = Math.max(...allPoints.map(p => p.x)) + padding
-      const minSY = Math.min(...allPoints.map(p => p.y)) - padding
-      const maxSY = Math.max(...allPoints.map(p => p.y)) + padding
+      let minSX = Math.min(...allPoints.map(p => p.x)) - padding
+      let maxSX = Math.max(...allPoints.map(p => p.x)) + padding
+      let minSY = Math.min(...allPoints.map(p => p.y)) - padding
+      let maxSY = Math.max(...allPoints.map(p => p.y)) + padding
+
+      // Pixels per screen pixel. 1 for a new drawing, which is drawn at the
+      // screen's resolution. An edited one keeps its picture's own resolution
+      // where that is finer -- edited while zoomed out, it would otherwise come
+      // back blurrier every time -- up to 4x.
+      let k = 1
+      if (editing) {
+        const { img, placement } = editing
+        // The picture counts toward the box: it may reach past anything drawn.
+        const b = placementBounds(placement, img.naturalWidth, img.naturalHeight)
+        minSX = Math.min(minSX, Math.floor(b.minX))
+        maxSX = Math.max(maxSX, Math.ceil(b.maxX))
+        minSY = Math.min(minSY, Math.floor(b.minY))
+        maxSY = Math.max(maxSY, Math.ceil(b.maxY))
+        const shown = placePicture(placement, img.naturalWidth, img.naturalHeight)
+        k = Math.min(4, Math.max(1, img.naturalWidth / Math.max(1, Math.abs(shown.w))))
+      }
       const cropW = Math.max(1, maxSX - minSX)
       const cropH = Math.max(1, maxSY - minSY)
+      // And never past what a canvas can hold.
+      k = Math.min(k, 8192 / cropW, 8192 / cropH)
 
       // Create offscreen canvas sized to the bounding box
       const offscreen = document.createElement('canvas')
-      offscreen.width = Math.ceil(cropW)
-      offscreen.height = Math.ceil(cropH)
+      offscreen.width = Math.ceil(cropW * k)
+      offscreen.height = Math.ceil(cropH * k)
       const offCtx = offscreen.getContext('2d')!
+
+      if (editing) {
+        offCtx.setTransform(k, 0, 0, k, -minSX * k, -minSY * k)
+        drawPlacedPicture(offCtx, editing.img, editing.placement)
+        offCtx.setTransform(1, 0, 0, 1, 0, 0)
+      }
 
       // Draw strokes shifted so bounding box starts at (0,0)
       // The spread keeps each point's pressure, which a bare {x, y} dropped.
       for (const stroke of completedStrokes) {
-        drawStroke(offCtx, { ...stroke, points: stroke.points.map(p => ({ ...p, x: p.x - minSX, y: p.y - minSY })) })
+        drawStroke(offCtx, {
+          ...stroke,
+          width: stroke.width * k,
+          points: stroke.points.map(p => ({ ...p, x: (p.x - minSX) * k, y: (p.y - minSY) * k })),
+        })
       }
 
       // Export as PNG blob and upload to Supabase Storage
@@ -4381,6 +4430,49 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           setIsSavingDrawing(false)
           return
         }
+        if (editing) {
+          // The same trace, now showing the new picture. Its position, size and
+          // turn are in the picture itself now, so the rest goes back to
+          // plain. Written straight away, as a new drawing's insert is.
+          const x = worldCenterX
+          const y = worldCenterY
+          const width = Math.round(worldW)
+          const height = Math.round(worldH)
+          const { error } = await (supabase.from('traces') as any).update({
+            media_url: imageUrl,
+            position_x: x,
+            position_y: y,
+            width,
+            height,
+            scale: 1,
+            scale_x: 1,
+            scale_y: 1,
+            rotation: 0,
+            flip_horizontal: false,
+            flip_vertical: false,
+            crop_x: 0,
+            crop_y: 0,
+            crop_width: 1,
+            crop_height: 1,
+          }).eq('id', editing.traceId)
+          if (error) {
+            console.error('Failed to save the edited drawing:', error)
+            showToast(t('atrium.draw.editSaveFailed'))
+          } else {
+            const current = useGameStore.getState().traces.find(tr => tr.id === editing.traceId)
+            if (current) {
+              useGameStore.getState().addTrace({
+                ...current,
+                mediaUrl: imageUrl,
+                x, y, width, height,
+                scale: 1, scaleX: 1, scaleY: 1, rotation: 0,
+                flipHorizontal: false, flipVertical: false,
+                cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
+              })
+            }
+            editSaved = true
+          }
+        } else {
         const layerFields = activeLayerId
           ? {
               layer_id: activeLayerId,
@@ -4419,12 +4511,54 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         } else if (error) {
           console.error('Failed to save drawing:', error)
         }
+        }
       }
     } catch (err) {
       console.error('Error saving drawing:', err)
     }
     setIsSavingDrawing(false)
+    // A failed edit keeps its strokes, so nothing drawn is lost to a retry.
+    if (editing && !editSaved) return
     resetDrawing()
+    // Done editing: back to the atrium, where the drawing now shows the
+    // change. The effect on isDrawingMode ends the edit.
+    if (editSaved) setIsDrawingMode(false)
+  }
+
+  // Edit Drawing, from the right-click menu: back into drawing mode with the
+  // drawing's picture under the brush. Loaded so the canvas can read it back
+  // when saving -- from the vault as a blob on desktop, and on the web with
+  // CORS, falling back to the site's own image proxy.
+  const handleEditDrawing = async (traceId: string, mediaUrl: string, placement: TracePlacement) => {
+    if (!canEditRef.current) return
+    const load = (src: string, crossOrigin: boolean) => new Promise<HTMLImageElement | null>(resolve => {
+      const img = new Image()
+      if (crossOrigin) img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = () => resolve(null)
+      img.src = src
+    })
+    let img: HTMLImageElement | null = null
+    if (mediaUrl.startsWith('local://')) {
+      const { resolveLocalUrl } = await import('../lib/localDb')
+      const resolved = await resolveLocalUrl(mediaUrl)
+      if (!resolved.startsWith('local://')) img = await load(resolved, false)
+    } else if (mediaUrl.startsWith('data:')) {
+      img = await load(mediaUrl, false)
+    } else {
+      img = await load(mediaUrl, true)
+        ?? (isDesktop ? null : await load(`/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`, false))
+    }
+    if (!img || !img.naturalWidth) {
+      showToast(t('atrium.draw.editLoadFailed'))
+      return
+    }
+    resetDrawing()
+    editingDrawingRef.current = { traceId, img, placement }
+    if (committedLayerRef.current) committedLayerRef.current.strokes = null
+    setEditingDrawingId(traceId)
+    setIsEraserMode(false)
+    setIsDrawingMode(true)
   }
 
   // The key handler is registered once, so it reaches the current save
@@ -4465,6 +4599,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             newTextRequest={newTextTraceId}
             isDrawingMode={isDrawingMode}
             hideCursor={isDrawingMode && pointerOnDrawingCanvas}
+            onEditDrawing={handleEditDrawing}
+            hiddenTraceId={editingDrawingId}
             onMultiSelectionChange={setMultiSelectedTraceIds}
             canEdit={canEdit}
           />
@@ -5009,7 +5145,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
               <div className="flex flex-col items-stretch gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.draw.title')}</p>
+                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{editingDrawingId ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}</p>
                 </div>
 
                 <>

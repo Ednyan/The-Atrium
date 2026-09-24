@@ -36,6 +36,7 @@ import ShapeStyleControls from './ShapeStyleControls'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeStyle'
+import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -200,6 +201,11 @@ interface TraceOverlayProps {
   // True while the pointer is over the drawing canvas, where the brush circle
   // stands in for the cursor.
   hideCursor?: boolean
+  // Edit Drawing, handed up with where the drawing sits on screen, and the
+  // drawing being edited, kept off the canvas while its picture is in the
+  // drawing layer instead.
+  onEditDrawing?: (traceId: string, mediaUrl: string, placement: TracePlacement) => void
+  hiddenTraceId?: string | null
   // Reports this file's current multi-selection up to LobbyScene so the
   // Layer panel (a sibling, not a child, of this component) can highlight
   // every multi-selected trace/group, not just the single selectedTraceId.
@@ -367,7 +373,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -4830,6 +4836,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
             // Render trace
             const trace = item.trace!
+            if (trace.id === hiddenTraceId) return null
             // Use editingTrace for selected trace to show live updates (check ID match to be safe)
             const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
         const transform = getTraceTransform(trace)
@@ -7045,6 +7052,50 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.customize')}
               </button>
             )}
+            {/* Back into drawing mode with this drawing's picture under the
+                brush, placed exactly where the trace shows it. */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (editingWholeSelection || !canEdit || !onEditDrawing || !trace?.mediaUrl || !isDrawingTrace(trace)) return null
+              const mediaUrl = trace.mediaUrl
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    const size = getTraceSize(trace)
+                    const tf = localTraceTransforms[trace.id] || getTraceTransform(trace)
+                    // Its store copy is current; a leftover drag override would
+                    // go on showing the old placement over the edited one.
+                    setLocalTraceTransforms(prev => {
+                      if (!(trace.id in prev)) return prev
+                      const next = { ...prev }
+                      delete next[trace.id]
+                      return next
+                    })
+                    setSelectedTraceId(null)
+                    setMultiSelectedIds(new Set())
+                    setContextMenu(null)
+                    onEditDrawing(trace.id, mediaUrl, {
+                      cx: tf.x * zoom + worldOffset.x,
+                      cy: tf.y * zoom + worldOffset.y,
+                      rotation: tf.rotation ?? 0,
+                      flipH: !!trace.flipHorizontal,
+                      flipV: !!trace.flipVertical,
+                      width: size.width,
+                      height: size.height,
+                      scaleX: (tf.scaleX ?? 1) * zoom,
+                      scaleY: (tf.scaleY ?? 1) * zoom,
+                      cropX: trace.cropX ?? 0,
+                      cropY: trace.cropY ?? 0,
+                      cropWidth: trace.cropWidth ?? 1,
+                      cropHeight: trace.cropHeight ?? 1,
+                    })
+                  }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.editDrawing')}
+                </button>
+              )
+            })()}
             {editingWholeSelection && (
               <button
                 className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"

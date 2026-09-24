@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { isCustomBrush, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
+import { isCustomBrush, isDrawingTrace, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
 
 test('stamps land at the spacing, whatever the segments are', () => {
   const xs = (points: { x: number; y: number }[]) => stampPositions(points, () => 2).map(s => s.x)
@@ -39,4 +39,23 @@ test('only well-formed brushes are taken back from the vault', () => {
   assert.ok(!isCustomBrush({ id: 'a1', name: 'Leaf', tip: 'data:image/png;base64,x");background:url(evil' }))
   assert.ok(!isCustomBrush({ id: '../x', name: 'Leaf', tip }))
   assert.ok(!isCustomBrush(null))
+})
+
+test('a drawing is recognised by its file, or by its label', () => {
+  assert.ok(isDrawingTrace({ type: 'image', mediaUrl: 'local://traces/lobby/drawing_u_1712.png' }))
+  assert.ok(isDrawingTrace({ type: 'image', mediaUrl: 'https://x.supabase.co/storage/v1/object/public/traces/l/drawing_u_1.png' }))
+  assert.ok(isDrawingTrace({ type: 'image', mediaUrl: 'data:image/png;base64,AAA', content: 'freehand drawing' }))
+  assert.ok(!isDrawingTrace({ type: 'image', mediaUrl: 'https://x/photos/my_drawing_room.jpg' }))
+  assert.ok(!isDrawingTrace({ type: 'embed', mediaUrl: 'https://x/drawing_1.png' }))
+})
+
+test('the picture lands where the trace shows it, crop and all', () => {
+  const base = { cx: 0, cy: 0, rotation: 0, flipH: false, flipV: false, width: 100, height: 50, scaleX: 2, scaleY: 2, cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 }
+  assert.deepEqual(placePicture(base, 200, 100), { clipW: 200, clipH: 100, x: -100, y: -50, w: 200, h: 100 })
+  // Only the right half kept: the box halves and the picture slides left, so
+  // what stays in view is its right half.
+  assert.deepEqual(placePicture({ ...base, cropX: 0.5, cropWidth: 0.5 }, 200, 100), { clipW: 100, clipH: 100, x: -150, y: -50, w: 200, h: 100 })
+  // Turned a quarter, a wide box covers a tall area.
+  const b = placementBounds({ ...base, rotation: 90 }, 200, 100)
+  assert.ok(Math.abs(b.maxX - 50) < 1e-9 && Math.abs(b.maxY - 100) < 1e-9)
 })

@@ -284,6 +284,9 @@ const ja: Catalogue = {
   // --------------------------------------------------------- freehand draw
   'atrium.draw.button': '描く',
   'atrium.draw.title': 'フリーハンド',
+  'atrium.draw.editingTitle': '描いたものを編集中',
+  'atrium.draw.editLoadFailed': 'この描画の画像を編集用に開けませんでした。',
+  'atrium.draw.editSaveFailed': '編集した描画を保存できませんでした。描いた線はそのまま残っています。',
   'atrium.draw.brush': 'ブラシ',
   'atrium.draw.eraser': '消しゴム',
   'atrium.draw.brushPen': 'ペン',
@@ -964,6 +967,7 @@ const ja: Catalogue = {
   'atrium.menu.copyText': 'テキストをコピー',
   'atrium.menu.copyEmbedLink': '埋め込みリンクをコピー',
   'atrium.menu.convertToImage': '画像に変換',
+  'atrium.menu.editDrawing': '描いたものを編集',
   'atrium.menu.transformations': '変形',
   'atrium.menu.flipHorizontal': '左右反転',
   'atrium.menu.flipVertical': '上下反転',

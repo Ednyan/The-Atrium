@@ -287,6 +287,9 @@ const zh: Catalogue = {
   // --------------------------------------------------------- freehand draw
   'atrium.draw.button': '绘制',
   'atrium.draw.title': '自由绘制',
+  'atrium.draw.editingTitle': '正在编辑这幅画',
+  'atrium.draw.editLoadFailed': '无法打开这幅画的图片进行编辑。',
+  'atrium.draw.editSaveFailed': '无法保存编辑后的画。你画的笔触都还在。',
   'atrium.draw.brush': '画笔',
   'atrium.draw.eraser': '橡皮擦',
   'atrium.draw.brushPen': '钢笔',
@@ -967,6 +970,7 @@ const zh: Catalogue = {
   'atrium.menu.copyText': '复制文字',
   'atrium.menu.copyEmbedLink': '复制嵌入链接',
   'atrium.menu.convertToImage': '转换成图片',
+  'atrium.menu.editDrawing': '编辑这幅画',
   'atrium.menu.transformations': '变换',
   'atrium.menu.flipHorizontal': '水平翻转',
   'atrium.menu.flipVertical': '垂直翻转',

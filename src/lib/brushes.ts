@@ -452,3 +452,78 @@ export async function registerCustomBrush(brush: CustomBrush): Promise<boolean> 
     return false
   }
 }
+
+// ---- Editing a saved drawing ------------------------------------------------
+//
+// A saved drawing is a picture -- its strokes were flattened into it -- so
+// editing one starts from that picture: it goes under the new strokes exactly
+// where the trace shows it, the eraser can take parts of it away, and saving
+// paints the two together into a new picture for the same trace.
+
+// Whether a trace is a drawing. Its file is saved as drawing_<...>.png; the
+// label covers one kept as a data URL because its upload failed.
+export function isDrawingTrace(t: { type: string; mediaUrl?: string | null; content?: string | null }): boolean {
+  return t.type === 'image'
+    && (/(^|\/)drawing_[^/?#]*\.png([?#]|$)/.test(t.mediaUrl ?? '') || t.content === 'freehand drawing')
+}
+
+// Where a trace shows its picture on screen, as TraceOverlay lays it out:
+// centred on (cx, cy), turned by `rotation` degrees, mirrored by the flips.
+// The picture is fitted inside width x height (world units), that box is
+// stretched by scaleX/scaleY (screen px per world unit, zoom included), and a
+// crop keeps its share of the box and cuts away the rest.
+export interface TracePlacement {
+  cx: number
+  cy: number
+  rotation: number
+  flipH: boolean
+  flipV: boolean
+  width: number
+  height: number
+  scaleX: number
+  scaleY: number
+  cropX: number
+  cropY: number
+  cropWidth: number
+  cropHeight: number
+}
+
+// The visible box (clipW x clipH) and the picture's rectangle within it, both
+// centred on the trace, before rotation and flips.
+export function placePicture(pl: TracePlacement, naturalWidth: number, naturalHeight: number) {
+  const fit = Math.min(pl.width / naturalWidth, pl.height / naturalHeight)
+  const iw = naturalWidth * fit
+  const ih = naturalHeight * fit
+  const clipW = pl.width * pl.cropWidth * pl.scaleX
+  const clipH = pl.height * pl.cropHeight * pl.scaleY
+  return {
+    clipW,
+    clipH,
+    x: -clipW / 2 + ((pl.width - iw) / 2 - pl.cropX * pl.width) * pl.scaleX,
+    y: -clipH / 2 + ((pl.height - ih) / 2 - pl.cropY * pl.height) * pl.scaleY,
+    w: iw * pl.scaleX,
+    h: ih * pl.scaleY,
+  }
+}
+
+// The screen area the picture covers, rotation included.
+export function placementBounds(pl: TracePlacement, naturalWidth: number, naturalHeight: number) {
+  const { clipW, clipH } = placePicture(pl, naturalWidth, naturalHeight)
+  const r = pl.rotation * Math.PI / 180
+  const hw = (Math.abs(Math.cos(r)) * clipW + Math.abs(Math.sin(r)) * clipH) / 2
+  const hh = (Math.abs(Math.sin(r)) * clipW + Math.abs(Math.cos(r)) * clipH) / 2
+  return { minX: pl.cx - hw, maxX: pl.cx + hw, minY: pl.cy - hh, maxY: pl.cy + hh }
+}
+
+export function drawPlacedPicture(ctx: CanvasRenderingContext2D, img: HTMLImageElement, pl: TracePlacement) {
+  const p = placePicture(pl, img.naturalWidth, img.naturalHeight)
+  ctx.save()
+  ctx.translate(pl.cx, pl.cy)
+  ctx.rotate(pl.rotation * Math.PI / 180)
+  ctx.scale(pl.flipH ? -1 : 1, pl.flipV ? -1 : 1)
+  ctx.beginPath()
+  ctx.rect(-p.clipW / 2, -p.clipH / 2, p.clipW, p.clipH)
+  ctx.clip()
+  ctx.drawImage(img, p.x, p.y, p.w, p.h)
+  ctx.restore()
+}
