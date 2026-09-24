@@ -2149,7 +2149,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // hint of overshoot (under 3%) rather than a wobble.
     const omega = (2 * Math.PI) / (80 + 200 * strength)
     const damping = 0.75
-    let x = px, y = py, vx = 0, vy = 0, raf = 0, last = performance.now()
+    let x = px, y = py, vx = 0, vy = 0, raf = 0, last = performance.now(), peak = 0
     const moved = new Set<HTMLElement>()
     const sizes = new Map<HTMLElement, { w: number; h: number }>()
     const feel = {
@@ -2172,7 +2172,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         x += vx * h
         y += vy * h
       }
-      const ox = x - feel.px, oy = y - feel.py
+      // A minimum of momentum before any of it shows. Scaled by the largest
+      // trail this drag has reached, eased in between 3 and 12 pixels: a
+      // nudge or a jittery hand never gets past the start of that, so the
+      // trace just moves, and a real pull brings the full trail, lean and
+      // settle -- with nothing in between ever switching on abruptly.
+      const rawX = x - feel.px, rawY = y - feel.py
+      peak = Math.max(peak, Math.hypot(rawX, rawY))
+      const engage = Math.min(1, Math.max(0, (peak - 3) / 9))
+      const k = engage * engage * (3 - 2 * engage)
+      const ox = rawX * k, oy = rawY * k
       // Leaning into the pull, as a card held by its top edge does: dragged
       // right, the trailing side swings back and it tips clockwise.
       const lean = (Math.max(-5, Math.min(5, -ox * 0.15)) * Math.PI) / 180
