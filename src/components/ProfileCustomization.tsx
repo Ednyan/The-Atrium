@@ -41,7 +41,7 @@ const PRESET_COLORS = [
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -543,6 +543,49 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             </div>
             <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
               {t('atrium.profile.hideOtherCursorsHint')}
+            </p>
+          </div>
+
+          {/* Animations */}
+          <div className="flex items-baseline gap-3 pt-2">
+            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">05</span>
+            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.animations')}</span>
+            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+          </div>
+
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+              {t('atrium.profile.floating', { value: traceFloat })}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={traceFloat}
+              onChange={(e) => setTraceFloat(parseInt(e.target.value, 10))}
+              className="w-full accent-nier-bg"
+            />
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              {t('atrium.profile.floatingHint')}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+              {t('atrium.profile.momentum', { value: traceMomentum })}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={traceMomentum}
+              onChange={(e) => setTraceMomentum(parseInt(e.target.value, 10))}
+              className="w-full accent-nier-bg"
+            />
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
+              {t('atrium.profile.momentumHint')}
             </p>
           </div>
 

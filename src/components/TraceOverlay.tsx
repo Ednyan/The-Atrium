@@ -236,6 +236,19 @@ type TransformMode = 'none' | 'move' | 'scale' | 'rotate' | 'crop' | 'point' | '
 const proxyFallbackFor = (url: string) =>
   isDesktop ? '' : `/api/proxy-image?url=${encodeURIComponent(url)}`
 
+// Floating (Profile > Animations): each trace drifts at its own pace and
+// phase, taken from its id, so a room of them moves out of step instead of
+// bobbing together. See trace-float in index.css.
+function floatTiming(id: string): { duration: number; delay: number } {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  const u = (h >>> 0) / 4294967296
+  return { duration: 9 + u * 6, delay: -u * 15 }
+}
+
+// How far, in screen pixels, a trace drifts at Floating 100%.
+const FLOAT_MAX_PX = 8
+
 // What Shift snaps a dragged trace onto when the atrium has no grid size of
 // its own. The same fallback LobbyScene draws with, so an atrium saved before
 // the setting existed snaps to the lines it is actually showing.
@@ -397,7 +410,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -1995,6 +2008,116 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     markTraceChanged(traceId)
   }
 
+  // ---- Momentum: a thrown trace glides on and settles ----------------------
+  //
+  // Let go of a trace while it's moving and it carries on, slowing, and comes
+  // to rest with a slight overshoot and settle -- a damped spring that starts
+  // at the speed it was let go at, so there's no jolt. Let go of it still and
+  // it stays exactly where it was put. The Momentum setting (Profile >
+  // Animations) scales how far and for how long, and the shape with them: a
+  // spring of fixed timing asked to stop short of where a fast throw carries
+  // it would fly past several times over.
+  //
+  // The glide is part of the move: its steps skip the undo stack, and when it
+  // settles the move's own undo entry is given the final position, so one
+  // Ctrl+Z still takes the whole throw back.
+  const dragSamplesRef = useRef<{ x: number; y: number; t: number }[]>([])
+  const dragShiftRef = useRef(false)
+  const updateTraceTransformRef = useRef(updateTraceTransform)
+  updateTraceTransformRef.current = updateTraceTransform
+  const traceMomentumRef = useRef(traceMomentum)
+  traceMomentumRef.current = traceMomentum
+  const glideRef = useRef<{ finish: () => void } | null>(null)
+  // Held still while they glide, so floating doesn't fight the motion.
+  const [glidingIds, setGlidingIds] = useState<Set<string>>(new Set())
+
+  const stopGlide = () => glideRef.current?.finish()
+
+  const startGlide = (ids: string[]) => {
+    const strength = traceMomentumRef.current / 100
+    const samples = dragSamplesRef.current
+    dragSamplesRef.current = []
+    // Not after lining up with Shift: gliding on would undo the alignment.
+    if (!strength || dragShiftRef.current || ids.length === 0) return
+
+    const now = performance.now()
+    const recent = samples.filter(p => now - p.t < 100)
+    // Stopped before letting go: set down, not thrown.
+    if (recent.length < 2 || now - recent[recent.length - 1].t > 60) return
+    const first = recent[0], latest = recent[recent.length - 1]
+    const span = latest.t - first.t
+    if (span <= 0) return
+    const screenVX = (latest.x - first.x) / span, screenVY = (latest.y - first.y) / span
+    if (Math.hypot(screenVX, screenVY) < 0.15) return
+
+    const moving = ids.map(id => useGameStore.getState().traces.find(t => t.id === id))
+    // A path moves by its points, not by a position, so a selection with one
+    // in it is simply set down.
+    if (moving.some(t => !t || isPathTrace(t))) return
+    const origins = moving.map(t => ({ id: t!.id, x: t!.x, y: t!.y }))
+
+    // Where it comes to rest: carried on at the speed it was let go at, and
+    // never more than a few hundred pixels whatever the flick.
+    const zoomNow = zoomRef.current || 1
+    const carry = 240 * strength
+    const omega = (2 * Math.PI) / Math.max(80, 650 * strength)
+    const damping = 0.62
+    let vx = screenVX / zoomNow, vy = screenVY / zoomNow
+    let targetX = vx * carry, targetY = vy * carry
+    const cap = 360 / zoomNow, reach = Math.hypot(targetX, targetY)
+    if (reach > cap) {
+      const k = cap / reach
+      targetX *= k; targetY *= k; vx *= k; vy *= k
+    }
+
+    let ox = 0, oy = 0, last = now, raf = 0
+    const began = now
+    const place = (x: number, y: number) => {
+      for (const o of origins) updateTraceTransformRef.current(o.id, { x: o.x + x, y: o.y + y }, { skipUndo: true })
+    }
+    const finish = () => {
+      cancelAnimationFrame(raf)
+      glideRef.current = null
+      setGlidingIds(new Set())
+      // The move's undo entry is the top one; it ends where the glide did.
+      const top = undoStackRef.current[undoStackRef.current.length - 1]
+      const ends: Record<string, { x: number; y: number }> = {}
+      for (const o of origins) ends[o.id] = { x: o.x + ox, y: o.y + oy }
+      if (top?.kind === 'update' && ends[top.traceId]) {
+        top.after = { ...top.after, ...ends[top.traceId] }
+      } else if (top?.kind === 'batch') {
+        for (const op of top.ops) if (ends[op.traceId]) op.after = { ...op.after, ...ends[op.traceId] }
+      }
+    }
+    const tick = (t: number) => {
+      let dt = Math.min(t - last, 48)
+      last = t
+      // Small fixed steps, so a slow frame can't make the spring overshoot
+      // more than it should.
+      while (dt > 0) {
+        const h = Math.min(dt, 4)
+        dt -= h
+        vx += (omega * omega * (targetX - ox) - 2 * damping * omega * vx) * h
+        vy += (omega * omega * (targetY - oy) - 2 * damping * omega * vy) * h
+        ox += vx * h
+        oy += vy * h
+      }
+      const settled = Math.hypot(targetX - ox, targetY - oy) * zoomNow < 0.3 && Math.hypot(vx, vy) * zoomNow < 0.01
+      if (settled || t - began > 2000) {
+        ox = targetX; oy = targetY
+        place(ox, oy)
+        finish()
+        return
+      }
+      place(ox, oy)
+      raf = requestAnimationFrame(tick)
+    }
+    stopGlide()
+    glideRef.current = { finish }
+    setGlidingIds(new Set(ids))
+    raf = requestAnimationFrame(tick)
+  }
+
   // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
   // autosave, and the desktop close-with-unsaved-changes prompt.
 
@@ -2495,6 +2618,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // practice only 'move' (clicking the trace body itself) can reach here.
     if (!canEdit) return
 
+    // Taking hold of a trace ends any glide still running, where it has got to.
+    stopGlide()
+    dragSamplesRef.current = mode === 'move' ? [{ x: e.clientX, y: e.clientY, t: performance.now() }] : []
+    dragShiftRef.current = false
+
     setTransformMode(mode)
     selectedTraceIdRef.current = trace.id
     transformModeRef.current = mode
@@ -2805,6 +2933,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
 
   if (activeTransformMode === 'move') {
+      // The pointer's recent path, for the speed it's let go at.
+      const samples = dragSamplesRef.current
+      samples.push({ x: e.clientX, y: e.clientY, t: performance.now() })
+      if (samples.length > 8) samples.shift()
+      dragShiftRef.current = !!e.shiftKey
+
       // Convert screen delta to world delta
       let worldDeltaX = deltaX / currentZoom
       let worldDeltaY = deltaY / currentZoom
@@ -3421,6 +3555,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const activeTransformMode = transformModeRef.current
     const activeSelectedTraceId = selectedTraceIdRef.current
     transformModeRef.current = 'none'
+    // What was being moved, taken now: the refs that say so are cleared below.
+    const thrown = activeTransformMode === 'move'
+      ? (isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : [])
+      : []
 
     // Cleared unconditionally: this runs before every early return below, so
     // the badge can't outlive its drag.
@@ -3571,6 +3709,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       setTransformMode('none')
       // Note: selectedPointIndex remains set so control handles stay visible
     }
+
+    // After the move's undo entry exists, so the glide can finish it.
+    if (thrown.length > 0) startGlide(thrown)
   }
 
   // Click outside to deselect
@@ -5057,6 +5198,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 filter: isPressed ? 'brightness(1.35)' : undefined,
                 willChange: 'transform',
                 transformOrigin: 'center center',
+                // Floating (Profile > Animations): a slow drift of a few
+                // pixels. Held still while selected, pressed, edited in place,
+                // gliding, or in use as an interactive embed -- the handles,
+                // grip and caret around it stay where they are, and something
+                // being worked with shouldn't drift out from under the pointer.
+                ...(traceFloat > 0 && !isSelected && !isMultiSelected && !isPressed
+                  && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
+                  && !(trace.type === 'embed' && trace.enableInteraction) ? {
+                  animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
+                  ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px`,
+                } : {}),
                 cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
                 pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
               }}

@@ -45,6 +45,10 @@ interface GameState {
   // Soft fade-out of traces as they approach the viewport edge. Purely a
   // visual preference, so it lives with the other localStorage toggles.
   traceFadeEnabled: boolean
+  // How much traces drift on their own, and how far a thrown one glides on,
+  // 0-100 each; 0 turns it off. Set under Profile, "Animations".
+  traceFloat: number
+  traceMomentum: number
   cursorState: CursorState
   otherUsers: Record<string, UserPresence>  // Changed from Map to Record
   traces: Trace[]
@@ -69,6 +73,8 @@ interface GameState {
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
+  setTraceFloat: (level: number) => void
+  setTraceMomentum: (level: number) => void
   setCursorState: (state: CursorState) => void
   updateOtherUser: (userId: string, presence: UserPresence) => void
   updateOtherUserPosition: (userId: string, x: number, y: number) => void
@@ -91,6 +97,19 @@ interface GameState {
   setServerLobbySize: (size: number, traceCount: number) => void
   getLobbySizeBytes: () => number
   isLobbyFull: () => boolean
+}
+
+const clampLevel = (level: number) => Math.max(0, Math.min(100, Math.round(level)))
+
+// A 0-100 setting from localStorage, or its default when missing, unreadable
+// or out of range.
+function readLevel(key: string, fallback: number): number {
+  try {
+    const parsed = parseInt(localStorage.getItem(key) ?? '', 10)
+    return Number.isFinite(parsed) ? clampLevel(parsed) : fallback
+  } catch {
+    return fallback
+  }
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -129,6 +148,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('traceFadeEnabled')
     return stored !== null ? stored === 'true' : true
   })(),
+  traceFloat: readLevel('traceFloat', 35),
+  traceMomentum: readLevel('traceMomentum', 50),
   cursorState: 'default',
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
@@ -176,6 +197,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   setTraceFadeEnabled: (enabled) => {
     localStorage.setItem('traceFadeEnabled', String(enabled))
     set({ traceFadeEnabled: enabled })
+  },
+  setTraceFloat: (level) => {
+    const clamped = clampLevel(level)
+    try { localStorage.setItem('traceFloat', String(clamped)) } catch { /* kept for this session only */ }
+    set({ traceFloat: clamped })
+  },
+  setTraceMomentum: (level) => {
+    const clamped = clampLevel(level)
+    try { localStorage.setItem('traceMomentum', String(clamped)) } catch { /* kept for this session only */ }
+    set({ traceMomentum: clamped })
   },
   setCursorState: (cursorState) => set({ cursorState }),
   
