@@ -2378,6 +2378,34 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     markTraceChanged(traceId)
   }
 
+  // A text box fits its text as it is typed, not only once typing stops.
+  // Each keystroke resizes the trace without an undo entry of its own; the
+  // edit as a whole becomes one entry when it ends, measured from how the
+  // trace was before the first keystroke.
+  const textEditStartRef = useRef<{ id: string; content: string; width?: number; height?: number } | null>(null)
+  const fitTextLive = (trace: Trace, content: string, fontSize: number, fontFamily: string) => {
+    if (textEditStartRef.current?.id !== trace.id) {
+      textEditStartRef.current = { id: trace.id, content: trace.content ?? '', width: trace.width, height: trace.height }
+    }
+    const size = computeAutoFitTextSize(content, fontSize, { fontFamily })
+    updateTraceCustomization(trace.id, { content, width: size.width, height: size.height }, { skipUndo: true })
+  }
+  // cancel puts the text and box back as they were (Escape).
+  const endTextEdit = (traceId: string, cancel = false) => {
+    const start = textEditStartRef.current
+    textEditStartRef.current = null
+    if (!start || start.id !== traceId) return
+    const before = { content: start.content, width: start.width, height: start.height }
+    if (cancel) {
+      updateTraceCustomization(traceId, before, { skipUndo: true })
+      return
+    }
+    const live = useGameStore.getState().traces.find(t => t.id === traceId)
+    if (live && live.content !== start.content) {
+      pushUpdateOp(traceId, before, { content: live.content, width: live.width, height: live.height })
+    }
+  }
+
   // Applies the same property updates to every trace in a set at once (used
   // by the batch-edit panel). Each trace still gets its own undo entry via
   // updateTraceCustomization -- undoing a batch edit takes one Ctrl+Z per
@@ -5972,25 +6000,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                     <textarea
                       autoFocus
                       value={inlineEditText}
-                      onChange={(e) => setInlineEditText(e.target.value)}
+                      onChange={(e) => {
+                        setInlineEditText(e.target.value)
+                        fitTextLive(trace, e.target.value, baseFontSize, textStyles.fontFamily)
+                      }}
                       onBlur={() => {
-                        if (inlineEditText !== trace.content) {
-                          const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize, { fontFamily: textStyles.fontFamily })
-                          updateTraceCustomization(trace.id, { content: inlineEditText, width: textSize.width, height: textSize.height })
-                        }
+                        endTextEdit(trace.id)
                         setInlineEditingTraceId(null)
                         setInlineEditText('')
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
+                          endTextEdit(trace.id, true)
                           setInlineEditingTraceId(null)
                           setInlineEditText('')
                         } else if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault()
-                          if (inlineEditText !== trace.content) {
-                            const textSize = computeAutoFitTextSize(inlineEditText, baseFontSize, { fontFamily: textStyles.fontFamily })
-                            updateTraceCustomization(trace.id, { content: inlineEditText, width: textSize.width, height: textSize.height })
-                          }
+                          endTextEdit(trace.id)
                           setInlineEditingTraceId(null)
                           setInlineEditText('')
                         }
@@ -7627,18 +7653,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
-                      const updated = { ...editingTrace, content: e.target.value }
-                      setEditingTrace(updated)
-                    }}
-                    onBlur={(e) => {
                       const effectiveFontSize = typeof editingTrace.fontSize === 'number'
                         ? editingTrace.fontSize
                         : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
-                      const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
-                      const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
-                      const textSize = computeAutoFitTextSize(e.target.value, effectiveFontSize, { fontFamily: effectiveFontFamily })
-                      updateTraceCustomization(editingTrace.id, { content: e.target.value, width: textSize.width, height: textSize.height })
+                      const effectiveFontFamily = resolveFontFamilyCss(editingTrace.fontFamily ?? 'sans')
+                      fitTextLive(traces.find(tr => tr.id === editingTrace.id) ?? editingTrace, e.target.value, effectiveFontSize, effectiveFontFamily)
                     }}
+                    onBlur={() => endTextEdit(editingTrace.id)}
                     className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     placeholder={t('atrium.customize.messagePlaceholder')}
                     rows={4}
