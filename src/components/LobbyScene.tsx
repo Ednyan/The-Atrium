@@ -2042,7 +2042,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // size. Non-image embeds (YouTube links, etc.) simply fail to probe and
     // fall back to the default box.
     const probed = await Promise.all(urls.map(url => probeRemoteImageDimensions(url)))
-    const sizes = probed.map(dims => dims ? scaleToDisplayBox(dims) : getDefaultTraceBoxSize('embed'))
+    const boxes = urls.map(url => defaultEmbedBox(url))
+    const sizes = probed.map((dims, i) => dims ? scaleToDisplayBox(dims) : boxes[i] ?? getDefaultTraceBoxSize('embed'))
     const offsets = packBoxesAroundCenter(sizes, 24, packingShapeRef.current)
 
     if (supabase) {
@@ -2077,6 +2078,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         lobby_id: lobbyId,
         show_description: false,
         show_filename: false,
+        // Stored for what isn't an image, so a pasted video opens at the size
+        // it was packed at, as the single-link paths already do.
+        ...(!probed[i] && boxes[i] ? boxes[i] : {}),
         ...(layerFields ? layerFields[i] : {}),
       }))
 

@@ -14,8 +14,10 @@
 // /embed/ URL that works.
 //
 // The id stops at a slash as well as at ? and &, or a trailing segment would be
-// swallowed into it.
-const YOUTUBE = /(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([^&?\s/]+)/
+// swallowed into it. v= is found wherever it sits in the query: links copied
+// from the app or the mobile site put something before it (?feature=share&v=,
+// ?app=desktop&v=), and those were left unconverted -- a blank frame.
+const YOUTUBE = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|shorts\/|live\/)|youtu\.be\/)([^&?#\s/]+)/
 // Only Shorts, which are the vertical ones.
 const YOUTUBE_SHORT = /youtube\.com\/shorts\//
 // Drive file ids appear either after /d/ or as an id= query parameter,
@@ -74,8 +76,13 @@ export function defaultEmbedBox(rawUrl: string): { width: number; height: number
   // page-shaped embeds below use.
   if (YOUTUBE_SHORT.test(url)) return { width: 338, height: 600 }
 
-  // Slides and ordinary video keep the 16:9 default.
-  if (/presentation|youtube|youtu\.be/.test(url)) return null
+  // An ordinary video at YouTube's own embed size. The 16:9 default is only
+  // 300 wide, where YouTube switches to its mini player: the title bar and
+  // overlays cover most of the picture and the controls are crowded out.
+  if (/youtube\.com|youtu\.be/.test(url)) return { width: 560, height: 315 }
+
+  // Slides keep the 16:9 default.
+  if (/presentation/.test(url)) return null
 
   // Documents, spreadsheets and Drive files are usually pages: A4-ish
   // portrait, matching the size PDF traces are created at.

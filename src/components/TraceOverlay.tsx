@@ -7163,6 +7163,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             >
               <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? t('atrium.menu.enableClicks') : t('atrium.menu.ignoreClicks')}
             </button>
+            {/* The same switch as the Customize checkbox, one right-click away:
+                an embed is where a video or page you can use lives. */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!trace || trace.type !== 'embed') return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    updateTraceCustomization(trace.id, { enableInteraction: !trace.enableInteraction })
+                    setContextMenu(null)
+                  }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {trace.enableInteraction ? t('atrium.menu.disableInteraction') : t('atrium.menu.enableInteraction')}
+                </button>
+              )
+            })()}
             <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
             {/* Transformations submenu -- opens as a side flyout on hover,
                 grouping the crop/rotate/flip resets that used to each take
