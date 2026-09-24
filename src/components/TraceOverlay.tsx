@@ -37,6 +37,7 @@ import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeStyle'
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
+import { arrowhead, bend, boxEdge, curveMiddle, DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -410,7 +411,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -1635,7 +1636,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   type UndoOp =
     | { kind: 'add'; traceId: string; trace: Trace }
-    | { kind: 'delete'; trace: Trace }
+    // A trace's connections go with it, and come back with it on undo.
+    | { kind: 'delete'; trace: Trace; links?: TraceLink[] }
+    // Connections made, removed or changed: the ones there before and after.
+    | { kind: 'links'; before: TraceLink[]; after: TraceLink[]; ts: number }
     | { kind: 'update'; traceId: string; before: Partial<Trace>; after: Partial<Trace>; ts: number }
     // One atomic undo step covering every trace moved together in a
     // multi-select drag -- without this, moving N selected traces pushes N
@@ -1775,8 +1779,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     redoStackRef.current = []
   }, [])
 
-  const pushDeleteOp = useCallback((trace: Trace) => {
-    undoStackRef.current.push({ kind: 'delete', trace: cloneTraceSnapshot(trace) })
+  const pushDeleteOp = useCallback((trace: Trace, links: TraceLink[] = []) => {
+    undoStackRef.current.push({ kind: 'delete', trace: cloneTraceSnapshot(trace), links })
     if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
     redoStackRef.current = []
   }, [])
@@ -1882,6 +1886,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         // whatever should actually be undone next.
         knownTraceIdsRef.current?.add(op.traceId)
       }
+    } else if (op.kind === 'links') {
+      const [gone, back] = direction === 'undo' ? [op.after, op.before] : [op.before, op.after]
+      for (const link of gone) store.dropLink(link.id)
+      for (const link of back) store.putLink(link)
     } else if (op.kind === 'delete') {
       if (direction === 'undo') {
         store.addTrace(cloneTraceSnapshot(op.trace))
@@ -1889,7 +1897,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         store.markTraceChanged(op.trace.id)
         // See the matching comment in the 'add' redo branch above.
         knownTraceIdsRef.current?.add(op.trace.id)
+        for (const link of op.links ?? []) store.putLink(link)
       } else {
+        for (const link of op.links ?? []) store.dropLink(link.id)
         store.removeTrace(op.trace.id)
         store.markTraceDeleted(op.trace.id)
         knownTraceIdsRef.current?.delete(op.trace.id)
@@ -2214,6 +2224,84 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     raf = requestAnimationFrame(tick)
   }
 
+  // ---- Connections between traces ------------------------------------------
+  //
+  // Threads from one trace's centre to another's, drawn under every trace --
+  // the traces are the nodes. "Connect to..." on the right-click menu takes
+  // the trace, or the whole selection, and waits for a trace to be clicked;
+  // each of them is joined to it. A thread is clicked to select it, then
+  // deleted with its button or the Delete key. All of it waits for Save, and
+  // undoes, like any trace edit.
+  const [connectFrom, setConnectFrom] = useState<string[] | null>(null)
+  const connectFromRef = useRef<string[] | null>(null)
+  connectFromRef.current = connectFrom
+  const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null)
+  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null)
+  const selectedLinkIdRef = useRef<string | null>(null)
+  selectedLinkIdRef.current = selectedLinkId
+
+  const pushLinksOp = useCallback((before: TraceLink[], after: TraceLink[]) => {
+    undoStackRef.current.push({ kind: 'links', before, after, ts: Date.now() })
+    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
+    redoStackRef.current = []
+  }, [])
+
+  const finishConnect = (target: string) => {
+    const sources = connectFromRef.current ?? []
+    setConnectFrom(null)
+    setConnectPointer(null)
+    if (!canEdit || !lobbyId) return
+    const existing = useGameStore.getState().links
+    const made: TraceLink[] = []
+    for (const from of sources) {
+      // Not to itself, and not twice: one thread per pair, either way round.
+      if (from === target || existing.some(l => joins(l, from, target)) || made.some(l => joins(l, from, target))) continue
+      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '' })
+    }
+    if (made.length === 0) return
+    for (const link of made) putLink(link)
+    pushLinksOp([], made)
+  }
+
+  const deleteLink = (id: string) => {
+    const link = useGameStore.getState().links.find(l => l.id === id)
+    setSelectedLinkId(null)
+    if (!link) return
+    dropLink(id)
+    pushLinksOp([link], [])
+  }
+
+  // While connecting: a preview thread to the pointer, and a press anywhere
+  // but a trace gives up.
+  useEffect(() => {
+    if (!connectFrom) return
+    const move = (e: PointerEvent) => setConnectPointer({ x: e.clientX, y: e.clientY })
+    const press = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.('[data-trace-element="true"]')) {
+        setConnectFrom(null)
+        setConnectPointer(null)
+      }
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerdown', press, true)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerdown', press, true)
+    }
+  }, [connectFrom])
+
+  // A selected thread lets go when anything else is pressed.
+  useEffect(() => {
+    if (!selectedLinkId) return
+    const press = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.('[data-link]')) setSelectedLinkId(null)
+    }
+    window.addEventListener('pointerdown', press, true)
+    return () => window.removeEventListener('pointerdown', press, true)
+  }, [selectedLinkId])
+
+  const traceById = React.useMemo(() => new Map(traces.map(t => [t.id, t])), [traces])
+
   // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
   // autosave, and the desktop close-with-unsaved-changes prompt.
 
@@ -2411,8 +2499,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setDeleteConfirmDialog(null)
     setMultiSelectedIds(new Set())
 
+    // Each connection goes with the first of its traces to be deleted, and is
+    // restored by that one's undo -- by which time the other end is back too.
+    const takenLinks = new Set<string>()
     for (const traceId of traceIds) {
       const traceBeingDeleted = traces.find(t => t.id === traceId)
+      const itsLinks = useGameStore.getState().links.filter(l =>
+        (l.from === traceId || l.to === traceId) && !takenLinks.has(l.id))
+      for (const link of itsLinks) {
+        takenLinks.add(link.id)
+        dropLink(link.id)
+      }
 
       // Immediately remove from local state for instant UI update
       removeTrace(traceId)
@@ -2426,7 +2523,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // branches for the full explanation.
       knownTraceIdsRef.current?.delete(traceId)
 
-      if (traceBeingDeleted) pushDeleteOp(traceBeingDeleted)
+      if (traceBeingDeleted) pushDeleteOp(traceBeingDeleted, itsLinks)
     }
   }
 
@@ -2663,6 +2760,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   }
 
   const handleMouseDown = (e: React.MouseEvent, trace: Trace, mode: TransformMode, corner?: string) => {
+    if (connectFromRef.current) {
+      e.stopPropagation()
+      e.preventDefault()
+      finishConnect(trace.id)
+      return
+    }
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
     
     // Disable move/rotate/scale for path shapes - they're controlled by point editing
@@ -3920,6 +4023,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // a character deletes the entire trace instead.
       const target = e.target as HTMLElement | null
       const typingHere = isEditableTarget(target)
+      if (connectFromRef.current && e.key === 'Escape') {
+        setConnectFrom(null)
+        setConnectPointer(null)
+        return
+      }
+      if (selectedLinkIdRef.current && (e.key === 'Delete' || e.key === 'Backspace') && !typingHere && canEdit) {
+        e.preventDefault()
+        deleteLink(selectedLinkIdRef.current)
+        return
+      }
       // Backspace as well as Delete, because on a Mac keyboard the key marked
       // "delete" IS Backspace -- most of them have no Delete key at all, so the
       // shortcut simply did not exist there.
@@ -6782,6 +6895,109 @@ return (
           inside it they couldn't rise above the menus the way they always have. */}
       <div className="view-drift" style={{ position: 'absolute', inset: 0 }}>
       {/* Render traces AND player in z-index order */}
+      {/* Connections, under every trace: from centre to centre, so where
+          a thread meets a trace it disappears under it. Arrows sit on the
+          border instead, where they can be seen. Worked out from the traces'
+          positions, not from what's on screen, so a thread to a trace far off
+          (and not drawn) still runs off toward it. */}
+      {(links.length > 0 || connectFrom) && (
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}>
+          {links.map(link => {
+            const a = traceById.get(link.from), b = traceById.get(link.to)
+            if (!a || !b) return null
+            const ta = localTraceTransforms[a.id] || getTraceTransform(a)
+            const tb = localTraceTransforms[b.id] || getTraceTransform(b)
+            const pa = getScreenPosition(ta.x, ta.y), pb = getScreenPosition(tb.x, tb.y)
+            const ax = pa.screenX, ay = pa.screenY, bx = pb.screenX, by = pb.screenY
+            const c = bend(ax, ay, bx, by)
+            const colour = link.color || a.borderColor || getBorderColor(a.type)
+            const width = Math.max(0.75, link.width * Math.sqrt(zoom))
+            const selected = selectedLinkId === link.id
+            const d = `M ${ax} ${ay} Q ${c.x} ${c.y} ${bx} ${by}`
+            const head = (t: Trace, cx: number, cy: number) => {
+              const box = traceBoxFor(t, undefined, zoom)
+              const tip = boxEdge(cx, cy, box.halfW * zoom, box.halfH * zoom, c.x, c.y)
+              const p = arrowhead(tip.x, tip.y, c.x, c.y, 6 + width * 2)
+              return <polygon points={`${p[0]},${p[1]} ${p[2]},${p[3]} ${p[4]},${p[5]}`} fill={colour} />
+            }
+            return (
+              <g key={link.id}>
+                {selected && <path d={d} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
+                <path d={d} fill="none" stroke={colour} strokeOpacity={selected ? 1 : 0.75} strokeWidth={selected ? width + 1 : width} strokeLinecap="round" />
+                {(link.arrow === 'forward' || link.arrow === 'both') && head(b, bx, by)}
+                {(link.arrow === 'back' || link.arrow === 'both') && head(a, ax, ay)}
+                {/* Wider than it looks, and invisible, so a thin thread can
+                    still be clicked. Where it runs under a trace, the trace
+                    gets the click. */}
+                <path
+                  data-link={link.id}
+                  d={d}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={Math.max(12, width + 10)}
+                  style={{ pointerEvents: canEdit ? 'stroke' : 'none' }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    setSelectedLinkId(link.id)
+                    setSelectedTraceId(null)
+                    setMultiSelectedIds(new Set())
+                  }}
+                />
+              </g>
+            )
+          })}
+          {connectFrom && connectPointer && connectFrom.map(id => {
+            const from = traceById.get(id)
+            if (!from) return null
+            const tf = localTraceTransforms[id] || getTraceTransform(from)
+            const p = getScreenPosition(tf.x, tf.y)
+            const c = bend(p.screenX, p.screenY, connectPointer.x, connectPointer.y)
+            return (
+              <path
+                key={`preview-${id}`}
+                d={`M ${p.screenX} ${p.screenY} Q ${c.x} ${c.y} ${connectPointer.x} ${connectPointer.y}`}
+                fill="none"
+                stroke={from.borderColor || getBorderColor(from.type)}
+                strokeOpacity={0.8}
+                strokeWidth={1.5}
+                strokeDasharray="6 6"
+              />
+            )
+          })}
+        </svg>
+      )}
+
+      {/* The selected thread's delete button, at its middle. */}
+      {selectedLinkId && canEdit && (() => {
+        const link = links.find(l => l.id === selectedLinkId)
+        const a = link && traceById.get(link.from), b = link && traceById.get(link.to)
+        if (!link || !a || !b) return null
+        const ta = localTraceTransforms[a.id] || getTraceTransform(a)
+        const tb = localTraceTransforms[b.id] || getTraceTransform(b)
+        const pa = getScreenPosition(ta.x, ta.y), pb = getScreenPosition(tb.x, tb.y)
+        const c = bend(pa.screenX, pa.screenY, pb.screenX, pb.screenY)
+        const mid = curveMiddle(pa.screenX, pa.screenY, c.x, c.y, pb.screenX, pb.screenY)
+        return (
+          <button
+            data-link={link.id}
+            className="absolute pointer-events-auto px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase border transition-colors"
+            style={{
+              left: `${mid.x}px`,
+              top: `${mid.y}px`,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 999998,
+              color: 'rgb(var(--c-danger))',
+              background: 'rgb(var(--c-ground) / 0.94)',
+              borderColor: 'rgb(var(--c-danger) / 0.55)',
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); deleteLink(link.id) }}
+          >
+            ✕ {t('atrium.links.delete')}
+          </button>
+        )
+      })()}
+
       {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
 
         {/* Render path point handles as absolute overlay (only for selected path) */}
@@ -7131,6 +7347,17 @@ return (
 
       </div>
 
+        {/* While connecting: what to do next, and how not to. */}
+        {connectFrom && (
+          <div
+            className="fixed left-1/2 bottom-10 -translate-x-1/2 z-[10000050] pointer-events-none font-mono border px-5 py-3 text-center"
+            style={{ background: 'rgb(var(--c-ground) / 0.94)', borderColor: 'rgb(var(--c-line) / 0.7)' }}
+          >
+            <div className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.links.pickTarget')}</div>
+            <div className="text-nier-bg/60 text-[10px] tracking-[0.18em] uppercase mt-1">{t('atrium.links.escToCancel')}</div>
+          </div>
+        )}
+
         {/* The player's own cursor, above everything, as it always was. */}
         {sortedItems.filter(item => item.type === 'player').map(renderSortedItem)}
 
@@ -7384,6 +7611,22 @@ return (
                 </button>
               )
             })()}
+            {/* Connect this trace -- or the whole selection it's part of -- to
+                the next trace clicked. */}
+            {canEdit && (
+              <button
+                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                onClick={() => {
+                  const ids = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+                    ? Array.from(multiSelectedIds)
+                    : [contextMenu.traceId]
+                  setContextMenu(null)
+                  setConnectFrom(ids)
+                }}
+              >
+                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.connectTo')}
+              </button>
+            )}
             {editingWholeSelection && (
               <button
                 className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"

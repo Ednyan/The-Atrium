@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { UserPresence, Trace } from '../types/database'
 import { isDesktop } from '../lib/supabase'
 import { recordTraceCreated } from '../lib/supportAppeal'
+import type { TraceLink } from '../lib/traceLinks'
 
 export type CursorState = 'default' | 'pointer' | 'grab' | 'grabbing' | 'not-allowed'
 
@@ -96,6 +97,25 @@ interface GameState {
   unmarkTraceDeleted: (traceId: string) => void
   clearPendingChanges: () => void
   hasPendingChanges: () => boolean
+
+  // Connections between traces. Kept like traces: edits wait for Save, in
+  // pendingLinks (to write) and deletedLinks (to remove); savedLinks says
+  // which already exist in the database, since the desktop shim has no
+  // upsert -- a new one is inserted, a known one updated.
+  links: TraceLink[]
+  pendingLinks: Set<string>
+  deletedLinks: Set<string>
+  savedLinks: Set<string>
+  // As loaded from the database: replaces them all, nothing pending.
+  setLinks: (links: TraceLink[]) => void
+  // A local edit: add or replace, to be written on Save.
+  putLink: (link: TraceLink) => void
+  // A local removal, to be deleted on Save if it was ever saved.
+  dropLink: (id: string) => void
+  // From someone else, live: applied unless it's being edited here.
+  receiveLink: (link: TraceLink) => void
+  forgetLink: (id: string) => void
+  markLinksSaved: (ids: string[]) => void
   setIsSavingChanges: (saving: boolean) => void
 
   // Size limit
@@ -296,6 +316,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   clearLobbyData: () => {
     set({
       traces: [],
+      links: [],
+      pendingLinks: new Set<string>(),
+      deletedLinks: new Set<string>(),
+      savedLinks: new Set<string>(),
       otherUsers: {},
       pendingChanges: new Set<string>(),
       deletedTraces: new Set<string>(),
@@ -332,12 +356,60 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   clearPendingChanges: () =>
-    set({ pendingChanges: new Set<string>(), deletedTraces: new Set<string>() }),
+    set({
+      pendingChanges: new Set<string>(),
+      deletedTraces: new Set<string>(),
+      pendingLinks: new Set<string>(),
+      deletedLinks: new Set<string>(),
+    }),
 
   hasPendingChanges: () => {
     const state = get()
     return state.pendingChanges.size > 0 || state.deletedTraces.size > 0
+      || state.pendingLinks.size > 0 || state.deletedLinks.size > 0
   },
+
+  links: [],
+  pendingLinks: new Set<string>(),
+  deletedLinks: new Set<string>(),
+  savedLinks: new Set<string>(),
+  setLinks: (links) => set({
+    links,
+    savedLinks: new Set(links.map(l => l.id)),
+    pendingLinks: new Set<string>(),
+    deletedLinks: new Set<string>(),
+  }),
+  putLink: (link) => set((state) => {
+    const pendingLinks = new Set(state.pendingLinks).add(link.id)
+    const deletedLinks = new Set(state.deletedLinks)
+    deletedLinks.delete(link.id)
+    return { links: [...state.links.filter(l => l.id !== link.id), link], pendingLinks, deletedLinks }
+  }),
+  dropLink: (id) => set((state) => {
+    const pendingLinks = new Set(state.pendingLinks)
+    pendingLinks.delete(id)
+    const deletedLinks = new Set(state.deletedLinks)
+    if (state.savedLinks.has(id)) deletedLinks.add(id)
+    return { links: state.links.filter(l => l.id !== id), pendingLinks, deletedLinks }
+  }),
+  receiveLink: (link) => set((state) => {
+    if (state.pendingLinks.has(link.id) || state.deletedLinks.has(link.id)) return {}
+    return {
+      links: [...state.links.filter(l => l.id !== link.id), link],
+      savedLinks: new Set(state.savedLinks).add(link.id),
+    }
+  }),
+  forgetLink: (id) => set((state) => {
+    if (state.pendingLinks.has(id)) return {}
+    const savedLinks = new Set(state.savedLinks)
+    savedLinks.delete(id)
+    return { links: state.links.filter(l => l.id !== id), savedLinks }
+  }),
+  markLinksSaved: (ids) => set((state) => {
+    const savedLinks = new Set(state.savedLinks)
+    for (const id of ids) savedLinks.add(id)
+    return { savedLinks }
+  }),
 
   setIsSavingChanges: (saving) => set({ isSavingChanges: saving }),
 

@@ -2,6 +2,7 @@ import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace, fetchAllLobbyTraces } from '../hooks/useTraces'
 import { showToast } from './toast'
+import { linkRow, mapRowToLink } from './traceLinks'
 
 // Fired on window whenever a saveAllChanges() call completes successfully.
 // Undo/redo history (see TraceOverlay.tsx) listens for this to clear its
@@ -56,6 +57,10 @@ export async function discardAllChanges(lobbyId: string): Promise<boolean> {
     }
 
     useGameStore.getState().setTraces(traces)
+    // Connections too. Left as they are if they can't be read -- on the web,
+    // before add_trace_links.sql is applied, the table isn't there yet.
+    const { data: linkRows, error: linkError } = await (supabase.from('trace_links') as any).select('*').eq('lobby_id', lobbyId)
+    if (!linkError && Array.isArray(linkRows)) useGameStore.getState().setLinks(linkRows.map(mapRowToLink))
     useGameStore.getState().clearPendingChanges()
     window.dispatchEvent(new CustomEvent(TRACE_DISCARD_COMPLETED_EVENT))
     return true
@@ -75,7 +80,14 @@ export async function saveAllChanges(): Promise<void> {
   store.setIsSavingChanges(true)
 
   try {
-    const { pendingChanges, deletedTraces, traces, clearPendingChanges } = useGameStore.getState()
+    const { pendingChanges, deletedTraces, traces, clearPendingChanges, pendingLinks, deletedLinks, links, savedLinks } = useGameStore.getState()
+
+    // Connections removed. Before the traces: on the web a trace's deletion
+    // takes its connections with it anyway, but the desktop shim doesn't
+    // cascade.
+    await Promise.all(Array.from(deletedLinks).map(async (id) => {
+      await (db.from('trace_links') as any).delete().eq('id', id)
+    }))
 
     // Handle deletions first
     const deletePromises = Array.from(deletedTraces).map(async (traceId) => {
@@ -200,7 +212,31 @@ export async function saveAllChanges(): Promise<void> {
       return Array.isArray(data) && data.length > 0
     })
     const results = await Promise.all(updatePromises)
-    const refused = results.filter(ok => ok === false).length
+
+    // Connections made or changed: inserted if they've never been saved,
+    // updated if they have -- the desktop shim has no upsert. Their traces
+    // exist by now, since traces are written the moment they're made.
+    const linkResults = await Promise.all(Array.from(pendingLinks).map(async (id) => {
+      const link = links.find(l => l.id === id)
+      if (!link) return true
+      const row = linkRow(link)
+      if (!savedLinks.has(id)) {
+        const { error } = await (db.from('trace_links') as any).insert(row)
+        if (error) return false
+        useGameStore.getState().markLinksSaved([id])
+        return true
+      }
+      const { id: _id, ...fields } = row
+      if (isDesktop) {
+        await (db.from('trace_links') as any).update(fields).eq('id', id)
+        return true
+      }
+      // .select(), for the same reason as the trace updates above.
+      const { data, error } = await (db.from('trace_links') as any).update(fields).eq('id', id).select('id')
+      return !error && Array.isArray(data) && data.length > 0
+    }))
+
+    const refused = results.filter(ok => ok === false).length + linkResults.filter(ok => !ok).length
 
     if (refused > 0) {
       // Deliberately does NOT clear pending changes: they were never written,

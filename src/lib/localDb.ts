@@ -1240,6 +1240,23 @@ export async function initLocalDb(): Promise<void> {
     )
   `)
 
+  // Connections between traces (see add_trace_links.sql for the web's). No
+  // foreign keys here, so a trace's or an atrium's connections are removed by
+  // the code that removes them.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS trace_links (
+      id TEXT PRIMARY KEY,
+      created_at TEXT DEFAULT (datetime('now')),
+      lobby_id TEXT NOT NULL,
+      from_trace TEXT NOT NULL,
+      to_trace TEXT NOT NULL,
+      arrow TEXT NOT NULL DEFAULT 'none',
+      color TEXT,
+      width REAL NOT NULL DEFAULT 2,
+      label TEXT
+    )
+  `)
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS lobby_locations (
       id TEXT PRIMARY KEY,
@@ -2324,7 +2341,7 @@ async function removeDeletedLobbyData(deletedRows: any[]): Promise<void> {
     // reads the lobbies table, and by now the row is gone.
     const lobbyName = typeof row?.name === 'string' ? row.name : null
 
-    for (const table of ['traces', 'layers', 'lobby_locations', 'lobby_access_lists']) {
+    for (const table of ['traces', 'layers', 'lobby_locations', 'lobby_access_lists', 'trace_links']) {
       try {
         await db.execute(`DELETE FROM ${table} WHERE lobby_id = ?`, [lobbyId])
       } catch {
