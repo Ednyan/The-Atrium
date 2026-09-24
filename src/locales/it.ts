@@ -1252,9 +1252,9 @@ const it: Catalogue = {
   'compare.feature.others': 'Altri possono unirsi',
   'compare.web.others': 'Sì, dal vivo',
   'compare.desktop.others': 'Da solo',
-  'compare.feature.share': 'Condividere un link',
-  'compare.web.share': 'Sì',
-  'compare.desktop.share': 'Esportare un file',
+  'compare.feature.types': 'Tipi di Trace',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'oppure',
 
   // ------------------------------------------- the address that moved

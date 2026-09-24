@@ -1238,9 +1238,9 @@ const ja: Catalogue = {
   'compare.feature.others': '他の人が入れるか',
   'compare.web.others': 'はい、リアルタイムで',
   'compare.desktop.others': 'ひとりだけ',
-  'compare.feature.share': 'リンクで共有',
-  'compare.web.share': 'できます',
-  'compare.desktop.share': 'ファイルを書き出す',
+  'compare.feature.types': 'Trace の種類',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
 
   // --------------------------------------------------------- the front page
   'landing.sections': '目次',

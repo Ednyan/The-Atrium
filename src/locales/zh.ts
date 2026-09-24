@@ -1241,9 +1241,9 @@ const zh: Catalogue = {
   'compare.feature.others': '别人能否加入',
   'compare.web.others': '可以，实时',
   'compare.desktop.others': '仅自己',
-  'compare.feature.share': '分享链接',
-  'compare.web.share': '可以',
-  'compare.desktop.share': '导出成文件',
+  'compare.feature.types': 'Trace 类型',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
 
   // --------------------------------------------------------- the front page
   'landing.sections': '章节',

@@ -1251,9 +1251,9 @@ const de: Catalogue = {
   'compare.feature.others': 'Andere können dazukommen',
   'compare.web.others': 'Ja, live',
   'compare.desktop.others': 'Allein',
-  'compare.feature.share': 'Einen Link teilen',
-  'compare.web.share': 'Ja',
-  'compare.desktop.share': 'Eine Datei exportieren',
+  'compare.feature.types': 'Trace-Arten',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'oder',
 
   // ------------------------------------------- the address that moved

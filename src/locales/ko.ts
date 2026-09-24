@@ -1242,9 +1242,9 @@ const ko: Catalogue = {
   'compare.feature.others': '다른 사람이 들어오기',
   'compare.web.others': '돼요, 실시간으로',
   'compare.desktop.others': '혼자만',
-  'compare.feature.share': '링크로 공유',
-  'compare.web.share': '돼요',
-  'compare.desktop.share': '파일로 내보내기',
+  'compare.feature.types': 'Trace 종류',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
 
   // --------------------------------------------------------- the front page
   'landing.sections': '차례',

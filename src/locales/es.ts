@@ -1248,9 +1248,9 @@ const es: Catalogue = {
   'compare.feature.others': 'Otros pueden unirse',
   'compare.web.others': 'Sí, en vivo',
   'compare.desktop.others': 'En solitario',
-  'compare.feature.share': 'Compartir un enlace',
-  'compare.web.share': 'Sí',
-  'compare.desktop.share': 'Exportar un archivo',
+  'compare.feature.types': 'Tipos de Trace',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'o',
 
   // ------------------------------------------- the address that moved

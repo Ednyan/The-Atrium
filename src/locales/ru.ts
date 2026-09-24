@@ -1254,9 +1254,9 @@ const ru: Catalogue = {
   'compare.feature.others': 'Другие могут присоединиться',
   'compare.web.others': 'Да, в реальном времени',
   'compare.desktop.others': 'В одиночку',
-  'compare.feature.share': 'Поделиться ссылкой',
-  'compare.web.share': 'Да',
-  'compare.desktop.share': 'Экспорт файла',
+  'compare.feature.types': 'Типы Trace',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'или',
 
   // ------------------------------------------- the address that moved

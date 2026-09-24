@@ -1186,9 +1186,9 @@ export const en = {
   'compare.feature.others': 'Others can join you',
   'compare.web.others': 'Yes, live',
   'compare.desktop.others': 'Solo',
-  'compare.feature.share': 'Share a link',
-  'compare.web.share': 'Yes',
-  'compare.desktop.share': 'Export a file',
+  'compare.feature.types': 'Trace types',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
 
   // --------------------------------------------------------- the front page
   'landing.sections': 'Sections',

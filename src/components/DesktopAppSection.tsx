@@ -69,7 +69,7 @@ const COMPARISON: Array<{ id: string; favours: 'web' | 'desktop' | 'both' }> = [
   { id: 'images', favours: 'desktop' },
   { id: 'offline', favours: 'desktop' },
   { id: 'others', favours: 'web' },
-  { id: 'share', favours: 'web' },
+  { id: 'types', favours: 'desktop' },
 ]
 
 // Downloads for the desktop build, with the link resolved from the latest
@@ -180,16 +180,20 @@ export default function DesktopAppSection() {
               // rather than being a mouse-only piece of the page.
               onFocus={() => setHoveredOs(build.os)}
               onBlur={() => setHoveredOs(current => (current === build.os ? null : current))}
+              // Solid when there is something to download: the app's own
+              // primary button, light on a dark page and dark on a light
+              // one. An outline read as a label. Orange stays the donate
+              // button's alone.
               className={`border p-4 text-center transition-colors ${
                 available
-                  ? 'border-nier-border/40 hover:border-nier-bg hover:bg-nier-bg/5 cursor-pointer'
+                  ? 'border-nier-bg bg-nier-bg hover:bg-nier-strong hover:border-nier-strong cursor-pointer'
                   : 'border-nier-border/15 opacity-50 cursor-default'
               }`}
             >
-              <div className="text-nier-bg text-base tracking-[0.1em] uppercase mb-1">
+              <div className={`text-base tracking-[0.1em] uppercase mb-1 ${available ? 'text-nier-black' : 'text-nier-bg'}`}>
                 {available ? '↓ ' : ''}{build.os}
               </div>
-              <div className="text-nier-bg/70 text-xs tracking-wider">
+              <div className={`text-xs tracking-wider ${available ? 'text-nier-black/70' : 'text-nier-bg/70'}`}>
                 {available ? t(build.noteKey) : t('desktop.unavailable')}
               </div>
             </a>

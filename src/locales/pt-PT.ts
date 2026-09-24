@@ -1255,9 +1255,9 @@ const ptPT: Catalogue = {
   'compare.feature.others': 'Outros podem juntar-se',
   'compare.web.others': 'Sim, em direto',
   'compare.desktop.others': 'Sozinho',
-  'compare.feature.share': 'Partilhar uma ligação',
-  'compare.web.share': 'Sim',
-  'compare.desktop.share': 'Exportar um ficheiro',
+  'compare.feature.types': 'Tipos de Trace',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'ou',
 
   // ------------------------------------------- the address that moved

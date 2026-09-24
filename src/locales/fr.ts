@@ -1250,9 +1250,9 @@ const fr: Catalogue = {
   'compare.feature.others': 'D’autres peuvent vous rejoindre',
   'compare.web.others': 'Oui, en direct',
   'compare.desktop.others': 'En solo',
-  'compare.feature.share': 'Partager un lien',
-  'compare.web.share': 'Oui',
-  'compare.desktop.share': 'Exporter un fichier',
+  'compare.feature.types': 'Types de Trace',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'ou',
 
   // ------------------------------------------- the address that moved

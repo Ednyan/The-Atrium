@@ -1252,9 +1252,9 @@ const ptBR: Catalogue = {
   'compare.feature.others': 'Outros podem entrar',
   'compare.web.others': 'Sim, ao vivo',
   'compare.desktop.others': 'Sozinho',
-  'compare.feature.share': 'Compartilhar um link',
-  'compare.web.share': 'Sim',
-  'compare.desktop.share': 'Exportar um arquivo',
+  'compare.feature.types': 'Tipos de Trace',
+  'compare.web.types': '3',
+  'compare.desktop.types': '6+',
   'landing.or': 'ou',
 
   // ------------------------------------------- the address that moved
