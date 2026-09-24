@@ -37,7 +37,8 @@ import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeStyle'
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
-import { arrowhead, bend, boxEdge, curveMiddle, DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
+import { DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
+import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -2174,6 +2175,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       stop: () => {
         cancelAnimationFrame(raf)
         for (const el of moved) { el.style.translate = ''; el.style.rotate = '' }
+        for (const id of ids) dragOffsetsRef.current.delete(id)
+        wakeLinksRef.current()
         if (dragFeelRef.current === feel) dragFeelRef.current = null
         if (!feel.held) endMoving()
       },
@@ -2220,7 +2223,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         box.style.translate = `${dx - (dx * cos - dy * sin) + ox}px ${dy - (dx * sin + dy * cos) + oy}px`
         box.style.rotate = `${lean}rad`
         moved.add(box)
+        dragOffsetsRef.current.set(id, { x: ox, y: oy })
       }
+      wakeLinksRef.current()
       if (!feel.held && !stirring) {
         feel.stop()
         return
@@ -2243,15 +2248,81 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const connectFromRef = useRef<string[] | null>(null)
   connectFromRef.current = connectFrom
   const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null)
-  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null)
-  const selectedLinkIdRef = useRef<string | null>(null)
-  selectedLinkIdRef.current = selectedLinkId
+  // Threads selected -- Shift adds and removes -- and the one clicked last,
+  // which carries the delete button.
+  const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set())
+  const selectedLinksRef = useRef(selectedLinks)
+  selectedLinksRef.current = selectedLinks
+  const [primaryLink, setPrimaryLink] = useState<string | null>(null)
+  const [linkMenuAt, setLinkMenuAt] = useState<{ x: number; y: number } | null>(null)
+  // The drag feel's trail on each moving trace, for the threads to follow, and
+  // how to wake the threads' animation when it changes.
+  const dragOffsetsRef = useRef(new Map<string, { x: number; y: number }>())
+  const wakeLinksRef = useRef<() => void>(() => {})
 
-  const pushLinksOp = useCallback((before: TraceLink[], after: TraceLink[]) => {
-    undoStackRef.current.push({ kind: 'links', before, after, ts: Date.now() })
-    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
+  // `fold`: a run of the same edit to the same threads -- a colour dragged, a
+  // label typed -- is one undo step rather than one per change.
+  const pushLinksOp = useCallback((before: TraceLink[], after: TraceLink[], fold = false) => {
+    const stack = undoStackRef.current
+    const top = stack[stack.length - 1]
+    const now = Date.now()
+    if (fold && top?.kind === 'links' && now - top.ts < UNDO_COALESCE_WINDOW_MS
+      && top.after.length === after.length && top.after.every((l, i) => l.id === after[i].id)) {
+      top.after = after
+      top.ts = now
+      return
+    }
+    stack.push({ kind: 'links', before, after, ts: now })
+    if (stack.length > maxUndoDepthRef.current) stack.shift()
     redoStackRef.current = []
   }, [])
+
+  const clearLinkSelection = () => {
+    setSelectedLinks(new Set())
+    setPrimaryLink(null)
+    setLinkMenuAt(null)
+  }
+
+  const deleteLinks = (ids: Iterable<string>) => {
+    const gone = useGameStore.getState().links.filter(l => new Set(ids).has(l.id))
+    clearLinkSelection()
+    if (gone.length === 0) return
+    for (const link of gone) dropLink(link.id)
+    pushLinksOp(gone, [])
+  }
+
+  const editLinks = (patch: Partial<TraceLink>) => {
+    const before = useGameStore.getState().links.filter(l => selectedLinksRef.current.has(l.id))
+    if (before.length === 0) return
+    const after = before.map(l => ({ ...l, ...patch }))
+    for (const link of after) putLink(link)
+    pushLinksOp(before, after, true)
+  }
+
+  const pressLink = (id: string, e: React.PointerEvent) => {
+    e.stopPropagation()
+    setSelectedTraceId(null)
+    setMultiSelectedIds(new Set())
+    setPrimaryLink(id)
+    setSelectedLinks(prev => {
+      if (!e.shiftKey || !canEdit) return new Set([id])
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const openLinkMenu = (id: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!canEdit) return
+    if (!selectedLinksRef.current.has(id)) {
+      setSelectedLinks(new Set([id]))
+      setPrimaryLink(id)
+    }
+    setLinkMenuAt({ x: e.clientX, y: e.clientY })
+  }
 
   const finishConnect = (target: string) => {
     const sources = connectFromRef.current ?? []
@@ -2270,13 +2341,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     pushLinksOp([], made)
   }
 
-  const deleteLink = (id: string) => {
-    const link = useGameStore.getState().links.find(l => l.id === id)
-    setSelectedLinkId(null)
-    if (!link) return
-    dropLink(id)
-    pushLinksOp([link], [])
-  }
 
   // While connecting: a preview thread to the pointer, and a press anywhere
   // but a trace gives up.
@@ -2297,17 +2361,29 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [connectFrom])
 
-  // A selected thread lets go when anything else is pressed.
+  // Selected threads let go when anything else is pressed (their menu and
+  // delete button carry data-link, so using those doesn't).
   useEffect(() => {
-    if (!selectedLinkId) return
+    if (selectedLinks.size === 0) return
     const press = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement)?.closest?.('[data-link]')) setSelectedLinkId(null)
+      if (!(e.target as HTMLElement)?.closest?.('[data-link]')) clearLinkSelection()
     }
     window.addEventListener('pointerdown', press, true)
     return () => window.removeEventListener('pointerdown', press, true)
-  }, [selectedLinkId])
+  }, [selectedLinks])
 
   const traceById = React.useMemo(() => new Map(traces.map(t => [t.id, t])), [traces])
+  // Where a thread's end is: the trace's centre and box in world units, as it
+  // stands now (mid-drag included), and its border colour.
+  const placeTrace = (id: string): LinkEnd | null => {
+    const trace = traceById.get(id)
+    if (!trace) return null
+    // A path is where its points are (mid-drag, the local ones), not its x/y.
+    const box = localShapePoints[id]
+      ? traceBoxFor({ ...trace, shapePoints: localShapePoints[id] })
+      : traceBoxFor(trace, localTraceTransforms[id])
+    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, colour: trace.borderColor || getBorderColor(trace.type) }
+  }
 
   // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
   // autosave, and the desktop close-with-unsaved-changes prompt.
@@ -4031,9 +4107,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         setConnectPointer(null)
         return
       }
-      if (selectedLinkIdRef.current && (e.key === 'Delete' || e.key === 'Backspace') && !typingHere && canEdit) {
+      if (selectedLinksRef.current.size > 0 && (e.key === 'Delete' || e.key === 'Backspace') && !typingHere && canEdit) {
         e.preventDefault()
-        deleteLink(selectedLinkIdRef.current)
+        deleteLinks(selectedLinksRef.current)
         return
       }
       // Backspace as well as Delete, because on a Mac keyboard the key marked
@@ -6927,103 +7003,21 @@ return (
           border instead, where they can be seen. Worked out from the traces'
           positions, not from what's on screen, so a thread to a trace far off
           (and not drawn) still runs off toward it. */}
-      {(links.length > 0 || connectFrom) && (
-        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}>
-          {links.map(link => {
-            const a = traceById.get(link.from), b = traceById.get(link.to)
-            if (!a || !b) return null
-            const ta = localTraceTransforms[a.id] || getTraceTransform(a)
-            const tb = localTraceTransforms[b.id] || getTraceTransform(b)
-            const pa = getScreenPosition(ta.x, ta.y), pb = getScreenPosition(tb.x, tb.y)
-            const ax = pa.screenX, ay = pa.screenY, bx = pb.screenX, by = pb.screenY
-            const c = bend(ax, ay, bx, by)
-            const colour = link.color || a.borderColor || getBorderColor(a.type)
-            const width = Math.max(0.75, link.width * Math.sqrt(zoom))
-            const selected = selectedLinkId === link.id
-            const d = `M ${ax} ${ay} Q ${c.x} ${c.y} ${bx} ${by}`
-            const head = (t: Trace, cx: number, cy: number) => {
-              const box = traceBoxFor(t, undefined, zoom)
-              const tip = boxEdge(cx, cy, box.halfW * zoom, box.halfH * zoom, c.x, c.y)
-              const p = arrowhead(tip.x, tip.y, c.x, c.y, 6 + width * 2)
-              return <polygon points={`${p[0]},${p[1]} ${p[2]},${p[3]} ${p[4]},${p[5]}`} fill={colour} />
-            }
-            return (
-              <g key={link.id}>
-                {selected && <path d={d} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
-                <path d={d} fill="none" stroke={colour} strokeOpacity={selected ? 1 : 0.75} strokeWidth={selected ? width + 1 : width} strokeLinecap="round" />
-                {(link.arrow === 'forward' || link.arrow === 'both') && head(b, bx, by)}
-                {(link.arrow === 'back' || link.arrow === 'both') && head(a, ax, ay)}
-                {/* Wider than it looks, and invisible, so a thin thread can
-                    still be clicked. Where it runs under a trace, the trace
-                    gets the click. */}
-                <path
-                  data-link={link.id}
-                  d={d}
-                  fill="none"
-                  stroke="transparent"
-                  strokeWidth={Math.max(12, width + 10)}
-                  style={{ pointerEvents: canEdit ? 'stroke' : 'none' }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    setSelectedLinkId(link.id)
-                    setSelectedTraceId(null)
-                    setMultiSelectedIds(new Set())
-                  }}
-                />
-              </g>
-            )
-          })}
-          {connectFrom && connectPointer && connectFrom.map(id => {
-            const from = traceById.get(id)
-            if (!from) return null
-            const tf = localTraceTransforms[id] || getTraceTransform(from)
-            const p = getScreenPosition(tf.x, tf.y)
-            const c = bend(p.screenX, p.screenY, connectPointer.x, connectPointer.y)
-            return (
-              <path
-                key={`preview-${id}`}
-                d={`M ${p.screenX} ${p.screenY} Q ${c.x} ${c.y} ${connectPointer.x} ${connectPointer.y}`}
-                fill="none"
-                stroke={from.borderColor || getBorderColor(from.type)}
-                strokeOpacity={0.8}
-                strokeWidth={1.5}
-                strokeDasharray="6 6"
-              />
-            )
-          })}
-        </svg>
-      )}
-
-      {/* The selected thread's delete button, at its middle. */}
-      {selectedLinkId && canEdit && (() => {
-        const link = links.find(l => l.id === selectedLinkId)
-        const a = link && traceById.get(link.from), b = link && traceById.get(link.to)
-        if (!link || !a || !b) return null
-        const ta = localTraceTransforms[a.id] || getTraceTransform(a)
-        const tb = localTraceTransforms[b.id] || getTraceTransform(b)
-        const pa = getScreenPosition(ta.x, ta.y), pb = getScreenPosition(tb.x, tb.y)
-        const c = bend(pa.screenX, pa.screenY, pb.screenX, pb.screenY)
-        const mid = curveMiddle(pa.screenX, pa.screenY, c.x, c.y, pb.screenX, pb.screenY)
-        return (
-          <button
-            data-link={link.id}
-            className="absolute pointer-events-auto px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase border transition-colors"
-            style={{
-              left: `${mid.x}px`,
-              top: `${mid.y}px`,
-              transform: 'translate(-50%, -50%)',
-              zIndex: 999998,
-              color: 'rgb(var(--c-danger))',
-              background: 'rgb(var(--c-ground) / 0.94)',
-              borderColor: 'rgb(var(--c-danger) / 0.55)',
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); deleteLink(link.id) }}
-          >
-            ✕ {t('atrium.links.delete')}
-          </button>
-        )
-      })()}
+      <TraceLinksLayer
+        links={links}
+        place={placeTrace}
+        offsets={dragOffsetsRef}
+        zoom={zoom}
+        worldOffset={worldOffset}
+        selected={selectedLinks}
+        primary={primaryLink}
+        preview={connectFrom && connectPointer ? { from: connectFrom, to: connectPointer } : null}
+        canEdit={canEdit}
+        onPress={pressLink}
+        onMenu={openLinkMenu}
+        onDelete={() => deleteLinks(selectedLinksRef.current)}
+        wakeRef={wakeLinksRef}
+      />
 
       {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
 
@@ -7373,6 +7367,17 @@ return (
         })()}
 
       </div>
+
+        {linkMenuAt && (
+          <LinkMenu
+            at={linkMenuAt}
+            links={links.filter(l => selectedLinks.has(l.id))}
+            borderOf={link => placeTrace(link.from)?.colour ?? '#8f8f8f'}
+            onEdit={editLinks}
+            onDelete={() => deleteLinks(selectedLinksRef.current)}
+            onClose={() => setLinkMenuAt(null)}
+          />
+        )}
 
         {/* While connecting: what to do next, and how not to. */}
         {connectFrom && (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
+import { Slider } from './ShapeStyleControls'
 import {
   DEFAULT_ZOOM_SENSITIVITY,
   MIN_ZOOM_SENSITIVITY,
@@ -38,25 +39,6 @@ const PRESET_COLORS = [
   '#A8B6D9', // Blue
   '#C77DFF', // Purple
 ]
-
-// One 0-100 motion setting: its name and value, the slider, what it does.
-function LevelSlider({ label, hint, value, onChange }: { label: string; hint: string; value: number; onChange: (level: number) => void }) {
-  return (
-    <div>
-      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{label}</label>
-      <input
-        type="range"
-        min="0"
-        max="100"
-        step="1"
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        className="w-full accent-nier-bg"
-      />
-      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">{hint}</p>
-    </div>
-  )
-}
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
@@ -572,10 +554,10 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
-          <LevelSlider label={t('atrium.profile.dragBounce', { value: dragBounce })} hint={t('atrium.profile.dragBounceHint')} value={dragBounce} onChange={setDragBounce} />
-          <LevelSlider label={t('atrium.profile.viewFloat', { value: viewFloat })} hint={t('atrium.profile.viewFloatHint')} value={viewFloat} onChange={setViewFloat} />
-          <LevelSlider label={t('atrium.profile.floating', { value: traceFloat })} hint={t('atrium.profile.floatingHint')} value={traceFloat} onChange={setTraceFloat} />
-          <LevelSlider label={t('atrium.profile.momentum', { value: traceMomentum })} hint={t('atrium.profile.momentumHint')} value={traceMomentum} onChange={setTraceMomentum} />
+          <Slider min={0} max={100} step={1} label={t('atrium.profile.dragBounce', { value: dragBounce })} hint={t('atrium.profile.dragBounceHint')} value={dragBounce} onChange={setDragBounce} />
+          <Slider min={0} max={100} step={1} label={t('atrium.profile.viewFloat', { value: viewFloat })} hint={t('atrium.profile.viewFloatHint')} value={viewFloat} onChange={setViewFloat} />
+          <Slider min={0} max={100} step={1} label={t('atrium.profile.floating', { value: traceFloat })} hint={t('atrium.profile.floatingHint')} value={traceFloat} onChange={setTraceFloat} />
+          <Slider min={0} max={100} step={1} label={t('atrium.profile.momentum', { value: traceMomentum })} hint={t('atrium.profile.momentumHint')} value={traceMomentum} onChange={setTraceMomentum} />
 
           {/* Error/Success Messages */}
           {error && (

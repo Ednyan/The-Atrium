@@ -24,7 +24,7 @@ const PALETTE = [
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
 
 const LABEL = 'block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2'
-const HINT = 'text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5'
+const HINT = 'text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5'
 const choice = (on: boolean) => `px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
   on
     ? 'bg-nier-bg text-nier-black border-nier-bg'
@@ -53,7 +53,7 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: (valu
 }
 
 /** Palette, eyedropper, native picker and a hex field -- for fill and outline alike. */
-function ColourField({ label, value, onChange }: { label: string; value: string; onChange: (colour: string) => void }) {
+export function ColourField({ label, value, onChange }: { label: string; value: string; onChange: (colour: string) => void }) {
   const { t } = useTranslation()
   // The hex field keeps its own text while it is being typed, so a half-typed
   // "#3b8" is not pushed onto the shape; it applies once it is a colour.
@@ -122,7 +122,7 @@ function ColourField({ label, value, onChange }: { label: string; value: string;
   )
 }
 
-function Slider({ label, hint, min, max, step, value, onChange }: {
+export function Slider({ label, hint, min, max, step, value, onChange }: {
   label: string; hint?: string; min: number; max: number; step: number; value: number; onChange: (value: number) => void
 }) {
   return (
