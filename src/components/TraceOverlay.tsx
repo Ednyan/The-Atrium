@@ -2127,32 +2127,43 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // alongside the transform it already has -- so where the trace actually is,
   // what gets saved, snapped and aligned, still follows the pointer exactly.
   //
-  // Its handles hide until it settles: they're drawn separately, and would be
-  // left behind by it.
+  // Its handles and a selection's frame go with it.
   const dragBounceRef = useRef(dragBounce)
   dragBounceRef.current = dragBounce
   const dragFeelRef = useRef<{ px: number; py: number; held: boolean; stop: () => void } | null>(null)
-  const [springingIds, setSpringingIds] = useState<Set<string>>(new Set())
 
   const startDragFeel = (ids: string[], px: number, py: number) => {
     dragFeelRef.current?.stop()
     const strength = dragBounceRef.current / 100
     if (!strength || ids.length === 0) return
-    const parts = ids
-      .flatMap(id => Array.from(document.querySelectorAll<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)))
-      .map(el => ({ el, dx: -el.offsetWidth / 2, dy: -el.offsetHeight / 2 }))
-    // Snappier at low settings, looser at high; always a little under-damped,
-    // which is the bounce.
-    const omega = (2 * Math.PI) / (60 + 140 * strength)
-    const damping = 0.5
+    // Loose enough to trail noticeably, damped enough that it settles with a
+    // hint of overshoot (under 3%) rather than a wobble.
+    const omega = (2 * Math.PI) / (80 + 200 * strength)
+    const damping = 0.75
     let x = px, y = py, vx = 0, vy = 0, raf = 0, last = performance.now()
+    const moved = new Set<HTMLElement>()
+    const sizes = new Map<HTMLElement, { w: number; h: number }>()
+    const sizeOf = (el: HTMLElement) => {
+      let size = sizes.get(el)
+      if (!size) sizes.set(el, size = { w: el.offsetWidth, h: el.offsetHeight })
+      return size
+    }
+    // Moves an element by (ox, oy) and turns it by `lean` about the point
+    // (cx, cy) -- not about its own transform origin (ox0, oy0), which is
+    // where a rotate would otherwise pivot; the extra translate makes up the
+    // difference.
+    const place = (el: HTMLElement, ox0: number, oy0: number, cx: number, cy: number, ox: number, oy: number, lean: number) => {
+      const dx = cx - ox0, dy = cy - oy0, cos = Math.cos(lean), sin = Math.sin(lean)
+      el.style.translate = `${dx - (dx * cos - dy * sin) + ox}px ${dy - (dx * sin + dy * cos) + oy}px`
+      el.style.rotate = lean ? `${lean}rad` : ''
+      moved.add(el)
+    }
     const feel = {
       px, py, held: true,
       stop: () => {
         cancelAnimationFrame(raf)
-        for (const p of parts) { p.el.style.translate = ''; p.el.style.rotate = '' }
+        for (const el of moved) { el.style.translate = ''; el.style.rotate = '' }
         if (dragFeelRef.current === feel) dragFeelRef.current = null
-        setSpringingIds(new Set())
       },
     }
     const tick = (now: number) => {
@@ -2169,17 +2180,28 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const ox = x - feel.px, oy = y - feel.py
       // Leaning into the pull, as a card held by its top edge does: dragged
       // right, the trailing side swings back and it tips clockwise.
-      const lean = (Math.max(-6, Math.min(6, -ox * 0.25)) * Math.PI) / 180
-      const cos = Math.cos(lean), sin = Math.sin(lean)
-      for (const p of parts) {
-        // The element turns about its layout box's centre, which isn't where
-        // the trace is drawn -- it's shifted back half its size. The extra
-        // translate makes the turn about the trace's own centre.
-        const cx = p.dx - (p.dx * cos - p.dy * sin)
-        const cy = p.dy - (p.dx * sin + p.dy * cos)
-        p.el.style.translate = `${ox + cx}px ${oy + cy}px`
-        p.el.style.rotate = `${lean}rad`
+      const lean = (Math.max(-5, Math.min(5, -ox * 0.15)) * Math.PI) / 180
+      for (const id of ids) {
+        const box = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
+        if (!box) continue
+        // The trace is drawn centred on its left/top; its layout box, which a
+        // rotate pivots on, starts there.
+        const cx = parseFloat(box.style.left), cy = parseFloat(box.style.top)
+        const size = sizeOf(box)
+        place(box, cx + size.w / 2, cy + size.h / 2, cx, cy, ox, oy, lean)
+        // Its handles, one layer the size of the view, turned about the
+        // trace's centre too, so they stay on its corners.
+        const handles = document.querySelector<HTMLElement>(`[data-trace-handles="${CSS.escape(id)}"]`)
+        if (handles) {
+          const hs = sizeOf(handles)
+          place(handles, hs.w / 2, hs.h / 2, cx, cy, ox, oy, lean)
+        }
       }
+      // A selection's shared frame trails with them, without the lean: each
+      // trace leans about its own centre, and the frame has no one centre to
+      // lean about that would match them all.
+      const group = document.querySelector<HTMLElement>('[data-group-handles]')
+      if (group) place(group, 0, 0, 0, 0, ox, oy, 0)
       if (!feel.held && Math.hypot(ox, oy) < 0.3 && Math.hypot(vx, vy) < 0.01) {
         feel.stop()
         return
@@ -2187,7 +2209,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       raf = requestAnimationFrame(tick)
     }
     dragFeelRef.current = feel
-    setSpringingIds(new Set(ids))
     raf = requestAnimationFrame(tick)
   }
 
@@ -4888,1866 +4909,1872 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     )
   }
 
+  // One entry of sortedItems: a trace, or the player's own cursor. Named so the
+  // two can be drawn in different layers -- see the world layer below.
+  const renderSortedItem = (item: (typeof sortedItems)[number]) => {
+    if (item.type === 'player') {
+      // Over the drawing canvas the brush circle is the cursor; a
+      // second one beside it only hides what is being drawn. Off it --
+      // on the drawing panel, a button -- the cursor is needed again.
+      if (hideCursor) return null
+      // Render player cursor
+      const playerScreenX = position.x * zoom + worldOffset.x
+      const playerScreenY = position.y * zoom + worldOffset.y
+
+      // Convert hex color to RGB for shadows
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+        return result ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16)
+        } : { r: 255, g: 255, b: 255 }
+      }
+      const rgb = hexToRgb(playerColor)
+
+      // The cursor used to be readable because of a drop shadow under
+      // it. With that gone, its outline is what separates it from the
+      // atrium, so the outline follows the atrium: near-black on a
+      // light background, white on a dark one.
+      const groundRgb = hexToRgb(atriumBackground || '#0a0a0f')
+      const groundLuminance =
+        (0.2126 * groundRgb.r + 0.7152 * groundRgb.g + 0.0722 * groundRgb.b) / 255
+      const cursorEdge = groundLuminance > 0.5 ? '#1a1a1a' : '#ffffff'
+
+      // Get cursor SVG based on state
+      const getCursorSvg = () => {
+        const size = 24 // Fixed size regardless of zoom
+        const baseProps = {
+          width: size,
+          height: size,
+          viewBox: "0 0 24 24",
+          style: { 
+            transform: 'translate(-2px, -2px)',
+            transition: 'transform 0.1s ease-out',
+          } as React.CSSProperties
+        }
+
+        switch (cursorState) {
+          case 'pointer':
+            // Paint-drop cursor (for clickable items) -- an abstract
+            // blob with trailing streaks, as if a drop of paint were
+            // falling upward against gravity. See
+            // src/assets/cursors/hand-pointer.svg for the editable
+            // source (open in Illustrator to tweak further).
+            return (
+              <svg {...baseProps}>
+                <path
+                  d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
+                  fill={playerColor}
+                  stroke={cursorEdge}
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )
+          case 'grab':
+            // Open hand (for draggable items)
+            return (
+              <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(1.1)' }}>
+                <path
+                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                  fill={playerColor}
+                  stroke="#90EE90"
+                  strokeWidth="2"
+                />
+              </svg>
+            )
+          case 'grabbing':
+            // Closed hand (while dragging)
+            return (
+              <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(0.95)' }}>
+                <path
+                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                  fill={playerColor}
+                  stroke="#FFD700"
+                  strokeWidth="2"
+                />
+              </svg>
+            )
+          case 'not-allowed':
+            // Red X indicator
+            return (
+              <svg {...baseProps}>
+                <path
+                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                  fill={playerColor}
+                  stroke="#FF4444"
+                  strokeWidth="2"
+                />
+              </svg>
+            )
+          default:
+            // Default arrow cursor
+            return (
+              <svg {...baseProps}>
+                <path
+                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                  fill={playerColor}
+                  stroke={cursorEdge}
+                  strokeWidth="1.5"
+                />
+              </svg>
+            )
+        }
+      }
+
+      // Player cursor
+      return (
+        <div
+          key="player-cursor"
+          style={{
+            position: 'absolute',
+            left: playerScreenX,
+            top: playerScreenY,
+            pointerEvents: 'none',
+            zIndex: item.zIndex,
+          }}
+        >
+          {getCursorSvg()}
+          {/* Player label -- a user-chosen dark/near-black color used
+              to glow/blend into the also-dark background+canvas,
+              making the tag unreadable. Perceived luminance decides
+              whether the glow is the player's own color (fine for
+              lighter colors, which already contrast against the dark
+              backdrop) or a fixed light stroke/glow (for dark colors,
+              which otherwise vanish into their own background). */}
+          {!hideOwnNameTag && (() => {
+            const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
+            const isDarkColor = luminance < 90
+            return (
+            <div
+              style={{
+                position: 'absolute',
+                top: 20,
+                left: 12,
+                color: playerColor,
+                fontSize: '11px',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+                textShadow: isDarkColor
+                  ? '0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
+                  : `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
+                letterSpacing: '0.5px',
+                background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
+                border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
+                padding: '2px 6px',
+                borderRadius: '3px',
+              }}
+            >
+              {username}
+            </div>
+            )
+          })()}
+        </div>
+      )
+    }
+
+    // Render trace
+    const trace = item.trace!
+    if (trace.id === hiddenTraceId) return null
+    // Use editingTrace for selected trace to show live updates (check ID match to be safe)
+    const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
+const transform = getTraceTransform(trace)
+let { screenX, screenY } = getScreenPosition(transform.x, transform.y)
+// Same staleness problem as the viewport-culling filter above: a
+// path's x/y only reflects where it was created or last moved as a
+// whole, not where its (possibly individually-dragged) points
+// currently are. Left uncorrected, the distance-from-viewport-center
+// fade below fades/hides the path based on that wrong position
+// instead of where it's actually drawn.
+if (trace.type === 'shape' && trace.shapeType === 'path') {
+  const livePoints = localShapePoints[trace.id] || displayTrace.shapePoints
+  if (livePoints && livePoints.length > 0) {
+    const centroidX = livePoints.reduce((sum, p) => sum + p.x, 0) / livePoints.length
+    const centroidY = livePoints.reduce((sum, p) => sum + p.y, 0) / livePoints.length
+    const centroidScreen = getScreenPosition(centroidX, centroidY)
+    screenX = centroidScreen.screenX
+    screenY = centroidScreen.screenY
+  }
+}
+const { width, height } = getTraceSize(trace)
+const borderColor = trace.borderColor || getBorderColor(trace.type)
+// Handles stay hidden while a clickable trace is being pressed.
+//
+// Selection still happens on mousedown -- the move handler reads it to
+// know what to drag, so it can't be deferred -- but showing the
+// transform frame for the instant a link-click takes would flash a
+// selection the user never asked for. If the press turns into a drag
+// the suppression lifts and the handles appear as usual; if it turns
+// out to be a click, the link opens and nothing is left selected.
+// Held down, or released and counting down to the link opening. Both
+// keep the trace looking pressed and its handles hidden -- the second
+// is what makes the press visible at all, since the button is already
+// back up by the time the click resolves.
+const isPressed = pressedClickableId === trace.id || pendingLinkTraceId === trace.id
+const isSelected = selectedTraceId === trace.id && !isPressed
+const isMultiSelected = multiSelectedIds.has(trace.id)
+
+// Apply customization defaults
+const showBorder = trace.showBorder ?? true
+const showBackground = trace.showBackground ?? true
+const showDescription = trace.showDescription ?? false
+const showFilename = trace.showFilename ?? true
+const fontSize = trace.fontSize ?? 'medium'
+const fontFamily = trace.fontFamily ?? 'sans'
+
+// Apply crop to border size
+const cropX = trace.cropX ?? 0
+const cropY = trace.cropY ?? 0
+const cropWidth = trace.cropWidth ?? 1
+const cropHeight = trace.cropHeight ?? 1
+
+// Border container should match the cropped content size
+// For shapes, use their actual width/height properties
+const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
+const shapeHeight = trace.type === 'shape' ? (trace.height || 200) : height
+const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
+const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
+
+// Debug logging for image dimensions
+// Selected trace rendering
+
+// Edge fade, measured per axis against the actual screen edges (the
+// same rectangular vignette the ground elements use). This was a
+// CIRCLE sized to the viewport's diagonal half-length, which is why
+// the fade behaved so oddly: on a 16:9 screen the left/right edges
+// sit inside that circle's fade band (visible dimming) while the
+// top/bottom edges never reach it (no fade at all). Normalizing each
+// axis to its own half-extent makes 1.0 mean "at the edge" in every
+// direction, so all four sides behave identically.
+const viewportCenterX = lobbyWidth / 2
+const viewportCenterY = lobbyHeight / 2
+
+// Measure from the trace's nearest EDGE, not its center. Center-only
+// distance made zoomed-in traces vanish outright: zoom a large trace
+// until it fills the screen and its center can sit well past the cull
+// boundary while its body still covers the viewport -- observable as
+// "the trace disappears once more than half of it leaves the view".
+// Subtracting the on-screen half-extent means a trace only fades/culls
+// once the whole thing has actually left the neighbourhood of the
+// screen. Rotated traces use their half-diagonal on both axes -- a
+// conservative bound, since an axis-aligned extent understates how far
+// a rotated corner can reach.
+const { width: cullBaseW, height: cullBaseH } = getTraceSize(trace)
+const cullW = trace.type === 'shape' ? (trace.width || 200) : cullBaseW * (trace.cropWidth ?? 1)
+const cullH = trace.type === 'shape' ? (trace.height || 200) : cullBaseH * (trace.cropHeight ?? 1)
+let halfW = (cullW * ((transform as any).scaleX ?? 1) * zoom) / 2
+let halfH = (cullH * ((transform as any).scaleY ?? 1) * zoom) / 2
+if ((transform.rotation ?? 0) % 360 !== 0) {
+  const halfDiag = Math.hypot(halfW, halfH)
+  halfW = halfDiag
+  halfH = halfDiag
+}
+const normalizedX = Math.max(0, Math.abs(screenX - viewportCenterX) - halfW) / viewportCenterX
+const normalizedY = Math.max(0, Math.abs(screenY - viewportCenterY) - halfH) / viewportCenterY
+const normalizedDistance = Math.max(normalizedX, normalizedY)
+
+// Fade begins just inside the edge (a trace sitting exactly on the
+// edge renders at ~2/3 opacity) and finishes a quarter-viewport past
+// it -- present enough to notice, without dimming the working area.
+const fadeStart = 0.88
+const fadeEnd = 1.25
+
+// With the fade toggled off (Profile -> Trace Edge Fade), traces hold
+// full opacity right up to the cull boundary below, which stays either
+// way -- the fade is a visual preference, the cull is what keeps
+// off-screen DOM cheap.
+let traceOpacity = 1.0
+if (traceFadeEnabled && normalizedDistance > fadeStart) {
+  const fadeProgress = (normalizedDistance - fadeStart) / (fadeEnd - fadeStart)
+  traceOpacity = Math.max(0, 1 - fadeProgress)
+}
+
+// Don't render if completely transparent or far outside viewport
+// EXCEPTION: Keep rendering if media is playing (video/audio) OR if it's an interactive embed
+const isPlayingMedia = playingMedia.has(trace.id)
+const isInteractiveEmbed = trace.type === 'embed' && trace.enableInteraction
+if (!isPlayingMedia && !isInteractiveEmbed && (traceOpacity <= 0 || normalizedDistance > fadeEnd)) {
+  return null
+}
+
+// Path shapes render their visible line inline here (via
+// renderPathSvg), at this trace's own sorted DOM position, instead
+// of in a separate trailing pass over all paths -- see the comment
+// on renderPathSvg's definition for why that used to make paths
+// appear to always paint on top of everything else.
+if (trace.type === 'shape' && trace.shapeType === 'path') {
+  // Paths don't use the standard radial point-light (a glow centered
+  // on one spot doesn't suit an elongated line) -- illuminate/
+  // lightColor/lightIntensity are reused instead to drive the
+  // along-the-line glow rendered inside renderPathSvg.
   return (
-    <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
-      {/* Everything anchored to the world -- traces, their handles, cursors --
-          in one layer, so the floating view (set on .lobby-scene, see
-          LobbyScene) moves it together with the grid, and leaves the menus
-          and panels below it still. */}
-      <div className="view-drift" style={{ position: 'absolute', inset: 0 }}>
-      {/* Render traces AND player in z-index order */}
-      {sortedItems
-          .map((item) => {
-            if (item.type === 'player') {
-              // Over the drawing canvas the brush circle is the cursor; a
-              // second one beside it only hides what is being drawn. Off it --
-              // on the drawing panel, a button -- the cursor is needed again.
-              if (hideCursor) return null
-              // Render player cursor
-              const playerScreenX = position.x * zoom + worldOffset.x
-              const playerScreenY = position.y * zoom + worldOffset.y
+    <div key={trace.id} className="contents">
+      {renderPathSvg(trace)}
+    </div>
+  )
+}
 
-              // Convert hex color to RGB for shadows
-              const hexToRgb = (hex: string) => {
-                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-                return result ? {
-                  r: parseInt(result[1], 16),
-                  g: parseInt(result[2], 16),
-                  b: parseInt(result[3], 16)
-                } : { r: 255, g: 255, b: 255 }
-              }
-              const rgb = hexToRgb(playerColor)
+return (
+  <div key={trace.id} className="contents">
+    {/* The light, just under the trace that casts it.
 
-              // The cursor used to be readable because of a drop shadow under
-              // it. With that gone, its outline is what separates it from the
-              // atrium, so the outline follows the atrium: near-black on a
-              // light background, white on a dark one.
-              const groundRgb = hexToRgb(atriumBackground || '#0a0a0f')
-              const groundLuminance =
-                (0.2126 * groundRgb.r + 0.7152 * groundRgb.g + 0.0722 * groundRgb.b) / 255
-              const cursorEdge = groundLuminance > 0.5 ? '#1a1a1a' : '#ffffff'
+        Coming first in the DOM is not enough, and was the bug: this is
+        positioned but had no z-index, while every trace sets one from
+        trace.zIndex. A positioned element without a z-index paints
+        below every positioned sibling that has one -- so a light did
+        not sit under its own trace, it sat under ALL of them, and
+        lighting something meant washing the floor beneath the whole
+        atrium instead.
 
-              // Get cursor SVG based on state
-              const getCursorSvg = () => {
-                const size = 24 // Fixed size regardless of zoom
-                const baseProps = {
-                  width: size,
-                  height: size,
-                  viewBox: "0 0 24 24",
-                  style: { 
-                    transform: 'translate(-2px, -2px)',
-                    transition: 'transform 0.1s ease-out',
-                  } as React.CSSProperties
-                }
+        One below its own trace puts it above everything the trace is
+        above, and below the trace itself. z-indexes here are
+        layer*100 + order (see layerZIndex.ts), so there is always room
+        for the light in the gap between one trace and the next. */}
+    {trace.illuminate && (
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          zIndex: (trace.zIndex ?? 0) - 1,
+          left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
+          top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
+          width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
+          height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
+          borderRadius: '50%',
+          background: trace.lightColor ?? '#ffffff',
+          opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+          mixBlendMode: 'screen',
+          filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
+          animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
+          transformOrigin: 'center center',
+          marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
+          marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
+          willChange: 'transform, opacity',
+          ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+        }}
+      />
+    )}
+    
+    {/* The trace itself */}
+    {/* position+zIndex here too (not just the inner container):
+        CSS opacity < 1 establishes its own stacking context, which
+        would otherwise isolate the inner z-index from comparing
+        correctly against other traces once this fades with distance.
+        Not capped: a trace's z_index encodes layer*100 + order
+        (see layerZIndex.ts), so any trace in a non-first layer
+        already exceeds a small cap -- capping collapsed all of them
+        to the same value, which then had to fall back to DOM order
+        (see HANDLE_Z_INDEX below for how handles stay on top instead). */}
+    <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: trace.zIndex ?? 0 }}>
+    {/* Container for positioning - doesn't scale */}
+    <div
+      data-trace-element="true"
+      data-trace-id={trace.id}
+      className="absolute"
+      style={{
+        left: `${screenX}px`,
+        top: `${screenY}px`,
+        // Explicit z-index so ordinary traces and path shapes
+        // compare on equal terms. Without this, a path's explicit
+        // z-index always painted above every non-path trace
+        // regardless of value, since a positioned element with a
+        // set z-index paints above siblings that rely on implicit
+        // DOM-order stacking.
+        zIndex: trace.zIndex ?? 0,
+        // The pressed state adds a slight inset scale on top of the
+        // existing transform, so a clickable trace visibly depresses.
+        // Folded into the same transform string rather than applied to
+        // a wrapper, because a second transformed element would
+        // reintroduce the stacking-context problem the comment above
+        // describes.
+        transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${(trace.flipHorizontal ? -1 : 1) * (isPressed ? 0.97 : 1)}) scaleY(${(trace.flipVertical ? -1 : 1) * (isPressed ? 0.97 : 1)})`,
+        // Only transitioned while pressed. A permanent transition here
+        // would smear every drag frame, since dragging moves this same
+        // element.
+        transition: isPressed ? 'transform 90ms ease-out, filter 90ms ease-out' : undefined,
+        // Brightens the whole trace -- background, text and border at
+        // once -- without needing to know which of the many per-type
+        // renderers below is drawing it.
+        filter: isPressed ? 'brightness(1.35)' : undefined,
+        willChange: 'transform',
+        transformOrigin: 'center center',
+        // Floating (Profile > Animations): a slow drift of a few
+        // pixels. Held still while selected, pressed, edited in place,
+        // gliding, or in use as an interactive embed -- the handles,
+        // grip and caret around it stay where they are, and something
+        // being worked with shouldn't drift out from under the pointer.
+        ...(traceFloat > 0 && !isSelected && !isMultiSelected && !isPressed
+          && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
+          && !(trace.type === 'embed' && trace.enableInteraction) ? {
+          animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
+          ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px`,
+        } : {}),
+        cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
+        pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+      }}
+      onMouseEnter={() => setCursorState('pointer')}
+      onMouseLeave={() => setCursorState('default')}
+      onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
+      onTouchStart={(e) => handleTouchDown(e, trace, 'move')}
+      onClick={(e) => {
+        // Don't handle clicks if we're in a transform mode (e.g., dragging a point)
+        if (transformMode !== 'none') {
+          e.stopPropagation()
+          return
+        }
+        e.stopPropagation()
 
-                switch (cursorState) {
-                  case 'pointer':
-                    // Paint-drop cursor (for clickable items) -- an abstract
-                    // blob with trailing streaks, as if a drop of paint were
-                    // falling upward against gravity. See
-                    // src/assets/cursors/hand-pointer.svg for the editable
-                    // source (open in Illustrator to tweak further).
-                    return (
-                      <svg {...baseProps}>
-                        <path
-                          d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
-                          fill={playerColor}
-                          stroke={cursorEdge}
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )
-                  case 'grab':
-                    // Open hand (for draggable items)
-                    return (
-                      <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(1.1)' }}>
-                        <path
-                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                          fill={playerColor}
-                          stroke="#90EE90"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    )
-                  case 'grabbing':
-                    // Closed hand (while dragging)
-                    return (
-                      <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(0.95)' }}>
-                        <path
-                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                          fill={playerColor}
-                          stroke="#FFD700"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    )
-                  case 'not-allowed':
-                    // Red X indicator
-                    return (
-                      <svg {...baseProps}>
-                        <path
-                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                          fill={playerColor}
-                          stroke="#FF4444"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    )
-                  default:
-                    // Default arrow cursor
-                    return (
-                      <svg {...baseProps}>
-                        <path
-                          d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                          fill={playerColor}
-                          stroke={cursorEdge}
-                          strokeWidth="1.5"
-                        />
-                      </svg>
-                    )
-                }
-              }
+        if (isClickThrough(trace, e)) {
+          // Deselected rather than selected: following a link is not
+          // an edit, so leaving the transform frame up afterwards
+          // would be handles nobody asked for. Shift-click and the
+          // right-click menu still select it for editing.
+          setSelectedTraceId(null)
 
-              // Player cursor
-              return (
-                <div
-                  key="player-cursor"
-                  style={{
-                    position: 'absolute',
-                    left: playerScreenX,
-                    top: playerScreenY,
-                    pointerEvents: 'none',
-                    zIndex: item.zIndex,
-                  }}
-                >
-                  {getCursorSvg()}
-                  {/* Player label -- a user-chosen dark/near-black color used
-                      to glow/blend into the also-dark background+canvas,
-                      making the tag unreadable. Perceived luminance decides
-                      whether the glow is the player's own color (fine for
-                      lighter colors, which already contrast against the dark
-                      backdrop) or a fixed light stroke/glow (for dark colors,
-                      which otherwise vanish into their own background). */}
-                  {!hideOwnNameTag && (() => {
-                    const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
-                    const isDarkColor = luminance < 90
-                    return (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: 20,
-                        left: 12,
-                        color: playerColor,
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                        pointerEvents: 'none',
-                        textShadow: isDarkColor
-                          ? '0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
-                          : `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
-                        WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
-                        letterSpacing: '0.5px',
-                        background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
-                        border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
-                        padding: '2px 6px',
-                        borderRadius: '3px',
-                      }}
-                    >
-                      {username}
-                    </div>
-                    )
-                  })()}
-                </div>
-              )
+          // Ignore a second click while one is already counting down,
+          // rather than queueing another open or restarting the timer.
+          if (pendingLinkTimerRef.current) return
+
+          const url = trace.linkUrl
+          setPendingLinkTraceId(trace.id)
+          pendingLinkTimerRef.current = window.setTimeout(() => {
+            pendingLinkTimerRef.current = null
+            setPendingLinkTraceId(null)
+            openExternalUrl(url)
+          }, LINK_OPEN_DELAY_MS)
+          return
+        }
+
+        setSelectedTraceId(trace.id)
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation()
+        // Text traces edit in place on double-click -- the preview
+        // modal was a detour nobody used for text (it exists for
+        // media, where "see it big" means something). Falls back to
+        // the modal when editing isn't possible (view-only atrium or
+        // a locked trace), where it still serves reading/copying.
+        if (trace.type === 'text' && canEdit && !trace.isLocked) {
+          setSelectedTraceId(trace.id)
+          setInlineEditingTraceId(trace.id)
+          setInlineEditText(trace.content ?? '')
+          return
+        }
+        setModalTrace(trace)
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+        setSelectedTraceId(trace.id)
+      }}
+    >
+      {/* Shape rendering - no border container */}
+      {trace.type === 'shape' ? (
+        <div
+          className="relative cursor-pointer trace-shape-frame-nier"
+          style={{
+            width: `${borderWidth}px`,
+            height: `${borderHeight}px`,
+            pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+            overflow: 'hidden',
+            // While its customize panel is open the shape wears the
+            // placement frame instead (drawn in the SVG below), so a
+            // selection outline on top of it would be two frames.
+            outline: editingTrace?.id === trace.id && trace.shapeType !== 'path'
+              ? 'none'
+              : isSelected
+              ? '2px solid rgba(203, 203, 203, 0.9)'
+              : isMultiSelected
+              ? '2px solid rgba(134, 239, 172, 0.95)'
+              : 'none',
+            outlineOffset: '2px',
+            boxShadow: editingTrace?.id === trace.id && trace.shapeType !== 'path'
+              ? 'none'
+              : isSelected
+              ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
+              : isMultiSelected
+              ? '0 0 0 2px rgba(134, 239, 172, 0.9), 0 0 22px rgba(134, 239, 172, 0.65), 0 0 34px rgba(134, 239, 172, 0.35)'
+              : 'none',
+          }}
+        >
+          {(isSelected || isMultiSelected || showTraceTypeLabels) && (
+            <div className="trace-nier-type-badge">{trace.shapeType === 'path' ? 'Path' : 'Shape'}</div>
+          )}
+          {(() => {
+            const shapeColor = trace.shapeColor || '#3b82f6'
+            const shapeOpacity = trace.shapeOpacity ?? 1.0
+            const cornerRadius = trace.cornerRadius || 0
+            const shapeType = trace.shapeType || 'rectangle'
+            const hasOutline = trace.shapeOutlineOnly ?? false
+            const noFill = trace.shapeNoFill ?? false
+            const outlineColor = trace.shapeOutlineColor || shapeColor
+            const outlineWidth = trace.shapeOutlineWidth ?? 2
+            const outlineOpacity = trace.shapeOutlineOpacity ?? 1.0
+            
+            // Determine fill and stroke based on options (independent)
+            const fill = noFill ? 'none' : shapeColor
+            const stroke = hasOutline ? outlineColor : 'none'
+            // World units, like a path's thickness and a frame's border
+            // (both multiplied by zoom). non-scaling-stroke below makes
+            // strokeWidth mean SCREEN pixels, so it has to carry the zoom
+            // itself -- without it the outline stayed one fixed pixel
+            // width at every zoom, the same bug paths had.
+            const strokeWidth = hasOutline ? Math.max(outlineWidth * zoom, 0.5) : 0
+            // How far to pull the shape in so the whole stroke stays in
+            // the box, in viewBox units -- per axis, because the viewBox
+            // is 0-100 stretched to borderWidth x borderHeight pixels.
+            //
+            // This used to be strokeWidth / 2 in viewBox units, which is
+            // a percentage of the box while the stroke is in pixels: the
+            // two only agree on a box exactly 100px across. Smaller (a
+            // small shape, or any shape zoomed out) and the stroke
+            // overhung the box and was cut off by the container's
+            // overflow: hidden; larger, and the fill shrank away from
+            // the box edge. Capped at the centre so a stroke wider than
+            // the shape collapses it rather than turning it inside out.
+            const insetX = hasOutline ? Math.min((strokeWidth / 2 / borderWidth) * 100, 50) : 0
+            const insetY = hasOutline ? Math.min((strokeWidth / 2 / borderHeight) * 100, 50) : 0
+
+            // While its customize panel is open, the shape looks exactly
+            // as it did while it was being placed: drawn at the preview's
+            // opacity, with the same breathing frame, in the same colour
+            // (PREVIEW_OPACITY and previewFrameColour are shared with the
+            // placement preview in LobbyScene). Editing and creating are
+            // the same act, and now read as one.
+            const editing = editingTrace?.id === trace.id
+            const k = editing ? PREVIEW_OPACITY : 1
+            // 1.5 world units, like the preview frame, kept inside the box.
+            const frameWidth = Math.max(1.5 * zoom, 1)
+            const frameX = Math.min((frameWidth / 2 / borderWidth) * 100, 50)
+            const frameY = Math.min((frameWidth / 2 / borderHeight) * 100, 50)
+            const frameColour = '#' + previewFrameColour(atriumBackground).toString(16).padStart(6, '0')
+            const frameProps = {
+              className: 'shape-editing-frame',
+              fill: 'none',
+              stroke: frameColour,
+              strokeWidth: frameWidth,
+              vectorEffect: 'non-scaling-stroke' as const,
             }
+            
+            // Convert corner radius to viewBox percentage separately for x and y to keep circles circular.
+            // Also has to divide out scaleX/scaleY (the resize-handle stretch applied as a CSS transform
+            // on top of this SVG's base width/height) -- otherwise a non-uniform resize stretches the
+            // already-correct-for-the-base-box radius into an ellipse, since the outer transform scales
+            // the whole rendered box (corners included) after this percentage is baked in.
+            const shapeScaleX = (transform as any).scaleX || 1
+            const shapeScaleY = (transform as any).scaleY || 1
+            const radiusPercentX = (cornerRadius / (width * shapeScaleX)) * 100
+            const radiusPercentY = (cornerRadius / (height * shapeScaleY)) * 100
 
-            // Render trace
-            const trace = item.trace!
-            if (trace.id === hiddenTraceId) return null
-            // Use editingTrace for selected trace to show live updates (check ID match to be safe)
-            const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
-        const transform = getTraceTransform(trace)
-        let { screenX, screenY } = getScreenPosition(transform.x, transform.y)
-        // Same staleness problem as the viewport-culling filter above: a
-        // path's x/y only reflects where it was created or last moved as a
-        // whole, not where its (possibly individually-dragged) points
-        // currently are. Left uncorrected, the distance-from-viewport-center
-        // fade below fades/hides the path based on that wrong position
-        // instead of where it's actually drawn.
-        if (trace.type === 'shape' && trace.shapeType === 'path') {
-          const livePoints = localShapePoints[trace.id] || displayTrace.shapePoints
-          if (livePoints && livePoints.length > 0) {
-            const centroidX = livePoints.reduce((sum, p) => sum + p.x, 0) / livePoints.length
-            const centroidY = livePoints.reduce((sum, p) => sum + p.y, 0) / livePoints.length
-            const centroidScreen = getScreenPosition(centroidX, centroidY)
-            screenX = centroidScreen.screenX
-            screenY = centroidScreen.screenY
-          }
-        }
-        const { width, height } = getTraceSize(trace)
-        const borderColor = trace.borderColor || getBorderColor(trace.type)
-        // Handles stay hidden while a clickable trace is being pressed.
-        //
-        // Selection still happens on mousedown -- the move handler reads it to
-        // know what to drag, so it can't be deferred -- but showing the
-        // transform frame for the instant a link-click takes would flash a
-        // selection the user never asked for. If the press turns into a drag
-        // the suppression lifts and the handles appear as usual; if it turns
-        // out to be a click, the link opens and nothing is left selected.
-        // Held down, or released and counting down to the link opening. Both
-        // keep the trace looking pressed and its handles hidden -- the second
-        // is what makes the press visible at all, since the button is already
-        // back up by the time the click resolves.
-        const isPressed = pressedClickableId === trace.id || pendingLinkTraceId === trace.id
-        const isSelected = selectedTraceId === trace.id && !isPressed
-        const isMultiSelected = multiSelectedIds.has(trace.id)
+            const clipPathStyle = trace.cropWidth && trace.cropWidth < 1 
+              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+              : undefined
 
-        // Apply customization defaults
-        const showBorder = trace.showBorder ?? true
-        const showBackground = trace.showBackground ?? true
-        const showDescription = trace.showDescription ?? false
-        const showFilename = trace.showFilename ?? true
-        const fontSize = trace.fontSize ?? 'medium'
-        const fontFamily = trace.fontFamily ?? 'sans'
+            if (shapeType === 'rectangle') {
+              return (
+                <svg
+                  className="w-full h-full pointer-events-none select-none"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  style={{ clipPath: clipPathStyle }}
+                >
+                  <rect
+                    x={insetX}
+                    y={insetY}
+                    width={100 - insetX * 2}
+                    height={100 - insetY * 2}
+                    rx={radiusPercentX}
+                    ry={radiusPercentY}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                    vectorEffect="non-scaling-stroke"
+                    fillOpacity={shapeOpacity * k}
+                    strokeOpacity={outlineOpacity * k}
+                  />
+                  {editing && (
+                    <rect
+                      {...frameProps}
+                      x={frameX} y={frameY}
+                      width={100 - frameX * 2} height={100 - frameY * 2}
+                      rx={radiusPercentX} ry={radiusPercentY}
+                    />
+                  )}
+                </svg>
+              )
+            } else if (shapeType === 'circle') {
+              return (
+                <svg
+                  className="w-full h-full pointer-events-none select-none"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  style={{ clipPath: clipPathStyle }}
+                >
+                  <ellipse
+                    cx="50"
+                    cy="50"
+                    rx={50 - insetX}
+                    ry={50 - insetY}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                    vectorEffect="non-scaling-stroke"
+                    fillOpacity={shapeOpacity * k}
+                    strokeOpacity={outlineOpacity * k}
+                  />
+                  {editing && (
+                    <ellipse {...frameProps} cx="50" cy="50" rx={50 - frameX} ry={50 - frameY} />
+                  )}
+                </svg>
+              )
+            } else if (shapeType === 'triangle') {
+              // Triangle edges aren't axis-aligned, so there's no
+              // clean separate X/Y radius the way a rectangle has --
+              // averaging the two keeps it consistent with the
+              // rectangle's radius "feel" without a second control.
+              const triangleRadiusPercent = (radiusPercentX + radiusPercentY) / 2
 
-        // Apply crop to border size
-        const cropX = trace.cropX ?? 0
-        const cropY = trace.cropY ?? 0
-        const cropWidth = trace.cropWidth ?? 1
-        const cropHeight = trace.cropHeight ?? 1
-        
-        // Border container should match the cropped content size
-        // For shapes, use their actual width/height properties
-        const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
-        const shapeHeight = trace.type === 'shape' ? (trace.height || 200) : height
-        const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
-        const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
-
-        // Debug logging for image dimensions
-        // Selected trace rendering
-
-        // Edge fade, measured per axis against the actual screen edges (the
-        // same rectangular vignette the ground elements use). This was a
-        // CIRCLE sized to the viewport's diagonal half-length, which is why
-        // the fade behaved so oddly: on a 16:9 screen the left/right edges
-        // sit inside that circle's fade band (visible dimming) while the
-        // top/bottom edges never reach it (no fade at all). Normalizing each
-        // axis to its own half-extent makes 1.0 mean "at the edge" in every
-        // direction, so all four sides behave identically.
-        const viewportCenterX = lobbyWidth / 2
-        const viewportCenterY = lobbyHeight / 2
-
-        // Measure from the trace's nearest EDGE, not its center. Center-only
-        // distance made zoomed-in traces vanish outright: zoom a large trace
-        // until it fills the screen and its center can sit well past the cull
-        // boundary while its body still covers the viewport -- observable as
-        // "the trace disappears once more than half of it leaves the view".
-        // Subtracting the on-screen half-extent means a trace only fades/culls
-        // once the whole thing has actually left the neighbourhood of the
-        // screen. Rotated traces use their half-diagonal on both axes -- a
-        // conservative bound, since an axis-aligned extent understates how far
-        // a rotated corner can reach.
-        const { width: cullBaseW, height: cullBaseH } = getTraceSize(trace)
-        const cullW = trace.type === 'shape' ? (trace.width || 200) : cullBaseW * (trace.cropWidth ?? 1)
-        const cullH = trace.type === 'shape' ? (trace.height || 200) : cullBaseH * (trace.cropHeight ?? 1)
-        let halfW = (cullW * ((transform as any).scaleX ?? 1) * zoom) / 2
-        let halfH = (cullH * ((transform as any).scaleY ?? 1) * zoom) / 2
-        if ((transform.rotation ?? 0) % 360 !== 0) {
-          const halfDiag = Math.hypot(halfW, halfH)
-          halfW = halfDiag
-          halfH = halfDiag
-        }
-        const normalizedX = Math.max(0, Math.abs(screenX - viewportCenterX) - halfW) / viewportCenterX
-        const normalizedY = Math.max(0, Math.abs(screenY - viewportCenterY) - halfH) / viewportCenterY
-        const normalizedDistance = Math.max(normalizedX, normalizedY)
-
-        // Fade begins just inside the edge (a trace sitting exactly on the
-        // edge renders at ~2/3 opacity) and finishes a quarter-viewport past
-        // it -- present enough to notice, without dimming the working area.
-        const fadeStart = 0.88
-        const fadeEnd = 1.25
-
-        // With the fade toggled off (Profile -> Trace Edge Fade), traces hold
-        // full opacity right up to the cull boundary below, which stays either
-        // way -- the fade is a visual preference, the cull is what keeps
-        // off-screen DOM cheap.
-        let traceOpacity = 1.0
-        if (traceFadeEnabled && normalizedDistance > fadeStart) {
-          const fadeProgress = (normalizedDistance - fadeStart) / (fadeEnd - fadeStart)
-          traceOpacity = Math.max(0, 1 - fadeProgress)
-        }
-
-        // Don't render if completely transparent or far outside viewport
-        // EXCEPTION: Keep rendering if media is playing (video/audio) OR if it's an interactive embed
-        const isPlayingMedia = playingMedia.has(trace.id)
-        const isInteractiveEmbed = trace.type === 'embed' && trace.enableInteraction
-        if (!isPlayingMedia && !isInteractiveEmbed && (traceOpacity <= 0 || normalizedDistance > fadeEnd)) {
-          return null
-        }
-
-        // Path shapes render their visible line inline here (via
-        // renderPathSvg), at this trace's own sorted DOM position, instead
-        // of in a separate trailing pass over all paths -- see the comment
-        // on renderPathSvg's definition for why that used to make paths
-        // appear to always paint on top of everything else.
-        if (trace.type === 'shape' && trace.shapeType === 'path') {
-          // Paths don't use the standard radial point-light (a glow centered
-          // on one spot doesn't suit an elongated line) -- illuminate/
-          // lightColor/lightIntensity are reused instead to drive the
-          // along-the-line glow rendered inside renderPathSvg.
+              return (
+                <svg
+                  className="w-full h-full pointer-events-none select-none"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  style={{ clipPath: clipPathStyle }}
+                >
+                  <path
+                    d={roundedPolygonPath(
+                      [
+                        { x: 50, y: 15 + insetY },
+                        { x: 85 - insetX, y: 85 - insetY },
+                        { x: 15 + insetX, y: 85 - insetY },
+                      ],
+                      triangleRadiusPercent
+                    )}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    fillOpacity={shapeOpacity * k}
+                    strokeOpacity={outlineOpacity * k}
+                  />
+                  {editing && (
+                    <path
+                      {...frameProps}
+                      strokeLinejoin="round"
+                      d={roundedPolygonPath(
+                        [
+                          { x: 50, y: 15 + frameY },
+                          { x: 85 - frameX, y: 85 - frameY },
+                          { x: 15 + frameX, y: 85 - frameY },
+                        ],
+                        triangleRadiusPercent
+                      )}
+                    />
+                  )}
+                </svg>
+              )
+            } else if (shapeType === 'path') {
+              // Path shapes are rendered as absolute overlay - see below
+              return null
+            }
+            return null
+          })()}
+        </div>
+      ) : (
+        /* Border container for non-shape traces - fixed size, doesn't scale with content */
+        <>
+        <div
+          className="trace-frame-nier relative cursor-pointer transition-shadow"
+          style={{
+            boxSizing: 'content-box',
+            width: `${borderWidth}px`,
+            height: `${borderHeight}px`,
+            border: showBorder ? `${(displayTrace.borderWidth ?? 2) * zoom}px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
+            borderRadius: `${displayTrace.borderRadius ?? 0}px`,
+            backgroundColor: showBackground ? (() => {
+              const fc = displayTrace.fillColor || '#191919';
+              const fo = displayTrace.fillOpacity ?? 0.95;
+              // Convert hex to rgba
+              const r = parseInt(fc.slice(1, 3), 16) || 26;
+              const g = parseInt(fc.slice(3, 5), 16) || 26;
+              const b = parseInt(fc.slice(5, 7), 16) || 24;
+              return `rgba(${r}, ${g}, ${b}, ${fo})`;
+            })() : 'transparent',
+            ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
+              borderColor: isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : (() => {
+                const bc = borderColor;
+                const bo = trace.borderOpacity;
+                const r = parseInt(bc.slice(1, 3), 16) || 255;
+                const g = parseInt(bc.slice(3, 5), 16) || 255;
+                const b = parseInt(bc.slice(5, 7), 16) || 255;
+                return `rgba(${r}, ${g}, ${b}, ${bo})`;
+              })()
+            } : {}),
+            padding: '0px',
+            pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+            // No backgroundImage scanline texture here -- a fine 2-3px
+            // repeating-linear-gradient on a container whose pixel size
+            // varies continuously with zoom caused visible moire/
+            // shimmer artifacting as traces were panned or zoomed.
+            boxShadow: isSelected && isCropMode
+              ? '0 0 0 1px rgba(143, 143, 143, 0.9), 0 0 16px rgba(143, 143, 143, 0.45)'
+              : isSelected
+              ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
+              : isMultiSelected
+              ? '0 0 0 2px rgba(134, 239, 172, 0.95), 0 0 24px rgba(134, 239, 172, 0.7), 0 0 38px rgba(134, 239, 172, 0.4)'
+              // Ambient shadow, toggleable per trace (Customize ->
+              // Soft Shadow). Still gated on showBackground, since a
+              // background-less trace has no surface to cast from.
+              : (showBackground && (trace.showShadow ?? true)
+                ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(203, 203, 203, 0.06)'
+                : 'none'),
+            overflow: 'hidden',
+          }}
+        >
+          {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && (
+            <div
+              className="trace-nier-type-badge"
+              // Its font size, padding and inset all come from CSS in
+              // flat pixels, so one transform scales the lot rather
+              // than overriding each of them here.
+              style={{
+                left: `${6 * zoom}px`,
+                top: `${6 * zoom}px`,
+                transform: `scale(${zoom})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              {getTraceTypeLabel(trace.type)}
+            </div>
+          )}
+          {showBorder && (
+            <>
+              <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+              <span className="absolute top-0 right-0 w-2 h-2 border-r border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+              <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+              <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
+            </>
+          )}
+          {/* Scaled content wrapper - text traces render at final pixel size to avoid distortion */}
+          <div
+            className="w-full h-full"
+            style={trace.type === 'text' ? {
+              width: '100%',
+              height: '100%',
+            } : {
+              transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%)`,
+              transformOrigin: 'top left',
+              width: `${width}px`,
+              height: `${height}px`,
+            }}
+          >
+      {/* Image Content */}
+      {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
+        (() => {
+          const rawUrl = trace.mediaUrl || trace.imageUrl || ''
+          const isLocal = rawUrl.startsWith('local://')
+          const resolvedSrc = imageProxySources[trace.id]
+          // For local:// URLs, wait for resolved blob URL before rendering
+          if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
+          // A successful resolve always hands back a blob: URL, so one
+          // that is still local:// means the file couldn't be read --
+          // deleted from the vault by hand, or restored from a folder
+          // it never travelled with. Said plainly rather than left as a
+          // broken image, since the trace keeps its place and the user
+          // needs to know why it's empty.
+          if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
           return (
-            <div key={trace.id} className="contents">
-              {renderPathSvg(trace)}
+        <img
+          src={resolvedSrc || rawUrl}
+          alt=""
+          className="w-full h-full object-contain pointer-events-none select-none"
+          style={{ 
+            clipPath: trace.cropWidth && trace.cropWidth < 1 
+              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+              : undefined,
+          }}
+          onLoad={(e) => {
+            const img = e.currentTarget
+            if (img.naturalWidth && img.naturalHeight) {
+              setImageDimensions(prev => ({
+                ...prev,
+                [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
+              }))
+            }
+            // Clear from failed if it was there
+            setFailedImages(prev => {
+              const next = new Set(prev)
+              next.delete(trace.id)
+              return next
+            })
+          }}
+          onError={() => {
+            const retries = imageRetryCount[trace.id] || 0
+            if (retries < 3) {
+              const url = trace.mediaUrl || trace.imageUrl
+              if (url) {
+                if (retries === 0 && !imageProxySources[trace.id]) {
+                  // First retry: switch to proxy
+                  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+                  setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
+                } else {
+                  // Subsequent retries: retry proxy with cache bust
+                  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}&t=${Date.now()}`
+                  setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
+                }
+              }
+              setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
+            } else {
+              setFailedImages(prev => new Set(prev).add(trace.id))
+            }
+          }}
+        />
+          )
+        })()
+      )}
+      
+      {/* Image placeholder - shown when no URL or when image failed to load */}
+      {trace.type === 'image' && (!trace.mediaUrl && !trace.imageUrl || failedImages.has(trace.id)) && (
+        <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
+          <span className="text-4xl mb-2">🖼️</span>
+          {showDescription && trace.content && (
+            <p className="text-xs text-nier-strong/60 text-center">
+              {trace.content}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Video Content */}
+      {trace.type === 'video' && trace.mediaUrl && (
+        <video
+          id={`video-${trace.id}`}
+          // Enough for the poster frame and the dimensions, and not a
+          // byte more.
+          //
+          // Chromium defaults a <video> with a source to preload
+          // "auto", so every video trace began pulling its ENTIRE file
+          // the moment it appeared -- an atrium of videos quietly
+          // reading gigabytes, and a freshly imported one racing the
+          // vault write for the same file on the same disk. That is
+          // the difference between importing a video and importing a
+          // PDF of the same size: the PDF has no element that helps
+          // itself to the file before anyone asks. Pressing play still
+          // loads the rest, at the point somebody has said they want
+          // it.
+          preload="metadata"
+          // No src until there is a real file to point at. A raw
+          // local:// URL means nothing to the browser, and handing it
+          // one only produces a failed element to recover from later.
+          src={trace.mediaUrl?.startsWith('local://')
+            ? localMediaUrls[trace.id]
+            : (localMediaUrls[trace.id] || trace.mediaUrl)}
+          controls={false}
+          className="w-full h-full pointer-events-none select-none"
+          style={{ 
+            clipPath: trace.cropWidth && trace.cropWidth < 1 
+              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+              : undefined,
+          }}
+          onLoadedMetadata={(e) => {
+            const video = e.currentTarget
+            if (video.videoWidth && video.videoHeight) {
+              setImageDimensions(prev => ({
+                ...prev,
+                [trace.id]: { width: video.videoWidth, height: video.videoHeight }
+              }))
+            }
+          }}
+          onPlay={() => {
+            setPlayingMedia(prev => new Set(prev).add(trace.id))
+          }}
+          onPause={() => {
+            setPlayingMedia(prev => {
+              const next = new Set(prev)
+              next.delete(trace.id)
+              return next
+            })
+          }}
+          onEnded={() => {
+            setPlayingMedia(prev => {
+              const next = new Set(prev)
+              next.delete(trace.id)
+              return next
+            })
+          }}
+          onError={(e) => {
+            // A <video> that fails its load stays failed: there is no
+            // automatic retry, so one bad moment -- an import holding
+            // the thread, say -- left the trace unplayable for the
+            // rest of the visit. One retry, once, per trace.
+            if (videoRetriedRef.current.has(trace.id)) return
+            videoRetriedRef.current.add(trace.id)
+            const el = e.currentTarget
+            window.setTimeout(() => { try { el.load() } catch { /* gone */ } }, 500)
+          }}
+        />
+      )}
+
+      {/* Still being copied into the vault. Says so, rather than
+          showing an empty black rectangle that looks like a broken
+          trace. */}
+      {trace.type === 'video' && trace.mediaUrl?.startsWith('local://') && !localMediaUrls[trace.id] && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none bg-black/50">
+          <span className="text-[10px] tracking-[0.2em] uppercase text-nier-strong/70">{t('atrium.customize.preparing')}</span>
+        </div>
+      )}
+
+      {/* Play, for a video sitting on the canvas.
+
+          The video element above cannot take the click itself: it is
+          pointer-events-none so that dragging a video trace moves the
+          trace rather than poking at the video, and controls={false}
+          for the same reason. That left the canvas showing a still
+          frame with no way to start it, and the modal as the only
+          place a video would actually play.
+
+          So it gets a control of its own, driven exactly like the
+          audio trace's: the one interactive thing inside a trace that
+          is otherwise inert to the pointer. */}
+      {trace.type === 'video' && trace.mediaUrl && (
+        <div className="trace-video-control absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
+          <button
+            // No backdrop-filter, which is what made this go soft.
+            //
+            // A backdrop blur puts the element on its own composited
+            // layer holding a rasterised copy of what is behind it.
+            // Scaling the trace resizes the video underneath without
+            // invalidating that layer, so the blur kept being stretched
+            // from the size it was first drawn at -- and snapped back
+            // only when something forced a repaint, which is why
+            // clicking it fixed it.
+            //
+            // The atrium's own buttons are flat, cut-cornered and
+            // lettered rather than glassy and pill-shaped, so this now
+            // reads as part of the same interface instead of borrowed
+            // from another one.
+            className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
+            style={{
+              color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
+              backgroundColor: 'rgb(var(--c-ground) / 0.94)',
+              border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              const el = document.getElementById(`video-${trace.id}`) as HTMLVideoElement | null
+              if (el) { el.paused ? void el.play() : el.pause() }
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
+              {playingMedia.has(trace.id)
+                ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
+                : <polygon points="2,0.5 9,5 2,9.5"/>}
+            </svg>
+            {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
+          </button>
+        </div>
+      )}
+
+      {/* Audio Content */}
+      {trace.type === 'audio' && trace.mediaUrl && (
+        <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none px-3 pt-5 pb-4 gap-2">
+          {/* Decorative waveform bars */}
+          <div className="flex items-end justify-center gap-[2px] flex-1 w-full max-h-[60%] min-h-[24px]">
+            {(() => {
+              // Generate deterministic bar heights from trace id
+              const bars = 24
+              const heights: number[] = []
+              for (let i = 0; i < bars; i++) {
+                const hash = trace.id.charCodeAt(i % trace.id.length) + i * 7
+                heights.push(0.18 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.82)
+              }
+              const isPlaying = playingMedia.has(trace.id)
+              return heights.map((h, i) => (
+                <div
+                  key={i}
+                  className="flex-1 max-w-[6px] rounded-full"
+                  style={{
+                    height: `${h * 100}%`,
+                    minHeight: '3px',
+                    background: isPlaying
+                      ? `linear-gradient(to top, ${trace.borderColor || '#8f8f8f'}, ${trace.borderColor ? trace.borderColor + '88' : '#cbcbcb'})`
+                      : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))',
+                    transition: 'background 0.3s ease',
+                    animation: isPlaying ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
+                  }}
+                />
+              ))
+            })()}
+          </div>
+          {/* Hidden audio element + custom play button */}
+          <audio
+            id={`audio-${trace.id}`}
+            // Same reasoning as the video above: duration now, the
+            // rest when somebody presses play.
+            preload="metadata"
+            // No src until there is a real file to point at. A raw
+          // local:// URL means nothing to the browser, and handing it
+          // one only produces a failed element to recover from later.
+          src={trace.mediaUrl?.startsWith('local://')
+            ? localMediaUrls[trace.id]
+            : (localMediaUrls[trace.id] || trace.mediaUrl)}
+            className="hidden"
+            onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
+            onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
+            onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
+          />
+          <button
+            // Matches the video control above, and takes its colours
+            // from the theme tokens rather than the fixed greys it had,
+            // which stayed the same shade whatever the atrium was set
+            // to.
+            className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
+            style={{
+              color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
+              backgroundColor: 'rgb(var(--c-ground) / 0.94)',
+              border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
+            }}
+            onClick={(e) => {
+              e.stopPropagation()
+              const el = document.getElementById(`audio-${trace.id}`) as HTMLAudioElement | null
+              if (el) { el.paused ? el.play() : el.pause() }
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
+              {playingMedia.has(trace.id)
+                ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
+                : <polygon points="2,0.5 9,5 2,9.5"/>}
+            </svg>
+            {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
+          </button>
+          {showDescription && trace.content && (
+            <p className="text-[10px] text-nier-strong/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
+              {trace.content}
+            </p>
+          )}
+        </div>
+      )}
+
+
+      {/* Paged PDF. The page image is rendered on demand and cached
+          per trace+page (see documentPages), so only the page being
+          looked at is ever rasterized. */}
+      {trace.type === 'document' && (
+        <div
+          className="w-full h-full relative bg-white overflow-hidden"
+          // container-type lets the page controls below size
+          // themselves in cqh (percentages of this box's height)
+          // rather than fixed pixels, so the bar stays a constant
+          // fraction of the page however large the trace is drawn.
+          style={{ containerType: 'size' }}
+        >
+          {documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
+            <img
+              src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
+              alt=""
+              className="w-full h-full object-contain pointer-events-none select-none"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-black/40 text-[10px] tracking-wider uppercase">
+                {documentError[trace.id] ?? t('atrium.controls.rendering')}
+              </span>
+            </div>
+          )}
+
+          {/* Page controls. Shown for everyone, not only editors --
+              turning the page is reading, not editing. stopPropagation
+              on mousedown so grabbing an arrow doesn't also start
+              dragging the trace underneath it. */}
+          {/* Sized in cqh -- percentages of the page's own height --
+              so the bar is always about a twentieth of the page rather
+              than a fixed pixel size that swamped the trace at normal
+              zoom. */}
+          {(documentPageCount[trace.id] ?? 0) > 1 && (
+            <div
+              className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto"
+              style={{
+                bottom: '2cqh',
+                gap: '1.5cqh',
+                // Squared off and outlined rather than a rounded dark
+                // pill, matching the atrium's own chrome and the
+                // modal's page controls.
+                padding: '1cqh 1.5cqh',
+                background: 'rgba(10,10,10,0.85)',
+                border: '0.2cqh solid rgba(203,203,203,0.35)',
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                style={{
+                  fontSize: '2.6cqh',
+                  padding: '0.4cqh 1.2cqh',
+                  border: '0.2cqh solid rgba(203,203,203,0.3)',
+                }}
+                disabled={(documentPage[trace.id] ?? 1) <= 1}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setDocumentPage(prev => ({ ...prev, [trace.id]: Math.max(1, (prev[trace.id] ?? 1) - 1) }))
+                }}
+              >
+                ◀
+              </button>
+              <span
+                className="text-nier-bg/80 uppercase tabular-nums leading-none whitespace-nowrap"
+                style={{ fontSize: '2.2cqh', letterSpacing: '0.15em' }}
+              >
+                {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
+              </span>
+              <button
+                type="button"
+                className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                style={{
+                  fontSize: '2.6cqh',
+                  padding: '0.4cqh 1.2cqh',
+                  border: '0.2cqh solid rgba(203,203,203,0.3)',
+                }}
+                disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setDocumentPage(prev => ({
+                    ...prev,
+                    [trace.id]: Math.min(documentPageCount[trace.id] ?? 1, (prev[trace.id] ?? 1) + 1),
+                  }))
+                }}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Embed Content */}
+      {trace.type === 'embed' && trace.mediaUrl && (() => {
+        // Check if the embed URL is actually an image (by extension OR confirmed via preflight)
+        const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
+        const isConfirmedImage = confirmedImageIds.has(trace.id)
+        const isDirectImage = hasImageExtension || isConfirmedImage
+        
+        if (isDirectImage && !failedImages.has(trace.id)) {
+          const isLocal = trace.mediaUrl.startsWith('local://')
+          const resolvedSrc = imageProxySources[trace.id]
+          if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
+          // Still local:// after resolving means the file is gone --
+          // see the image branch above.
+          if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
+          // Render as image, not iframe
+          return (
+            <img
+              src={resolvedSrc || trace.mediaUrl}
+              alt=""
+              className="w-full h-full object-contain pointer-events-none select-none"
+              style={{ 
+                clipPath: trace.cropWidth && trace.cropWidth < 1 
+                  ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+                  : undefined,
+              }}
+              onLoad={(e) => {
+                const img = e.currentTarget
+                if (img.naturalWidth && img.naturalHeight) {
+                  setImageDimensions(prev => ({
+                    ...prev,
+                    [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
+                  }))
+                }
+                setFailedImages(prev => {
+                  const next = new Set(prev)
+                  next.delete(trace.id)
+                  return next
+                })
+              }}
+              onError={() => {
+                const retries = imageRetryCount[trace.id] || 0
+                if (retries < 3) {
+                  const url = trace.mediaUrl
+                  if (url) {
+                    if (retries === 0 && !imageProxySources[trace.id]) {
+                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+                      setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
+                    } else {
+                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}&t=${Date.now()}`
+                      setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
+                    }
+                  }
+                  setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
+                } else {
+                  setFailedImages(prev => new Set(prev).add(trace.id))
+                }
+              }}
+            />
+          )
+        }
+        
+        // Styled link card if the direct image failed to hotlink --
+        // links to the source page (linkUrl, e.g. the original
+        // Pinterest pin) rather than the dead image URL itself.
+        if (isDirectImage && failedImages.has(trace.id)) {
+          const clickThroughUrl = trace.linkUrl || trace.mediaUrl
+          let hostname = ''
+          try {
+            hostname = new URL(clickThroughUrl).hostname.replace(/^www\./, '')
+          } catch {
+            hostname = ''
+          }
+          return (
+            <a
+              href={clickThroughUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center justify-center h-full w-full gap-2 px-3 select-none pointer-events-auto bg-nier-black/40 hover:bg-nier-black/60 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              title={clickThroughUrl}
+            >
+              {hostname && (
+                <img
+                  src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(hostname)}`}
+                  alt=""
+                  className="w-8 h-8 opacity-80"
+                  draggable={false}
+                />
+              )}
+              <p className="text-nier-strong/80 text-xs text-center line-clamp-2">
+                {trace.content || t('atrium.controls.viewSource')}
+              </p>
+              {hostname && (
+                <p className="text-nier-strong/70 text-[9px] tracking-wider uppercase">{hostname}</p>
+              )}
+            </a>
+          )
+        }
+        
+        // Otherwise, treat as iframe embed
+        const embedUrl = extractEmbedUrl(trace.mediaUrl)
+        if (!embedUrl) {
+          return (
+            <div className="w-full h-full flex items-center justify-center bg-black/50">
+              <p className="text-nier-strong/60 text-sm">{t('atrium.customize.invalidEmbed')}</p>
             </div>
           )
         }
-
         return (
-          <div key={trace.id} className="contents">
-            {/* The light, just under the trace that casts it.
+          <iframe
+            src={embedUrl}
+            // Sandboxed. Without this an embedded page can navigate the
+            // top-level window, so one bad embed in a shared atrium
+            // could send everyone who opens it somewhere else -- a
+            // convincing place to ask for a password. Scripts,
+            // same-origin, popups, forms and presentation are kept
+            // because YouTube, Drive and Docs need them; top navigation
+            // is exactly what is being withheld.
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
+            className="w-full h-full select-none"
+            scrolling="no"
+            style={{ 
+              pointerEvents: trace.enableInteraction ? 'auto' : 'none',
+              overflow: 'hidden',
+              border: 'none',
+              clipPath: trace.cropWidth && trace.cropWidth < 1 
+                ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+                : undefined,
+            }}
+            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            onClick={(e) => {
+              if (trace.enableInteraction) {
+                e.stopPropagation() // Prevent trace selection when interacting
+              }
+            }}
+            onDoubleClick={(e) => {
+              if (trace.enableInteraction) {
+                e.stopPropagation() // Prevent modal from opening
+              }
+            }}
+            onLoad={() => {
+              // Set 16:9 dimensions for embeds - use small viewport to avoid internal scrollbars
+              if (!imageDimensions[trace.id]) {
+                setImageDimensions(prev => ({
+                  ...prev,
+                  [trace.id]: { width: 480, height: 270 }
+                }))
+              }
+            }}
+          />
+        )
+      })()}
 
-                Coming first in the DOM is not enough, and was the bug: this is
-                positioned but had no z-index, while every trace sets one from
-                trace.zIndex. A positioned element without a z-index paints
-                below every positioned sibling that has one -- so a light did
-                not sit under its own trace, it sat under ALL of them, and
-                lighting something meant washing the floor beneath the whole
-                atrium instead.
-
-                One below its own trace puts it above everything the trace is
-                above, and below the trace itself. z-indexes here are
-                layer*100 + order (see layerZIndex.ts), so there is always room
-                for the light in the gap between one trace and the next. */}
-            {trace.illuminate && (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  zIndex: (trace.zIndex ?? 0) - 1,
-                  left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
-                  top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
-                  width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-                  height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-                  borderRadius: '50%',
-                  background: trace.lightColor ?? '#ffffff',
-                  opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
-                  mixBlendMode: 'screen',
-                  filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
-                  animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
-                  transformOrigin: 'center center',
-                  marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                  marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
-                  willChange: 'transform, opacity',
-                  ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
-                }}
-              />
-            )}
-            
-            {/* The trace itself */}
-            {/* position+zIndex here too (not just the inner container):
-                CSS opacity < 1 establishes its own stacking context, which
-                would otherwise isolate the inner z-index from comparing
-                correctly against other traces once this fades with distance.
-                Not capped: a trace's z_index encodes layer*100 + order
-                (see layerZIndex.ts), so any trace in a non-first layer
-                already exceeds a small cap -- capping collapsed all of them
-                to the same value, which then had to fall back to DOM order
-                (see HANDLE_Z_INDEX below for how handles stay on top instead). */}
-            <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: trace.zIndex ?? 0 }}>
-            {/* Container for positioning - doesn't scale */}
-            <div
-              data-trace-element="true"
-              data-trace-id={trace.id}
-              className="absolute"
-              style={{
-                left: `${screenX}px`,
-                top: `${screenY}px`,
-                // Explicit z-index so ordinary traces and path shapes
-                // compare on equal terms. Without this, a path's explicit
-                // z-index always painted above every non-path trace
-                // regardless of value, since a positioned element with a
-                // set z-index paints above siblings that rely on implicit
-                // DOM-order stacking.
-                zIndex: trace.zIndex ?? 0,
-                // The pressed state adds a slight inset scale on top of the
-                // existing transform, so a clickable trace visibly depresses.
-                // Folded into the same transform string rather than applied to
-                // a wrapper, because a second transformed element would
-                // reintroduce the stacking-context problem the comment above
-                // describes.
-                transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${(trace.flipHorizontal ? -1 : 1) * (isPressed ? 0.97 : 1)}) scaleY(${(trace.flipVertical ? -1 : 1) * (isPressed ? 0.97 : 1)})`,
-                // Only transitioned while pressed. A permanent transition here
-                // would smear every drag frame, since dragging moves this same
-                // element.
-                transition: isPressed ? 'transform 90ms ease-out, filter 90ms ease-out' : undefined,
-                // Brightens the whole trace -- background, text and border at
-                // once -- without needing to know which of the many per-type
-                // renderers below is drawing it.
-                filter: isPressed ? 'brightness(1.35)' : undefined,
-                willChange: 'transform',
-                transformOrigin: 'center center',
-                // Floating (Profile > Animations): a slow drift of a few
-                // pixels. Held still while selected, pressed, edited in place,
-                // gliding, or in use as an interactive embed -- the handles,
-                // grip and caret around it stay where they are, and something
-                // being worked with shouldn't drift out from under the pointer.
-                ...(traceFloat > 0 && !isSelected && !isMultiSelected && !isPressed
-                  && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
-                  && !(trace.type === 'embed' && trace.enableInteraction) ? {
-                  animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
-                  ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px`,
-                } : {}),
-                cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
-                pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+      {/* Text Content - renders at final pixel size, text conforms to box like Excel */}
+      {trace.type === 'text' && (() => {
+        // Calculate the actual pixel font size accounting for zoom and
+        // the trace's own scale -- without the latter, resizing a text
+        // trace grew its box while the glyphs stayed put.
+        //
+        // Geometric mean, not min(scaleX, scaleY): font-size is a
+        // single scalar, so a non-uniform stretch has to pick one.
+        // sqrt(sx*sy) is exact for uniform scaling -- including every
+        // group transform, which is corner-only -- while staying
+        // balanced when the axes differ.
+        //
+        // min() was wrong: a trace stretched wide and short (say
+        // sx=2.2, sy=0.57) rendered its text at 0.57x, so text that
+        // used to be legible shrank to a few pixels and looked like it
+        // had vanished when zoomed out. The geometric mean tracks the
+        // box's overall area instead, so a one-axis stretch never
+        // shrinks text below its unscaled size.
+        // Per-trace opt-out: with textScaleWithBox off the font size is
+        // fixed and resizing the trace only changes how much room the
+        // text has to reflow in.
+        const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
+        const rawScaleX = (transform as any).scaleX ?? 1
+        const rawScaleY = (transform as any).scaleY ?? 1
+        const scaleWithBox = trace.textScaleWithBox ?? true
+        const traceScale = scaleWithBox
+          ? (Math.sqrt(Math.max(0, rawScaleX * rawScaleY)) || 1)
+          : 1
+        const scaledFontSize = baseFontSize * traceScale * zoom
+        const textStyles = {
+          fontSize: `${scaledFontSize}px`,
+          fontFamily: resolveFontFamilyCss(fontFamily),
+          lineHeight: '1.3',
+          fontWeight: (trace.textBold ? 'bold' : 'normal') as React.CSSProperties['fontWeight'],
+          fontStyle: (trace.textItalic ? 'italic' : 'normal') as React.CSSProperties['fontStyle'],
+          textDecoration: trace.textUnderline ? 'underline' : 'none',
+          textAlign: (trace.textAlign ?? 'center') as React.CSSProperties['textAlign'],
+          color: trace.textColor ?? '#ffffff',
+        }
+        return (
+        <div 
+          className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
+          style={{
+            padding: `${Math.max(4, 6 * traceScale * zoom)}px`,
+            clipPath: trace.cropWidth && trace.cropWidth < 1
+              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
+              : undefined,
+          }}
+        >
+          {inlineEditingTraceId === trace.id ? (
+            /* Inline editing textarea */
+            <textarea
+              autoFocus
+              value={inlineEditText}
+              onChange={(e) => {
+                setInlineEditText(e.target.value)
+                fitTextLive(trace, e.target.value, baseFontSize, textStyles.fontFamily)
               }}
-              onMouseEnter={() => setCursorState('pointer')}
-              onMouseLeave={() => setCursorState('default')}
-              onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
-              onTouchStart={(e) => handleTouchDown(e, trace, 'move')}
-              onClick={(e) => {
-                // Don't handle clicks if we're in a transform mode (e.g., dragging a point)
-                if (transformMode !== 'none') {
-                  e.stopPropagation()
-                  return
+              onBlur={() => {
+                endTextEdit(trace.id)
+                setInlineEditingTraceId(null)
+                setInlineEditText('')
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  endTextEdit(trace.id, true)
+                  setInlineEditingTraceId(null)
+                  setInlineEditText('')
+                } else if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  endTextEdit(trace.id)
+                  setInlineEditingTraceId(null)
+                  setInlineEditText('')
                 }
                 e.stopPropagation()
-
-                if (isClickThrough(trace, e)) {
-                  // Deselected rather than selected: following a link is not
-                  // an edit, so leaving the transform frame up afterwards
-                  // would be handles nobody asked for. Shift-click and the
-                  // right-click menu still select it for editing.
-                  setSelectedTraceId(null)
-
-                  // Ignore a second click while one is already counting down,
-                  // rather than queueing another open or restarting the timer.
-                  if (pendingLinkTimerRef.current) return
-
-                  const url = trace.linkUrl
-                  setPendingLinkTraceId(trace.id)
-                  pendingLinkTimerRef.current = window.setTimeout(() => {
-                    pendingLinkTimerRef.current = null
-                    setPendingLinkTraceId(null)
-                    openExternalUrl(url)
-                  }, LINK_OPEN_DELAY_MS)
-                  return
-                }
-
-                setSelectedTraceId(trace.id)
               }}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                // Text traces edit in place on double-click -- the preview
-                // modal was a detour nobody used for text (it exists for
-                // media, where "see it big" means something). Falls back to
-                // the modal when editing isn't possible (view-only atrium or
-                // a locked trace), where it still serves reading/copying.
-                if (trace.type === 'text' && canEdit && !trace.isLocked) {
-                  setSelectedTraceId(trace.id)
-                  setInlineEditingTraceId(trace.id)
-                  setInlineEditText(trace.content ?? '')
-                  return
-                }
-                setModalTrace(trace)
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
-                setSelectedTraceId(trace.id)
-              }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="w-full h-full bg-transparent resize-none outline-none border-2 border-white focus:border-gray-400"
+              style={textStyles}
+            />
+          ) : (
+            /* Normal display - text wraps and conforms to box.
+               min-w-0 matters here: as a flex child (the parent is
+               flex flex-col), this would otherwise default to
+               min-width: auto and refuse to shrink below its
+               content's intrinsic width, silently defeating
+               break-words for a long unbroken string (e.g. a URL). */
+            <p
+              className="w-full min-w-0 break-words whitespace-pre-wrap overflow-hidden"
+              style={textStyles}
             >
-              {/* Shape rendering - no border container */}
-              {trace.type === 'shape' ? (
-                <div
-                  className="relative cursor-pointer trace-shape-frame-nier"
-                  style={{
-                    width: `${borderWidth}px`,
-                    height: `${borderHeight}px`,
-                    pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
-                    overflow: 'hidden',
-                    // While its customize panel is open the shape wears the
-                    // placement frame instead (drawn in the SVG below), so a
-                    // selection outline on top of it would be two frames.
-                    outline: editingTrace?.id === trace.id && trace.shapeType !== 'path'
-                      ? 'none'
-                      : isSelected
-                      ? '2px solid rgba(203, 203, 203, 0.9)'
-                      : isMultiSelected
-                      ? '2px solid rgba(134, 239, 172, 0.95)'
-                      : 'none',
-                    outlineOffset: '2px',
-                    boxShadow: editingTrace?.id === trace.id && trace.shapeType !== 'path'
-                      ? 'none'
-                      : isSelected
-                      ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
-                      : isMultiSelected
-                      ? '0 0 0 2px rgba(134, 239, 172, 0.9), 0 0 22px rgba(134, 239, 172, 0.65), 0 0 34px rgba(134, 239, 172, 0.35)'
-                      : 'none',
-                  }}
-                >
-                  {(isSelected || isMultiSelected || showTraceTypeLabels) && (
-                    <div className="trace-nier-type-badge">{trace.shapeType === 'path' ? 'Path' : 'Shape'}</div>
-                  )}
-                  {(() => {
-                    const shapeColor = trace.shapeColor || '#3b82f6'
-                    const shapeOpacity = trace.shapeOpacity ?? 1.0
-                    const cornerRadius = trace.cornerRadius || 0
-                    const shapeType = trace.shapeType || 'rectangle'
-                    const hasOutline = trace.shapeOutlineOnly ?? false
-                    const noFill = trace.shapeNoFill ?? false
-                    const outlineColor = trace.shapeOutlineColor || shapeColor
-                    const outlineWidth = trace.shapeOutlineWidth ?? 2
-                    const outlineOpacity = trace.shapeOutlineOpacity ?? 1.0
-                    
-                    // Determine fill and stroke based on options (independent)
-                    const fill = noFill ? 'none' : shapeColor
-                    const stroke = hasOutline ? outlineColor : 'none'
-                    // World units, like a path's thickness and a frame's border
-                    // (both multiplied by zoom). non-scaling-stroke below makes
-                    // strokeWidth mean SCREEN pixels, so it has to carry the zoom
-                    // itself -- without it the outline stayed one fixed pixel
-                    // width at every zoom, the same bug paths had.
-                    const strokeWidth = hasOutline ? Math.max(outlineWidth * zoom, 0.5) : 0
-                    // How far to pull the shape in so the whole stroke stays in
-                    // the box, in viewBox units -- per axis, because the viewBox
-                    // is 0-100 stretched to borderWidth x borderHeight pixels.
-                    //
-                    // This used to be strokeWidth / 2 in viewBox units, which is
-                    // a percentage of the box while the stroke is in pixels: the
-                    // two only agree on a box exactly 100px across. Smaller (a
-                    // small shape, or any shape zoomed out) and the stroke
-                    // overhung the box and was cut off by the container's
-                    // overflow: hidden; larger, and the fill shrank away from
-                    // the box edge. Capped at the centre so a stroke wider than
-                    // the shape collapses it rather than turning it inside out.
-                    const insetX = hasOutline ? Math.min((strokeWidth / 2 / borderWidth) * 100, 50) : 0
-                    const insetY = hasOutline ? Math.min((strokeWidth / 2 / borderHeight) * 100, 50) : 0
-
-                    // While its customize panel is open, the shape looks exactly
-                    // as it did while it was being placed: drawn at the preview's
-                    // opacity, with the same breathing frame, in the same colour
-                    // (PREVIEW_OPACITY and previewFrameColour are shared with the
-                    // placement preview in LobbyScene). Editing and creating are
-                    // the same act, and now read as one.
-                    const editing = editingTrace?.id === trace.id
-                    const k = editing ? PREVIEW_OPACITY : 1
-                    // 1.5 world units, like the preview frame, kept inside the box.
-                    const frameWidth = Math.max(1.5 * zoom, 1)
-                    const frameX = Math.min((frameWidth / 2 / borderWidth) * 100, 50)
-                    const frameY = Math.min((frameWidth / 2 / borderHeight) * 100, 50)
-                    const frameColour = '#' + previewFrameColour(atriumBackground).toString(16).padStart(6, '0')
-                    const frameProps = {
-                      className: 'shape-editing-frame',
-                      fill: 'none',
-                      stroke: frameColour,
-                      strokeWidth: frameWidth,
-                      vectorEffect: 'non-scaling-stroke' as const,
-                    }
-                    
-                    // Convert corner radius to viewBox percentage separately for x and y to keep circles circular.
-                    // Also has to divide out scaleX/scaleY (the resize-handle stretch applied as a CSS transform
-                    // on top of this SVG's base width/height) -- otherwise a non-uniform resize stretches the
-                    // already-correct-for-the-base-box radius into an ellipse, since the outer transform scales
-                    // the whole rendered box (corners included) after this percentage is baked in.
-                    const shapeScaleX = (transform as any).scaleX || 1
-                    const shapeScaleY = (transform as any).scaleY || 1
-                    const radiusPercentX = (cornerRadius / (width * shapeScaleX)) * 100
-                    const radiusPercentY = (cornerRadius / (height * shapeScaleY)) * 100
-
-                    const clipPathStyle = trace.cropWidth && trace.cropWidth < 1 
-                      ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                      : undefined
-
-                    if (shapeType === 'rectangle') {
-                      return (
-                        <svg
-                          className="w-full h-full pointer-events-none select-none"
-                          viewBox="0 0 100 100"
-                          preserveAspectRatio="none"
-                          style={{ clipPath: clipPathStyle }}
-                        >
-                          <rect
-                            x={insetX}
-                            y={insetY}
-                            width={100 - insetX * 2}
-                            height={100 - insetY * 2}
-                            rx={radiusPercentX}
-                            ry={radiusPercentY}
-                            fill={fill}
-                            stroke={stroke}
-                            strokeWidth={strokeWidth}
-                            vectorEffect="non-scaling-stroke"
-                            fillOpacity={shapeOpacity * k}
-                            strokeOpacity={outlineOpacity * k}
-                          />
-                          {editing && (
-                            <rect
-                              {...frameProps}
-                              x={frameX} y={frameY}
-                              width={100 - frameX * 2} height={100 - frameY * 2}
-                              rx={radiusPercentX} ry={radiusPercentY}
-                            />
-                          )}
-                        </svg>
-                      )
-                    } else if (shapeType === 'circle') {
-                      return (
-                        <svg
-                          className="w-full h-full pointer-events-none select-none"
-                          viewBox="0 0 100 100"
-                          preserveAspectRatio="none"
-                          style={{ clipPath: clipPathStyle }}
-                        >
-                          <ellipse
-                            cx="50"
-                            cy="50"
-                            rx={50 - insetX}
-                            ry={50 - insetY}
-                            fill={fill}
-                            stroke={stroke}
-                            strokeWidth={strokeWidth}
-                            vectorEffect="non-scaling-stroke"
-                            fillOpacity={shapeOpacity * k}
-                            strokeOpacity={outlineOpacity * k}
-                          />
-                          {editing && (
-                            <ellipse {...frameProps} cx="50" cy="50" rx={50 - frameX} ry={50 - frameY} />
-                          )}
-                        </svg>
-                      )
-                    } else if (shapeType === 'triangle') {
-                      // Triangle edges aren't axis-aligned, so there's no
-                      // clean separate X/Y radius the way a rectangle has --
-                      // averaging the two keeps it consistent with the
-                      // rectangle's radius "feel" without a second control.
-                      const triangleRadiusPercent = (radiusPercentX + radiusPercentY) / 2
-
-                      return (
-                        <svg
-                          className="w-full h-full pointer-events-none select-none"
-                          viewBox="0 0 100 100"
-                          preserveAspectRatio="none"
-                          style={{ clipPath: clipPathStyle }}
-                        >
-                          <path
-                            d={roundedPolygonPath(
-                              [
-                                { x: 50, y: 15 + insetY },
-                                { x: 85 - insetX, y: 85 - insetY },
-                                { x: 15 + insetX, y: 85 - insetY },
-                              ],
-                              triangleRadiusPercent
-                            )}
-                            fill={fill}
-                            stroke={stroke}
-                            strokeWidth={strokeWidth}
-                            strokeLinejoin="round"
-                            vectorEffect="non-scaling-stroke"
-                            fillOpacity={shapeOpacity * k}
-                            strokeOpacity={outlineOpacity * k}
-                          />
-                          {editing && (
-                            <path
-                              {...frameProps}
-                              strokeLinejoin="round"
-                              d={roundedPolygonPath(
-                                [
-                                  { x: 50, y: 15 + frameY },
-                                  { x: 85 - frameX, y: 85 - frameY },
-                                  { x: 15 + frameX, y: 85 - frameY },
-                                ],
-                                triangleRadiusPercent
-                              )}
-                            />
-                          )}
-                        </svg>
-                      )
-                    } else if (shapeType === 'path') {
-                      // Path shapes are rendered as absolute overlay - see below
-                      return null
-                    }
-                    return null
-                  })()}
-                </div>
-              ) : (
-                /* Border container for non-shape traces - fixed size, doesn't scale with content */
-                <>
-                <div
-                  className="trace-frame-nier relative cursor-pointer transition-shadow"
-                  style={{
-                    boxSizing: 'content-box',
-                    width: `${borderWidth}px`,
-                    height: `${borderHeight}px`,
-                    border: showBorder ? `${(displayTrace.borderWidth ?? 2) * zoom}px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
-                    borderRadius: `${displayTrace.borderRadius ?? 0}px`,
-                    backgroundColor: showBackground ? (() => {
-                      const fc = displayTrace.fillColor || '#191919';
-                      const fo = displayTrace.fillOpacity ?? 0.95;
-                      // Convert hex to rgba
-                      const r = parseInt(fc.slice(1, 3), 16) || 26;
-                      const g = parseInt(fc.slice(3, 5), 16) || 26;
-                      const b = parseInt(fc.slice(5, 7), 16) || 24;
-                      return `rgba(${r}, ${g}, ${b}, ${fo})`;
-                    })() : 'transparent',
-                    ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
-                      borderColor: isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : (() => {
-                        const bc = borderColor;
-                        const bo = trace.borderOpacity;
-                        const r = parseInt(bc.slice(1, 3), 16) || 255;
-                        const g = parseInt(bc.slice(3, 5), 16) || 255;
-                        const b = parseInt(bc.slice(5, 7), 16) || 255;
-                        return `rgba(${r}, ${g}, ${b}, ${bo})`;
-                      })()
-                    } : {}),
-                    padding: '0px',
-                    pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
-                    // No backgroundImage scanline texture here -- a fine 2-3px
-                    // repeating-linear-gradient on a container whose pixel size
-                    // varies continuously with zoom caused visible moire/
-                    // shimmer artifacting as traces were panned or zoomed.
-                    boxShadow: isSelected && isCropMode
-                      ? '0 0 0 1px rgba(143, 143, 143, 0.9), 0 0 16px rgba(143, 143, 143, 0.45)'
-                      : isSelected
-                      ? '0 0 0 1px rgba(203, 203, 203, 0.85), 0 0 16px rgba(203, 203, 203, 0.35)'
-                      : isMultiSelected
-                      ? '0 0 0 2px rgba(134, 239, 172, 0.95), 0 0 24px rgba(134, 239, 172, 0.7), 0 0 38px rgba(134, 239, 172, 0.4)'
-                      // Ambient shadow, toggleable per trace (Customize ->
-                      // Soft Shadow). Still gated on showBackground, since a
-                      // background-less trace has no surface to cast from.
-                      : (showBackground && (trace.showShadow ?? true)
-                        ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(203, 203, 203, 0.06)'
-                        : 'none'),
-                    overflow: 'hidden',
-                  }}
-                >
-                  {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && (
-                    <div
-                      className="trace-nier-type-badge"
-                      // Its font size, padding and inset all come from CSS in
-                      // flat pixels, so one transform scales the lot rather
-                      // than overriding each of them here.
-                      style={{
-                        left: `${6 * zoom}px`,
-                        top: `${6 * zoom}px`,
-                        transform: `scale(${zoom})`,
-                        transformOrigin: 'top left',
-                      }}
-                    >
-                      {getTraceTypeLabel(trace.type)}
-                    </div>
-                  )}
-                  {showBorder && (
-                    <>
-                      <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
-                      <span className="absolute top-0 right-0 w-2 h-2 border-r border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
-                      <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
-                      <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
-                    </>
-                  )}
-                  {/* Scaled content wrapper - text traces render at final pixel size to avoid distortion */}
-                  <div
-                    className="w-full h-full"
-                    style={trace.type === 'text' ? {
-                      width: '100%',
-                      height: '100%',
-                    } : {
-                      transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%)`,
-                      transformOrigin: 'top left',
-                      width: `${width}px`,
-                      height: `${height}px`,
-                    }}
-                  >
-              {/* Image Content */}
-              {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
-                (() => {
-                  const rawUrl = trace.mediaUrl || trace.imageUrl || ''
-                  const isLocal = rawUrl.startsWith('local://')
-                  const resolvedSrc = imageProxySources[trace.id]
-                  // For local:// URLs, wait for resolved blob URL before rendering
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
-                  // A successful resolve always hands back a blob: URL, so one
-                  // that is still local:// means the file couldn't be read --
-                  // deleted from the vault by hand, or restored from a folder
-                  // it never travelled with. Said plainly rather than left as a
-                  // broken image, since the trace keeps its place and the user
-                  // needs to know why it's empty.
-                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
-                  return (
-                <img
-                  src={resolvedSrc || rawUrl}
-                  alt=""
-                  className="w-full h-full object-contain pointer-events-none select-none"
-                  style={{ 
-                    clipPath: trace.cropWidth && trace.cropWidth < 1 
-                      ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                      : undefined,
-                  }}
-                  onLoad={(e) => {
-                    const img = e.currentTarget
-                    if (img.naturalWidth && img.naturalHeight) {
-                      setImageDimensions(prev => ({
-                        ...prev,
-                        [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
-                      }))
-                    }
-                    // Clear from failed if it was there
-                    setFailedImages(prev => {
-                      const next = new Set(prev)
-                      next.delete(trace.id)
-                      return next
-                    })
-                  }}
-                  onError={() => {
-                    const retries = imageRetryCount[trace.id] || 0
-                    if (retries < 3) {
-                      const url = trace.mediaUrl || trace.imageUrl
-                      if (url) {
-                        if (retries === 0 && !imageProxySources[trace.id]) {
-                          // First retry: switch to proxy
-                          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
-                          setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                        } else {
-                          // Subsequent retries: retry proxy with cache bust
-                          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}&t=${Date.now()}`
-                          setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                        }
-                      }
-                      setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
-                    } else {
-                      setFailedImages(prev => new Set(prev).add(trace.id))
-                    }
-                  }}
-                />
-                  )
-                })()
-              )}
-              
-              {/* Image placeholder - shown when no URL or when image failed to load */}
-              {trace.type === 'image' && (!trace.mediaUrl && !trace.imageUrl || failedImages.has(trace.id)) && (
-                <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
-                  <span className="text-4xl mb-2">🖼️</span>
-                  {showDescription && trace.content && (
-                    <p className="text-xs text-nier-strong/60 text-center">
-                      {trace.content}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Video Content */}
-              {trace.type === 'video' && trace.mediaUrl && (
-                <video
-                  id={`video-${trace.id}`}
-                  // Enough for the poster frame and the dimensions, and not a
-                  // byte more.
-                  //
-                  // Chromium defaults a <video> with a source to preload
-                  // "auto", so every video trace began pulling its ENTIRE file
-                  // the moment it appeared -- an atrium of videos quietly
-                  // reading gigabytes, and a freshly imported one racing the
-                  // vault write for the same file on the same disk. That is
-                  // the difference between importing a video and importing a
-                  // PDF of the same size: the PDF has no element that helps
-                  // itself to the file before anyone asks. Pressing play still
-                  // loads the rest, at the point somebody has said they want
-                  // it.
-                  preload="metadata"
-                  // No src until there is a real file to point at. A raw
-                  // local:// URL means nothing to the browser, and handing it
-                  // one only produces a failed element to recover from later.
-                  src={trace.mediaUrl?.startsWith('local://')
-                    ? localMediaUrls[trace.id]
-                    : (localMediaUrls[trace.id] || trace.mediaUrl)}
-                  controls={false}
-                  className="w-full h-full pointer-events-none select-none"
-                  style={{ 
-                    clipPath: trace.cropWidth && trace.cropWidth < 1 
-                      ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                      : undefined,
-                  }}
-                  onLoadedMetadata={(e) => {
-                    const video = e.currentTarget
-                    if (video.videoWidth && video.videoHeight) {
-                      setImageDimensions(prev => ({
-                        ...prev,
-                        [trace.id]: { width: video.videoWidth, height: video.videoHeight }
-                      }))
-                    }
-                  }}
-                  onPlay={() => {
-                    setPlayingMedia(prev => new Set(prev).add(trace.id))
-                  }}
-                  onPause={() => {
-                    setPlayingMedia(prev => {
-                      const next = new Set(prev)
-                      next.delete(trace.id)
-                      return next
-                    })
-                  }}
-                  onEnded={() => {
-                    setPlayingMedia(prev => {
-                      const next = new Set(prev)
-                      next.delete(trace.id)
-                      return next
-                    })
-                  }}
-                  onError={(e) => {
-                    // A <video> that fails its load stays failed: there is no
-                    // automatic retry, so one bad moment -- an import holding
-                    // the thread, say -- left the trace unplayable for the
-                    // rest of the visit. One retry, once, per trace.
-                    if (videoRetriedRef.current.has(trace.id)) return
-                    videoRetriedRef.current.add(trace.id)
-                    const el = e.currentTarget
-                    window.setTimeout(() => { try { el.load() } catch { /* gone */ } }, 500)
-                  }}
-                />
-              )}
-
-              {/* Still being copied into the vault. Says so, rather than
-                  showing an empty black rectangle that looks like a broken
-                  trace. */}
-              {trace.type === 'video' && trace.mediaUrl?.startsWith('local://') && !localMediaUrls[trace.id] && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none bg-black/50">
-                  <span className="text-[10px] tracking-[0.2em] uppercase text-nier-strong/70">{t('atrium.customize.preparing')}</span>
-                </div>
-              )}
-
-              {/* Play, for a video sitting on the canvas.
-
-                  The video element above cannot take the click itself: it is
-                  pointer-events-none so that dragging a video trace moves the
-                  trace rather than poking at the video, and controls={false}
-                  for the same reason. That left the canvas showing a still
-                  frame with no way to start it, and the modal as the only
-                  place a video would actually play.
-
-                  So it gets a control of its own, driven exactly like the
-                  audio trace's: the one interactive thing inside a trace that
-                  is otherwise inert to the pointer. */}
-              {trace.type === 'video' && trace.mediaUrl && (
-                <div className="trace-video-control absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
-                  <button
-                    // No backdrop-filter, which is what made this go soft.
-                    //
-                    // A backdrop blur puts the element on its own composited
-                    // layer holding a rasterised copy of what is behind it.
-                    // Scaling the trace resizes the video underneath without
-                    // invalidating that layer, so the blur kept being stretched
-                    // from the size it was first drawn at -- and snapped back
-                    // only when something forced a repaint, which is why
-                    // clicking it fixed it.
-                    //
-                    // The atrium's own buttons are flat, cut-cornered and
-                    // lettered rather than glassy and pill-shaped, so this now
-                    // reads as part of the same interface instead of borrowed
-                    // from another one.
-                    className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
-                    style={{
-                      color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
-                      backgroundColor: 'rgb(var(--c-ground) / 0.94)',
-                      border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const el = document.getElementById(`video-${trace.id}`) as HTMLVideoElement | null
-                      if (el) { el.paused ? void el.play() : el.pause() }
-                    }}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                  >
-                    <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
-                      {playingMedia.has(trace.id)
-                        ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
-                        : <polygon points="2,0.5 9,5 2,9.5"/>}
-                    </svg>
-                    {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
-                  </button>
-                </div>
-              )}
-
-              {/* Audio Content */}
-              {trace.type === 'audio' && trace.mediaUrl && (
-                <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none px-3 pt-5 pb-4 gap-2">
-                  {/* Decorative waveform bars */}
-                  <div className="flex items-end justify-center gap-[2px] flex-1 w-full max-h-[60%] min-h-[24px]">
-                    {(() => {
-                      // Generate deterministic bar heights from trace id
-                      const bars = 24
-                      const heights: number[] = []
-                      for (let i = 0; i < bars; i++) {
-                        const hash = trace.id.charCodeAt(i % trace.id.length) + i * 7
-                        heights.push(0.18 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.82)
-                      }
-                      const isPlaying = playingMedia.has(trace.id)
-                      return heights.map((h, i) => (
-                        <div
-                          key={i}
-                          className="flex-1 max-w-[6px] rounded-full"
-                          style={{
-                            height: `${h * 100}%`,
-                            minHeight: '3px',
-                            background: isPlaying
-                              ? `linear-gradient(to top, ${trace.borderColor || '#8f8f8f'}, ${trace.borderColor ? trace.borderColor + '88' : '#cbcbcb'})`
-                              : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))',
-                            transition: 'background 0.3s ease',
-                            animation: isPlaying ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
-                          }}
-                        />
-                      ))
-                    })()}
-                  </div>
-                  {/* Hidden audio element + custom play button */}
-                  <audio
-                    id={`audio-${trace.id}`}
-                    // Same reasoning as the video above: duration now, the
-                    // rest when somebody presses play.
-                    preload="metadata"
-                    // No src until there is a real file to point at. A raw
-                  // local:// URL means nothing to the browser, and handing it
-                  // one only produces a failed element to recover from later.
-                  src={trace.mediaUrl?.startsWith('local://')
-                    ? localMediaUrls[trace.id]
-                    : (localMediaUrls[trace.id] || trace.mediaUrl)}
-                    className="hidden"
-                    onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
-                    onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
-                    onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
-                  />
-                  <button
-                    // Matches the video control above, and takes its colours
-                    // from the theme tokens rather than the fixed greys it had,
-                    // which stayed the same shade whatever the atrium was set
-                    // to.
-                    className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
-                    style={{
-                      color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
-                      backgroundColor: 'rgb(var(--c-ground) / 0.94)',
-                      border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const el = document.getElementById(`audio-${trace.id}`) as HTMLAudioElement | null
-                      if (el) { el.paused ? el.play() : el.pause() }
-                    }}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                  >
-                    <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
-                      {playingMedia.has(trace.id)
-                        ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
-                        : <polygon points="2,0.5 9,5 2,9.5"/>}
-                    </svg>
-                    {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
-                  </button>
-                  {showDescription && trace.content && (
-                    <p className="text-[10px] text-nier-strong/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
-                      {trace.content}
-                    </p>
-                  )}
-                </div>
-              )}
-
-
-              {/* Paged PDF. The page image is rendered on demand and cached
-                  per trace+page (see documentPages), so only the page being
-                  looked at is ever rasterized. */}
-              {trace.type === 'document' && (
-                <div
-                  className="w-full h-full relative bg-white overflow-hidden"
-                  // container-type lets the page controls below size
-                  // themselves in cqh (percentages of this box's height)
-                  // rather than fixed pixels, so the bar stays a constant
-                  // fraction of the page however large the trace is drawn.
-                  style={{ containerType: 'size' }}
-                >
-                  {documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
-                    <img
-                      src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
-                      alt=""
-                      className="w-full h-full object-contain pointer-events-none select-none"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-black/40 text-[10px] tracking-wider uppercase">
-                        {documentError[trace.id] ?? t('atrium.controls.rendering')}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Page controls. Shown for everyone, not only editors --
-                      turning the page is reading, not editing. stopPropagation
-                      on mousedown so grabbing an arrow doesn't also start
-                      dragging the trace underneath it. */}
-                  {/* Sized in cqh -- percentages of the page's own height --
-                      so the bar is always about a twentieth of the page rather
-                      than a fixed pixel size that swamped the trace at normal
-                      zoom. */}
-                  {(documentPageCount[trace.id] ?? 0) > 1 && (
-                    <div
-                      className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto"
-                      style={{
-                        bottom: '2cqh',
-                        gap: '1.5cqh',
-                        // Squared off and outlined rather than a rounded dark
-                        // pill, matching the atrium's own chrome and the
-                        // modal's page controls.
-                        padding: '1cqh 1.5cqh',
-                        background: 'rgba(10,10,10,0.85)',
-                        border: '0.2cqh solid rgba(203,203,203,0.35)',
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
-                        style={{
-                          fontSize: '2.6cqh',
-                          padding: '0.4cqh 1.2cqh',
-                          border: '0.2cqh solid rgba(203,203,203,0.3)',
-                        }}
-                        disabled={(documentPage[trace.id] ?? 1) <= 1}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDocumentPage(prev => ({ ...prev, [trace.id]: Math.max(1, (prev[trace.id] ?? 1) - 1) }))
-                        }}
-                      >
-                        ◀
-                      </button>
-                      <span
-                        className="text-nier-bg/80 uppercase tabular-nums leading-none whitespace-nowrap"
-                        style={{ fontSize: '2.2cqh', letterSpacing: '0.15em' }}
-                      >
-                        {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
-                        style={{
-                          fontSize: '2.6cqh',
-                          padding: '0.4cqh 1.2cqh',
-                          border: '0.2cqh solid rgba(203,203,203,0.3)',
-                        }}
-                        disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDocumentPage(prev => ({
-                            ...prev,
-                            [trace.id]: Math.min(documentPageCount[trace.id] ?? 1, (prev[trace.id] ?? 1) + 1),
-                          }))
-                        }}
-                      >
-                        ▶
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Embed Content */}
-              {trace.type === 'embed' && trace.mediaUrl && (() => {
-                // Check if the embed URL is actually an image (by extension OR confirmed via preflight)
-                const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
-                const isConfirmedImage = confirmedImageIds.has(trace.id)
-                const isDirectImage = hasImageExtension || isConfirmedImage
-                
-                if (isDirectImage && !failedImages.has(trace.id)) {
-                  const isLocal = trace.mediaUrl.startsWith('local://')
-                  const resolvedSrc = imageProxySources[trace.id]
-                  if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
-                  // Still local:// after resolving means the file is gone --
-                  // see the image branch above.
-                  if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
-                  // Render as image, not iframe
-                  return (
-                    <img
-                      src={resolvedSrc || trace.mediaUrl}
-                      alt=""
-                      className="w-full h-full object-contain pointer-events-none select-none"
-                      style={{ 
-                        clipPath: trace.cropWidth && trace.cropWidth < 1 
-                          ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                          : undefined,
-                      }}
-                      onLoad={(e) => {
-                        const img = e.currentTarget
-                        if (img.naturalWidth && img.naturalHeight) {
-                          setImageDimensions(prev => ({
-                            ...prev,
-                            [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
-                          }))
-                        }
-                        setFailedImages(prev => {
-                          const next = new Set(prev)
-                          next.delete(trace.id)
-                          return next
-                        })
-                      }}
-                      onError={() => {
-                        const retries = imageRetryCount[trace.id] || 0
-                        if (retries < 3) {
-                          const url = trace.mediaUrl
-                          if (url) {
-                            if (retries === 0 && !imageProxySources[trace.id]) {
-                              const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
-                              setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                            } else {
-                              const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}&t=${Date.now()}`
-                              setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                            }
-                          }
-                          setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
-                        } else {
-                          setFailedImages(prev => new Set(prev).add(trace.id))
-                        }
-                      }}
-                    />
-                  )
-                }
-                
-                // Styled link card if the direct image failed to hotlink --
-                // links to the source page (linkUrl, e.g. the original
-                // Pinterest pin) rather than the dead image URL itself.
-                if (isDirectImage && failedImages.has(trace.id)) {
-                  const clickThroughUrl = trace.linkUrl || trace.mediaUrl
-                  let hostname = ''
-                  try {
-                    hostname = new URL(clickThroughUrl).hostname.replace(/^www\./, '')
-                  } catch {
-                    hostname = ''
-                  }
-                  return (
-                    <a
-                      href={clickThroughUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex flex-col items-center justify-center h-full w-full gap-2 px-3 select-none pointer-events-auto bg-nier-black/40 hover:bg-nier-black/60 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      title={clickThroughUrl}
-                    >
-                      {hostname && (
-                        <img
-                          src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(hostname)}`}
-                          alt=""
-                          className="w-8 h-8 opacity-80"
-                          draggable={false}
-                        />
-                      )}
-                      <p className="text-nier-strong/80 text-xs text-center line-clamp-2">
-                        {trace.content || t('atrium.controls.viewSource')}
-                      </p>
-                      {hostname && (
-                        <p className="text-nier-strong/70 text-[9px] tracking-wider uppercase">{hostname}</p>
-                      )}
-                    </a>
-                  )
-                }
-                
-                // Otherwise, treat as iframe embed
-                const embedUrl = extractEmbedUrl(trace.mediaUrl)
-                if (!embedUrl) {
-                  return (
-                    <div className="w-full h-full flex items-center justify-center bg-black/50">
-                      <p className="text-nier-strong/60 text-sm">{t('atrium.customize.invalidEmbed')}</p>
-                    </div>
-                  )
-                }
-                return (
-                  <iframe
-                    src={embedUrl}
-                    // Sandboxed. Without this an embedded page can navigate the
-                    // top-level window, so one bad embed in a shared atrium
-                    // could send everyone who opens it somewhere else -- a
-                    // convincing place to ask for a password. Scripts,
-                    // same-origin, popups, forms and presentation are kept
-                    // because YouTube, Drive and Docs need them; top navigation
-                    // is exactly what is being withheld.
-                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
-                    className="w-full h-full select-none"
-                    scrolling="no"
-                    style={{ 
-                      pointerEvents: trace.enableInteraction ? 'auto' : 'none',
-                      overflow: 'hidden',
-                      border: 'none',
-                      clipPath: trace.cropWidth && trace.cropWidth < 1 
-                        ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                        : undefined,
-                    }}
-                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    onClick={(e) => {
-                      if (trace.enableInteraction) {
-                        e.stopPropagation() // Prevent trace selection when interacting
-                      }
-                    }}
-                    onDoubleClick={(e) => {
-                      if (trace.enableInteraction) {
-                        e.stopPropagation() // Prevent modal from opening
-                      }
-                    }}
-                    onLoad={() => {
-                      // Set 16:9 dimensions for embeds - use small viewport to avoid internal scrollbars
-                      if (!imageDimensions[trace.id]) {
-                        setImageDimensions(prev => ({
-                          ...prev,
-                          [trace.id]: { width: 480, height: 270 }
-                        }))
-                      }
-                    }}
-                  />
-                )
-              })()}
-
-              {/* Text Content - renders at final pixel size, text conforms to box like Excel */}
-              {trace.type === 'text' && (() => {
-                // Calculate the actual pixel font size accounting for zoom and
-                // the trace's own scale -- without the latter, resizing a text
-                // trace grew its box while the glyphs stayed put.
-                //
-                // Geometric mean, not min(scaleX, scaleY): font-size is a
-                // single scalar, so a non-uniform stretch has to pick one.
-                // sqrt(sx*sy) is exact for uniform scaling -- including every
-                // group transform, which is corner-only -- while staying
-                // balanced when the axes differ.
-                //
-                // min() was wrong: a trace stretched wide and short (say
-                // sx=2.2, sy=0.57) rendered its text at 0.57x, so text that
-                // used to be legible shrank to a few pixels and looked like it
-                // had vanished when zoomed out. The geometric mean tracks the
-                // box's overall area instead, so a one-axis stretch never
-                // shrinks text below its unscaled size.
-                // Per-trace opt-out: with textScaleWithBox off the font size is
-                // fixed and resizing the trace only changes how much room the
-                // text has to reflow in.
-                const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
-                const rawScaleX = (transform as any).scaleX ?? 1
-                const rawScaleY = (transform as any).scaleY ?? 1
-                const scaleWithBox = trace.textScaleWithBox ?? true
-                const traceScale = scaleWithBox
-                  ? (Math.sqrt(Math.max(0, rawScaleX * rawScaleY)) || 1)
-                  : 1
-                const scaledFontSize = baseFontSize * traceScale * zoom
-                const textStyles = {
-                  fontSize: `${scaledFontSize}px`,
-                  fontFamily: resolveFontFamilyCss(fontFamily),
-                  lineHeight: '1.3',
-                  fontWeight: (trace.textBold ? 'bold' : 'normal') as React.CSSProperties['fontWeight'],
-                  fontStyle: (trace.textItalic ? 'italic' : 'normal') as React.CSSProperties['fontStyle'],
-                  textDecoration: trace.textUnderline ? 'underline' : 'none',
-                  textAlign: (trace.textAlign ?? 'center') as React.CSSProperties['textAlign'],
-                  color: trace.textColor ?? '#ffffff',
-                }
-                return (
-                <div 
-                  className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
-                  style={{
-                    padding: `${Math.max(4, 6 * traceScale * zoom)}px`,
-                    clipPath: trace.cropWidth && trace.cropWidth < 1
-                      ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                      : undefined,
-                  }}
-                >
-                  {inlineEditingTraceId === trace.id ? (
-                    /* Inline editing textarea */
-                    <textarea
-                      autoFocus
-                      value={inlineEditText}
-                      onChange={(e) => {
-                        setInlineEditText(e.target.value)
-                        fitTextLive(trace, e.target.value, baseFontSize, textStyles.fontFamily)
-                      }}
-                      onBlur={() => {
-                        endTextEdit(trace.id)
-                        setInlineEditingTraceId(null)
-                        setInlineEditText('')
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          endTextEdit(trace.id, true)
-                          setInlineEditingTraceId(null)
-                          setInlineEditText('')
-                        } else if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          endTextEdit(trace.id)
-                          setInlineEditingTraceId(null)
-                          setInlineEditText('')
-                        }
-                        e.stopPropagation()
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="w-full h-full bg-transparent resize-none outline-none border-2 border-white focus:border-gray-400"
-                      style={textStyles}
-                    />
-                  ) : (
-                    /* Normal display - text wraps and conforms to box.
-                       min-w-0 matters here: as a flex child (the parent is
-                       flex flex-col), this would otherwise default to
-                       min-width: auto and refuse to shrink below its
-                       content's intrinsic width, silently defeating
-                       break-words for a long unbroken string (e.g. a URL). */
-                    <p
-                      className="w-full min-w-0 break-words whitespace-pre-wrap overflow-hidden"
-                      style={textStyles}
-                    >
-                      {trace.content}
-                    </p>
-                  )}
-                </div>
-                )
-              })()}
-
-                  </div>
-                </div>
-                </>
-              )}
-
-              {/* Username label - outside border container so it doesn't scale */}
-              {showFilename && trace.type !== 'shape' && (
-                <div
-                  className="absolute text-xs font-semibold text-center pointer-events-none"
-                  style={{
-                    bottom: `-${20}px`,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    color: borderColor,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {trace.username}
-                </div>
-              )}
-
-              {/* Description label - shown to the right of media traces when enabled */}
-              {showDescription && trace.content && (trace.type === 'image' || trace.type === 'video' || trace.type === 'embed') && (
-                <div
-                  className="absolute text-xs pointer-events-none select-none"
-                  style={{
-                    left: `${borderWidth + 12}px`,
-                    top: '0px',
-                    maxWidth: '200px',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    lineHeight: '1.4',
-                    textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                  }}
-                >
-                  {trace.content}
-                </div>
-              )}
-            </div>
-
-            {/* Transform controls (only for selected trace, not in crop mode, and only when this user can actually edit) */}
-            {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && !springingIds.has(trace.id) && (
-              <>
-                {/* Special handles for path shapes */}
-                {(trace.type === 'shape' && trace.shapeType === 'path') ? (
-                  <>
-                    {/* Point handles for path - using world coordinates */}
-                    {(() => {
-                      const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
-                      return points.map((point, index) => {
-                      // Convert world coordinates to screen coordinates
-                      const { screenX, screenY } = getScreenPosition(point.x, point.y)
-                      
-                      const isPointSelected = selectedPointIndex === index
-                      const isBezier = displayTrace.pathCurveType === 'bezier'
-                      
-                      return (
-                        <Fragment key={`point-${index}`}>
-                          {/* Main point handle */}
-                          <div
-                            data-trace-element="true"
-                            className={`absolute w-4 h-4 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform ${
-                              isPointSelected ? 'bg-white' : 'bg-gray-400'
-                            }`}
-                            style={{
-                              left: `${screenX}px`,
-                              top: `${screenY}px`,
-                              transform: 'translate(-50%, -50%)',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation() // Prevent background deselection
-                            }}
-                            onMouseDown={(e) => {
-                              e.stopPropagation()
-                              e.preventDefault()
-                              setSelectedPointIndex(index)
-                              handleMouseDown(e, trace, 'point', `${index}`)
-                            }}
-                            onTouchStart={(e) => {
-                              e.stopPropagation()
-                              setSelectedPointIndex(index)
-                              handleTouchDown(e, trace, 'point', `${index}`)
-                            }}
-                          />
-                          
-                          {/* Control point handles (only in bezier mode and when point is selected) */}
-                          {isBezier && isPointSelected && (
-                            <>
-                              {(() => {
-                                const cp1x = point.cp1x ?? point.x - 20
-                                const cp1y = point.cp1y ?? point.y
-                                const { screenX: cp1ScreenX, screenY: cp1ScreenY } = getScreenPosition(cp1x, cp1y)
-                                
-                                return (
-                                  <>
-                                    {/* Line from point to control handle */}
-                                    <svg
-                                      className="absolute pointer-events-none"
-                                      style={{
-                                        left: 0,
-                                        top: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        overflow: 'visible',
-                                        zIndex: 9
-                                      }}
-                                    >
-                                      <line
-                                        x1={screenX}
-                                        y1={screenY}
-                                        x2={cp1ScreenX}
-                                        y2={cp1ScreenY}
-                                        stroke="#9ca3af"
-                                        strokeWidth="1"
-                                        strokeDasharray="4 2"
-                                      />
-                                    </svg>
-                                    {/* Control handle */}
-                                    <div
-                                      data-trace-element="true"
-                                      className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
-                                      style={{
-                                        left: `${cp1ScreenX}px`,
-                                        top: `${cp1ScreenY}px`,
-                                        transform: 'translate(-50%, -50%)',
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation() // Prevent background deselection
-                                      }}
-                                      onMouseDown={(e) => {
-                                        e.stopPropagation()
-                                        e.preventDefault()
-                                        setSelectedPointIndex(index) // Preserve point selection
-                                        handleMouseDown(e, trace, 'control-in', `${index}`)
-                                      }}
-                                      onTouchStart={(e) => {
-                                        e.stopPropagation()
-                                        setSelectedPointIndex(index)
-                                        handleTouchDown(e, trace, 'control-in', `${index}`)
-                                      }}
-                                    />
-                                  </>
-                                )
-                              })()}
-                              
-                              {/* Out-handle (cp2) */}
-                              {(() => {
-                                const cp2x = point.cp2x ?? point.x + 20
-                                const cp2y = point.cp2y ?? point.y
-                                const { screenX: cp2ScreenX, screenY: cp2ScreenY } = getScreenPosition(cp2x, cp2y)
-                                
-                                return (
-                                  <>
-                                    {/* Line from point to control handle */}
-                                    <svg
-                                      className="absolute pointer-events-none"
-                                      style={{
-                                        left: 0,
-                                        top: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        overflow: 'visible',
-                                        zIndex: 9
-                                      }}
-                                    >
-                                      <line
-                                        x1={screenX}
-                                        y1={screenY}
-                                        x2={cp2ScreenX}
-                                        y2={cp2ScreenY}
-                                        stroke="#9ca3af"
-                                        strokeWidth="1"
-                                        strokeDasharray="4 2"
-                                      />
-                                    </svg>
-                                    {/* Control handle */}
-                                    <div
-                                      data-trace-element="true"
-                                      className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-10"
-                                      style={{
-                                        left: `${cp2ScreenX}px`,
-                                        top: `${cp2ScreenY}px`,
-                                        transform: 'translate(-50%, -50%)',
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation() // Prevent background deselection
-                                      }}
-                                      onMouseDown={(e) => {
-                                        e.stopPropagation()
-                                        e.preventDefault()
-                                        setSelectedPointIndex(index) // Preserve point selection
-                                        handleMouseDown(e, trace, 'control-out', `${index}`)
-                                      }}
-                                      onTouchStart={(e) => {
-                                        e.stopPropagation()
-                                        setSelectedPointIndex(index)
-                                        handleTouchDown(e, trace, 'control-out', `${index}`)
-                                      }}
-                                    />
-                                  </>
-                                )
-                              })()}
-                            </>
-                          )}
-                        </Fragment>
-                      )
-                    })
-                    })()}
-                    
-                    {/* Move handle for entire path - centered on all points */}
-                    {(() => {
-                      const points = localShapePoints[trace.id] || trace.shapePoints || []
-                      if (points.length === 0) return null
-                      
-                      // Calculate centroid
-                      const sumX = points.reduce((sum, p) => sum + p.x, 0)
-                      const sumY = points.reduce((sum, p) => sum + p.y, 0)
-                      const centerX = sumX / points.length
-                      const centerY = sumY / points.length
-                      
-                      const { screenX, screenY } = getScreenPosition(centerX, centerY)
-                      
-                      return (
-                        <div
-                          data-trace-element="true"
-                          className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-10"
-                          style={{
-                            left: `${screenX}px`,
-                            top: `${screenY}px`,
-                            transform: 'translate(-50%, -50%)',
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                          }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            e.preventDefault()
-                            setSelectedPointIndex(null)
-                            handleMouseDown(e, trace, 'move-path', 'move-all')
-                          }}
-                          onTouchStart={(e) => {
-                            e.stopPropagation()
-                            setSelectedPointIndex(null)
-                            handleTouchDown(e, trace, 'move-path', 'move-all')
-                          }}
-                        />
-                      )
-                    })()}
-                  </>
-                ) : null}
-
-                {/* Crop button for all trace types (not for path).
-
-                    Colours only in the transition. It was transition-all, and
-                    its position is left/top: every move of the trace became a
-                    150ms glide, so the button trailed behind a dragged trace.
-                    (Its hover:scale-105 never worked either -- the inline
-                    transform below overrides it.) */}
-                {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
-                <button
-                  data-trace-element="true"
-                  className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-colors tracking-[0.18em] uppercase"
-                  style={{
-                    left: `${screenX}px`,
-                    top: `${screenY + (borderHeight / 2 + 30 * zoom)}px`,
-                    // Centred first, then scaled, so it stays under the middle
-                    // of the trace at any zoom.
-                    transform: `translate(-50%, 0) scale(${zoom})`,
-                    transformOrigin: 'top center',
-                    // Tokens, like the type badge. Every colour here was a
-                    // literal of the dark palette, so in light mode the button
-                    // came out dark-on-dark. Inline styles take
-                    // rgb(var(--x) / a) directly -- it is only Tailwind's
-                    // scanner that cannot see tokens inside arbitrary class
-                    // values.
-                    color: isCropMode ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
-                    background: isCropMode ? 'rgb(var(--c-surface) / 0.98)' : 'rgb(var(--c-ground) / 0.94)',
-                    borderColor: isCropMode ? 'rgb(var(--c-fg) / 0.8)' : 'rgb(var(--c-line) / 0.7)',
-                    boxShadow: isCropMode ? '0 0 10px rgb(var(--c-fg) / 0.3)' : '0 0 8px rgb(var(--c-line) / 0.3)',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsCropMode(!isCropMode)
-                    setTransformMode('none')
-                  }}
-                >
-                  {isCropMode ? `✓ ${t('atrium.controls.cropDone')}` : `✂ ${t('atrium.controls.crop')}`}
-                </button>
-                ) : null}
-              </>
-            )}
-
-            {/* Controls for a trace that is currently interactive.
-
-                An embed with Enable Interaction on hands every click to the
-                iframe -- which is the point, and also means the trace can no
-                longer be picked up or, without opening Customize, switched
-                back. So while it is on, it carries the two things it has just
-                given away: a grip to move by, and the switch to turn it off.
-
-                Shown whenever interaction is on, selected or not, because the
-                problem they solve exists whether or not the trace happens to
-                be selected -- an interactive embed you cannot grab is stuck
-                regardless. They disappear the moment it is switched off,
-                since the trace answers the pointer normally again.
-
-                Below the trace, on the same line the crop button uses, and
-                built from the same tokens so the row reads as one set of
-                controls rather than three unrelated widgets. */}
-            {trace.enableInteraction && canEdit && (
-              <div
-                className="absolute z-10 flex items-stretch gap-2 pointer-events-none"
-                // Scaled with the camera, like the frame around the trace.
-                //
-                // Everything in here is sized in flat pixels -- the padding,
-                // the type, the gap -- so at a distance the controls loomed
-                // over a small trace and up close they shrank to nothing
-                // beside a large one. The trace grows with the zoom; the
-                // things attached to it have to grow with it too, which is the
-                // same fix the border needed.
-                style={{
-                  left: `${screenX - (borderWidth / 2)}px`,
-                  top: `${screenY + (borderHeight / 2 + 12 * zoom)}px`,
-                  transform: `scale(${zoom})`,
-                  transformOrigin: 'top left',
-                }}
-              >
-                {/* The grip. Starts the same drag the trace body would, so it
-                    behaves like a handle on the trace rather than a control
-                    of its own -- press and move and the trace comes with it. */}
-                <button
-                  data-trace-element="true"
-                  title={t('atrium.customize.dragToMove')}
-                  aria-label={t('atrium.customize.dragToMove')}
-                  className="pointer-events-auto flex items-center justify-center px-2 border cursor-move transition-colors"
-                  style={{
-                    color: 'rgb(var(--c-fg) / 0.8)',
-                    background: 'rgb(var(--c-ground) / 0.94)',
-                    borderColor: 'rgb(var(--c-line) / 0.7)',
-                  }}
-                  onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  // The grip stands in for the trace while interaction is on,
-                  // so it has to answer a right-click the way the trace body
-                  // would -- otherwise Customize, Move to Group and the rest
-                  // are unreachable for exactly the traces that most need
-                  // them, since the embed swallows the right-click too.
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setSelectedTraceId(trace.id)
-                    setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
-                    <path d="M6 1v10M1 6h10M6 1L4.4 2.6M6 1l1.6 1.6M6 11l-1.6-1.6M6 11l1.6-1.6M1 6l1.6-1.6M1 6l1.6 1.6M11 6L9.4 4.4M11 6L9.4 7.6" />
-                  </svg>
-                </button>
-
-                <button
-                  data-trace-element="true"
-                  className="pointer-events-auto text-[10px] font-semibold px-3 py-1.5 border transition-colors tracking-[0.18em] uppercase whitespace-nowrap"
-                  style={{
-                    color: 'rgb(var(--c-fg) / 0.8)',
-                    background: 'rgb(var(--c-ground) / 0.94)',
-                    borderColor: 'rgb(var(--c-line) / 0.7)',
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    updateTraceCustomization(trace.id, { enableInteraction: false })
-                    if (editingTraceRef.current?.id === trace.id) {
-                      setEditingTrace({ ...editingTraceRef.current, enableInteraction: false })
-                    }
-                  }}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                >
-                  {t('atrium.menu.disableInteraction')}
-                </button>
-              </div>
-            )}
-
-            {/* Crop mode handles (only when crop mode is active) */}
-            {isSelected && isCropMode && canEdit && (
-              <>
-                {/* Crop area overlay - shows the crop boundaries */}
-                <div
-                  className="absolute pointer-events-auto cursor-pointer"
-                  style={{
-                    left: `${screenX - (width * (transform as any).scaleX * zoom / 2)}px`,
-                    top: `${screenY - (height * (transform as any).scaleY * zoom / 2)}px`,
-                    width: `${width * (transform as any).scaleX * zoom}px`,
-                    height: `${height * (transform as any).scaleY * zoom}px`,
-                    border: '1px dashed rgba(143, 143, 143, 0.95)',
-                    boxShadow: 'inset 0 0 0 9999px rgba(25, 25, 25, 0.4), 0 0 0 1px rgba(203, 203, 203, 0.2)',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsCropMode(false)
-                    setTransformMode('none')
-                  }}
-                />
-                
-                {/* Crop handles at corners for adjusting crop area */}
-                {['tl', 'tr', 'bl', 'br'].map((corner) => {
-                  const cropX = trace.cropX ?? 0
-                  const cropY = trace.cropY ?? 0
-                  const cropWidth = trace.cropWidth ?? 1
-                  const cropHeight = trace.cropHeight ?? 1
-                  
-                  // Calculate position based on crop values
-                  const baseX = screenX - (width * (transform as any).scaleX * zoom / 2)
-                  const baseY = screenY - (height * (transform as any).scaleY * zoom / 2)
-                  const containerWidth = width * (transform as any).scaleX * zoom
-                  const containerHeight = height * (transform as any).scaleY * zoom
-                  
-                  const cropLeft = baseX + (cropX * containerWidth)
-                  const cropTop = baseY + (cropY * containerHeight)
-                  const cropRight = baseX + ((cropX + cropWidth) * containerWidth)
-                  const cropBottom = baseY + ((cropY + cropHeight) * containerHeight)
-                  
-                  const handleX = corner.includes('r') ? cropRight : cropLeft
-                  const handleY = corner.includes('b') ? cropBottom : cropTop
-                  
-                  return (
-                    <div
-                      key={`crop-${corner}`}
-                      data-trace-element="true"
-                      className="absolute trace-nier-handle trace-nier-handle-crop cursor-nwse-resize pointer-events-auto z-10"
-                      style={{
-                        left: `${handleX}px`,
-                        top: `${handleY}px`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        handleMouseDown(e, trace, 'crop', corner)
-                      }}
-                      onTouchStart={(e) => {
-                        e.stopPropagation()
-                        handleTouchDown(e, trace, 'crop', corner)
-                      }}
-                    />
-                  )
-                })}
-              </>
-            )}
-          </div>
+              {trace.content}
+            </p>
+          )}
         </div>
         )
+      })()}
+
+          </div>
+        </div>
+        </>
+      )}
+
+      {/* Username label - outside border container so it doesn't scale */}
+      {showFilename && trace.type !== 'shape' && (
+        <div
+          className="absolute text-xs font-semibold text-center pointer-events-none"
+          style={{
+            bottom: `-${20}px`,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: borderColor,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {trace.username}
+        </div>
+      )}
+
+      {/* Description label - shown to the right of media traces when enabled */}
+      {showDescription && trace.content && (trace.type === 'image' || trace.type === 'video' || trace.type === 'embed') && (
+        <div
+          className="absolute text-xs pointer-events-none select-none"
+          style={{
+            left: `${borderWidth + 12}px`,
+            top: '0px',
+            maxWidth: '200px',
+            color: 'rgba(255, 255, 255, 0.8)',
+            lineHeight: '1.4',
+            textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
+          }}
+        >
+          {trace.content}
+        </div>
+      )}
+    </div>
+
+    {/* Transform controls (only for selected trace, not in crop mode, and only when this user can actually edit) */}
+    {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && (
+      // One layer for all of a trace's handles, so the drag feel can move
+      // them with it; above every trace, where each handle already sat.
+      <div data-trace-handles={trace.id} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 999998 }}>
+        {/* Special handles for path shapes */}
+        {(trace.type === 'shape' && trace.shapeType === 'path') ? (
+          <>
+            {/* Point handles for path - using world coordinates */}
+            {(() => {
+              const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
+              return points.map((point, index) => {
+              // Convert world coordinates to screen coordinates
+              const { screenX, screenY } = getScreenPosition(point.x, point.y)
+              
+              const isPointSelected = selectedPointIndex === index
+              const isBezier = displayTrace.pathCurveType === 'bezier'
+              
+              return (
+                <Fragment key={`point-${index}`}>
+                  {/* Main point handle */}
+                  <div
+                    data-trace-element="true"
+                    className={`absolute w-4 h-4 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform ${
+                      isPointSelected ? 'bg-white' : 'bg-gray-400'
+                    }`}
+                    style={{
+                      left: `${screenX}px`,
+                      top: `${screenY}px`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation() // Prevent background deselection
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setSelectedPointIndex(index)
+                      handleMouseDown(e, trace, 'point', `${index}`)
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      setSelectedPointIndex(index)
+                      handleTouchDown(e, trace, 'point', `${index}`)
+                    }}
+                  />
+                  
+                  {/* Control point handles (only in bezier mode and when point is selected) */}
+                  {isBezier && isPointSelected && (
+                    <>
+                      {(() => {
+                        const cp1x = point.cp1x ?? point.x - 20
+                        const cp1y = point.cp1y ?? point.y
+                        const { screenX: cp1ScreenX, screenY: cp1ScreenY } = getScreenPosition(cp1x, cp1y)
+                        
+                        return (
+                          <>
+                            {/* Line from point to control handle */}
+                            <svg
+                              className="absolute pointer-events-none"
+                              style={{
+                                left: 0,
+                                top: 0,
+                                width: '100%',
+                                height: '100%',
+                                overflow: 'visible',
+                                zIndex: 9
+                              }}
+                            >
+                              <line
+                                x1={screenX}
+                                y1={screenY}
+                                x2={cp1ScreenX}
+                                y2={cp1ScreenY}
+                                stroke="#9ca3af"
+                                strokeWidth="1"
+                                strokeDasharray="4 2"
+                              />
+                            </svg>
+                            {/* Control handle */}
+                            <div
+                              data-trace-element="true"
+                              className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
+                              style={{
+                                left: `${cp1ScreenX}px`,
+                                top: `${cp1ScreenY}px`,
+                                transform: 'translate(-50%, -50%)',
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation() // Prevent background deselection
+                              }}
+                              onMouseDown={(e) => {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                setSelectedPointIndex(index) // Preserve point selection
+                                handleMouseDown(e, trace, 'control-in', `${index}`)
+                              }}
+                              onTouchStart={(e) => {
+                                e.stopPropagation()
+                                setSelectedPointIndex(index)
+                                handleTouchDown(e, trace, 'control-in', `${index}`)
+                              }}
+                            />
+                          </>
+                        )
+                      })()}
+                      
+                      {/* Out-handle (cp2) */}
+                      {(() => {
+                        const cp2x = point.cp2x ?? point.x + 20
+                        const cp2y = point.cp2y ?? point.y
+                        const { screenX: cp2ScreenX, screenY: cp2ScreenY } = getScreenPosition(cp2x, cp2y)
+                        
+                        return (
+                          <>
+                            {/* Line from point to control handle */}
+                            <svg
+                              className="absolute pointer-events-none"
+                              style={{
+                                left: 0,
+                                top: 0,
+                                width: '100%',
+                                height: '100%',
+                                overflow: 'visible',
+                                zIndex: 9
+                              }}
+                            >
+                              <line
+                                x1={screenX}
+                                y1={screenY}
+                                x2={cp2ScreenX}
+                                y2={cp2ScreenY}
+                                stroke="#9ca3af"
+                                strokeWidth="1"
+                                strokeDasharray="4 2"
+                              />
+                            </svg>
+                            {/* Control handle */}
+                            <div
+                              data-trace-element="true"
+                              className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-10"
+                              style={{
+                                left: `${cp2ScreenX}px`,
+                                top: `${cp2ScreenY}px`,
+                                transform: 'translate(-50%, -50%)',
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation() // Prevent background deselection
+                              }}
+                              onMouseDown={(e) => {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                setSelectedPointIndex(index) // Preserve point selection
+                                handleMouseDown(e, trace, 'control-out', `${index}`)
+                              }}
+                              onTouchStart={(e) => {
+                                e.stopPropagation()
+                                setSelectedPointIndex(index)
+                                handleTouchDown(e, trace, 'control-out', `${index}`)
+                              }}
+                            />
+                          </>
+                        )
+                      })()}
+                    </>
+                  )}
+                </Fragment>
+              )
+            })
+            })()}
+            
+            {/* Move handle for entire path - centered on all points */}
+            {(() => {
+              const points = localShapePoints[trace.id] || trace.shapePoints || []
+              if (points.length === 0) return null
+              
+              // Calculate centroid
+              const sumX = points.reduce((sum, p) => sum + p.x, 0)
+              const sumY = points.reduce((sum, p) => sum + p.y, 0)
+              const centerX = sumX / points.length
+              const centerY = sumY / points.length
+              
+              const { screenX, screenY } = getScreenPosition(centerX, centerY)
+              
+              return (
+                <div
+                  data-trace-element="true"
+                  className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-10"
+                  style={{
+                    left: `${screenX}px`,
+                    top: `${screenY}px`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    setSelectedPointIndex(null)
+                    handleMouseDown(e, trace, 'move-path', 'move-all')
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation()
+                    setSelectedPointIndex(null)
+                    handleTouchDown(e, trace, 'move-path', 'move-all')
+                  }}
+                />
+              )
+            })()}
+          </>
+        ) : null}
+
+        {/* Crop button for all trace types (not for path).
+
+            Colours only in the transition. It was transition-all, and
+            its position is left/top: every move of the trace became a
+            150ms glide, so the button trailed behind a dragged trace.
+            (Its hover:scale-105 never worked either -- the inline
+            transform below overrides it.) */}
+        {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
+        <button
+          data-trace-element="true"
+          className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-colors tracking-[0.18em] uppercase"
+          style={{
+            left: `${screenX}px`,
+            top: `${screenY + (borderHeight / 2 + 30 * zoom)}px`,
+            // Centred first, then scaled, so it stays under the middle
+            // of the trace at any zoom.
+            transform: `translate(-50%, 0) scale(${zoom})`,
+            transformOrigin: 'top center',
+            // Tokens, like the type badge. Every colour here was a
+            // literal of the dark palette, so in light mode the button
+            // came out dark-on-dark. Inline styles take
+            // rgb(var(--x) / a) directly -- it is only Tailwind's
+            // scanner that cannot see tokens inside arbitrary class
+            // values.
+            color: isCropMode ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
+            background: isCropMode ? 'rgb(var(--c-surface) / 0.98)' : 'rgb(var(--c-ground) / 0.94)',
+            borderColor: isCropMode ? 'rgb(var(--c-fg) / 0.8)' : 'rgb(var(--c-line) / 0.7)',
+            boxShadow: isCropMode ? '0 0 10px rgb(var(--c-fg) / 0.3)' : '0 0 8px rgb(var(--c-line) / 0.3)',
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            setIsCropMode(!isCropMode)
+            setTransformMode('none')
+          }}
+        >
+          {isCropMode ? `✓ ${t('atrium.controls.cropDone')}` : `✂ ${t('atrium.controls.crop')}`}
+        </button>
+        ) : null}
+      </div>
+    )}
+
+    {/* Controls for a trace that is currently interactive.
+
+        An embed with Enable Interaction on hands every click to the
+        iframe -- which is the point, and also means the trace can no
+        longer be picked up or, without opening Customize, switched
+        back. So while it is on, it carries the two things it has just
+        given away: a grip to move by, and the switch to turn it off.
+
+        Shown whenever interaction is on, selected or not, because the
+        problem they solve exists whether or not the trace happens to
+        be selected -- an interactive embed you cannot grab is stuck
+        regardless. They disappear the moment it is switched off,
+        since the trace answers the pointer normally again.
+
+        Below the trace, on the same line the crop button uses, and
+        built from the same tokens so the row reads as one set of
+        controls rather than three unrelated widgets. */}
+    {trace.enableInteraction && canEdit && (
+      <div
+        className="absolute z-10 flex items-stretch gap-2 pointer-events-none"
+        // Scaled with the camera, like the frame around the trace.
+        //
+        // Everything in here is sized in flat pixels -- the padding,
+        // the type, the gap -- so at a distance the controls loomed
+        // over a small trace and up close they shrank to nothing
+        // beside a large one. The trace grows with the zoom; the
+        // things attached to it have to grow with it too, which is the
+        // same fix the border needed.
+        style={{
+          left: `${screenX - (borderWidth / 2)}px`,
+          top: `${screenY + (borderHeight / 2 + 12 * zoom)}px`,
+          transform: `scale(${zoom})`,
+          transformOrigin: 'top left',
+        }}
+      >
+        {/* The grip. Starts the same drag the trace body would, so it
+            behaves like a handle on the trace rather than a control
+            of its own -- press and move and the trace comes with it. */}
+        <button
+          data-trace-element="true"
+          title={t('atrium.customize.dragToMove')}
+          aria-label={t('atrium.customize.dragToMove')}
+          className="pointer-events-auto flex items-center justify-center px-2 border cursor-move transition-colors"
+          style={{
+            color: 'rgb(var(--c-fg) / 0.8)',
+            background: 'rgb(var(--c-ground) / 0.94)',
+            borderColor: 'rgb(var(--c-line) / 0.7)',
+          }}
+          onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          // The grip stands in for the trace while interaction is on,
+          // so it has to answer a right-click the way the trace body
+          // would -- otherwise Customize, Move to Group and the rest
+          // are unreachable for exactly the traces that most need
+          // them, since the embed swallows the right-click too.
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setSelectedTraceId(trace.id)
+            setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <path d="M6 1v10M1 6h10M6 1L4.4 2.6M6 1l1.6 1.6M6 11l-1.6-1.6M6 11l1.6-1.6M1 6l1.6-1.6M1 6l1.6 1.6M11 6L9.4 4.4M11 6L9.4 7.6" />
+          </svg>
+        </button>
+
+        <button
+          data-trace-element="true"
+          className="pointer-events-auto text-[10px] font-semibold px-3 py-1.5 border transition-colors tracking-[0.18em] uppercase whitespace-nowrap"
+          style={{
+            color: 'rgb(var(--c-fg) / 0.8)',
+            background: 'rgb(var(--c-ground) / 0.94)',
+            borderColor: 'rgb(var(--c-line) / 0.7)',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            updateTraceCustomization(trace.id, { enableInteraction: false })
+            if (editingTraceRef.current?.id === trace.id) {
+              setEditingTrace({ ...editingTraceRef.current, enableInteraction: false })
+            }
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          {t('atrium.menu.disableInteraction')}
+        </button>
+      </div>
+    )}
+
+    {/* Crop mode handles (only when crop mode is active) */}
+    {isSelected && isCropMode && canEdit && (
+      <>
+        {/* Crop area overlay - shows the crop boundaries */}
+        <div
+          className="absolute pointer-events-auto cursor-pointer"
+          style={{
+            left: `${screenX - (width * (transform as any).scaleX * zoom / 2)}px`,
+            top: `${screenY - (height * (transform as any).scaleY * zoom / 2)}px`,
+            width: `${width * (transform as any).scaleX * zoom}px`,
+            height: `${height * (transform as any).scaleY * zoom}px`,
+            border: '1px dashed rgba(143, 143, 143, 0.95)',
+            boxShadow: 'inset 0 0 0 9999px rgba(25, 25, 25, 0.4), 0 0 0 1px rgba(203, 203, 203, 0.2)',
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            setIsCropMode(false)
+            setTransformMode('none')
+          }}
+        />
+        
+        {/* Crop handles at corners for adjusting crop area */}
+        {['tl', 'tr', 'bl', 'br'].map((corner) => {
+          const cropX = trace.cropX ?? 0
+          const cropY = trace.cropY ?? 0
+          const cropWidth = trace.cropWidth ?? 1
+          const cropHeight = trace.cropHeight ?? 1
+          
+          // Calculate position based on crop values
+          const baseX = screenX - (width * (transform as any).scaleX * zoom / 2)
+          const baseY = screenY - (height * (transform as any).scaleY * zoom / 2)
+          const containerWidth = width * (transform as any).scaleX * zoom
+          const containerHeight = height * (transform as any).scaleY * zoom
+          
+          const cropLeft = baseX + (cropX * containerWidth)
+          const cropTop = baseY + (cropY * containerHeight)
+          const cropRight = baseX + ((cropX + cropWidth) * containerWidth)
+          const cropBottom = baseY + ((cropY + cropHeight) * containerHeight)
+          
+          const handleX = corner.includes('r') ? cropRight : cropLeft
+          const handleY = corner.includes('b') ? cropBottom : cropTop
+          
+          return (
+            <div
+              key={`crop-${corner}`}
+              data-trace-element="true"
+              className="absolute trace-nier-handle trace-nier-handle-crop cursor-nwse-resize pointer-events-auto z-10"
+              style={{
+                left: `${handleX}px`,
+                top: `${handleY}px`,
+                transform: 'translate(-50%, -50%)',
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation()
+                handleMouseDown(e, trace, 'crop', corner)
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation()
+                handleTouchDown(e, trace, 'crop', corner)
+              }}
+            />
+          )
         })}
+      </>
+    )}
+  </div>
+</div>
+)
+  }
+
+  return (
+    <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
+      {/* Everything anchored to the world -- traces and their handles -- in
+          one layer, so the floating view (see LobbyScene) moves it together
+          with the grid and leaves the menus and panels still. The cursors are
+          drawn after it: a moved layer is a stacking context of its own, and
+          inside it they couldn't rise above the menus the way they always have. */}
+      <div className="view-drift" style={{ position: 'absolute', inset: 0 }}>
+      {/* Render traces AND player in z-index order */}
+      {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
 
         {/* Render path point handles as absolute overlay (only for selected path) */}
         {selectedTraceId && (() => {
@@ -7042,7 +7069,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             pivoting on the box's center so the selection transforms as a
             single rigid unit. Corner-only (no edge handles): a non-uniform
             group scale would shear any child that has its own rotation. */}
-        {multiSelectedIds.size > 1 && canEdit && !isCropMode && springingIds.size === 0 && (() => {
+        {multiSelectedIds.size > 1 && canEdit && !isCropMode && (() => {
           const bounds = getGroupBounds(Array.from(multiSelectedIds))
           if (!bounds) return null
 
@@ -7054,7 +7081,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           const boxHeight = bottomRight.screenY - topLeft.screenY
 
           return (
-            <>
+            <div data-group-handles style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 999998 }}>
               <div
                 className="absolute pointer-events-none z-[999998]"
                 style={{
@@ -7090,9 +7117,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                 onMouseDown={(e) => handleGroupMouseDown(e, 'group-rotate')}
                 onTouchStart={(e) => handleGroupTouchDown(e, 'group-rotate')}
               />
-            </>
+            </div>
           )
         })()}
+
+      </div>
+
+        {/* The player's own cursor, above everything, as it always was. */}
+        {sortedItems.filter(item => item.type === 'player').map(renderSortedItem)}
 
         {/* Render other users' cursors */}
         {!hideOtherCursors && Object.entries(otherUsers).map(([odUserId, user]) => {
@@ -7180,7 +7212,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           )
         })}
 
-      </div>
 
       {/* Live rotation angle, shown only during a rotate drag. Offset from the
           cursor so it never sits under the pointer, and pointer-events-none so

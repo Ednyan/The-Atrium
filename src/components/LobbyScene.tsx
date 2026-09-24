@@ -934,30 +934,45 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // hovering. Any input settles it back quickly, so nothing is ever clicked or
   // dragged while it's out of place; and it never runs while drawing, where
   // the strokes are on a canvas of their own that doesn't drift with it.
+  //
+  // The two layers are moved directly. It used to set a custom property on
+  // the scene's root, which every element in the atrium inherits -- so every
+  // frame restyled all of them, and the drift stuttered.
   const viewFloat = useGameStore(s => s.viewFloat)
   useEffect(() => {
     const root = sceneRootRef.current
     if (!root || viewFloat <= 0) return
-    const amp = (viewFloat / 100) * 10
-    let lastInput = performance.now(), weight = 0, raf = 0
+    const amp = (viewFloat / 100) * 18
+    let lastInput = performance.now(), weight = 0, raf = 0, prev = performance.now(), still = true
     const touched = () => { lastInput = performance.now() }
     const kinds = ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart'] as const
     kinds.forEach(k => window.addEventListener(k, touched, { passive: true }))
     const tick = (now: number) => {
+      const dt = Math.min(now - prev, 100)
+      prev = now
       const idle = now - lastInput > 1500 && !isDrawingModeRef.current
-      // In over a couple of seconds, out in a fraction of one.
-      weight += ((idle ? 1 : 0) - weight) * (idle ? 0.012 : 0.2)
-      const t = now / 1000
-      const x = weight * amp * (0.8 * Math.sin((t * 2 * Math.PI) / 11) + 0.2 * Math.sin((t * 2 * Math.PI) / 4.3))
-      const y = weight * amp * (0.7 * Math.cos((t * 2 * Math.PI) / 13) + 0.3 * Math.sin((t * 2 * Math.PI) / 5.7))
-      root.style.setProperty('--view-drift', `${x.toFixed(2)}px ${y.toFixed(2)}px`)
+      // Eased by time, not by frame: in over about three seconds, out in a
+      // fifth of one.
+      weight += ((idle ? 1 : 0) - weight) * (1 - Math.exp(-dt / (idle ? 1000 : 70)))
+      const layers = root.querySelectorAll<HTMLElement>('.view-drift')
+      if (weight < 0.001) {
+        if (!still) layers.forEach(el => { el.style.translate = '' })
+        still = true
+      } else {
+        // Two slow swells a direction, out of step, so it never visibly loops.
+        const t = now / 1000
+        const x = weight * amp * (0.75 * Math.sin((t * 2 * Math.PI) / 9.7) + 0.25 * Math.sin((t * 2 * Math.PI) / 4.1 + 1.3))
+        const y = weight * amp * (0.7 * Math.sin((t * 2 * Math.PI) / 12.3 + 0.6) + 0.3 * Math.sin((t * 2 * Math.PI) / 5.3 + 2.1))
+        layers.forEach(el => { el.style.translate = `${x.toFixed(2)}px ${y.toFixed(2)}px` })
+        still = false
+      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
       kinds.forEach(k => window.removeEventListener(k, touched))
-      root.style.removeProperty('--view-drift')
+      root.querySelectorAll<HTMLElement>('.view-drift').forEach(el => { el.style.translate = '' })
     }
   }, [viewFloat])
 
@@ -4634,7 +4649,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     <div
       ref={sceneRootRef}
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
-      style={{ touchAction: 'none' }}
+      // The atrium's own colour behind the grid, so the sliver the floating
+      // view uncovers at the screen's edge matches it instead of showing black.
+      style={{ touchAction: 'none', backgroundColor: currentLobby?.themeSettings?.backgroundColor || undefined }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
