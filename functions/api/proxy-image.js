@@ -49,12 +49,26 @@ export async function onRequest(context) {
 
     // Get the image data
     const imageData = await response.arrayBuffer()
-    const contentType = response.headers.get('content-type') || 'image/png'
+    const upstreamType = response.headers.get('content-type') || ''
+
+    // This answers from the site's own origin, so whatever it passes on is
+    // treated as the Atrium's own. An HTML page fetched through it used to be
+    // served as HTML -- a script in it ran as the site, with the signed-in
+    // session in reach, and one link to it was enough. Images keep their
+    // type; anything else goes out as bytes to download, which an <img> still
+    // decodes when it really is a picture behind a vague type.
+    const isImage = /^image\//i.test(upstreamType)
+    const contentType = isImage ? upstreamType : 'application/octet-stream'
 
     // Return with CORS headers
     return new Response(imageData, {
       headers: {
         'Content-Type': contentType,
+        'X-Content-Type-Options': 'nosniff',
+        // An SVG is an image that can carry script. Inside an <img> it never
+        // runs; opened directly, this keeps it from running there either.
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        ...(isImage ? {} : { 'Content-Disposition': 'attachment' }),
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
