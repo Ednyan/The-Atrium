@@ -927,6 +927,39 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const smoothedPointRef = useRef<{ x: number; y: number } | null>(null)
   const drawingSmoothingRef = useRef(30)
   const brushCursorRef = useRef<HTMLDivElement>(null)
+  const sceneRootRef = useRef<HTMLDivElement>(null)
+
+  // Floating view (Profile > Animations). Once nothing has moved for a moment,
+  // the world -- grid and traces, not the panels -- drifts a few pixels, as if
+  // hovering. Any input settles it back quickly, so nothing is ever clicked or
+  // dragged while it's out of place; and it never runs while drawing, where
+  // the strokes are on a canvas of their own that doesn't drift with it.
+  const viewFloat = useGameStore(s => s.viewFloat)
+  useEffect(() => {
+    const root = sceneRootRef.current
+    if (!root || viewFloat <= 0) return
+    const amp = (viewFloat / 100) * 10
+    let lastInput = performance.now(), weight = 0, raf = 0
+    const touched = () => { lastInput = performance.now() }
+    const kinds = ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart'] as const
+    kinds.forEach(k => window.addEventListener(k, touched, { passive: true }))
+    const tick = (now: number) => {
+      const idle = now - lastInput > 1500 && !isDrawingModeRef.current
+      // In over a couple of seconds, out in a fraction of one.
+      weight += ((idle ? 1 : 0) - weight) * (idle ? 0.012 : 0.2)
+      const t = now / 1000
+      const x = weight * amp * (0.8 * Math.sin((t * 2 * Math.PI) / 11) + 0.2 * Math.sin((t * 2 * Math.PI) / 4.3))
+      const y = weight * amp * (0.7 * Math.cos((t * 2 * Math.PI) / 13) + 0.3 * Math.sin((t * 2 * Math.PI) / 5.7))
+      root.style.setProperty('--view-drift', `${x.toFixed(2)}px ${y.toFixed(2)}px`)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      kinds.forEach(k => window.removeEventListener(k, touched))
+      root.style.removeProperty('--view-drift')
+    }
+  }, [viewFloat])
 
   // Drawing history. Snapshots of the whole stroke list rather than a stack of
   // strokes, because "clear" has to be undoable too and there is no single
@@ -4599,6 +4632,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   return (
     <div
+      ref={sceneRootRef}
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
       style={{ touchAction: 'none' }}
       onDragOver={handleDragOver}
@@ -4608,7 +4642,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
         {/* Pixi Canvas */}
-        <div ref={canvasRef} className="absolute inset-0" />
+        <div ref={canvasRef} className="absolute inset-0 view-drift" />
         
         {/* Trace Content Overlay */}
         <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>

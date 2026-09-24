@@ -410,7 +410,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -2118,6 +2118,79 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     raf = requestAnimationFrame(tick)
   }
 
+  // ---- Drag feel: a held trace trails, leans and settles --------------------
+  //
+  // While a trace is dragged it follows the pointer on a spring rather than
+  // rigidly: a little behind when pulled fast, leaning into the pull, and
+  // settling with a small bounce when it stops or is let go. Only the drawing
+  // is offset -- through the element's own translate and rotate, which apply
+  // alongside the transform it already has -- so where the trace actually is,
+  // what gets saved, snapped and aligned, still follows the pointer exactly.
+  //
+  // Its handles hide until it settles: they're drawn separately, and would be
+  // left behind by it.
+  const dragBounceRef = useRef(dragBounce)
+  dragBounceRef.current = dragBounce
+  const dragFeelRef = useRef<{ px: number; py: number; held: boolean; stop: () => void } | null>(null)
+  const [springingIds, setSpringingIds] = useState<Set<string>>(new Set())
+
+  const startDragFeel = (ids: string[], px: number, py: number) => {
+    dragFeelRef.current?.stop()
+    const strength = dragBounceRef.current / 100
+    if (!strength || ids.length === 0) return
+    const parts = ids
+      .flatMap(id => Array.from(document.querySelectorAll<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)))
+      .map(el => ({ el, dx: -el.offsetWidth / 2, dy: -el.offsetHeight / 2 }))
+    // Snappier at low settings, looser at high; always a little under-damped,
+    // which is the bounce.
+    const omega = (2 * Math.PI) / (60 + 140 * strength)
+    const damping = 0.5
+    let x = px, y = py, vx = 0, vy = 0, raf = 0, last = performance.now()
+    const feel = {
+      px, py, held: true,
+      stop: () => {
+        cancelAnimationFrame(raf)
+        for (const p of parts) { p.el.style.translate = ''; p.el.style.rotate = '' }
+        if (dragFeelRef.current === feel) dragFeelRef.current = null
+        setSpringingIds(new Set())
+      },
+    }
+    const tick = (now: number) => {
+      let dt = Math.min(now - last, 48)
+      last = now
+      while (dt > 0) {
+        const h = Math.min(dt, 4)
+        dt -= h
+        vx += (omega * omega * (feel.px - x) - 2 * damping * omega * vx) * h
+        vy += (omega * omega * (feel.py - y) - 2 * damping * omega * vy) * h
+        x += vx * h
+        y += vy * h
+      }
+      const ox = x - feel.px, oy = y - feel.py
+      // Leaning into the pull, as a card held by its top edge does: dragged
+      // right, the trailing side swings back and it tips clockwise.
+      const lean = (Math.max(-6, Math.min(6, -ox * 0.25)) * Math.PI) / 180
+      const cos = Math.cos(lean), sin = Math.sin(lean)
+      for (const p of parts) {
+        // The element turns about its layout box's centre, which isn't where
+        // the trace is drawn -- it's shifted back half its size. The extra
+        // translate makes the turn about the trace's own centre.
+        const cx = p.dx - (p.dx * cos - p.dy * sin)
+        const cy = p.dy - (p.dx * sin + p.dy * cos)
+        p.el.style.translate = `${ox + cx}px ${oy + cy}px`
+        p.el.style.rotate = `${lean}rad`
+      }
+      if (!feel.held && Math.hypot(ox, oy) < 0.3 && Math.hypot(vx, vy) < 0.01) {
+        feel.stop()
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    dragFeelRef.current = feel
+    setSpringingIds(new Set(ids))
+    raf = requestAnimationFrame(tick)
+  }
+
   // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
   // autosave, and the desktop close-with-unsaved-changes prompt.
 
@@ -2670,6 +2743,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     
     const { screenX, screenY } = getScreenPosition(transform.x, transform.y)
     centerRef.current = { x: screenX, y: screenY }
+
+    if (mode === 'move') {
+      startDragFeel(isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : [trace.id], e.clientX, e.clientY)
+    }
   }
 
   // Starts a scale/rotate drag on the multi-selection as a whole. Unlike
@@ -2938,6 +3015,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       samples.push({ x: e.clientX, y: e.clientY, t: performance.now() })
       if (samples.length > 8) samples.shift()
       dragShiftRef.current = !!e.shiftKey
+      if (dragFeelRef.current) {
+        dragFeelRef.current.px = e.clientX
+        dragFeelRef.current.py = e.clientY
+      }
 
       // Convert screen delta to world delta
       let worldDeltaX = deltaX / currentZoom
@@ -3559,6 +3640,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const thrown = activeTransformMode === 'move'
       ? (isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : [])
       : []
+    // Let go: it settles toward where the pointer was released.
+    if (dragFeelRef.current) dragFeelRef.current.held = false
 
     // Cleared unconditionally: this runs before every early return below, so
     // the badge can't outlive its drag.
@@ -4807,6 +4890,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   return (
     <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
+      {/* Everything anchored to the world -- traces, their handles, cursors --
+          in one layer, so the floating view (set on .lobby-scene, see
+          LobbyScene) moves it together with the grid, and leaves the menus
+          and panels below it still. */}
+      <div className="view-drift" style={{ position: 'absolute', inset: 0 }}>
       {/* Render traces AND player in z-index order */}
       {sortedItems
           .map((item) => {
@@ -5170,6 +5258,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             {/* Container for positioning - doesn't scale */}
             <div
               data-trace-element="true"
+              data-trace-id={trace.id}
               className="absolute"
               style={{
                 left: `${screenX}px`,
@@ -6248,7 +6337,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             </div>
 
             {/* Transform controls (only for selected trace, not in crop mode, and only when this user can actually edit) */}
-            {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && (
+            {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && !springingIds.has(trace.id) && (
               <>
                 {/* Special handles for path shapes */}
                 {(trace.type === 'shape' && trace.shapeType === 'path') ? (
@@ -6458,11 +6547,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
                   </>
                 ) : null}
 
-                {/* Crop button for all trace types (not for path) */}
+                {/* Crop button for all trace types (not for path).
+
+                    Colours only in the transition. It was transition-all, and
+                    its position is left/top: every move of the trace became a
+                    150ms glide, so the button trailed behind a dragged trace.
+                    (Its hover:scale-105 never worked either -- the inline
+                    transform below overrides it.) */}
                 {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
                 <button
                   data-trace-element="true"
-                  className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-all hover:scale-105 tracking-[0.18em] uppercase"
+                  className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-colors tracking-[0.18em] uppercase"
                   style={{
                     left: `${screenX}px`,
                     top: `${screenY + (borderHeight / 2 + 30 * zoom)}px`,
@@ -6947,7 +7042,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             pivoting on the box's center so the selection transforms as a
             single rigid unit. Corner-only (no edge handles): a non-uniform
             group scale would shear any child that has its own rotation. */}
-        {multiSelectedIds.size > 1 && canEdit && !isCropMode && (() => {
+        {multiSelectedIds.size > 1 && canEdit && !isCropMode && springingIds.size === 0 && (() => {
           const bounds = getGroupBounds(Array.from(multiSelectedIds))
           if (!bounds) return null
 
@@ -7084,6 +7179,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             </div>
           )
         })}
+
+      </div>
 
       {/* Live rotation angle, shown only during a rotate drag. Offset from the
           cursor so it never sits under the pointer, and pointer-events-none so

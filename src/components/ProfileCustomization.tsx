@@ -39,9 +39,28 @@ const PRESET_COLORS = [
   '#C77DFF', // Purple
 ]
 
+// One 0-100 motion setting: its name and value, the slider, what it does.
+function LevelSlider({ label, hint, value, onChange }: { label: string; hint: string; value: number; onChange: (level: number) => void }) {
+  return (
+    <div>
+      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{label}</label>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        className="w-full accent-nier-bg"
+      />
+      <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">{hint}</p>
+    </div>
+  )
+}
+
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, viewFloat, setViewFloat } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -553,41 +572,10 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
             <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
           </div>
 
-          <div>
-            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              {t('atrium.profile.floating', { value: traceFloat })}
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={traceFloat}
-              onChange={(e) => setTraceFloat(parseInt(e.target.value, 10))}
-              className="w-full accent-nier-bg"
-            />
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.floatingHint')}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              {t('atrium.profile.momentum', { value: traceMomentum })}
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={traceMomentum}
-              onChange={(e) => setTraceMomentum(parseInt(e.target.value, 10))}
-              className="w-full accent-nier-bg"
-            />
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.momentumHint')}
-            </p>
-          </div>
+          <LevelSlider label={t('atrium.profile.dragBounce', { value: dragBounce })} hint={t('atrium.profile.dragBounceHint')} value={dragBounce} onChange={setDragBounce} />
+          <LevelSlider label={t('atrium.profile.viewFloat', { value: viewFloat })} hint={t('atrium.profile.viewFloatHint')} value={viewFloat} onChange={setViewFloat} />
+          <LevelSlider label={t('atrium.profile.floating', { value: traceFloat })} hint={t('atrium.profile.floatingHint')} value={traceFloat} onChange={setTraceFloat} />
+          <LevelSlider label={t('atrium.profile.momentum', { value: traceMomentum })} hint={t('atrium.profile.momentumHint')} value={traceMomentum} onChange={setTraceMomentum} />
 
           {/* Error/Success Messages */}
           {error && (

@@ -45,8 +45,11 @@ interface GameState {
   // Soft fade-out of traces as they approach the viewport edge. Purely a
   // visual preference, so it lives with the other localStorage toggles.
   traceFadeEnabled: boolean
-  // How much traces drift on their own, and how far a thrown one glides on,
-  // 0-100 each; 0 turns it off. Set under Profile, "Animations".
+  // Motion, 0-100 each, 0 off; set under Profile, "Animations". How a dragged
+  // trace trails and settles, how much the view drifts when left alone, how
+  // much traces drift on their own, and how far a thrown one glides on.
+  dragBounce: number
+  viewFloat: number
   traceFloat: number
   traceMomentum: number
   cursorState: CursorState
@@ -73,6 +76,8 @@ interface GameState {
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
+  setDragBounce: (level: number) => void
+  setViewFloat: (level: number) => void
   setTraceFloat: (level: number) => void
   setTraceMomentum: (level: number) => void
   setCursorState: (state: CursorState) => void
@@ -148,8 +153,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('traceFadeEnabled')
     return stored !== null ? stored === 'true' : true
   })(),
-  traceFloat: readLevel('traceFloat', 35),
-  traceMomentum: readLevel('traceMomentum', 50),
+  dragBounce: readLevel('dragBounce', 50),
+  viewFloat: readLevel('viewFloat', 30),
+  traceFloat: readLevel('traceFloat', 0),
+  traceMomentum: readLevel('traceMomentum', 0),
   cursorState: 'default',
   otherUsers: {},  // Changed from new Map() to {}
   traces: [],
@@ -197,6 +204,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   setTraceFadeEnabled: (enabled) => {
     localStorage.setItem('traceFadeEnabled', String(enabled))
     set({ traceFadeEnabled: enabled })
+  },
+  setDragBounce: (level) => {
+    const clamped = clampLevel(level)
+    try { localStorage.setItem('dragBounce', String(clamped)) } catch { /* kept for this session only */ }
+    set({ dragBounce: clamped })
+  },
+  setViewFloat: (level) => {
+    const clamped = clampLevel(level)
+    try { localStorage.setItem('viewFloat', String(clamped)) } catch { /* kept for this session only */ }
+    set({ viewFloat: clamped })
   },
   setTraceFloat: (level) => {
     const clamped = clampLevel(level)
