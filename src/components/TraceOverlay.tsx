@@ -42,6 +42,7 @@ import { DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
+import { overPanel, panelDrop } from '../lib/panelDrop'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -1991,6 +1992,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Ctrl+Z still takes the whole throw back.
   const dragSamplesRef = useRef<{ x: number; y: number; t: number }[]>([])
   const dragShiftRef = useRef(false)
+  // True while a moved trace is carried over the Layer panel (lib/panelDrop).
+  const inPanelRef = useRef(false)
   const updateTraceTransformRef = useRef(updateTraceTransform)
   updateTraceTransformRef.current = updateTraceTransform
   const traceMomentumRef = useRef(traceMomentum)
@@ -3162,8 +3165,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // cursor is held still against the edge and only the camera is moving.
     lastPointerRef.current = { x: e.clientX, y: e.clientY, shiftKey: !!e.shiftKey }
 
-    const deltaX = e.clientX - startPosRef.current.x
-    const deltaY = e.clientY - startPosRef.current.y
+    // Carried over the Layer panel, a moved trace goes back to where it
+    // started -- the move is worked out as no move at all -- and the panel
+    // shows a card of it to place in the list instead (lib/panelDrop).
+    const isMove = activeTransformMode === 'move' || activeTransformMode === 'move-path'
+    const inPanel = isMove && overPanel(e.clientX, e.clientY)
+    if (isMove) {
+      const carried = isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : []
+      if (inPanel) panelDrop.current?.hover(carried, e.clientX, e.clientY)
+      else if (inPanelRef.current) panelDrop.current?.leave()
+      inPanelRef.current = inPanel
+    }
+    const deltaX = inPanel ? 0 : e.clientX - startPosRef.current.x
+    const deltaY = inPanel ? 0 : e.clientY - startPosRef.current.y
     
     // If mouse has moved more than 3 pixels, consider it a drag
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
@@ -3805,9 +3819,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const activeSelectedTraceId = selectedTraceIdRef.current
     transformModeRef.current = 'none'
     // What was being moved, taken now: the refs that say so are cleared below.
-    const thrown = activeTransformMode === 'move'
-      ? (isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : [])
-      : []
+    const carried = isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : []
+    // Let go over the Layer panel: the traces are already back where they
+    // started, and the panel places them in its list. Nothing is thrown.
+    const releasedInPanel = inPanelRef.current
+    inPanelRef.current = false
+    if (releasedInPanel) {
+      const at = lastPointerRef.current
+      if (at) panelDrop.current?.drop(carried, at.x, at.y)
+      else panelDrop.current?.leave()
+    }
+    const thrown = activeTransformMode === 'move' && !releasedInPanel ? carried : []
     // Let go: it settles onto where the trace now is, and its handles come
     // back once it has; with no settling to wait for, now.
     if (dragFeelRef.current) dragFeelRef.current.held = false
@@ -4150,6 +4172,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       raf = requestAnimationFrame(step)
       const pointer = lastPointerRef.current
       if (!pointer) return
+      // Not while carried over the Layer panel, which sits against an edge.
+      if (inPanelRef.current) return
 
       // Ramps from 0 at the inner boundary of the zone to 1 at the very edge,
       // so nudging into it drifts and pressing right up to it moves quickly --

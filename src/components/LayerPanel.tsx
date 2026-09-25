@@ -5,6 +5,7 @@ import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { Layer, Trace } from '../types/database'
 import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, type Ordered } from '../lib/order'
 import { feelSpring, feelStep } from '../lib/dragFeel'
+import { panelDrop, type PanelDropTarget } from '../lib/panelDrop'
 import { mapRowToLayer, reloadLayers } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
@@ -12,6 +13,61 @@ import { buildTraceInsertRow } from '../lib/traceInsert'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
+
+// Each trace type's mark in the list.
+const TYPE_GLYPH: Record<string, string> = { text: '◇', image: '◻', audio: '♪', video: '▷', embed: '⬡' }
+
+// Something lifted off the list -- a row being dragged, or the card of a trace
+// carried in from the canvas. It follows a point on the drag spring (lib/
+// dragFeel), trailing, leaning and settling as a trace does on the canvas;
+// land() sends it somewhere to settle and fade, drop() just fades it.
+// onFrame runs each frame while it's held (the list's edge scrolling).
+function liftCard(card: HTMLElement, at: { x: number; y: number; width: number; height: number }, strength: number, onFrame?: () => void) {
+  Object.assign(card.style, {
+    position: 'fixed',
+    left: `${at.x}px`,
+    top: `${at.y}px`,
+    width: `${at.width}px`,
+    height: `${at.height}px`,
+    margin: '0',
+    zIndex: '10000200',
+    opacity: '0.88',
+    pointerEvents: 'none',
+    boxShadow: '0 10px 28px rgb(0 0 0 / 0.45)',
+    transition: 'opacity 160ms ease',
+  })
+  document.body.appendChild(card)
+  const spring = feelSpring(at.x, at.y, at.width, at.height, strength)
+  let target = { x: at.x, y: at.y }
+  let landed: (() => void) | null = null
+  let last = performance.now()
+  let raf = requestAnimationFrame(tick)
+  function tick(now: number) {
+    const dt = Math.min(now - last, 48)
+    last = now
+    if (!landed) onFrame?.()
+    const drawn = strength ? feelStep(spring, target.x, target.y, dt) : { ox: 0, oy: 0, lean: 0, moving: false }
+    card.style.left = `${target.x}px`
+    card.style.top = `${target.y}px`
+    card.style.transform = `translate(${drawn.ox}px, ${drawn.oy}px) rotate(${drawn.lean}rad)`
+    if (landed && !drawn.moving) {
+      fade()
+      landed()
+      return
+    }
+    raf = requestAnimationFrame(tick)
+  }
+  function fade() {
+    cancelAnimationFrame(raf)
+    card.style.opacity = '0'
+    window.setTimeout(() => card.remove(), 160)
+  }
+  return {
+    follow(x: number, y: number) { target = { x, y } },
+    land(x: number, y: number, done: () => void = () => {}) { target = { x, y }; landed = done },
+    drop() { fade() },
+  }
+}
 
 // Where a dragged row would land: position `index` among the others in
 // `layerId` (bottom to top; for a group, among the groups), shown by a line --
@@ -104,6 +160,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const [rowDrag, setRowDrag] = useState<{ kind: 'group' | 'trace'; ids: string[] } | null>(null)
   const [dropSlot, setDropSlot] = useState<DropSlot | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   // The group whose name is being edited in place (double-click, or Rename).
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
@@ -686,6 +743,35 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  // The list scrolls under a drag held near its top or bottom edge; returns
+  // whether it did, since what's under the pointer changes with it.
+  const scrollListNear = (clientY: number) => {
+    const list = listRef.current
+    if (!list) return false
+    const r = list.getBoundingClientRect()
+    const edge = 36
+    const push = clientY < r.top + edge ? -(r.top + edge - clientY) : clientY > r.bottom - edge ? clientY - (r.bottom - edge) : 0
+    if (push) list.scrollTop += push * 0.35
+    return push !== 0
+  }
+
+  // Shows (or clears) where a drag would land.
+  const showSlot = (slot: DropSlot | null) => {
+    setDropSlot(slot)
+    setDropTargetId(slot && !slot.line ? slot.layerId ?? UNGROUPED_DROP_TARGET : null)
+  }
+
+  // Where a dropped card settles: on the bar, or on the header it went into.
+  const landingFor = (slot: DropSlot, height: number): { x: number; y: number } | null => {
+    if (slot.line) return { x: slot.line.left, y: slot.line.top - height / 2 }
+    const header = listRef.current?.querySelector<HTMLElement>(
+      slot.layerId ? `[data-group-header="${CSS.escape(slot.layerId)}"]` : '[data-ungrouped-header]')
+    const r = header?.getBoundingClientRect()
+    return r ? { x: r.left, y: r.top } : null
+  }
+
+  const dragStrength = () => useGameStore.getState().dragBounce / 100
+
   const beginRowDrag = (e: React.PointerEvent<HTMLElement>, kind: 'group' | 'trace', id: string) => {
     if (!canEdit || e.button !== 0 || renamingId) return
     if ((e.target as HTMLElement).closest('button, input, textarea')) return
@@ -695,94 +781,37 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const origin = row.getBoundingClientRect()
     const grab = { x: start.x - origin.left, y: start.y - origin.top }
     const ids = kind === 'trace' && multiSelectedSet.has(id) && multiSelectedSet.size > 1 ? Array.from(multiSelectedSet) : [id]
-    const strength = useGameStore.getState().dragBounce / 100
 
     let pointer = start
     let slot: DropSlot | null = null
-    let lifted: { ghost: HTMLElement; spring: ReturnType<typeof feelSpring> } | null = null
-    let landing: { x: number; y: number } | null = null
-    let raf = 0
-    let last = 0
-
-    const finish = () => {
-      cancelAnimationFrame(raf)
-      if (lifted) {
-        const ghost = lifted.ghost
-        ghost.style.opacity = '0'
-        window.setTimeout(() => ghost.remove(), 160)
-      }
-      lifted = null
-      row.style.opacity = ''
-      setRowDrag(null)
-    }
-
-    const tick = (now: number) => {
-      if (!lifted) return
-      const dt = Math.min(now - last, 48)
-      last = now
-      // The list scrolls under a drag held near its top or bottom edge.
-      const list = listRef.current
-      if (list && !landing) {
-        const r = list.getBoundingClientRect()
-        const edge = 36
-        const push = pointer.y < r.top + edge ? -(r.top + edge - pointer.y) : pointer.y > r.bottom - edge ? pointer.y - (r.bottom - edge) : 0
-        if (push) {
-          list.scrollTop += push * 0.35
-          slot = findDropSlot(kind, ids, pointer.y)
-          setDropSlot(slot)
-        }
-      }
-      const target = landing ?? { x: pointer.x - grab.x, y: pointer.y - grab.y }
-      const drawn = strength ? feelStep(lifted.spring, target.x, target.y, dt) : { ox: 0, oy: 0, lean: 0, moving: false }
-      lifted.ghost.style.left = `${target.x}px`
-      lifted.ghost.style.top = `${target.y}px`
-      lifted.ghost.style.transform = `translate(${drawn.ox}px, ${drawn.oy}px) rotate(${drawn.lean}rad)`
-      if (landing && !drawn.moving) {
-        finish()
-        return
-      }
-      raf = requestAnimationFrame(tick)
-    }
+    let card: ReturnType<typeof liftCard> | null = null
 
     const lift = () => {
       const ghost = row.cloneNode(true) as HTMLElement
       const style = getComputedStyle(row)
       Object.assign(ghost.style, {
-        position: 'fixed',
-        left: `${origin.left}px`,
-        top: `${origin.top}px`,
-        width: `${origin.width}px`,
-        height: `${origin.height}px`,
-        margin: '0',
-        zIndex: '10000200',
-        opacity: '0.88',
-        pointerEvents: 'none',
         fontFamily: style.fontFamily,
         color: style.color,
         background: 'rgb(var(--c-ground))',
         // A group's border is its card's, which isn't copied with the header.
         border: kind === 'group' ? '1px solid rgb(var(--c-fg) / 0.45)' : style.border,
-        boxShadow: '0 10px 28px rgb(0 0 0 / 0.45)',
-        transition: 'opacity 160ms ease',
       })
-      document.body.appendChild(ghost)
+      card = liftCard(ghost, { x: origin.left, y: origin.top, width: origin.width, height: origin.height }, dragStrength(), () => {
+        if (scrollListNear(pointer.y)) showSlot(slot = findDropSlot(kind, ids, pointer.y))
+      })
       row.style.opacity = '0.3'
-      lifted = { ghost, spring: feelSpring(origin.left, origin.top, origin.width, origin.height, strength) }
       setRowDrag({ kind, ids })
-      last = performance.now()
-      raf = requestAnimationFrame(tick)
     }
 
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return
       pointer = { x: ev.clientX, y: ev.clientY }
-      if (!lifted) {
+      if (!card) {
         if (Math.hypot(pointer.x - start.x, pointer.y - start.y) < 5) return
         lift()
       }
-      slot = findDropSlot(kind, ids, pointer.y)
-      setDropSlot(slot)
-      setDropTargetId(slot && !slot.line ? slot.layerId ?? UNGROUPED_DROP_TARGET : null)
+      card!.follow(pointer.x - grab.x, pointer.y - grab.y)
+      showSlot(slot = findDropSlot(kind, ids, pointer.y))
     }
 
     const end = (ev: PointerEvent) => {
@@ -790,41 +819,130 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)
-      if (!lifted) return // a click, left to onClick
+      if (!card) return // a click, left to onClick
       // The click that follows this release isn't one.
       const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault() }
       window.addEventListener('click', swallow, { capture: true, once: true })
       window.setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0)
 
-      setDropSlot(null)
-      setDropTargetId(null)
+      showSlot(null)
       const dropped = ev.type === 'pointerup' ? slot : null
       if (dropped) {
         if (kind === 'group') void moveGroupTo(ids[0], dropped.index)
         else void moveTracesTo(ids, dropped.layerId, dropped.index)
       }
-      if (!strength) {
-        finish()
-        return
-      }
-      // Settles where it landed -- on the bar, on the header it went into --
-      // or, dropped nowhere, back where it came from.
-      if (dropped?.line) landing = { x: dropped.line.left, y: dropped.line.top - origin.height / 2 }
-      else if (dropped) {
-        const header = listRef.current?.querySelector<HTMLElement>(
-          dropped.layerId ? `[data-group-header="${CSS.escape(dropped.layerId)}"]` : '[data-ungrouped-header]')
-        const r = header?.getBoundingClientRect()
-        landing = r ? { x: r.left, y: r.top } : { x: origin.left, y: origin.top }
-      } else {
-        const r = row.getBoundingClientRect()
-        landing = { x: r.left, y: r.top }
-      }
+      // Settles where it landed -- or, dropped nowhere, back where it came from.
+      const back = row.getBoundingClientRect()
+      const to = (dropped && landingFor(dropped, origin.height)) || { x: back.left, y: back.top }
+      card.land(to.x, to.y, () => {
+        row.style.opacity = ''
+        setRowDrag(null)
+      })
     }
 
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', end)
     window.addEventListener('pointercancel', end)
   }
+
+  // A trace carried in from the canvas (lib/panelDrop): a card of it under the
+  // pointer, placed like a dragged row -- between rows, or into a group. The
+  // canvas keeps the trace where the drag started meanwhile.
+  const carried = useRef<{ card: ReturnType<typeof liftCard>; pointerY: number } | null>(null)
+  const carryCard = (ids: string[]) => {
+    const traces = useGameStore.getState().traces
+    const first = traces.find(t => t.id === ids[0])
+    const card = document.createElement('div')
+    card.className = 'bg-nier-black border border-nier-border/60 px-2 flex items-center gap-2 text-xs font-mono text-nier-strong'
+    // The picture itself where the canvas has one to borrow, else its mark.
+    const picture = document.querySelector<HTMLImageElement>(`[data-trace-id="${CSS.escape(ids[0])}"] img`)
+    if (picture?.src) {
+      const thumb = document.createElement('img')
+      thumb.src = picture.src
+      thumb.className = 'w-6 h-6 object-cover shrink-0'
+      card.appendChild(thumb)
+    } else {
+      const mark = document.createElement('span')
+      mark.className = 'text-nier-bg/70'
+      mark.textContent = TYPE_GLYPH[first?.type ?? ''] ?? '◇'
+      card.appendChild(mark)
+    }
+    const name = document.createElement('span')
+    name.className = 'truncate tracking-wide'
+    name.textContent = first?.content.substring(0, 24) || t('atrium.layers.untitled')
+    card.appendChild(name)
+    if (ids.length > 1) {
+      const more = document.createElement('span')
+      more.className = 'ml-auto text-nier-bg/70'
+      more.textContent = `+${ids.length - 1}`
+      card.appendChild(more)
+    }
+    return card
+  }
+  // Under the pointer, but kept inside the panel's list.
+  const cardLeft = (x: number) => {
+    const list = listRef.current?.getBoundingClientRect()
+    if (!list) return x - 20
+    const width = list.width - 16
+    return Math.max(list.left + 8, Math.min(x - 20, list.right - width - 8))
+  }
+  // Read through a ref: the panel registers once, and these change each render.
+  const carryRef = useRef<Omit<PanelDropTarget, 'rect'>>({ hover: () => {}, drop: () => false, leave: () => {} })
+  carryRef.current = {
+    hover(ids, x, y) {
+      if (!canEdit) return
+      if (!carried.current) {
+        const width = (listRef.current?.clientWidth ?? 280) - 16
+        carried.current = {
+          pointerY: y,
+          card: liftCard(carryCard(ids), { x: cardLeft(x), y: y - 18, width, height: 36 }, dragStrength(), () => {
+            if (carried.current && scrollListNear(carried.current.pointerY)) showSlot(findDropSlot('trace', ids, carried.current.pointerY))
+          }),
+        }
+        setRowDrag({ kind: 'trace', ids })
+      }
+      carried.current.pointerY = y
+      carried.current.card.follow(cardLeft(x), y - 18)
+      showSlot(findDropSlot('trace', ids, y))
+    },
+    drop(ids, _x, y) {
+      const c = carried.current
+      carried.current = null
+      if (!c) return false
+      const slot = canEdit ? findDropSlot('trace', ids, y) : null
+      showSlot(null)
+      if (!slot) {
+        c.card.drop()
+        setRowDrag(null)
+        return false
+      }
+      void moveTracesTo(ids, slot.layerId, slot.index)
+      const to = landingFor(slot, 36)
+      if (to) c.card.land(to.x, to.y, () => setRowDrag(null))
+      else { c.card.drop(); setRowDrag(null) }
+      return true
+    },
+    leave() {
+      const c = carried.current
+      carried.current = null
+      c?.card.drop()
+      showSlot(null)
+      setRowDrag(null)
+    },
+  }
+  useEffect(() => {
+    const target = {
+      rect: () => panelRef.current?.getBoundingClientRect() ?? null,
+      hover: (ids: string[], x: number, y: number) => carryRef.current.hover(ids, x, y),
+      drop: (ids: string[], x: number, y: number) => carryRef.current.drop(ids, x, y),
+      leave: () => carryRef.current.leave(),
+    }
+    panelDrop.current = target
+    return () => {
+      if (panelDrop.current === target) panelDrop.current = null
+      carryRef.current.leave()
+    }
+  }, [])
 
   // From the latest set, not this render's: two quick toggles each started from
   // the same copy, and only the last one counted.
@@ -995,7 +1113,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const allItems = sortedLayers.map(l => ({ type: 'layer' as const, data: l }))
 
   return (
-    <div 
+    <div
+      ref={panelRef}
       data-ui-element="true"
       className="layer-panel panel-in-right fixed w-80 border-2 border-nier-bg shadow-2xl overflow-hidden flex flex-col z-[10000100] pointer-events-auto"
       style={{ 
@@ -1116,7 +1235,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 }}
               >
                 <div
-                  className="flex items-center gap-1 flex-1"
+                  className="flex items-center gap-1 flex-1 min-w-0"
                   title={t('atrium.layers.groupRowHint')}
                 >
                   {canEdit && (
@@ -1151,7 +1270,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     {isExpanded ? '▼' : '▶'}
                   </span>
                   <div
-                    className="flex items-center gap-2 flex-1 cursor-pointer"
+                    className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
                     onClick={() => {
                       // Just focuses the group as the target for new traces --
                       // does NOT select its traces on the canvas. That's the
@@ -1195,7 +1314,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         }}
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
-                        className="min-w-0 flex-1 bg-nier-black border border-nier-border/60 text-nier-strong text-xs tracking-wide px-1 py-0.5 outline-none"
+                        className="w-0 min-w-0 flex-1 bg-nier-black border border-nier-border/60 text-nier-strong text-xs tracking-wide px-1 py-0.5 outline-none"
                       />
                     ) : (
                       <span className="text-nier-strong text-xs tracking-wide">{layer.name}</span>
@@ -1282,11 +1401,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                           </span>
                         )}
                         <span className="text-nier-bg/70 text-xs">
-                          {trace.type === 'text' && '◇'}
-                          {trace.type === 'image' && '◻'}
-                          {trace.type === 'audio' && '♪'}
-                          {trace.type === 'video' && '▷'}
-                          {trace.type === 'embed' && '⬡'}
+                          {TYPE_GLYPH[trace.type] ?? ''}
                         </span>
                         <span className="text-nier-strong/80 truncate tracking-wide">
                           {trace.content.substring(0, 20) || t('atrium.layers.untitled')}
@@ -1444,11 +1559,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       </span>
                     )}
                     <span className="text-nier-bg/70 text-xs">
-                      {trace.type === 'text' && '◇'}
-                      {trace.type === 'image' && '◻'}
-                      {trace.type === 'audio' && '♪'}
-                      {trace.type === 'video' && '▷'}
-                      {trace.type === 'embed' && '⬡'}
+                      {TYPE_GLYPH[trace.type] ?? ''}
                     </span>
                     <span className="text-nier-strong/80 truncate tracking-wide">
                       {trace.content.substring(0, 20) || t('atrium.layers.untitled')}
