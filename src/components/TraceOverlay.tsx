@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallb
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
+import { useLatestHandlers } from '../hooks/useLatestHandlers'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
 import { isEditableTarget } from '../lib/editableTarget'
@@ -618,13 +619,36 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow }: {
     )
 }
 
+// How long the trace stays visibly pressed after the click before the link
+// actually opens, so the press reads as a press rather than the atrium
+// seeming to jump straight to a browser.
+const LINK_OPEN_DELAY_MS = 1000
+
+// One trace, drawn again only when something it shows has changed.
+//
+// TraceOverlay draws every trace in one render, so any change anywhere -- a
+// trace dragged, a selection, an image loaded -- drew all of them again:
+// dragging one of three hundred on screen ran at 23 frames a second in
+// development, 63 in production, 10 on a slower machine. Each trace's drawing
+// is now kept while its signature (traceSignature) is unchanged, and only the
+// traces a change touches are drawn again.
+type TraceSlotProps = { trace: Trace; render: (trace: Trace) => React.ReactNode; signature: unknown[] }
+const TraceSlot = React.memo(
+  function TraceSlot({ trace, render }: TraceSlotProps) {
+    return <>{render(trace)}</>
+  },
+  (a, b) => a.trace === b.trace
+    && a.signature.length === b.signature.length
+    && a.signature.every((value, i) => Object.is(value, b.signature[i])),
+)
+
 // How far past the edges of the screen, in world units, traces are still
 // mounted. Also how far LobbyScene can slide this layer while a pan or zoom
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
 export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -896,10 +920,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const [pressedClickableId, setPressedClickableId] = useState<string | null>(null)
 
-  // How long the trace stays visibly pressed after the click before the link
-  // actually opens, so the press reads as a press rather than the atrium
-  // seeming to jump straight to a browser.
-  const LINK_OPEN_DELAY_MS = 1000
   // The trace whose link is about to open. Keeps the pressed styling on (and
   // the handles off) through the delay, after the button has been released.
   const [pendingLinkTraceId, setPendingLinkTraceId] = useState<string | null>(null)
@@ -5331,6 +5351,43 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     )
   }
 
+  // The handlers a trace's drawing calls from its events: of fixed identity, and
+  // always the latest version. TraceSlot can keep a trace's drawing -- handlers
+  // and all -- for many renders, and a plain handler would act on the state of
+  // the render it was made in.
+  const on = useLatestHandlers({ handleMouseDown, handleTouchDown, endTextEdit, fitTextLive, isClickThrough, updateTraceCustomization })
+
+  // Everything renderTrace reads while drawing `trace`, narrowed to this trace
+  // wherever it only ever asks about this one: while none of it changes, the
+  // drawing can't either, and TraceSlot keeps it. What its handlers read later
+  // is here too, where it isn't taken through `on`. tests/traceSlot.test.ts
+  // checks that nothing renderTrace reads is missing.
+  const traceSignature = (trace: Trace): unknown[] => {
+    // A path is drawn by renderPathSvg, which reads the whole selection and
+    // every trace: drawn afresh every time rather than traced through. There
+    // are few of them.
+    if (trace.type === 'shape' && trace.shapeType === 'path') return [{}]
+    const id = trace.id
+    const selected = selectedTraceId === id
+    const editing = inlineEditingTraceId === id
+    const page = documentPage[id] ?? 1
+    return [
+      // The view, and what every trace is drawn with. `t` is one function
+      // whatever the language, so the language stands in for it.
+      zoom, worldOffset, lobbyWidth, lobbyHeight, atriumBackground, canEdit, language,
+      showTraceTypeLabels, traceFadeEnabled, traceFloat,
+      // This trace.
+      zOf(trace), localTraceTransforms[id], imageDimensions[id], imageProxySources[id], imageRetryCount[id],
+      failedImages.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
+      playingMedia.has(id), movingIds.has(id), glidingIds.has(id),
+      // The selected trace's frame, and crop mode, which only it shows.
+      selected, multiSelectedIds.has(id), selected ? selectedPointIndex : null, selected && isCropMode, hiddenTraceId === id,
+      editingTrace?.id === id ? editingTrace : null, editing, editing ? inlineEditText : null,
+      pressedClickableId === id, pendingLinkTraceId === id,
+      documentError[id], page, documentPageCount[id], documentPages[`${id}:${page}`],
+    ]
+  }
+
   // One entry of sortedItems: a trace, or the player's own cursor. Named so the
   // two can be drawn in different layers -- see the world layer below.
   const renderSortedItem = (item: (typeof sortedItems)[number]) => {
@@ -5345,9 +5402,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         />
       )
     }
-
-    // Render trace
     const trace = item.trace!
+    return <TraceSlot key={trace.id} trace={trace} render={renderTrace} signature={traceSignature(trace)} />
+  }
+
+  // One trace, drawn -- inside its TraceSlot, which keeps the drawing while
+  // traceSignature(trace) is unchanged.
+  const renderTrace = (trace: Trace) => {
     if (trace.id === hiddenTraceId) return null
     // Use editingTrace for selected trace to show live updates (check ID match to be safe)
     const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
@@ -5589,17 +5650,19 @@ return (
       }}
       onMouseEnter={() => setCursorState('pointer')}
       onMouseLeave={() => setCursorState('default')}
-      onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
-      onTouchStart={(e) => handleTouchDown(e, trace, 'move')}
+      onMouseDown={(e) => on.handleMouseDown(e, trace, 'move')}
+      onTouchStart={(e) => on.handleTouchDown(e, trace, 'move')}
       onClick={(e) => {
-        // Don't handle clicks if we're in a transform mode (e.g., dragging a point)
-        if (transformMode !== 'none') {
+        // Don't handle clicks if we're in a transform mode (e.g., dragging a point).
+        // From the ref: a mode change isn't in the trace's signature, so this
+        // handler can be one from before it (see TraceSlot).
+        if (transformModeRef.current !== 'none') {
           e.stopPropagation()
           return
         }
         e.stopPropagation()
 
-        if (isClickThrough(trace, e)) {
+        if (on.isClickThrough(trace, e)) {
           // Deselected rather than selected: following a link is not
           // an edit, so leaving the transform frame up afterwards
           // would be handles nobody asked for. Shift-click and the
@@ -6557,21 +6620,21 @@ return (
               value={inlineEditText}
               onChange={(e) => {
                 setInlineEditText(e.target.value)
-                fitTextLive(trace, e.target.value, baseFontSize, textStyles.fontFamily)
+                on.fitTextLive(trace, e.target.value, baseFontSize, textStyles.fontFamily)
               }}
               onBlur={() => {
-                endTextEdit(trace.id)
+                on.endTextEdit(trace.id)
                 setInlineEditingTraceId(null)
                 setInlineEditText('')
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
-                  endTextEdit(trace.id, true)
+                  on.endTextEdit(trace.id, true)
                   setInlineEditingTraceId(null)
                   setInlineEditText('')
                 } else if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  endTextEdit(trace.id)
+                  on.endTextEdit(trace.id)
                   setInlineEditingTraceId(null)
                   setInlineEditText('')
                 }
@@ -6688,12 +6751,12 @@ return (
                       e.stopPropagation()
                       e.preventDefault()
                       setSelectedPointIndex(index)
-                      handleMouseDown(e, trace, 'point', `${index}`)
+                      on.handleMouseDown(e, trace, 'point', `${index}`)
                     }}
                     onTouchStart={(e) => {
                       e.stopPropagation()
                       setSelectedPointIndex(index)
-                      handleTouchDown(e, trace, 'point', `${index}`)
+                      on.handleTouchDown(e, trace, 'point', `${index}`)
                     }}
                   />
                   
@@ -6745,12 +6808,12 @@ return (
                                 e.stopPropagation()
                                 e.preventDefault()
                                 setSelectedPointIndex(index) // Preserve point selection
-                                handleMouseDown(e, trace, 'control-in', `${index}`)
+                                on.handleMouseDown(e, trace, 'control-in', `${index}`)
                               }}
                               onTouchStart={(e) => {
                                 e.stopPropagation()
                                 setSelectedPointIndex(index)
-                                handleTouchDown(e, trace, 'control-in', `${index}`)
+                                on.handleTouchDown(e, trace, 'control-in', `${index}`)
                               }}
                             />
                           </>
@@ -6803,12 +6866,12 @@ return (
                                 e.stopPropagation()
                                 e.preventDefault()
                                 setSelectedPointIndex(index) // Preserve point selection
-                                handleMouseDown(e, trace, 'control-out', `${index}`)
+                                on.handleMouseDown(e, trace, 'control-out', `${index}`)
                               }}
                               onTouchStart={(e) => {
                                 e.stopPropagation()
                                 setSelectedPointIndex(index)
-                                handleTouchDown(e, trace, 'control-out', `${index}`)
+                                on.handleTouchDown(e, trace, 'control-out', `${index}`)
                               }}
                             />
                           </>
@@ -6850,12 +6913,12 @@ return (
                     e.stopPropagation()
                     e.preventDefault()
                     setSelectedPointIndex(null)
-                    handleMouseDown(e, trace, 'move-path', 'move-all')
+                    on.handleMouseDown(e, trace, 'move-path', 'move-all')
                   }}
                   onTouchStart={(e) => {
                     e.stopPropagation()
                     setSelectedPointIndex(null)
-                    handleTouchDown(e, trace, 'move-path', 'move-all')
+                    on.handleTouchDown(e, trace, 'move-path', 'move-all')
                   }}
                 />
               )
@@ -6952,7 +7015,7 @@ return (
             background: 'rgb(var(--c-ground) / 0.94)',
             borderColor: 'rgb(var(--c-line) / 0.7)',
           }}
-          onMouseDown={(e) => handleMouseDown(e, trace, 'move')}
+          onMouseDown={(e) => on.handleMouseDown(e, trace, 'move')}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
           // The grip stands in for the trace while interaction is on,
@@ -6983,7 +7046,7 @@ return (
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation()
-            updateTraceCustomization(trace.id, { enableInteraction: false })
+            on.updateTraceCustomization(trace.id, { enableInteraction: false })
             if (editingTraceRef.current?.id === trace.id) {
               setEditingTrace({ ...editingTraceRef.current, enableInteraction: false })
             }
@@ -7049,11 +7112,11 @@ return (
               }}
               onMouseDown={(e) => {
                 e.stopPropagation()
-                handleMouseDown(e, trace, 'crop', corner)
+                on.handleMouseDown(e, trace, 'crop', corner)
               }}
               onTouchStart={(e) => {
                 e.stopPropagation()
-                handleTouchDown(e, trace, 'crop', corner)
+                on.handleTouchDown(e, trace, 'crop', corner)
               }}
             />
           )
