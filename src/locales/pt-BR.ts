@@ -275,6 +275,7 @@ const ptBR: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · Todos os direitos reservados',
   'landing.backToTop': 'Voltar ao topo',
   'landing.hero.download': 'Baixar aplicativo de desktop',
+  'landing.codeHistory': 'Ver a história do código',
   'landing.hero.beginJourney': 'Comece sua jornada',
   'landing.controls.drag': 'Navegue pela tela',
   'landing.controls.scroll': 'Aproxime e afaste a visão',

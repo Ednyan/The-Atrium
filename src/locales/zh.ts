@@ -1332,6 +1332,7 @@ const zh: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · 保留所有权利',
   'landing.backToTop': '回到顶部',
   'landing.hero.download': '下载桌面应用',
+  'landing.codeHistory': '查看代码历史',
   'landing.hero.beginJourney': '开始你的旅程',
   'landing.controls.dragKey': '点击 + 拖动',
   'landing.controls.scrollKey': '滚轮',

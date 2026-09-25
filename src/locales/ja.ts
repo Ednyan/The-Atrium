@@ -1329,6 +1329,7 @@ const ja: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · All rights reserved',
   'landing.backToTop': '先頭に戻る',
   'landing.hero.download': 'デスクトップアプリをダウンロード',
+  'landing.codeHistory': 'コードの歴史を見る',
   'landing.hero.beginJourney': 'はじめる',
   'landing.controls.dragKey': 'クリック + ドラッグ',
   'landing.controls.scrollKey': 'スクロールホイール',

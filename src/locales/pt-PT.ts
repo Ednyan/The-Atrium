@@ -278,6 +278,7 @@ const ptPT: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · Todos os direitos reservados',
   'landing.backToTop': 'Voltar ao topo',
   'landing.hero.download': 'Transferir aplicação para computador',
+  'landing.codeHistory': 'Ver a história do código',
   'landing.hero.beginJourney': 'Comece a sua viagem',
   'landing.controls.drag': 'Navegue pela tela',
   'landing.controls.scroll': 'Aproxime e afaste a vista',

@@ -1333,6 +1333,7 @@ const ko: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · All rights reserved',
   'landing.backToTop': '맨 위로',
   'landing.hero.download': '데스크톱 앱 내려받기',
+  'landing.codeHistory': '코드의 역사 보기',
   'landing.hero.beginJourney': '시작하기',
   'landing.controls.dragKey': '클릭 + 끌기',
   'landing.controls.scrollKey': '스크롤 휠',

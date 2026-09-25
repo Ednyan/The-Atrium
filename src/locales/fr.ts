@@ -273,6 +273,7 @@ const fr: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · Tous droits réservés',
   'landing.backToTop': 'Retour en haut',
   'landing.hero.download': 'Télécharger l’application de bureau',
+  'landing.codeHistory': 'Voir l’historique du code',
   'landing.hero.beginJourney': 'Commencez votre voyage',
   'landing.controls.drag': 'Se déplacer sur le canevas',
   'landing.controls.scroll': 'Zoomer et dézoomer',

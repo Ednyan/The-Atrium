@@ -1277,6 +1277,7 @@ export const en = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · All rights reserved',
   'landing.backToTop': 'Back to the top',
   'landing.hero.download': 'Download Desktop App',
+  'landing.codeHistory': 'See the code history',
   'landing.hero.beginJourney': 'Begin Your Journey',
   'landing.controls.dragKey': 'Click + Drag',
   'landing.controls.scrollKey': 'Scroll Wheel',

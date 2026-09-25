@@ -909,6 +909,25 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             the product directly under the headline. */}
         <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-center">
 
+          {/* The code history (public/code-history, a page of its own): a band
+              of the finished graph -- every file and connection the code has
+              had -- and the way in. Dark in either theme, as the graph is. */}
+          <a
+            href="/code-history/"
+            className="lg:col-span-2 group relative block overflow-hidden border border-nier-border/40 hover:border-nier-border/80 transition-colors"
+            style={{ height: 'clamp(84px, 11vw, 150px)', backgroundColor: '#07070b' }}
+          >
+            <img
+              src="/code-history/banner.webp"
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+            />
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 50%, rgb(7 7 11 / 0.85))' }} />
+            <span className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 border border-white/50 bg-black/70 px-4 sm:px-6 py-2.5 text-[11px] sm:text-sm tracking-[0.18em] uppercase text-white group-hover:bg-white group-hover:text-black transition-colors">
+              {t('landing.codeHistory')} →
+            </span>
+          </a>
+
           {/* LEFT: type + actions */}
           <div className="text-left">
             {/* Status strip, styled like the app's own HUD readouts */}

@@ -277,6 +277,7 @@ const ru: Catalogue = {
   'landing.footer.copyright': '© 2026 Eduardo Paranhos · Все права защищены',
   'landing.backToTop': 'Наверх',
   'landing.hero.download': 'Скачать приложение для ПК',
+  'landing.codeHistory': 'Смотреть историю кода',
   'landing.hero.beginJourney': 'Начните свой путь',
   'landing.controls.drag': 'Перемещение по холсту',
   'landing.controls.scroll': 'Приближение и отдаление',

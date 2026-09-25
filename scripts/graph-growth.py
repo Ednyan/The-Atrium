@@ -4,6 +4,8 @@
     python scripts/graph-growth.py --open   # and opens it
     python scripts/graph-growth.py --cached # only what is already rebuilt (a preview)
     python scripts/graph-growth.py --publish # and the page at digitalatrium.org/code-history
+    python scripts/graph-growth.py --retemplate # the published page again, from the
+                                             # template, with its data as it is
 
 Rebuilds graphify's code graph (AST only: local, no LLM) at every stage of
 the project and animates between them, so code that was later deleted, code
@@ -492,17 +494,31 @@ def main() -> None:
           f'{len(stages)} stages')
     if '--open' in sys.argv:
         webbrowser.open(OUT.as_uri())
+    if '--publish' in sys.argv:
+        publish(html)
+
+
+def publish(html: str) -> None:
     # The site's policy runs no inline script (public/_headers), so the
     # published page takes its script -- the data with it -- from a file
     # beside it.
-    if '--publish' in sys.argv:
-        head, rest = html.split('<script>', 1)
-        script, tail = rest.split('</script>', 1)
-        PUBLISHED.mkdir(parents=True, exist_ok=True)
-        (PUBLISHED / 'growth.js').write_text(script, encoding='utf-8')
-        (PUBLISHED / 'index.html').write_text(head + '<script src="growth.js"></script>' + tail, encoding='utf-8')
-        print(f'published {PUBLISHED.relative_to(REPO)}/')
+    head, rest = html.split('<script>', 1)
+    script, tail = rest.split('</script>', 1)
+    PUBLISHED.mkdir(parents=True, exist_ok=True)
+    (PUBLISHED / 'growth.js').write_text(script, encoding='utf-8')
+    (PUBLISHED / 'index.html').write_text(head + '<script src="growth.js"></script>' + tail, encoding='utf-8')
+    print(f'published {PUBLISHED.relative_to(REPO)}/')
+
+
+def retemplate() -> None:
+    """The published page again from the template, with the data it already
+    has: for a change to the page itself, without rebuilding a single stage
+    (which --publish does for every commit since the last)."""
+    script = (PUBLISHED / 'growth.js').read_text(encoding='utf-8')
+    start = script.index('const D = ') + len('const D = ')
+    data, _ = json.JSONDecoder().raw_decode(script, start)
+    publish(TEMPLATE.read_text(encoding='utf-8').replace('/*DATA*/null', json.dumps(data, separators=(',', ':'))))
 
 
 if __name__ == '__main__':
-    main()
+    retemplate() if '--retemplate' in sys.argv else main()
