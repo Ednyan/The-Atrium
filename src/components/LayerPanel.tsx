@@ -6,6 +6,7 @@ import type { Layer, Trace } from '../types/database'
 import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, type Ordered } from '../lib/order'
 import { feelSpring, feelStep } from '../lib/dragFeel'
 import { panelDrop, type PanelDropTarget } from '../lib/panelDrop'
+import { nextTextName } from '../lib/traceNames'
 import { mapRowToLayer, reloadLayers } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
@@ -421,16 +422,75 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
   // Renamed where it's shown, as in Photoshop: double-click the group (or
   // Rename in its menu), type, Enter. Escape or an empty name keeps the old one.
-  const renameGroup = (layerId: string, currentName: string) => {
+  //
+  // A trace's name is its title -- "Description / Title" in its customize
+  // panel, and the label shown beside it -- so it is one name wherever it
+  // appears, and renaming it here is editing that. A text trace's content is
+  // its text, so it has a name of its own instead (layer_name: Text 1, ...).
+  const nameOf = (trace: Trace) => (trace.type === 'text' ? trace.layerName ?? '' : trace.content)
+  const startRename = (id: string, current: string) => {
     if (!canEdit) return
-    setRenameDraft(currentName)
-    setRenamingId(layerId)
+    setRenameDraft(current)
+    setRenamingId(id)
   }
   const finishRename = (commit: boolean) => {
-    const layer = layers.find(l => l.id === renamingId)
+    const id = renamingId
     const name = renameDraft.trim()
     setRenamingId(null)
-    if (commit && layer && name && name !== layer.name) void doRenameGroup(layer.id, name)
+    if (!commit || !id) return
+    const layer = layers.find(l => l.id === id)
+    if (layer) {
+      if (name && name !== layer.name) void doRenameGroup(id, name)
+      return
+    }
+    const trace = useGameStore.getState().traces.find(t => t.id === id)
+    if (!trace || name === nameOf(trace)) return
+    // A text trace keeps a name: emptied, it keeps the one it had.
+    if (trace.type === 'text') {
+      if (name) void doRenameTrace(id, { layerName: name })
+    } else {
+      void doRenameTrace(id, { content: name })
+    }
+  }
+
+  // What a trace's row says: its name, or the start of its title.
+  const rowLabel = (trace: Trace) =>
+    (trace.type === 'text' && trace.layerName) || trace.content.substring(0, 20) || t('atrium.layers.untitled')
+
+  // The field a name is edited in, in place of the label.
+  const renameField = (maxLength?: number) => (
+    <input
+      autoFocus
+      value={renameDraft}
+      maxLength={maxLength}
+      onChange={(e) => setRenameDraft(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={() => finishRename(true)}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') finishRename(true)
+        if (e.key === 'Escape') finishRename(false)
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      className="w-0 min-w-0 flex-1 bg-nier-black border border-nier-border/60 text-nier-strong text-xs tracking-wide px-1 py-0.5 outline-none"
+    />
+  )
+
+  // A trace's name (a text trace's) or title (anything else), from here: shown
+  // at once, then written.
+  const doRenameTraceNow = async (traceId: string, name: { layerName: string } | { content: string }) => {
+    if (!supabase || !canEdit) return
+    const before = useGameStore.getState().traces.find(t => t.id === traceId)
+    if (!before) return
+    useGameStore.getState().addTrace({ ...before, ...name })
+    const column = 'layerName' in name ? { layer_name: name.layerName } : { content: name.content }
+    const { error } = await (supabase.from('traces') as any).update(column).eq('id', traceId)
+    if (error) {
+      console.error('Error renaming trace:', error)
+      useGameStore.getState().addTrace(before)
+    }
   }
 
   const doRenameGroupNow = async (layerId: string, newName: string) => {
@@ -535,13 +595,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       const group = groupBottomUp(trace.layerId ?? null)
       const at = group.findIndex(t => t.id === traceId)
       const orderKey = keyAt(group, at + 1) ?? keysOnTop(group)[0]
-      const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 20, 20), order_key: orderKey }
+      const layerName = trace.type === 'text'
+        ? nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n }))
+        : trace.layerName ?? null
+      const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 20, 20), order_key: orderKey, layer_name: layerName }
       const { data, error } = await (supabase.from('traces') as any).insert(row).select().single()
       if (error || !data) {
         console.error('Error duplicating trace:', error)
         return
       }
-      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, createdAt: data.created_at, orderKey })
+      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, createdAt: data.created_at, orderKey, layerName })
     } finally {
       setIsBusy(false)
     }
@@ -756,9 +819,31 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   }
 
   // Shows (or clears) where a drag would land.
+  //
+  // Held over a closed group's header for a moment, a dragged trace opens it,
+  // so it can be placed among what's inside -- as folders spring open in
+  // Finder and Photoshop. 600ms: long enough not to open everything passed
+  // over on the way somewhere else.
+  const SPRING_OPEN_MS = 600
+  const springOpen = useRef<{ layerId: string; timer: number } | null>(null)
+  const expandedRef = useRef(expandedGroups)
+  expandedRef.current = expandedGroups
   const showSlot = (slot: DropSlot | null) => {
     setDropSlot(slot)
     setDropTargetId(slot && !slot.line ? slot.layerId ?? UNGROUPED_DROP_TARGET : null)
+    const over = slot && !slot.line ? slot.layerId : null
+    if (springOpen.current?.layerId === over) return
+    if (springOpen.current) window.clearTimeout(springOpen.current.timer)
+    springOpen.current = null
+    if (over && !expandedRef.current.has(over)) {
+      springOpen.current = {
+        layerId: over,
+        timer: window.setTimeout(() => {
+          springOpen.current = null
+          setExpandedGroups(prev => new Set(prev).add(over))
+        }, SPRING_OPEN_MS),
+      }
+    }
   }
 
   // Where a dropped card settles: on the bar, or on the header it went into.
@@ -869,7 +954,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
     const name = document.createElement('span')
     name.className = 'truncate tracking-wide'
-    name.textContent = first?.content.substring(0, 24) || t('atrium.layers.untitled')
+    name.textContent = first ? rowLabel(first) : t('atrium.layers.untitled')
     card.appendChild(name)
     if (ids.length > 1) {
       const more = document.createElement('span')
@@ -1014,6 +1099,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const doDeleteGroup = queued(doDeleteGroupNow)
   const doDeleteTrace = queued(doDeleteTraceNow)
   const doRenameGroup = queued(doRenameGroupNow)
+  const doRenameTrace = queued(doRenameTraceNow)
   const doDeleteGroupKeepTraces = queued(doDeleteGroupKeepTracesNow)
   const duplicateGroup = queued(duplicateGroupNow)
   const duplicateSingleTrace = queued(duplicateSingleTraceNow)
@@ -1231,7 +1317,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 onPointerDown={(e) => beginRowDrag(e, 'group', layer.id)}
                 onDoubleClick={(e) => {
                   if ((e.target as HTMLElement).closest('button')) return
-                  renameGroup(layer.id, layer.name)
+                  startRename(layer.id, layer.name)
                 }}
               >
                 <div
@@ -1300,22 +1386,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       {isHardSelected ? '◆' : '◇'}
                     </span>
                     {renamingId === layer.id ? (
-                      <input
-                        autoFocus
-                        value={renameDraft}
-                        maxLength={60}
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onBlur={() => finishRename(true)}
-                        onKeyDown={(e) => {
-                          e.stopPropagation()
-                          if (e.key === 'Enter') finishRename(true)
-                          if (e.key === 'Escape') finishRename(false)
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="w-0 min-w-0 flex-1 bg-nier-black border border-nier-border/60 text-nier-strong text-xs tracking-wide px-1 py-0.5 outline-none"
-                      />
+                      renameField(60)
                     ) : (
                       <span className="text-nier-strong text-xs tracking-wide">{layer.name}</span>
                     )}
@@ -1378,6 +1449,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       data-row-trace={trace.id}
                       data-row-layer={trace.layerId ?? ''}
                       onPointerDown={(e) => beginRowDrag(e, 'trace', trace.id)}
+                      onDoubleClick={(e) => {
+                        if ((e.target as HTMLElement).closest('button')) return
+                        startRename(trace.id, nameOf(trace))
+                      }}
                       onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
                       onClick={(e) => {
                         handleTraceRowClick(e, trace.id)
@@ -1403,9 +1478,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         <span className="text-nier-bg/70 text-xs">
                           {TYPE_GLYPH[trace.type] ?? ''}
                         </span>
-                        <span className="text-nier-strong/80 truncate tracking-wide">
-                          {trace.content.substring(0, 20) || t('atrium.layers.untitled')}
-                        </span>
+                        {renamingId === trace.id ? renameField() : (
+                          <span className="text-nier-strong/80 truncate tracking-wide">{rowLabel(trace)}</span>
+                        )}
                         {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
                       </div>
                       <div className="flex items-center gap-1">
@@ -1536,6 +1611,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   data-row-trace={trace.id}
                   data-row-layer={trace.layerId ?? ''}
                   onPointerDown={(e) => beginRowDrag(e, 'trace', trace.id)}
+                  onDoubleClick={(e) => {
+                    if ((e.target as HTMLElement).closest('button')) return
+                    startRename(trace.id, nameOf(trace))
+                  }}
                   onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
                   onClick={(e) => {
                     handleTraceRowClick(e, trace.id)
@@ -1561,9 +1640,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                     <span className="text-nier-bg/70 text-xs">
                       {TYPE_GLYPH[trace.type] ?? ''}
                     </span>
-                    <span className="text-nier-strong/80 truncate tracking-wide">
-                      {trace.content.substring(0, 20) || t('atrium.layers.untitled')}
-                    </span>
+                    {renamingId === trace.id ? renameField() : (
+                      <span className="text-nier-strong/80 truncate tracking-wide">{rowLabel(trace)}</span>
+                    )}
                     {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
                   </div>
                   <div className="flex items-center gap-1">
@@ -1698,7 +1777,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem label={t('atrium.layers.duplicateGroup')} onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
-                <MenuItem label={t('common.rename')} onClick={() => renameGroup(rowMenu.id, layer!.name)} />
+                <MenuItem label={t('common.rename')} onClick={() => startRename(rowMenu.id, layer!.name)} />
                 <MenuItem
                   label={isExpanded ? t('atrium.layers.collapse') : t('atrium.layers.expand')}
                   onClick={() => toggleGroup(rowMenu.id)}
@@ -1755,6 +1834,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             ) : (
               <>
                 <MenuItem label={t('common.duplicate')} onClick={() => duplicateSingleTrace(rowMenu.id)} busy={isBusy} />
+                <MenuItem label={t('common.rename')} onClick={() => startRename(rowMenu.id, nameOf(trace!))} />
                 <MenuItem label={t('common.select')} onClick={() => onSelectTrace?.(rowMenu.id)} />
                 <MenuItem label={t('atrium.layers.goToTrace')} onClick={() => onGoToTrace?.(rowMenu.id)} />
                 {/* Acts on the whole selection when the row is part of one,

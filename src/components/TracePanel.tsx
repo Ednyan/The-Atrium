@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { newTraceOrderFields } from '../lib/order'
+import { nextTextName } from '../lib/traceNames'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { currentTracePreset } from '../lib/tracePresets'
@@ -501,6 +502,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           user_id: userId,
           username,
           type: traceType,
+          ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
           // The same house style the local object above is given. Two paths
           // create a trace here -- one for the database, one for the store --
           // and only one of them knowing about presets is how a trace ends up

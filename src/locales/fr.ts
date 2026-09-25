@@ -1093,6 +1093,7 @@ const fr: Catalogue = {
   'atrium.layers.deleteGroupConfirm': 'Supprimer ce groupe et tous les traces qu’il contient ?',
   'atrium.layers.createGroup': 'Créer un nouveau groupe',
   'atrium.layers.numberedGroup': 'Groupe {n}',
+  'atrium.layers.numberedText': 'Texte {n}',
   'atrium.layers.deleteTrace': 'Supprimer le trace',
   'atrium.layers.emitsLight': 'Émet de la lumière',
   'atrium.layers.goToTrace': 'Aller au trace',

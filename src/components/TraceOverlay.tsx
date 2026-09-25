@@ -43,6 +43,7 @@ import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
+import { firstFreeName, nextTextName } from '../lib/traceNames'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -974,10 +975,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (!supabase || !lobbyId || !canEdit || traceIds.length === 0 || layerChangeUnderWay()) return
     await queueLayerChange(async () => {
       const { data } = await (supabase!.from('layers') as any).select('name').eq('lobby_id', lobbyId)
-      const taken = new Set(((data ?? []) as { name: string | null }[]).map(l => (l.name ?? '').trim().toLowerCase()))
-      let n = 1
-      while (taken.has(t('atrium.layers.numberedGroup', { n }).toLowerCase())) n++
-      await makeGroupWith(traceIds, t('atrium.layers.numberedGroup', { n }))
+      const taken = ((data ?? []) as { name: string | null }[]).map(l => l.name)
+      await makeGroupWith(traceIds, firstFreeName(taken, n => t('atrium.layers.numberedGroup', { n })))
     })
   }, [lobbyId, canEdit, makeGroupWith])
 
@@ -2410,6 +2409,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const store = useGameStore.getState()
     const known = new Set(store.layers.map(l => l.id))
     const working = new Map<string | null, Ordered[]>()
+    const namedCopies: string[] = []
     const placed = sourceTraces.map(trace => {
       const layerId = trace.layerId && known.has(trace.layerId) ? trace.layerId : null
       if (!working.has(layerId)) working.set(layerId, store.traces.filter(t => (t.layerId ?? null) === layerId))
@@ -2419,7 +2419,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const key = (at === -1 ? null : keyAt(sorted, at + 1)) ?? keysOnTop(group)[0]
       // Seen by the copies after it, so two from one group don't collide.
       group.push({ id: `copy-${group.length}`, orderKey: key })
-      return { layerId, orderKey: key }
+      // A copied text trace is a new one, with the next free name.
+      const layerName = trace.type === 'text' ? nextTextName(store.traces, n => t('atrium.layers.numberedText', { n }), namedCopies) : trace.layerName ?? null
+      if (trace.type === 'text' && layerName) namedCopies.push(layerName)
+      return { layerId, orderKey: key, layerName }
     })
 
     if (supabase) {
@@ -2427,6 +2430,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         ...buildDuplicateInsert(trace, offsetX, offsetY),
         layer_id: placed[index].layerId,
         order_key: placed[index].orderKey,
+        layer_name: placed[index].layerName,
       }))
       const { data, error } = await (supabase.from('traces') as any).insert(insertRows).select()
 
@@ -2450,6 +2454,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           isLocked: false,
           layerId: placed[index].layerId,
           orderKey: placed[index].orderKey,
+          layerName: placed[index].layerName,
         }
       })
 

@@ -162,6 +162,9 @@ export interface Trace {
   // Its place among the traces of its group (lib/order). Null only for a trace
   // saved by a version from before order keys.
   orderKey?: string | null
+  // A text trace's name in the Layer panel (Text 1, ...). Other traces are
+  // named by their content, their title.
+  layerName?: string | null
   // Lobby association
   lobbyId?: string
 }

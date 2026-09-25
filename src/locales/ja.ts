@@ -1047,6 +1047,7 @@ const ja: Catalogue = {
   'atrium.layers.deleteGroupConfirm': 'このグループと、中の trace をすべて削除しますか？',
   'atrium.layers.createGroup': '新しいグループを作る',
   'atrium.layers.numberedGroup': 'グループ {n}',
+  'atrium.layers.numberedText': 'テキスト {n}',
   'atrium.layers.deleteTrace': 'trace を削除',
   'atrium.layers.emitsLight': '光っています',
   'atrium.layers.goToTrace': 'この trace へ移動',

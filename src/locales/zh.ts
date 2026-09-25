@@ -1050,6 +1050,7 @@ const zh: Catalogue = {
   'atrium.layers.deleteGroupConfirm': '要删除这个组以及里面所有的 trace 吗？',
   'atrium.layers.createGroup': '新建一个组',
   'atrium.layers.numberedGroup': '组 {n}',
+  'atrium.layers.numberedText': '文本 {n}',
   'atrium.layers.deleteTrace': '删除 trace',
   'atrium.layers.emitsLight': '会发光',
   'atrium.layers.goToTrace': '跳到这个 trace',

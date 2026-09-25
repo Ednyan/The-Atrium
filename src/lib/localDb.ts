@@ -1214,6 +1214,7 @@ export async function initLocalDb(): Promise<void> {
       layer_id TEXT,
       z_index INTEGER DEFAULT 0,
       order_key TEXT,
+      layer_name TEXT,
       lobby_id TEXT,
       shape_type TEXT,
       shape_color TEXT,
@@ -1285,6 +1286,22 @@ export async function initLocalDb(): Promise<void> {
   // Order keys (lib/order; the web's add_order_keys.sql, which keys existing
   // rows the same way): each trace's place in its group, each group's among
   // the atrium's. Rows from before them are keyed once, from where they stand.
+  // Text traces' names (the web's add_trace_layer_name.sql, which numbers the
+  // existing ones the same way).
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN layer_name TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute(
+      "WITH numbered AS (SELECT id, ROW_NUMBER() OVER (PARTITION BY lobby_id ORDER BY created_at, id) AS n "
+      + "FROM traces WHERE type = 'text' AND layer_name IS NULL) "
+      + "UPDATE traces SET layer_name = 'Text ' || numbered.n FROM numbered WHERE traces.id = numbered.id",
+    )
+  } catch (e) {
+    console.error('[localDb] could not name text traces:', e)
+  }
   for (const table of ['traces', 'layers']) {
     try {
       await db.execute(`ALTER TABLE ${table} ADD COLUMN order_key TEXT`)

@@ -3,6 +3,7 @@ import { useTranslation, pluralCategory } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { keysFromNumbers } from '../lib/order'
+import { firstFreeName } from '../lib/traceNames'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -167,6 +168,15 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // An older file orders by number only: keys from those, in its order.
       const layerKeys = keysFromNumbers(parsed.layers, l => l.z_index ?? 0)
       const traceKeys = keysFromNumbers(parsed.traces, tr => tr.z_index ?? 0, tr => tr._local_layer_id ?? null)
+      // Text traces from a file made before they had names are numbered here.
+      const textNames = new Map<Record<string, any>, string>()
+      const namesTaken: string[] = parsed.traces.filter(tr => tr.type === 'text' && tr.layer_name).map(tr => tr.layer_name)
+      for (const tr of parsed.traces) {
+        if (tr.type !== 'text' || tr.layer_name) continue
+        const name = firstFreeName(namesTaken, n => t('atrium.layers.numberedText', { n }))
+        namesTaken.push(name)
+        textNames.set(tr, name)
+      }
       if (parsed.layers.length > 0) {
         setProgress(t('transfer.import.layers'))
         for (const layer of parsed.layers) {
@@ -365,6 +375,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           lobby_id: lobbyId,
           layer_id: mappedLayerId,
           order_key: trace.order_key ?? traceKeys.get(trace) ?? null,
+          ...(trace.type === 'text' ? { layer_name: trace.layer_name ?? textNames.get(trace) ?? null } : {}),
           media_url: mediaUrl || null,
           image_url: imageUrl || null,
         }

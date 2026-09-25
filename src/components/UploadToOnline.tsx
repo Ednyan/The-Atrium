@@ -190,6 +190,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             layer_id: trace.layer_id ? layerIdMap[trace.layer_id] || null : null,
             z_index: trace.z_index,
             order_key: trace.order_key ?? null,
+            layer_name: trace.layer_name ?? null,
             lobby_id: mappedLobbyId,
             shape_type: trace.shape_type,
             shape_color: trace.shape_color,

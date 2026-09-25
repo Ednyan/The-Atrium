@@ -1095,6 +1095,7 @@ const it: Catalogue = {
   'atrium.layers.deleteGroupConfirm': 'Eliminare questo gruppo e tutti i traces al suo interno?',
   'atrium.layers.createGroup': 'Crea un nuovo gruppo',
   'atrium.layers.numberedGroup': 'Gruppo {n}',
+  'atrium.layers.numberedText': 'Testo {n}',
   'atrium.layers.deleteTrace': 'Elimina il trace',
   'atrium.layers.emitsLight': 'Emette luce',
   'atrium.layers.goToTrace': 'Vai al trace',

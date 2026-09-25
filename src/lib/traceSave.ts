@@ -156,6 +156,7 @@ export async function saveAllChanges(): Promise<void> {
         enable_interaction: trace.enableInteraction,
         ignore_clicks: trace.ignoreClicks,
         order_key: trace.orderKey ?? null,
+        layer_name: trace.layerName ?? null,
       }
 
       // Add optional fields
