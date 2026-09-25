@@ -39,6 +39,7 @@ import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeS
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
 import { DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
+import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -252,6 +253,21 @@ function floatTiming(id: string): { duration: number; delay: number } {
 
 // How far, in screen pixels, a trace drifts at Floating 100%.
 const FLOAT_MAX_PX = 8
+
+// A #rrggbb colour as numbers, white for anything else. For the cursors.
+function hexToRgb(hex: string) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  return result
+    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+    : { r: 255, g: 255, b: 255 }
+}
+
+// A cursor's outline, which is what separates it from the atrium: near-black
+// on a light one, white on a dark one.
+function cursorEdgeOn(background: string | undefined) {
+  const g = hexToRgb(background || '#0a0a0f')
+  return (0.2126 * g.r + 0.7152 * g.g + 0.0722 * g.b) / 255 > 0.5 ? '#1a1a1a' : '#ffffff'
+}
 
 // What Shift snaps a dragged trace onto when the atrium has no grid size of
 // its own. The same fallback LobbyScene draws with, so an atrium saved before
@@ -935,7 +951,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // groupLayers does not have it yet, and looking it up there failed quietly --
   // which is why the New Group dialog said it would move the traces and then
   // made an empty group.
-  const moveTracesToGroup = useCallback(async (traceIds: string[], targetLayerId: string | null, knownLayerZIndex?: number) => {
+  const moveIntoGroup = useCallback(async (traceIds: string[], targetLayerId: string | null, knownLayerZIndex?: number) => {
     if (!supabase || !canEdit || traceIds.length === 0) return
     const store = useGameStore.getState()
     const allTraces = store.traces
@@ -964,7 +980,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // rather than writing a second version of that. Reloads the flyout's own
   // list on the way out so the new group is there the moment the dialog
   // closes, which is the whole point of offering this here.
-  const createGroupAndMove = useCallback(async (traceIds: string[], rawName: string) => {
+  const makeGroupWith = useCallback(async (traceIds: string[], rawName: string) => {
     const name = rawName.trim()
     if (!supabase || !lobbyId || !name) return
 
@@ -993,7 +1009,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
     const created = Array.isArray(data) ? data[0] : data
     if (created?.id && traceIds.length > 0) {
-      await moveTracesToGroup(traceIds, created.id, created.z_index ?? newZIndex)
+      await moveIntoGroup(traceIds, created.id, created.z_index ?? newZIndex)
     }
 
     await loadGroupLayers()
@@ -1001,19 +1017,31 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // would do it on the web, but desktop has none, and an open panel went
     // on showing the atrium as it was before the group existed.
     window.dispatchEvent(new Event('atrium:layers-changed'))
-  }, [lobbyId, username, groupLayers, loadGroupLayers, moveTracesToGroup])
+  }, [lobbyId, username, groupLayers, loadGroupLayers, moveIntoGroup])
 
   // Ctrl+G: the selection into a new group called "Group N", N the lowest
   // number no group here already has. Names are read fresh rather than from
   // groupLayers, which on desktop can miss a group the Layer panel just made.
+  //
+  // A second Ctrl+G while a layer change is under way is ignored: queued, it
+  // would make another group and move everything into that one.
   const groupSelection = useCallback(async (traceIds: string[]) => {
-    if (!supabase || !lobbyId || !canEdit || traceIds.length === 0) return
-    const { data } = await (supabase.from('layers') as any).select('name').eq('lobby_id', lobbyId)
-    const taken = new Set(((data ?? []) as { name: string | null }[]).map(l => (l.name ?? '').trim().toLowerCase()))
-    let n = 1
-    while (taken.has(t('atrium.layers.numberedGroup', { n }).toLowerCase())) n++
-    await createGroupAndMove(traceIds, t('atrium.layers.numberedGroup', { n }))
-  }, [lobbyId, canEdit, createGroupAndMove])
+    if (!supabase || !lobbyId || !canEdit || traceIds.length === 0 || layerChangeUnderWay()) return
+    await queueLayerChange(async () => {
+      const { data } = await (supabase!.from('layers') as any).select('name').eq('lobby_id', lobbyId)
+      const taken = new Set(((data ?? []) as { name: string | null }[]).map(l => (l.name ?? '').trim().toLowerCase()))
+      let n = 1
+      while (taken.has(t('atrium.layers.numberedGroup', { n }).toLowerCase())) n++
+      await makeGroupWith(traceIds, t('atrium.layers.numberedGroup', { n }))
+    })
+  }, [lobbyId, canEdit, makeGroupWith])
+
+  // The same two from the menus and the New Group dialog, through the layer
+  // queue (lib/layerQueue); the unqueued ones above are for inside a change.
+  const moveTracesToGroup = (traceIds: string[], targetLayerId: string | null) =>
+    queueLayerChange(() => moveIntoGroup(traceIds, targetLayerId))
+  const createGroupAndMove = (traceIds: string[], name: string) =>
+    queueLayerChange(() => makeGroupWith(traceIds, name))
 
   // A vault write finished, so the file it was copying now exists on disk and
   // the trace should read from there rather than through the blob URL it was
@@ -1035,6 +1063,20 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
     window.addEventListener('atrium:vault-write-complete', onWritten)
     return () => window.removeEventListener('atrium:vault-write-complete', onWritten)
+  }, [])
+
+  // Whether the pointer is over the window at all, for the cursor to fade.
+  const [pointerInWindow, setPointerInWindow] = useState(true)
+  useEffect(() => {
+    const root = document.documentElement
+    const left = () => setPointerInWindow(false)
+    const back = () => setPointerInWindow(true)
+    root.addEventListener('mouseleave', left)
+    root.addEventListener('mouseenter', back)
+    return () => {
+      root.removeEventListener('mouseleave', left)
+      root.removeEventListener('mouseenter', back)
+    }
   }, [])
 
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
@@ -5157,25 +5199,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const playerScreenX = position.x * zoom + worldOffset.x
       const playerScreenY = position.y * zoom + worldOffset.y
 
-      // Convert hex color to RGB for shadows
-      const hexToRgb = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-        return result ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        } : { r: 255, g: 255, b: 255 }
-      }
       const rgb = hexToRgb(playerColor)
-
-      // The cursor used to be readable because of a drop shadow under
-      // it. With that gone, its outline is what separates it from the
-      // atrium, so the outline follows the atrium: near-black on a
-      // light background, white on a dark one.
-      const groundRgb = hexToRgb(atriumBackground || '#0a0a0f')
-      const groundLuminance =
-        (0.2126 * groundRgb.r + 0.7152 * groundRgb.g + 0.0722 * groundRgb.b) / 255
-      const cursorEdge = groundLuminance > 0.5 ? '#1a1a1a' : '#ffffff'
+      // The cursor used to be readable because of a drop shadow under it.
+      // With that gone, its outline follows the atrium instead.
+      const cursorEdge = cursorEdgeOn(atriumBackground)
 
       // Get cursor SVG based on state
       const getCursorSvg = () => {
@@ -5270,6 +5297,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             top: playerScreenY,
             pointerEvents: 'none',
             zIndex: item.zIndex,
+            // Out of the window, it fades away rather than standing where the
+            // pointer left; back in, it's there at once.
+            opacity: pointerInWindow ? 1 : 0,
+            transition: pointerInWindow ? undefined : 'opacity 700ms ease',
           }}
         >
           {getCursorSvg()}
@@ -7435,21 +7466,8 @@ return (
           const userScreenY = user.y * zoom + worldOffset.y
           const userColor = user.playerColor || '#ffffff'
 
-          // Convert hex color to RGB for shadows
-          const hexToRgb = (hex: string) => {
-            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-            return result ? {
-              r: parseInt(result[1], 16),
-              g: parseInt(result[2], 16),
-              b: parseInt(result[3], 16)
-            } : { r: 255, g: 255, b: 255 }
-          }
           const rgb = hexToRgb(userColor)
-          const otherGround = hexToRgb(atriumBackground || '#0a0a0f')
-          const otherCursorEdge =
-            (0.2126 * otherGround.r + 0.7152 * otherGround.g + 0.0722 * otherGround.b) / 255 > 0.5
-              ? '#1a1a1a'
-              : '#ffffff'
+          const otherCursorEdge = cursorEdgeOn(atriumBackground)
 
           return (
             <div

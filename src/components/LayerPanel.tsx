@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { Layer } from '../types/database'
 import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
+import { queueLayerChange } from '../lib/layerQueue'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
@@ -99,7 +100,15 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
-  const [layers, setLayers] = useState<Layer[]>([])
+  const [layers, setLayersState] = useState<Layer[]>([])
+  // The list as it is now, for layer changes to read when they run -- which,
+  // queued behind another (lib/layerQueue), can be well after they were asked
+  // for. Set together with the state rather than after the render it causes.
+  const layersRef = useRef<Layer[]>([])
+  const setLayers = (next: Layer[]) => {
+    layersRef.current = next
+    setLayersState(next)
+  }
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
@@ -254,13 +263,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     // Guarded against re-entry: repair calls loadLayers again, and if the
     // writes didn't take, that finds the same duplicates and repairs again.
     // Without this flag that recursion never terminates.
+    //
+    // Queued, and not awaited: loadLayers runs inside other changes, and one
+    // that waited for a queued repair would be waiting for itself.
     if (hasDuplicateZIndex && canEdit && !repairInFlightRef.current) {
       repairInFlightRef.current = true
-      try {
-        await repairDuplicateZIndexes(mappedLayers)
-      } finally {
-        repairInFlightRef.current = false
-      }
+      void queueLayerChange(() => repairDuplicateZIndexes(layersRef.current))
+        .finally(() => { repairInFlightRef.current = false })
     }
   }, [lobbyId, canEdit])
 
@@ -329,7 +338,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setDialogTargetId(null)
   }
 
-  const doCreateGroup = async (name: string) => {
+  const doCreateGroupNow = async (name: string) => {
     if (!supabase || !name.trim() || !canEdit) return
 
     // Read the current top from the database rather than from local state.
@@ -349,7 +358,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       .limit(1)
       .maybeSingle()
 
-    const maxZIndex = Math.max(topLayer?.z_index ?? 0, ...layers.map(l => l.zIndex), 0)
+    const maxZIndex = Math.max(topLayer?.z_index ?? 0, ...layersRef.current.map(l => l.zIndex), 0)
     const newZIndex = maxZIndex + 1
 
     const { error } = await (supabase.from('layers') as any).insert({
@@ -374,8 +383,24 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setDialogTargetId(layerId)
   }
 
-  const doDeleteGroup = async (layerId: string) => {
+  // Traces deleted from here, gone from the canvas as well, with their threads.
+  // The group delete removed them from the database only, so on desktop --
+  // which has no realtime to report it -- they stayed on screen. Threads: the
+  // web's foreign keys delete them with the trace, desktop's database has
+  // none, so they are deleted here for both (the web doesn't mind).
+  const forgetDeletedTraces = async (traceIds: string[]) => {
+    if (!supabase || traceIds.length === 0) return
+    const gone = new Set(traceIds)
+    const store = useGameStore.getState()
+    const threads = store.links.filter(l => gone.has(l.from) || gone.has(l.to)).map(l => l.id)
+    for (const id of traceIds) store.removeTrace(id)
+    for (const id of threads) store.dropLink(id)
+    if (threads.length > 0) await (supabase.from('trace_links') as any).delete().in('id', threads)
+  }
+
+  const doDeleteGroupNow = async (layerId: string) => {
     if (!supabase || !canEdit) return
+    const groupTraceIds = getTracesForLayer(layerId).map(t => t.id)
 
     // Delete all traces in this group
     const { error: tracesError } = await supabase
@@ -386,6 +411,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (tracesError) {
       return
     }
+    await forgetDeletedTraces(groupTraceIds)
 
     // Delete the group
     const { error } = await supabase.from('layers').delete().eq('id', layerId)
@@ -409,7 +435,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // Deletes a single trace directly (grouped or ungrouped) -- previously the
   // only way to remove a trace from the Layer panel was to delete its entire
   // group, which took every other trace in it down too.
-  const doDeleteTrace = async (traceId: string) => {
+  const doDeleteTraceNow = async (traceId: string) => {
     if (!supabase || !canEdit) return
 
     const { error } = await supabase.from('traces').delete().eq('id', traceId)
@@ -419,7 +445,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       return
     }
 
-    removeTrace(traceId)
+    await forgetDeletedTraces([traceId])
   }
 
   const renameGroup = (layerId: string, currentName: string) => {
@@ -429,7 +455,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setDialogTargetId(layerId)
   }
 
-  const doRenameGroup = async (layerId: string, newName: string) => {
+  const doRenameGroupNow = async (layerId: string, newName: string) => {
     if (!supabase || !newName.trim() || !canEdit) return
 
     const { error } = await (supabase.from('layers') as any)
@@ -448,12 +474,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // Separate from doDeleteGroup, which takes the contents down with it --
   // as a one-click menu item that needed to be an explicit, distinct choice
   // rather than the only meaning of "Delete".
-  const doDeleteGroupKeepTraces = async (layerId: string) => {
+  const doDeleteGroupKeepTracesNow = async (layerId: string) => {
     if (!supabase || !canEdit) return
 
     const groupTraces = getTracesForLayer(layerId)
     if (groupTraces.length > 0) {
-      await moveTracesToLayer(groupTraces.map(t => t.id), null)
+      await moveTracesToLayerNow(groupTraces.map(t => t.id), null)
     }
 
     const { error } = await supabase.from('layers').delete().eq('id', layerId)
@@ -469,14 +495,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // Copies a group and everything in it into a brand-new group, so the copies
   // are independently groupable rather than piling into the original (which is
   // what duplicating the traces alone would do -- they inherit layer_id).
-  const duplicateGroup = async (layerId: string) => {
+  const duplicateGroupNow = async (layerId: string) => {
     if (!supabase || !canEdit || !userId) return
-    const source = layers.find(l => l.id === layerId)
+    const source = layersRef.current.find(l => l.id === layerId)
     if (!source) return
 
     setIsBusy(true)
     try {
-      const maxZIndex = Math.max(...layers.map(l => l.zIndex), 0)
+      const maxZIndex = Math.max(...layersRef.current.map(l => l.zIndex), 0)
       const { data: created, error: layerError } = await (supabase.from('layers') as any)
         .insert({
           name: `${source.name} copy`,
@@ -517,9 +543,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
-  const duplicateSingleTrace = async (traceId: string) => {
+  const duplicateSingleTraceNow = async (traceId: string) => {
     if (!supabase || !canEdit || !userId) return
-    const trace = traces.find(t => t.id === traceId)
+    const trace = useGameStore.getState().traces.find(t => t.id === traceId)
     if (!trace) return
 
     setIsBusy(true)
@@ -538,7 +564,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
-  const setTraceLocked = async (traceId: string, locked: boolean) => {
+  const setTraceLockedNow = async (traceId: string, locked: boolean) => {
     if (!supabase || !canEdit) return
     const { error } = await (supabase.from('traces') as any)
       .update({ is_locked: locked })
@@ -547,7 +573,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       console.error('Error updating lock:', error)
       return
     }
-    const trace = traces.find(t => t.id === traceId)
+    const trace = useGameStore.getState().traces.find(t => t.id === traceId)
     if (trace) {
       removeTrace(traceId)
       addTrace({ ...trace, isLocked: locked })
@@ -561,7 +587,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // click-through are backgrounds, and a background is precisely the thing
   // that is hard to right-click on the canvas without hitting something in
   // front of it. From here it can be done to a whole group at once.
-  const setTracesIgnoreClicks = async (traceIds: string[], ignore: boolean) => {
+  const setTracesIgnoreClicksNow = async (traceIds: string[], ignore: boolean) => {
     if (!supabase || !canEdit || traceIds.length === 0) return
 
     for (const traceId of traceIds) {
@@ -572,7 +598,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         console.error('Error updating clicks:', error)
         continue
       }
-      const trace = traces.find(t => t.id === traceId)
+      const trace = useGameStore.getState().traces.find(t => t.id === traceId)
       if (trace) addTrace({ ...trace, ignoreClicks: ignore })
     }
   }
@@ -585,7 +611,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // existed on the canvas menu only, and an interactive embed is exactly the
   // trace that is awkward to right-click, because the pointer goes into the
   // iframe rather than to the trace under it.
-  const setTracesEnableInteraction = async (traceIds: string[], enabled: boolean) => {
+  const setTracesEnableInteractionNow = async (traceIds: string[], enabled: boolean) => {
     if (!supabase || !canEdit || traceIds.length === 0) return
 
     for (const traceId of traceIds) {
@@ -596,15 +622,15 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         console.error('Error updating interaction:', error)
         continue
       }
-      const trace = traces.find(t => t.id === traceId)
+      const trace = useGameStore.getState().traces.find(t => t.id === traceId)
       if (trace) addTrace({ ...trace, enableInteraction: enabled })
     }
   }
 
-  const moveTraceToLayer = async (traceId: string, layerId: string | null) => {
+  const moveTraceToLayerNow = async (traceId: string, layerId: string | null) => {
     if (!supabase || !canEdit) return
 
-    const currentLayerId = traces.find(t => t.id === traceId)?.layerId ?? null
+    const currentLayerId = useGameStore.getState().traces.find(t => t.id === traceId)?.layerId ?? null
     if (currentLayerId === layerId) return
 
     // Calculate the z-index for this trace
@@ -614,11 +640,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       newZIndex = getTraceZIndexForOrder(null, ungroupedTraces.length, ungroupedTraces.length)
     } else {
       // Find the layer and calculate base z-index
-      const targetLayer = layers.find(l => l.id === layerId)
+      const targetLayer = layersRef.current.find(l => l.id === layerId)
       if (!targetLayer) return
       
       // Get existing traces in this layer
-      const layerTraces = traces.filter(t => t.layerId === layerId && t.id !== traceId)
+      const layerTraces = useGameStore.getState().traces.filter(t => t.layerId === layerId && t.id !== traceId)
       
       newZIndex = getTraceZIndexForOrder(layerId, targetLayer.zIndex, layerTraces.length)
     }
@@ -632,7 +658,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     } else {
       // Optimistic local update - realtime subscription may drop this
       // due to pendingChanges guard, so update the store directly
-      const trace = traces.find(t => t.id === traceId)
+      const trace = useGameStore.getState().traces.find(t => t.id === traceId)
       if (trace) {
         addTrace({ ...trace, layerId: layerId, zIndex: newZIndex })
       }
@@ -644,14 +670,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // by calling moveTraceToLayer in a loop, which would recompute the "next
   // free" z-index from the same stale traces snapshot each time and collide
   // every moved trace onto the same slot).
-  const moveTracesToLayer = async (traceIds: string[], layerId: string | null) => {
+  const moveTracesToLayerNow = async (traceIds: string[], layerId: string | null) => {
     if (!supabase || traceIds.length === 0 || !canEdit) return
 
     const idsToMove = new Set(traceIds)
-    const tracesToMove = traces.filter(t => idsToMove.has(t.id) && (t.layerId ?? null) !== layerId)
+    const tracesToMove = useGameStore.getState().traces.filter(t => idsToMove.has(t.id) && (t.layerId ?? null) !== layerId)
     if (tracesToMove.length === 0) return
 
-    const baseLayerZIndex = layerId === null ? 0 : (layers.find(l => l.id === layerId)?.zIndex ?? 0)
+    const baseLayerZIndex = layerId === null ? 0 : (layersRef.current.find(l => l.id === layerId)?.zIndex ?? 0)
     const existingInTarget = getTracesForLayer(layerId).filter(t => !idsToMove.has(t.id))
     let orderIndex = existingInTarget.length
 
@@ -673,7 +699,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
   const getTraceBaseZIndex = (layerId: string | null, layerZIndex?: number) => {
     if (layerId === null) return 0
-    const resolvedLayerZIndex = layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex
+    const resolvedLayerZIndex = layerZIndex ?? layersRef.current.find(l => l.id === layerId)?.zIndex
     if (resolvedLayerZIndex === undefined) return 0
     return resolvedLayerZIndex * TRACE_LAYER_MULTIPLIER
   }
@@ -689,7 +715,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (!supabase) return
 
     const total = orderedTraces.length
-    const resolvedLayerZIndex = layerZIndex ?? layers.find(l => l.id === layerId)?.zIndex ?? 0
+    const resolvedLayerZIndex = layerZIndex ?? layersRef.current.find(l => l.id === layerId)?.zIndex ?? 0
     const updates = orderedTraces.map((trace, index) => {
       const orderIndex = total - index - 1
       return {
@@ -726,7 +752,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
-  const moveTraceWithinLayer = async (traceId: string, layerId: string | null, direction: 'up' | 'down') => {
+  const moveTraceWithinLayerNow = async (traceId: string, layerId: string | null, direction: 'up' | 'down') => {
     if (!supabase || !canEdit) return
 
     const orderedTraces = getTracesForLayer(layerId)
@@ -739,7 +765,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const reorderedTraces = [...orderedTraces]
     ;[reorderedTraces[currentIndex], reorderedTraces[targetIndex]] = [reorderedTraces[targetIndex], reorderedTraces[currentIndex]]
 
-    const layerZIndex = layerId === null ? undefined : layers.find(l => l.id === layerId)?.zIndex
+    const layerZIndex = layerId === null ? undefined : layersRef.current.find(l => l.id === layerId)?.zIndex
     setIsReordering(true)
     try {
       await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
@@ -753,10 +779,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // first if it wasn't already there), rather than only being able to drop
   // onto a group header (which always lands at the top) or nudge one step
   // via the up/down buttons.
-  const moveTraceToPosition = async (traceId: string, targetTraceId: string) => {
+  const moveTraceToPositionNow = async (traceId: string, targetTraceId: string) => {
     if (!supabase || !canEdit || traceId === targetTraceId) return
-    const draggedTrace = traces.find(t => t.id === traceId)
-    const targetTrace = traces.find(t => t.id === targetTraceId)
+    const draggedTrace = useGameStore.getState().traces.find(t => t.id === traceId)
+    const targetTrace = useGameStore.getState().traces.find(t => t.id === targetTraceId)
     if (!draggedTrace || !targetTrace) return
 
     const targetLayerId = targetTrace.layerId ?? null
@@ -781,7 +807,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const finalOrder = [...existingInTarget]
     finalOrder.splice(targetIndex, 0, { ...draggedTrace, layerId: targetLayerId })
 
-    const layerZIndex = targetLayerId === null ? undefined : layers.find(l => l.id === targetLayerId)?.zIndex
+    const layerZIndex = targetLayerId === null ? undefined : layersRef.current.find(l => l.id === targetLayerId)?.zIndex
     await persistTraceOrder(targetLayerId, finalOrder, layerZIndex)
   }
 
@@ -829,7 +855,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       // dropping on a group header), rather than trying to reason about
       // precise ordering for several traces against one drop point at once.
       if (multiSelectedSet.has(traceId) && multiSelectedSet.size > 1) {
-        const targetTrace = traces.find(t => t.id === targetTraceId)
+        const targetTrace = useGameStore.getState().traces.find(t => t.id === targetTraceId)
         await moveTracesToLayer(Array.from(multiSelectedSet), targetTrace?.layerId ?? null)
         return
       }
@@ -938,10 +964,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // layer's z_index to match the new visual order (rather than a pairwise
   // swap like moveLayerUp/moveLayerDown, since a drag can reorder across
   // more than one position at once).
-  const reorderLayers = async (sourceLayerId: string, targetLayerId: string) => {
+  const reorderLayersNow = async (sourceLayerId: string, targetLayerId: string) => {
     if (!supabase || !canEdit) return
 
-    const sorted = [...layers].sort((a, b) => b.zIndex - a.zIndex)
+    const sorted = [...layersRef.current].sort((a, b) => b.zIndex - a.zIndex)
     const draggedIndex = sorted.findIndex(l => l.id === sourceLayerId)
     const targetIndex = sorted.findIndex(l => l.id === targetLayerId)
     if (draggedIndex === -1 || targetIndex === -1) return
@@ -1037,7 +1063,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       return
     }
     if (handledSelectionRef.current === selectedTraceId) return
-    const selectedTrace = traces.find(t => t.id === selectedTraceId)
+    const selectedTrace = useGameStore.getState().traces.find(t => t.id === selectedTraceId)
     if (!selectedTrace) return // traces not loaded yet; try again when they are
     handledSelectionRef.current = selectedTraceId
     // Expand the containing group if it's collapsed (one-shot -- if the user
@@ -1072,42 +1098,67 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // and makes every intermediate state collision-free. An interruption now
   // leaves one layer at the top rather than two layers tied.
   const swapLayerZIndexes = async (a: Layer, b: Layer) => {
-    const parkingZIndex = Math.max(...layers.map(l => l.zIndex), 0) + 1
+    const parkingZIndex = Math.max(...layersRef.current.map(l => l.zIndex), 0) + 1
     await updateLayerZIndex(a.id, parkingZIndex)
     await updateLayerZIndex(b.id, a.zIndex)
     await updateLayerZIndex(a.id, b.zIndex)
     await loadLayers()
   }
 
-  const moveLayerUp = async (layer: Layer) => {
+  const moveLayerUpNow = async (layer: Layer) => {
     if (!supabase || !canEdit) return
 
     // Find layer above this one
-    const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
+    const sortedLayers = [...layersRef.current].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
-    if (currentIndex === 0) return // Already at top
+    if (currentIndex <= 0) return // Already at top, or gone
 
     // The explicit persistTraceOrder calls that used to follow are gone:
     // updateLayerZIndex already reorders the layer's traces, so each layer's
     // traces were being rewritten twice per move.
-    await swapLayerZIndexes(layer, sortedLayers[currentIndex - 1])
+    // The layer as it is now, not as it was when clicked: a change queued
+    // ahead of this one may have renumbered it.
+    await swapLayerZIndexes(sortedLayers[currentIndex], sortedLayers[currentIndex - 1])
   }
 
-  const moveLayerDown = async (layer: Layer) => {
+  const moveLayerDownNow = async (layer: Layer) => {
     if (!supabase || !canEdit) return
 
-    const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
+    const sortedLayers = [...layersRef.current].sort((a, b) => b.zIndex - a.zIndex)
     const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
-    if (currentIndex === sortedLayers.length - 1) {
+    if (currentIndex === -1 || currentIndex === sortedLayers.length - 1) {
       return
     }
 
-    await swapLayerZIndexes(layer, sortedLayers[currentIndex + 1])
+    await swapLayerZIndexes(sortedLayers[currentIndex], sortedLayers[currentIndex + 1])
   }
+
+  // What the buttons, menus, drops and dialogs call: each change through the
+  // queue, so one never starts while another is part-way through. The ...Now
+  // versions above run directly, for use inside a change.
+  const queued = <A extends unknown[]>(change: (...args: A) => Promise<unknown>) =>
+    (...args: A) => queueLayerChange(() => change(...args))
+  const doCreateGroup = queued(doCreateGroupNow)
+  const doDeleteGroup = queued(doDeleteGroupNow)
+  const doDeleteTrace = queued(doDeleteTraceNow)
+  const doRenameGroup = queued(doRenameGroupNow)
+  const doDeleteGroupKeepTraces = queued(doDeleteGroupKeepTracesNow)
+  const duplicateGroup = queued(duplicateGroupNow)
+  const duplicateSingleTrace = queued(duplicateSingleTraceNow)
+  const setTraceLocked = queued(setTraceLockedNow)
+  const setTracesIgnoreClicks = queued(setTracesIgnoreClicksNow)
+  const setTracesEnableInteraction = queued(setTracesEnableInteractionNow)
+  const moveTraceToLayer = queued(moveTraceToLayerNow)
+  const moveTracesToLayer = queued(moveTracesToLayerNow)
+  const moveTraceWithinLayer = queued(moveTraceWithinLayerNow)
+  const moveTraceToPosition = queued(moveTraceToPositionNow)
+  const reorderLayers = queued(reorderLayersNow)
+  const moveLayerUp = queued(moveLayerUpNow)
+  const moveLayerDown = queued(moveLayerDownNow)
 
   // Get traces for a specific layer
   const getTracesForLayer = (layerId: string | null) => {
-    return traces
+    return useGameStore.getState().traces
       .filter(t => (t.layerId ?? null) === layerId)
       .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0)) // Highest z-index first (top of layer)
   }
@@ -1206,7 +1257,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const zs = ung.map(t => t.zIndex ?? 0)
     if (new Set(zs).size === zs.length) return // already distinct -- nothing to heal
     isHealingUngroupedRef.current = true
-    persistTraceOrder(null, ung, undefined).finally(() => { isHealingUngroupedRef.current = false })
+    queueLayerChange(() => persistTraceOrder(null, getTracesForLayer(null), undefined))
+      .finally(() => { isHealingUngroupedRef.current = false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [traces, canEdit])
 

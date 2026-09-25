@@ -5808,19 +5808,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />
       )}
 
-      {/* Instructions */}
-      <div data-hud="true" className="fixed bottom-4 left-4 px-4 py-[0.3125rem] border border-nier-border/40 z-[9999] font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}>
+      {/* Instructions. A click anywhere on it opens or closes it, not only on
+          its title -- open, it is a list to read, with nothing else to click. */}
+      <div
+        data-hud="true"
+        className="fixed bottom-4 left-4 px-4 py-[0.3125rem] border border-nier-border/40 z-[9999] font-mono pointer-events-auto cursor-pointer select-none"
+        style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+        onClick={() => setControlsMinimized(!controlsMinimized)}
+        title={controlsMinimized ? t('common.open') : t('common.close')}
+      >
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
         <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>
         <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg"></div>
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
 
-        <div
-          className="flex items-center justify-between gap-3 cursor-pointer select-none h-[1.375rem] leading-none"
-          onClick={() => setControlsMinimized(!controlsMinimized)}
-          title={controlsMinimized ? t('common.open') : t('common.close')}
-        >
+        <div className="flex items-center justify-between gap-3 h-[1.375rem] leading-none">
           <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.controls.title')}</p>
           <span
             className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
