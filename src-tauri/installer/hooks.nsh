@@ -42,12 +42,24 @@
 ; its data folder, and the app opened as a white flash and closed, leaving a
 ; process behind. That happened on a standard account whose copy was put there.
 ;
-; Both pieces are set from here because this file is included (line 28 of the
-; generated script) before the folder page is declared: MUI reads
-; MUI_DIRECTORYPAGE_TEXT_TOP when that page is inserted, and .onVerifyInstDir is
-; a global callback NSIS runs whenever the folder on that page changes. Neither
-; is defined by Tauri's template -- checked -- so nothing is overridden. The
-; updater runs the installer passively, which skips this page altogether.
+; Blocking the page is not enough on its own. The installer offers the folder
+; the last install used (Tauri's RestorePreviousInstallLocation, from HKCU), so
+; a copy already in a refused folder would come back to it: the page on a
+; folder whose Next is disabled, and an update -- which skips the page -- into
+; it again. So a remembered folder that would be refused is replaced by the
+; default, AppData\Local\The Digital Atrium, before the page shows (AtriumGuiInit)
+; and again before anything is copied (NSIS_HOOK_PREINSTALL, for silent runs,
+; which have no GUI to init). The old copy is left to the uninstaller the
+; installer already runs for a reinstall or update.
+;
+; All of it is set from here because this file is included (line 28 of the
+; generated script) before the pages are declared: MUI reads
+; MUI_DIRECTORYPAGE_TEXT_TOP when the folder page is inserted, and
+; MUI_CUSTOMFUNCTION_GUIINIT when it writes .onGUIInit; .onVerifyInstDir is a
+; global callback NSIS runs whenever the folder on that page changes. None is
+; defined by Tauri's template -- checked -- so nothing is overridden. But
+; ${PRODUCTNAME} is defined five lines later, so the functions here spell the
+; name out.
 
 !define MUI_DIRECTORYPAGE_TEXT_TOP "Setup will install The Digital Atrium in the following folder. To use a different one, click Browse.$\r$\n$\r$\nProgram Files and Windows need administrator rights, and AppData\LocalLow runs programs with restricted rights, so Next stays disabled there. Any other folder in your user folder, elsewhere on C:\ (such as C:\Apps) or on another drive works."
 
@@ -72,7 +84,8 @@ Var AtriumBlockedDir
   ${EndIf}
 !macroend
 
-Function .onVerifyInstDir
+; Sets AtriumBlockedDir to 1 when $INSTDIR is a folder this installer refuses.
+Function AtriumCheckInstDir
   Push $R7
   Push $R8
   StrCpy $AtriumBlockedDir 0
@@ -82,10 +95,29 @@ Function .onVerifyInstDir
   !insertmacro _AtriumUnder "$PROFILE\AppData\LocalLow"
   Pop $R8
   Pop $R7
+FunctionEnd
+
+; Back to the default folder, when the one in $INSTDIR would be refused.
+Function AtriumDefaultIfRefused
+  Call AtriumCheckInstDir
+  ${If} $AtriumBlockedDir == 1
+    DetailPrint "Installing in $LOCALAPPDATA\The Digital Atrium instead of $INSTDIR"
+    StrCpy $INSTDIR "$LOCALAPPDATA\The Digital Atrium"
+  ${EndIf}
+FunctionEnd
+
+Function .onVerifyInstDir
+  Call AtriumCheckInstDir
   ; Abort here disables Next rather than ending anything.
   ${If} $AtriumBlockedDir == 1
     Abort
   ${EndIf}
+FunctionEnd
+
+; Before the first page: after .onInit has put back the remembered folder.
+!define MUI_CUSTOMFUNCTION_GUIINIT AtriumGuiInit
+Function AtriumGuiInit
+  Call AtriumDefaultIfRefused
 FunctionEnd
 
 ; ---------------------------------------------------------------------------
@@ -105,6 +137,12 @@ FunctionEnd
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
+  ; A remembered folder that would be refused, for runs that never showed a
+  ; page (see the folder page above). The section has already set the output
+  ; path to it, so it's set again.
+  Call AtriumDefaultIfRefused
+  SetOutPath $INSTDIR
+
   Push $R0
   Push $R2
 
