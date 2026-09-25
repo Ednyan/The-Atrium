@@ -1136,6 +1136,59 @@ fn report_fatal(message: &str) {
     }
 }
 
+// The Windows calls the startup code makes on its own token.
+#[cfg(windows)]
+mod win {
+    use std::ffi::c_void;
+    pub const TOKEN_QUERY: u32 = 0x0008;
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub fn GetCurrentProcess() -> *mut c_void;
+        pub fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+    #[link(name = "advapi32")]
+    extern "system" {
+        pub fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
+        pub fn GetTokenInformation(token: *mut c_void, class: u32, info: *mut c_void, len: u32, written: *mut u32) -> i32;
+        pub fn GetUserNameW(name: *mut u16, size: *mut u32) -> i32;
+    }
+    #[link(name = "userenv")]
+    extern "system" {
+        pub fn GetUserProfileDirectoryW(token: *mut c_void, dir: *mut u16, size: *mut u32) -> i32;
+        pub fn CreateEnvironmentBlock(block: *mut *mut c_void, token: *mut c_void, inherit: i32) -> i32;
+        pub fn DestroyEnvironmentBlock(block: *mut c_void) -> i32;
+    }
+}
+
+// The account this process runs as, and whether it runs elevated -- asked of
+// Windows, not read from USERNAME, which is the environment's and can be
+// another account's (see below). On carla's account the app was started from
+// a permission prompt, and left no log in her temp folder: run as the
+// administrator, it would have written it in his.
+#[cfg(windows)]
+fn process_account() -> String {
+    use win::*;
+    const TOKEN_ELEVATION: u32 = 20;
+    unsafe {
+        let mut buf = [0u16; 257];
+        let mut len = buf.len() as u32;
+        // len comes back counting the closing null.
+        let name = if GetUserNameW(buf.as_mut_ptr(), &mut len) != 0 {
+            String::from_utf16_lossy(&buf[..len.saturating_sub(1) as usize])
+        } else {
+            "?".into()
+        };
+        let mut elevated = 0u32;
+        let mut token = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) != 0 {
+            let mut written = 0;
+            GetTokenInformation(token, TOKEN_ELEVATION, &mut elevated as *mut u32 as *mut _, 4, &mut written);
+            CloseHandle(token);
+        }
+        if elevated != 0 { format!("{}, elevated", name) } else { name }
+    }
+}
+
 // The per-user folders, taken from the account this process runs as.
 //
 // On a PC with an administrator (migue) and a standard account (carla), the
@@ -1153,25 +1206,9 @@ fn report_fatal(message: &str) {
 // the process has a single thread.
 #[cfg(windows)]
 fn repair_user_environment() {
-    use std::ffi::{c_void, OsString};
+    use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetCurrentProcess() -> *mut c_void;
-        fn CloseHandle(handle: *mut c_void) -> i32;
-    }
-    #[link(name = "advapi32")]
-    extern "system" {
-        fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
-    }
-    #[link(name = "userenv")]
-    extern "system" {
-        fn GetUserProfileDirectoryW(token: *mut c_void, dir: *mut u16, size: *mut u32) -> i32;
-        fn CreateEnvironmentBlock(block: *mut *mut c_void, token: *mut c_void, inherit: i32) -> i32;
-        fn DestroyEnvironmentBlock(block: *mut c_void) -> i32;
-    }
-    const TOKEN_QUERY: u32 = 0x0008;
+    use win::*;
     const TOKEN_DUPLICATE: u32 = 0x0002;
 
     unsafe {
@@ -1220,20 +1257,31 @@ fn repair_user_environment() {
 
 fn main() {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
-    let before = format!("USERPROFILE={} LOCALAPPDATA={} TEMP={}", env("USERPROFILE"), env("LOCALAPPDATA"), env("TEMP"));
+    let before = format!(
+        "USERNAME={} USERPROFILE={} LOCALAPPDATA={} TEMP={}",
+        env("USERNAME"),
+        env("USERPROFILE"),
+        env("LOCALAPPDATA"),
+        env("TEMP")
+    );
     #[cfg(windows)]
     repair_user_environment();
     // After the repair, so the log lands in this account's temp folder.
     let _ = std::fs::remove_file(startup_log_path());
+    #[cfg(windows)]
+    let account = process_account();
+    #[cfg(not(windows))]
+    let account = env("USER");
     log_startup(&format!(
         "start {} as {} ({})",
         env!("CARGO_PKG_VERSION"),
-        env("USERNAME"),
+        account,
         std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
     ));
     log_startup(&format!("environment before: {}", before));
     log_startup(&format!(
-        "environment now:    USERPROFILE={} LOCALAPPDATA={} TEMP={}",
+        "environment now:    USERNAME={} USERPROFILE={} LOCALAPPDATA={} TEMP={}",
+        env("USERNAME"),
         env("USERPROFILE"),
         env("LOCALAPPDATA"),
         env("TEMP")

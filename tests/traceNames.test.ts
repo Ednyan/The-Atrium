@@ -29,7 +29,10 @@ test('Untitled N counts titles, not text; a file keeps its name without the exte
 
 test('a title of blanks and invisible characters is no title', () => {
   assert.equal(cleanTitle('  \u200B \n\t '), '')
-  assert.equal(cleanTitle('Casual \n dress\u200B code '), 'Casual dress code')
+  // Pinterest's invisible names: Hangul fillers and the empty Braille cell.
+  assert.equal(cleanTitle('\u3164'), '')
+  assert.equal(cleanTitle('\u2800 \u2800\uFFA0'), '')
+  assert.equal(cleanTitle('\u3164 Casual \n dress code \u200B'), 'Casual dress code')
   assert.equal(cleanTitle('\u2764\uFE0F\u200D\uD83D\uDD25 \u200D'), '\u2764\uFE0F\u200D\uD83D\uDD25')
   assert.equal(cleanTitle(null), '')
 })

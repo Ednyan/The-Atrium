@@ -98,11 +98,11 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
 
       // In that group, in pin order.
       const orderFields = newTraceOrderFields(useGameStore.getState().traces, group.id, pins.length)
-      // A pin whose title and description are blank -- often only spaces or
+      // A pin whose title, description and alt text are blank -- often only
       // invisible characters, which showed as an empty row -- is Untitled N.
       const titles: string[] = []
       for (const pin of pins) {
-        titles.push(cleanTitle(pin.title) || cleanTitle(pin.description)
+        titles.push(cleanTitle(pin.title) || cleanTitle(pin.description) || cleanTitle(pin.altText)
           || nextUntitledName(useGameStore.getState().traces, n => t('atrium.layers.numberedUntitled', { n }), titles))
       }
 

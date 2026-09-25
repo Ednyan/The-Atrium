@@ -274,6 +274,8 @@ export interface PinterestPin {
   id: string
   title: string
   description: string
+  // The image described, for screen readers -- often there when the title isn't.
+  altText: string
   imageUrl: string
   imageWidth: number
   imageHeight: number
@@ -341,6 +343,7 @@ export async function fetchPinterestBoardPins(boardId: string, onProgress?: (fet
         id: p.id,
         title: p.title || '',
         description: p.description || '',
+        altText: p.alt_text || '',
         imageUrl: image.url,
         imageWidth: image.width,
         imageHeight: image.height,

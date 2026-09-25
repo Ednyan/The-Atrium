@@ -29,16 +29,22 @@ export function nextUntitledName(
   return firstFreeName([...traces.filter(t => t.type !== 'text').map(t => t.content), ...alsoTaken], nameFor)
 }
 
-// A name as it will show, whitespace run together and invisible characters
-// gone: zero-width spaces and the like, which Pinterest titles are full of.
-// Joiners (U+200C, U+200D) only at the ends -- inside, they hold emoji like
-// the heart on fire together. A title of nothing but these is no title at
-// all; it showed as a blank row.
+// A name as it will show: whitespace run together, and blanks gone from the
+// ends. A title of nothing but blanks is no title at all; it showed as an
+// empty row.
+//
+// Blanks are more than whitespace. Pinterest's "invisible names" are Hangul
+// fillers (U+3164) or the empty Braille cell (U+2800) -- letters and symbols
+// as far as any check for text goes. \p{Default_Ignorable_Code_Point} has the
+// fillers, zero-width spaces, joiners and variation selectors; inside a name
+// those stay, since they hold emoji like the heart on fire together.
+const BLANK = String.raw`\s\p{Default_Ignorable_Code_Point}\u2800`
+const ALL_BLANK = new RegExp(`^[${BLANK}]*$`, 'u')
+const BLANK_ENDS = new RegExp(`^[${BLANK}]+|[${BLANK}]+$`, 'gu')
+
 export function cleanTitle(text: string | null | undefined): string {
-  return (text ?? '')
-    .replace(/[\u200B\u2060\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/^[\s\u200C\u200D]+|[\s\u200C\u200D]+$/g, '')
+  const title = text ?? ''
+  return ALL_BLANK.test(title) ? '' : title.replace(/\s+/g, ' ').replace(BLANK_ENDS, '')
 }
 
 // A file's name without its extension: "Sunset.final.png" -> "Sunset.final".
