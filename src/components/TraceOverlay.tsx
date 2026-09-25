@@ -6451,7 +6451,7 @@ return (
         )
       })()}
 
-      {/* Text Content - renders at final pixel size, text conforms to box like Excel */}
+      {/* Text Content - laid out at its own size, then scaled to the box */}
       {trace.type === 'text' && (() => {
         // Calculate the actual pixel font size accounting for zoom and
         // the trace's own scale -- without the latter, resizing a text
@@ -6479,9 +6479,17 @@ return (
         const traceScale = scaleWithBox
           ? (Math.sqrt(Math.max(0, rawScaleX * rawScaleY)) || 1)
           : 1
-        const scaledFontSize = baseFontSize * traceScale * zoom
+        // Laid out once, at the trace's own size -- the base font, 6px of
+        // padding, the box divided back by this -- and scaled up to the box
+        // as a whole. Laid out at the size on screen instead, as it was, the
+        // lines broke differently at every zoom: the font was scaled but the
+        // padding had a 4px floor, and a browser rounds glyph widths at small
+        // sizes, so a zoomed-out box fitted more words to a line than a
+        // zoomed-in one. Now only the picture scales; where the lines break is
+        // decided once, the same way textFit measures it.
+        const textScale = traceScale * zoom
         const textStyles = {
-          fontSize: `${scaledFontSize}px`,
+          fontSize: `${baseFontSize}px`,
           fontFamily: resolveFontFamilyCss(fontFamily),
           lineHeight: '1.3',
           fontWeight: (trace.textBold ? 'bold' : 'normal') as React.CSSProperties['fontWeight'],
@@ -6491,13 +6499,22 @@ return (
           color: trace.textColor ?? '#ffffff',
         }
         return (
-        <div 
-          className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
+        <div
+          className={`h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
           style={{
-            padding: `${Math.max(4, 6 * traceScale * zoom)}px`,
             clipPath: trace.cropWidth && trace.cropWidth < 1
               ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
               : undefined,
+          }}
+        >
+        <div
+          className="flex flex-col items-center justify-center"
+          style={{
+            width: `${100 / textScale}%`,
+            height: `${100 / textScale}%`,
+            padding: '6px',
+            transform: `scale(${textScale})`,
+            transformOrigin: '0 0',
           }}
         >
           {inlineEditingTraceId === trace.id ? (
@@ -6552,6 +6569,7 @@ return (
               {trace.content}
             </p>
           )}
+        </div>
         </div>
         )
       })()}
