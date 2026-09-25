@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code History · The Digital Atrium</title>
+<!-- Template for scripts/graph-growth.py, which fills in the data. -->
+<style>
+  :root { --bg: #07070b; --fg: #dcdce4; --dim: #8b8b98; --line: #262631; --accent: #ff8a3d; --pregit: #8b7cf0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  #hud { position: fixed; left: 18px; top: 14px; pointer-events: none; max-width: min(640px, calc(100vw - 36px)); }
+  #date { font-size: 30px; letter-spacing: .06em; }
+  #stats { color: var(--dim); margin-top: 2px; }
+  #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
+  #legend { position: fixed; right: 18px; top: 16px; color: var(--dim); text-align: right; pointer-events: none; }
+  #legend b { font-weight: normal; }
+  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  #bar button, #bar select { background: #13131a; color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
+  #bar button:hover, #bar select:hover { border-color: var(--accent); }
+  #track { flex: 1; position: relative; }
+  #era { position: absolute; left: 0; top: -14px; height: 3px; background: var(--pregit); }
+  #eraLabel { position: absolute; left: 0; top: -30px; color: var(--pregit); font-size: 11px; white-space: nowrap; }
+  #slider { width: 100%; accent-color: var(--accent); }
+  #tip { position: fixed; pointer-events: none; background: #13131af0; border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
+  #tip small { color: var(--dim); display: block; }
+  #hud, #legend, #bar { transition: opacity 1.2s ease; }
+  body.intro #hud, body.intro #legend, body.intro #bar { opacity: 0; pointer-events: none; }
+  /* Behind the title the graph is texture, not content: darker, greyer and a
+     little soft, so the name stands clear of it. The canvas is empty by the
+     time the filter comes off, so the switch never shows. */
+  body.intro canvas { filter: brightness(0.6) saturate(0.35) blur(1.5px); }
+  #intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           gap: 22px; padding: 0 24px; text-align: center; pointer-events: none; opacity: 0; }
+  #intro small { color: var(--dim); font-size: 12px; letter-spacing: .32em; text-transform: uppercase; }
+  /* The name as the landing page sets it: the same face, weights, sizes and
+     the metal on ATRIUM, in its dark theme. */
+  #intro h1 { margin: 0; font: 300 1em/0.86 Consolas, Monaco, 'Lucida Console', 'Liberation Mono', monospace; letter-spacing: -0.02em; }
+  #intro h1 { white-space: nowrap; font-size: clamp(2rem, 6.4vw, 5.6rem); }
+  #intro .the { font-weight: 200; letter-spacing: .12em; color: rgb(203 203 203 / .7); }
+  #intro .digital { color: #fff; text-shadow: 0 0 60px rgb(255 255 255 / .14); }
+  #intro .atrium { background-image: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%); -webkit-background-clip: text;
+                   background-clip: text; color: transparent; filter: drop-shadow(0 0 34px rgb(255 255 255 / .22)); }
+</style>
+</head>
+<body class="intro">
+<canvas id="c"></canvas>
+<div id="intro"><small>You're about to see the history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div>
+<div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
+<div id="legend"><b style="color:#fff">white</b>: new &nbsp;·&nbsp; <b style="color:#ff5a4f">red</b>: removed &nbsp;·&nbsp; glow: edited &nbsp;·&nbsp; □ folder &nbsp;·&nbsp; <b style="color:#9a9aab">●</b> other file<br>scroll to zoom · drag to move · double-click to follow again · space to pause</div>
+<div id="tip"></div>
+<div id="bar">
+  <button id="play">Pause</button>
+  <div id="track"><div id="era"></div><div id="eraLabel">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
+  <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
+</div>
+<script src="growth.js"></script>
+</body>
+</html>
