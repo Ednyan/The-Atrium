@@ -77,14 +77,17 @@ export class ThemeManager {
     this.particleContainer.eventMode = 'none'
     this.particleContainer.interactiveChildren = false
     
-    // Add at specific indices for proper layering:
-    // 0: Grid
-    // 1: Ground elements (below lighting)
-    // 2: Lighting layer
-    // 3: Particles (above lighting, below players)
-    const gridIndex = 0
-    container.addChildAt(this.groundContainer, gridIndex + 1) // After grid
-    container.addChildAt(this.particleContainer, gridIndex + 3) // After lighting
+    // Layered in the world as:
+    // 0: Ground elements (below lighting)
+    // 1: Lighting layer -- the world's only child when this is made
+    // 2: Particles (above lighting, below players)
+    // The grid is drawn in screen space under the whole world (LobbyScene's
+    // drawGrid); it used to be child 0 here, and with it gone these indices,
+    // written for it, pointed past the end -- Pixi threw, and the atrium never
+    // mounted. Clamped, so a world with more or fewer children than expected
+    // keeps the order rather than failing.
+    container.addChildAt(this.groundContainer, 0)
+    container.addChildAt(this.particleContainer, Math.min(2, container.children.length))
   }
 
   async loadTheme() {

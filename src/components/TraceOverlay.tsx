@@ -5474,7 +5474,7 @@ return (
         correctly against other traces once this fades with distance.
         Handles stay above every trace by using far larger values
         (see HANDLE_Z_INDEX below). */}
-    <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: zOf(trace) }}>
+    <div style={{ opacity: traceOpacity, position: 'relative', zIndex: zOf(trace) }}>
     {/* Container for positioning - doesn't scale */}
     <div
       data-trace-element="true"
@@ -5505,10 +5505,12 @@ return (
         // once -- without needing to know which of the many per-type
         // renderers below is drawing it.
         filter: isPressed ? 'brightness(1.35)' : undefined,
-        // translate and rotate too: the drag feel moves a trace through them,
-        // and named here they're left to the compositor rather than risking
-        // a big image being repainted for every frame of it.
-        willChange: 'transform, translate, rotate',
+        // Composited only while it moves -- dragged, or gliding after a
+        // throw -- so the drag feel's translate and rotate are left to the
+        // compositor. Always composited, as it was, the browser drew a trace
+        // between pixels at most zooms and without subpixel text, which is
+        // why text looked soft; at rest it's drawn flat, and crisp.
+        willChange: movingIds.has(trace.id) || glidingIds.has(trace.id) ? 'transform, translate, rotate' : undefined,
         transformOrigin: 'center center',
         // Floating (Profile > Animations): a slow drift of a few
         // pixels. Held still while selected, pressed, edited in place,

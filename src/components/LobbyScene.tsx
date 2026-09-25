@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
@@ -484,7 +485,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
-  const updateGridRef = useRef<((cameraX: number, cameraY: number) => void) | null>(null)
+  const updateGridRef = useRef<(() => void) | null>(null)
+  // The atrium's theme as it is now, for the grid to read when it draws (set
+  // where currentLobby is declared).
+  const themeSettingsRef = useRef<Lobby['themeSettings'] | undefined>(undefined)
   // prevThemeSettingsRef removed - was causing theme update issues
   const eventHandlersRef = useRef<{
     mousedown: ((e: MouseEvent) => void) | null,
@@ -653,6 +657,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
+  themeSettingsRef.current = currentLobby?.themeSettings
 
   // Fills in indicatorColorRef (declared above, since the ticker reads it).
   // Lives here rather than beside the ref because the dependency array is
@@ -1238,7 +1243,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         app.renderer.resize(width, height)
         // Redrawn at once rather than waiting for the render loop's every-other
         // frame, so the gap at the edge closes in the same paint as the resize.
-        updateGridRef.current?.(cameraPositionRef.current.x, cameraPositionRef.current.y)
+        updateGridRef.current?.()
       }
     }
 
@@ -2329,9 +2334,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const viewportHeight = window.innerHeight
 
     // Get theme settings from current lobby
-    const gridColor = currentLobby?.themeSettings?.gridColor ? 
-      parseInt(currentLobby.themeSettings.gridColor.replace('#', ''), 16) : 0x3b82f6
-    const gridOpacity = currentLobby?.themeSettings?.gridOpacity ?? 0.2
     const bgColor = currentLobby?.themeSettings?.backgroundColor ? 
       parseInt(currentLobby.themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
 
@@ -2362,9 +2364,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       app.stage.addChild(worldContainer)
       worldContainerRef.current = worldContainer
 
-      // Create infinite grid (will be repositioned dynamically)
+      // The grid, under everything in the world. In screen space, not in the
+      // world layer: see drawGrid.
       const grid = new Graphics()
-      worldContainer.addChild(grid)
+      app.stage.addChildAt(grid, 0)
       gridRef.current = grid
       
       // Create lighting layer (drawn above grid but below entities)
@@ -2372,36 +2375,39 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       worldContainer.addChild(lightingLayer)
       lightingLayerRef.current = lightingLayer
       
-      // Function to redraw grid based on camera position
-      const updateGrid = (cameraX: number, cameraY: number) => {
+      // The grid, drawn in screen space: 1px lines on whole pixels, at any
+      // zoom. It was drawn in world units inside the zoomed layer, so a line
+      // was 0.4px wide at 40% and 1.4px at 140%, on whatever fraction of a
+      // pixel each zoom put it -- faint and shimmering one way, soft the
+      // other, and different at every step of a zoom. The lines are still
+      // where the world's are: a line every spacing * zoom pixels, from the
+      // world's offset.
+      const drawGrid = () => {
         grid.clear()
-        if (currentLobby?.themeSettings?.gridEnabled === false) return
-        grid.lineStyle(1, gridColor, gridOpacity)
-
+        const theme = themeSettingsRef.current
+        if (theme?.gridEnabled === false) return
+        const color = theme?.gridColor ? parseInt(theme.gridColor.replace('#', ''), 16) : 0x3b82f6
+        grid.lineStyle(1, color, theme?.gridOpacity ?? 0.2)
         // From the atrium's own settings, so the lines are the ones the user
         // asked for -- and the ones Shift-dragging snaps onto, which reads
         // the same value.
-        const gridSize = currentLobby?.themeSettings?.gridLineSpacing ?? 50
-        // Account for zoom: visible world area = viewport / zoom
-        const currentZoom = zoomRef.current
-        const visibleW = window.innerWidth / currentZoom
-        const visibleH = window.innerHeight / currentZoom
-        const margin = gridSize * 2
-        const startX = Math.floor((cameraX - visibleW / 2 - margin) / gridSize) * gridSize
-        const endX = Math.ceil((cameraX + visibleW / 2 + margin) / gridSize) * gridSize
-        const startY = Math.floor((cameraY - visibleH / 2 - margin) / gridSize) * gridSize
-        const endY = Math.ceil((cameraY + visibleH / 2 + margin) / gridSize) * gridSize
-        
-        for (let x = startX; x <= endX; x += gridSize) {
-          grid.moveTo(x, startY)
-          grid.lineTo(x, endY)
+        const step = (theme?.gridLineSpacing ?? 50) * zoomRef.current
+        if (step < 2) return // closer than that is a fill, not a grid
+        const width = window.innerWidth, height = window.innerHeight
+        const at = (offset: number) => ((offset % step) + step) % step
+        // +0.5: a 1px line centred on a pixel covers it exactly.
+        for (let x = at(worldContainer.x); x <= width; x += step) {
+          const sx = Math.round(x) + 0.5
+          grid.moveTo(sx, 0)
+          grid.lineTo(sx, height)
         }
-        for (let y = startY; y <= endY; y += gridSize) {
-          grid.moveTo(startX, y)
-          grid.lineTo(endX, y)
+        for (let y = at(worldContainer.y); y <= height; y += step) {
+          const sy = Math.round(y) + 0.5
+          grid.moveTo(0, sy)
+          grid.lineTo(width, sy)
         }
       }
-      updateGridRef.current = updateGrid
+      updateGridRef.current = drawGrid
 
       // Mouse wheel / trackpad handler: zooms or pans depending on the gesture.
       const handleWheel = (e: WheelEvent) => {
@@ -2839,7 +2845,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Fluid animation loop
       let pulseTime = 0
       let frameCounter = 0
-      let lastGridZoom = 1.0 // Track zoom level when grid was last drawn
+      // What the traces were last given (see below).
+      let sentView = { x: NaN, y: NaN, zoom: NaN }
       
       app.ticker.add(() => {
         frameCounter++
@@ -2888,26 +2895,30 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const newOffsetY = worldContainer.y
         worldOffsetRef.current = { x: newOffsetX, y: newOffsetY }
         
-        // Update state for React - traces need this to position correctly during zoom
-        // Use requestAnimationFrame-style throttling (every frame is fine, React batches these)
-        const offsetChanged = Math.abs(newOffsetX - worldOffset.x) > 0.5 || Math.abs(newOffsetY - worldOffset.y) > 0.5
-        if (offsetChanged) {
-          setWorldOffset({ x: newOffsetX, y: newOffsetY })
+        // The traces, which are DOM, placed from React state -- in this frame.
+        //
+        // Set plainly from here, that state was committed after this frame
+        // had already painted the grid, so the traces trailed the grid by a
+        // frame and caught up: the small correction seen all through a zoom.
+        // flushSync commits before the frame paints.
+        //
+        // Compared with what was last sent, not with zoom and worldOffset as
+        // this closure captured them when the ticker was made -- which never
+        // changed, so a zoom ending near where it began could stop a step
+        // short of the grid.
+        const offsetChanged = newOffsetX !== sentView.x || newOffsetY !== sentView.y
+        const zoomMoved = zoomRef.current !== sentView.zoom
+        if (offsetChanged || zoomMoved) {
+          sentView = { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current }
+          flushSync(() => {
+            if (offsetChanged) setWorldOffset({ x: newOffsetX, y: newOffsetY })
+            if (zoomMoved) setZoom(zoomRef.current)
+          })
         }
         
-        // Update zoom state for React - update during animation for smooth trace scaling
-        if (Math.abs(zoomRef.current - zoom) > 0.001) {
-          setZoom(zoomRef.current)
-        }
-        
-        // Update grid every frame during zoom changes, otherwise every other frame
-        const zoomChanged = Math.abs(zoomRef.current - lastGridZoom) > 0.001
-        if (zoomChanged || (zoomIsStable && frameCounter % 2 === 0)) {
-          if (updateGridRef.current) {
-            updateGridRef.current(cameraPositionRef.current.x, cameraPositionRef.current.y)
-          }
-          lastGridZoom = zoomRef.current
-        }
+        // The grid is in screen space (drawGrid), so it's redrawn on every
+        // frame the view moves -- with the traces, above -- and not otherwise.
+        if (offsetChanged || zoomMoved) updateGridRef.current?.()
         
         // Update theme manager
         const themeManager = themeManagerRef.current
@@ -3472,55 +3483,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // Update theme when lobby theme settings change
   useEffect(() => {
-    if (!appRef.current || !gridRef.current || !updateGridRef.current || !currentLobby) return
+    if (!appRef.current || !updateGridRef.current || !currentLobby) return
 
     // Update background color
     const bgColor = currentLobby.themeSettings?.backgroundColor ? 
       parseInt(currentLobby.themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
     appRef.current.renderer.background.color = bgColor
 
-    // Update grid (will use new colors on next redraw)
-    const gridColor = currentLobby.themeSettings?.gridColor ? 
-      parseInt(currentLobby.themeSettings.gridColor.replace('#', ''), 16) : 0x3b82f6
-    const gridOpacity = currentLobby.themeSettings?.gridOpacity ?? 0.2
-    
-    // Recreate updateGrid function with new colors
-    const grid = gridRef.current
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-    
-    const newUpdateGrid = (cameraX: number, cameraY: number) => {
-      grid.clear()
-      if (currentLobby.themeSettings?.gridEnabled === false) return
-      grid.lineStyle(1, gridColor, gridOpacity)
-      // The redraw path, which is the one that runs when the setting is
-      // changed -- so it has to read the same value as the initial draw
-      // above. Two copies of this function exist because the theme change
-      // rebuilds it with new colours; both had 50 written into them.
-      const gridSize = currentLobby.themeSettings?.gridLineSpacing ?? 50
-      const currentZoom = zoomRef.current
-      const visibleW = window.innerWidth / currentZoom
-      const visibleH = window.innerHeight / currentZoom
-      const margin = gridSize * 2
-      const startX = Math.floor((cameraX - visibleW / 2 - margin) / gridSize) * gridSize
-      const endX = Math.ceil((cameraX + visibleW / 2 + margin) / gridSize) * gridSize
-      const startY = Math.floor((cameraY - visibleH / 2 - margin) / gridSize) * gridSize
-      const endY = Math.ceil((cameraY + visibleH / 2 + margin) / gridSize) * gridSize
-      
-      for (let x = startX; x <= endX; x += gridSize) {
-        grid.moveTo(x, startY)
-        grid.lineTo(x, endY)
-      }
-      for (let y = startY; y <= endY; y += gridSize) {
-        grid.moveTo(startX, y)
-        grid.lineTo(endX, y)
-      }
-    }
-    
-    updateGridRef.current = newUpdateGrid
-    
-    // Trigger immediate grid update
-    newUpdateGrid(cameraPositionRef.current.x, cameraPositionRef.current.y)
+    // The grid reads the theme when it draws (themeSettingsRef).
+    updateGridRef.current()
 
     // Update ThemeManager settings
     if (themeManagerRef.current) {
@@ -3544,7 +3515,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       })
 
       // Recreate particles with new settings
-      themeManagerRef.current.createParticles(viewportWidth, viewportHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
+      themeManagerRef.current.createParticles(window.innerWidth, window.innerHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
 
       // Handle ground elements
       if (themeSettings?.groundParticlesEnabled === false) {
