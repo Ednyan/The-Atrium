@@ -6,6 +6,7 @@ import Database from '@tauri-apps/plugin-sql'
 import { invoke } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { mkdir, exists } from '@tauri-apps/plugin-fs'
+import { carryLinks } from './traceLinks'
 
 let db: Database | null = null
 let mediaBasePath: string = ''
@@ -803,6 +804,9 @@ async function writeLobbyVaultSnapshot(lobbyId: string): Promise<void> {
       .sort((a, b) => (b.z_index ?? 0) - (a.z_index ?? 0))
   }
 
+  const linkRows = await db.select<any[]>('SELECT * FROM trace_links WHERE lobby_id = ?', [lobbyId])
+  const links = linkRows.map(row => convertRowFromSql('trace_links', row))
+
   const lobbyDir = await getVaultLobbyDirectory(lobby.id, lobby.name)
   lobbyNameCache.set(lobby.id, lobby.name)
 
@@ -830,6 +834,7 @@ async function writeLobbyVaultSnapshot(lobbyId: string): Promise<void> {
     lobby,
     layers,
     traces: serializedTraces,
+    links,
   }
 
   const snapshotPath = await join(lobbyDir, 'atrium.json')
@@ -883,6 +888,16 @@ async function syncAllLobbiesToVault(): Promise<void> {
   }
 }
 
+// Writes a row, replacing any with its id.
+async function putRow(table: string, row: Record<string, any>): Promise<void> {
+  const prepared = convertRowToSql(table, row)
+  const columns = Object.keys(prepared)
+  await db!.execute(
+    `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+    columns.map(c => prepared[c]),
+  )
+}
+
 async function readRowsForMutation(table: string, filters: QueryFilter[]): Promise<any[]> {
   if (!db) return []
 
@@ -898,8 +913,10 @@ async function handleVaultSyncAfterMutation(opts: QueryOptions, previousRows: an
   if (!db) return
 
   switch (opts.table) {
-    case 'traces': {
-      if (opts.operation === 'delete') {
+    // A thread's rows carry their atrium like a trace's, and its mirror holds them.
+    case 'traces':
+    case 'trace_links': {
+      if (opts.table === 'traces' && opts.operation === 'delete') {
         await cleanupDeletedTraceMedia(previousRows)
       }
 
@@ -1703,13 +1720,7 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
         })
 
         for (const row of normalizedRows) {
-          const prepared = convertRowToSql(opts.table, row)
-          const columns = Object.keys(prepared)
-          const placeholders = columns.map(() => '?').join(', ')
-          const values = columns.map(c => prepared[c])
-          const sql = `INSERT OR REPLACE INTO ${opts.table} (${columns.join(', ')}) VALUES (${placeholders})`
-
-          await db!.execute(sql, values)
+          await putRow(opts.table, row)
           void handleVaultSyncAfterMutation({ ...opts, data: row }, [], row)
         }
 
@@ -2485,29 +2496,14 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
   const lobbyId = asCopy ? uuid() : lobby.id
   const lobbyName = asCopy ? `${lobby.name ?? 'Atrium'} (restored)` : (lobby.name ?? 'Atrium')
 
-  const lobbyRow = convertRowToSql('lobbies', {
-    ...lobby,
-    id: lobbyId,
-    name: lobbyName,
-    owner_user_id: LOCAL_USER_ID,
-  })
-  const lobbyColumns = Object.keys(lobbyRow)
-  await db.execute(
-    `INSERT OR REPLACE INTO lobbies (${lobbyColumns.join(', ')}) VALUES (${lobbyColumns.map(() => '?').join(', ')})`,
-    lobbyColumns.map(c => lobbyRow[c]),
-  )
+  await putRow('lobbies', { ...lobby, id: lobbyId, name: lobbyName, owner_user_id: LOCAL_USER_ID })
 
   // Old layer id -> new, so traces can be repointed when restoring as a copy.
   const layerIdMap = new Map<string, string>()
   for (const layer of snapshot.layers ?? []) {
     const newId = asCopy ? uuid() : layer.id
     layerIdMap.set(layer.id, newId)
-    const row = convertRowToSql('layers', { ...layer, id: newId, lobby_id: lobbyId, user_id: LOCAL_USER_ID })
-    const columns = Object.keys(row)
-    await db.execute(
-      `INSERT OR REPLACE INTO layers (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
-      columns.map(c => row[c]),
-    )
+    await putRow('layers', { ...layer, id: newId, lobby_id: lobbyId, user_id: LOCAL_USER_ID })
   }
 
   let mediaFiles = 0
@@ -2554,6 +2550,8 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
   }
 
   let traces = 0
+  // Old trace id -> new, for the threads.
+  const traceIds = new Map<string, string>()
   for (const trace of snapshot.traces ?? []) {
     // Mirror-only bookkeeping, not columns on the table.
     const { vault_media_path, vault_image_path, ...rest } = trace
@@ -2561,21 +2559,23 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
     const mediaUrl = await restoreAsset(rest.media_url, vault_media_path)
     const imageUrl = await restoreAsset(rest.image_url, vault_image_path)
 
-    const row = convertRowToSql('traces', {
+    const id = asCopy ? uuid() : rest.id
+    await putRow('traces', {
       ...rest,
-      id: asCopy ? uuid() : rest.id,
+      id,
       lobby_id: lobbyId,
       user_id: LOCAL_USER_ID,
       media_url: mediaUrl,
       image_url: imageUrl,
       layer_id: rest.layer_id ? layerIdMap.get(rest.layer_id) ?? null : null,
     })
-    const columns = Object.keys(row)
-    await db.execute(
-      `INSERT OR REPLACE INTO traces (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
-      columns.map(c => row[c]),
-    )
+    traceIds.set(rest.id, id)
     traces++
+  }
+
+  // Mirrors written before threads existed simply have none.
+  for (const link of carryLinks(snapshot.links, traceIds)) {
+    await putRow('trace_links', { ...link, id: uuid(), lobby_id: lobbyId })
   }
 
   lobbyNameCache.set(lobbyId, lobbyName)

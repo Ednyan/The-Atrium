@@ -29,9 +29,11 @@ export function mapRowToLink(row: any): TraceLink {
     from: row.from_trace,
     to: row.to_trace,
     arrow: ARROWS.includes(row.arrow) ? row.arrow : 'none',
-    color: row.color || null,
-    width: typeof row.width === 'number' && row.width > 0 ? row.width : DEFAULT_LINK_WIDTH,
-    label: row.label || '',
+    color: typeof row.color === 'string' && row.color ? row.color : null,
+    // Within the table's checks, so a hand-edited file can't carry a value
+    // the database refuses.
+    width: typeof row.width === 'number' && row.width > 0 ? Math.min(row.width, 40) : DEFAULT_LINK_WIDTH,
+    label: typeof row.label === 'string' ? row.label.slice(0, 80) : '',
   }
 }
 
@@ -46,6 +48,25 @@ export function linkRow(link: TraceLink) {
     width: link.width,
     label: link.label || null,
   }
+}
+
+// Threads carried into another atrium -- an import, an upload, a restore from
+// the vault -- whose traces got new ids on the way (`traceIds`: old to new).
+// Both ends are repointed; a thread whose other end didn't make it is left
+// behind, and so is a second thread between the same two traces, which the
+// table refuses -- one refusal would lose the whole batch. The rows keep
+// their lobby_id for the caller to repoint, and leave the id to the table.
+export function carryLinks(rows: unknown, traceIds: Map<string, string>) {
+  if (!Array.isArray(rows)) return []
+  const pairs = new Set<string>()
+  return rows.flatMap(row => {
+    const from = traceIds.get(row?.from_trace), to = traceIds.get(row?.to_trace)
+    const pair = [from, to].sort().join(' ')
+    if (!from || !to || from === to || pairs.has(pair)) return []
+    pairs.add(pair)
+    const { id: _id, ...rest } = linkRow({ ...mapRowToLink(row), from, to })
+    return [rest]
+  })
 }
 
 // Whether two traces are already joined, whichever way round.

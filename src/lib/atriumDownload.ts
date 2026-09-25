@@ -12,6 +12,59 @@ import { fetchAllLobbyTraces } from '../hooks/useTraces'
 // atrium past the importer's 10MB ceiling. The trade-off: an imported atrium
 // still pulls its images from the network rather than the vault.
 
+// The export file, for the web download below and the desktop's Export
+// Atrium alike, so a file from either imports into the other.
+//
+// Version 3: files carry `locations` (bumped from 2; the importer accepts 1
+// and 2 and simply finds none, so only a v3 file in an old build is refused,
+// which is the direction that matters). `links` came later and is optional:
+// threads between traces, named by the traces' ids, which the traces keep
+// here for that. Every importer gives traces new ids -- older builds drop the
+// id, and the threads with it.
+export function atriumEnvelope(
+  app: string,
+  lobby: { name: string; theme_settings: any; is_public: boolean | number; max_players: number },
+  layers: any[],
+  locations: any[],
+  traces: any[],
+  links: any[],
+) {
+  return {
+    version: 3,
+    exportedAt: new Date().toISOString(),
+    app,
+    lobby,
+    layers: layers.map((l: any) => ({
+      name: l.name,
+      z_index: l.z_index,
+      is_group: l.is_group,
+      parent_id: l.parent_id,
+      _local_id: l.id,
+    })),
+    locations: locations.map((l: any) => ({
+      name: l.name,
+      position_x: l.position_x,
+      position_y: l.position_y,
+      zoom: l.zoom,
+      order_index: l.order_index,
+      is_locked: l.is_locked,
+    })),
+    traces: traces.map((t: any) => {
+      // Ownership is the importer's to reassign, to its own atrium and user.
+      const { created_at, user_id, lobby_id, ...rest } = t
+      return { ...rest, _local_layer_id: t.layer_id }
+    }),
+    links: links.map((l: any) => ({
+      from_trace: l.from_trace,
+      to_trace: l.to_trace,
+      arrow: l.arrow,
+      color: l.color,
+      width: l.width,
+      label: l.label,
+    })),
+  }
+}
+
 export interface AtriumDownloadResult {
   traceCount: number
   layerCount: number
@@ -60,15 +113,14 @@ export async function downloadAtrium(
     .eq('lobby_id', lobbyId)
     .order('order_index', { ascending: true })
 
-  const exportData = {
-    // Bumped from 2: files written by this version carry `locations`. The
-    // importer accepts 1 and 2 as before and simply finds none, so older
-    // files still import -- only the reverse (a v3 file in an old build) is
-    // rejected, which is the direction that matters.
-    version: 3,
-    exportedAt: new Date().toISOString(),
-    app: 'Digital Atrium Web',
-    lobby: {
+  const { data: linkRows } = await (supabase
+    .from('trace_links') as any)
+    .select('*')
+    .eq('lobby_id', lobbyId)
+
+  const exportData = atriumEnvelope(
+    'Digital Atrium Web',
+    {
       name: lobby.name,
       // Already JSON on the web side; desktop stores it as a string and
       // parses on the way out.
@@ -76,28 +128,11 @@ export async function downloadAtrium(
       is_public: lobby.is_public,
       max_players: lobby.max_players,
     },
-    layers: layers.map((l: any) => ({
-      name: l.name,
-      z_index: l.z_index,
-      is_group: l.is_group,
-      parent_id: l.parent_id,
-      _local_id: l.id,
-    })),
-    locations: (locationRows || []).map((l: any) => ({
-      name: l.name,
-      position_x: l.position_x,
-      position_y: l.position_y,
-      zoom: l.zoom,
-      order_index: l.order_index,
-      is_locked: l.is_locked,
-    })),
-    traces: traces.map((t: any) => {
-      // Strip identity/ownership columns -- the importer reassigns all of
-      // them to the destination atrium and its own user.
-      const { id, created_at, user_id, lobby_id, ...rest } = t
-      return { ...rest, _local_layer_id: t.layer_id }
-    }),
-  }
+    layers,
+    locationRows || [],
+    traces,
+    linkRows || [],
+  )
 
   const jsonString = JSON.stringify(exportData)
   const blob = new Blob([jsonString], { type: 'application/json' })

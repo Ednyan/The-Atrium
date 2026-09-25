@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrowhead, bend, boxEdge, curveMiddle, joins, linkRow, mapRowToLink } from '../src/lib/traceLinks.ts'
+import { arrowhead, bend, boxEdge, carryLinks, curveMiddle, joins, linkRow, mapRowToLink } from '../src/lib/traceLinks.ts'
 
 const near = (a: { x: number; y: number }, x: number, y: number) =>
   assert.ok(Math.abs(a.x - x) < 1e-9 && Math.abs(a.y - y) < 1e-9, `${a.x},${a.y} is not ${x},${y}`)
@@ -40,4 +40,19 @@ test('a pair is joined whichever way round, and rows round-trip', () => {
   // Unknown arrow, empty colour and a bad width fall back to the defaults.
   assert.equal(link.arrow, 'none'); assert.equal(link.color, null); assert.equal(link.width, 2)
   assert.equal(linkRow({ ...link, label: '' }).label, null)
+})
+
+test('carried threads follow their traces to new ids, and nothing else comes', () => {
+  const ids = new Map([['a', 'A'], ['b', 'B'], ['c', 'C']])
+  const rows = carryLinks([
+    { id: 'x', lobby_id: 'L', from_trace: 'a', to_trace: 'b', arrow: 'forward', color: '#fff', width: 99, label: 'hi' },
+    { from_trace: 'b', to_trace: 'a' }, // the same two traces again
+    { from_trace: 'a', to_trace: 'gone' }, // its other end didn't arrive
+    { from_trace: 'c', to_trace: 'b', arrow: 'sideways', label: 7 },
+  ], ids)
+  assert.deepEqual(rows, [
+    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi' },
+    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null },
+  ])
+  assert.deepEqual(carryLinks(undefined, ids), [])
 })

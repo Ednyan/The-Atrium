@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { localClient, resolveLocalUrl } from '../lib/localDb'
 import { useTranslation } from '../lib/i18n'
+import { atriumEnvelope } from '../lib/atriumDownload'
 
 interface ExportDatabaseProps {
   onClose: () => void
@@ -83,6 +84,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
         .eq('lobby_id', selectedLobbyId)
         .order('order_index', { ascending: true })
       const locations = (locationRows || []) as any[]
+      const { data: linkRows } = await localClient.from('trace_links').select('*').eq('lobby_id', selectedLobbyId)
 
       // Embed local:// media as base64 data URLs
       setProgress(t('desktop.export.embedding'))
@@ -109,12 +111,9 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
         }
       }
 
-      const exportData = {
-        // See lib/atriumDownload.ts: 3 means the file carries `locations`.
-        version: 3,
-        exportedAt: new Date().toISOString(),
-        app: 'Digital Atrium Desktop',
-        lobby: {
+      const exportData = atriumEnvelope(
+        'Digital Atrium Desktop',
+        {
           name: lobby.name,
           // NOT JSON.parse'd. localDb already parsed it on read, so parsing
           // again threw `"[object Object]" is not valid JSON` -- the string
@@ -125,26 +124,11 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
           is_public: lobby.is_public,
           max_players: lobby.max_players,
         },
-        layers: layers.map((l: any) => ({
-          name: l.name,
-          z_index: l.z_index,
-          is_group: l.is_group,
-          parent_id: l.parent_id,
-          _local_id: l.id,
-        })),
-        locations: locations.map((l: any) => ({
-          name: l.name,
-          position_x: l.position_x,
-          position_y: l.position_y,
-          zoom: l.zoom,
-          order_index: l.order_index,
-          is_locked: l.is_locked,
-        })),
-        traces: lobbyTraces.map((t: any) => {
-          const { id, created_at, user_id, lobby_id, ...rest } = t
-          return { ...rest, _local_layer_id: t.layer_id }
-        }),
-      }
+        layers,
+        locations,
+        lobbyTraces,
+        linkRows || [],
+      )
 
       const jsonString = JSON.stringify(exportData)
       const sizeMB = (new Blob([jsonString]).size / (1024 * 1024)).toFixed(1)

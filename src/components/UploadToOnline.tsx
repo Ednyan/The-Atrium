@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { localClient } from '../lib/localDb'
+import { carryLinks } from '../lib/traceLinks'
 import { useTranslation } from '../lib/i18n'
 
 interface UploadToOnlineProps {
@@ -116,6 +117,8 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
       // 3. Upload traces
       setProgress(t('desktop.upload.traces'))
       const { data: localTraces } = await localClient.from('traces').select('*')
+      // Local trace ids to online ones, for the threads between them.
+      const traceIdMap = new Map<string, string>()
 
       if (localTraces?.length) {
         let uploaded = 0
@@ -137,6 +140,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
           }
 
           const traceData: Record<string, any> = {
+            id: crypto.randomUUID(),
             user_id: remoteUserId,
             username: trace.username,
             type: trace.type,
@@ -204,10 +208,20 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
           const { error: traceErr } = await remote.from('traces').insert(traceData)
           if (traceErr) {
             console.error('Trace upload error:', traceErr)
+          } else {
+            traceIdMap.set(trace.id, traceData.id)
           }
           uploaded++
           setProgress(t('desktop.upload.tracesProgress', { done: uploaded, total: localTraces.length }))
         }
+      }
+
+      // 4. Threads, between the traces that made it.
+      const { data: localLinks } = await localClient.from('trace_links').select('*')
+      const linkRows = carryLinks(localLinks, traceIdMap).map(l => ({ ...l, lobby_id: lobbyIdMap[l.lobby_id] }))
+      if (linkRows.length > 0) {
+        const { error: linkErr } = await remote.from('trace_links').insert(linkRows)
+        if (linkErr) console.error('Thread upload error:', linkErr)
       }
 
       setStatus('done')

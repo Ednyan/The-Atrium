@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
+import { carryLinks } from '../lib/traceLinks'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -56,6 +57,8 @@ interface AtriumExport {
     is_locked?: boolean | number
   }>
   traces: Array<Record<string, any>>
+  // Threads between traces, by the traces' ids in this file. Newer files only.
+  links?: Array<Record<string, any>>
 }
 
 export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps) {
@@ -183,6 +186,8 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // Import traces
       setProgress(t('transfer.import.traces'))
       let imported = 0
+      // The file's trace ids to the new ones, for the threads between them.
+      const traceIds = new Map<string, string>()
       // Imported, but without their file. Counted apart from `imported` so an
       // import that lost media can't report itself as having gone fine.
       let mediaMissing = 0
@@ -348,6 +353,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         const traceData: Record<string, any> = {
           ...rest,
+          id: crypto.randomUUID(),
           user_id: user.id,
           lobby_id: lobbyId,
           layer_id: mappedLayerId,
@@ -363,10 +369,21 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           if (!firstFailure) firstFailure = failure
         } else {
           imported++
+          if (_id) traceIds.set(_id, traceData.id)
         }
         if ((imported + failed) % 10 === 0 || imported + failed === total) {
           setProgress(t('transfer.import.tracesProgress', { done: imported + failed, total }))
         }
+      }
+
+      // Threads, once both their traces are in.
+      let linksImported = 0
+      let linkFailure = ''
+      const linkRows = carryLinks(parsed.links, traceIds).map(l => ({ ...l, lobby_id: lobbyId }))
+      if (linkRows.length > 0) {
+        const { error: linkErr } = await (supabase.from('trace_links') as any).insert(linkRows)
+        if (linkErr) linkFailure = linkErr.message || 'Unknown error'
+        else linksImported = linkRows.length
       }
 
       // Locations last: they're independent of traces and layers, so a
@@ -403,6 +420,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       const summary = [t('transfer.import.summaryTraces', { count: imported })]
       if (mediaMissing > 0) summary.push(t('transfer.import.summaryNoFiles', { count: mediaMissing }))
       if (failed > 0) summary.push(t('transfer.import.summaryFailed', { count: failed }))
+      if (linksImported > 0) summary.push(t('transfer.import.summaryLinks', { count: linksImported }))
       if (locationsImported > 0) summary.push(t('transfer.import.summaryLocations', { count: locationsImported }))
       setProgress(t('transfer.import.done', { name: atriumName, summary: summary.join(', '), layers: Object.keys(layerIdMap).length }))
 
@@ -422,6 +440,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           more: rest > 0 ? t('transfer.import.noticeMore', { count: rest }) : '',
         }))
       }
+      if (linkFailure) notices.push(t('transfer.import.noticeLinks', { reason: linkFailure }))
       if (droppedColumns.size > 0) {
         notices.push(t('transfer.import.noticeColumns', { columns: [...droppedColumns].join(', ') }))
       }
