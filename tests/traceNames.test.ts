@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../src/lib/traceNames.ts'
+import { cleanTitle, fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../src/lib/traceNames.ts'
 
 const text = (n: number) => `Text ${n}`
 
@@ -25,4 +25,11 @@ test('Untitled N counts titles, not text; a file keeps its name without the exte
   assert.equal(fileTitle('Sunset.final.png'), 'Sunset.final')
   assert.equal(fileTitle('no extension'), 'no extension')
   assert.equal(fileTitle('.png'), '')
+})
+
+test('a title of blanks and invisible characters is no title', () => {
+  assert.equal(cleanTitle('  \u200B \n\t '), '')
+  assert.equal(cleanTitle('Casual \n dress\u200B code '), 'Casual dress code')
+  assert.equal(cleanTitle('\u2764\uFE0F\u200D\uD83D\uDD25 \u200D'), '\u2764\uFE0F\u200D\uD83D\uDD25')
+  assert.equal(cleanTitle(null), '')
 })

@@ -386,7 +386,7 @@ const ja: Catalogue = {
   'atrium.pinterest.fetching': '「{board}」からピンを取得しています…',
   'atrium.pinterest.foundSoFar': 'これまでに {count} 件のピンが見つかりました',
   'atrium.pinterest.confirmImport': '「{board}」から {count} 件のピンを取り込みますか？',
-  'atrium.pinterest.confirmNote': 'ピンはそれぞれ埋め込みの trace になり、いまの表示のまわりに並びます。画像を直接読み込めなかったピンは、元のピンへのリンクカードとして表示されます。',
+  'atrium.pinterest.confirmNote': 'ピンはそれぞれ埋め込みの trace になり、いまの表示のまわりに並びます。画像を直接読み込めなかったピンは、元のピンへのリンクカードとして表示されます。ボードの名前の新しいグループに入ります。',
   'atrium.pinterest.importAction': '{count} 件のピンを取り込む',
   'atrium.pinterest.importing': 'ピンを取り込んでいます…',
   'atrium.pinterest.errLoadPins': 'そのボードのピンを読み込めませんでした',

@@ -390,7 +390,7 @@ const ko: Catalogue = {
   'atrium.pinterest.fetching': '"{board}"에서 핀을 가져오는 중…',
   'atrium.pinterest.foundSoFar': '지금까지 핀 {count}개를 찾았습니다',
   'atrium.pinterest.confirmImport': '"{board}"에서 핀 {count}개를 가져올까요?',
-  'atrium.pinterest.confirmNote': '핀은 각각 임베드 trace가 되어 현재 보고 있는 자리 주위에 놓입니다. 이미지를 바로 불러오지 못한 핀은 원래 핀으로 가는 링크 카드로 표시됩니다.',
+  'atrium.pinterest.confirmNote': '핀은 각각 임베드 trace가 되어 현재 보고 있는 자리 주위에 놓입니다. 이미지를 바로 불러오지 못한 핀은 원래 핀으로 가는 링크 카드로 표시됩니다. 보드 이름으로 된 새 그룹에 들어갑니다.',
   'atrium.pinterest.importAction': '핀 {count}개 가져오기',
   'atrium.pinterest.importing': '핀을 가져오는 중…',
   'atrium.pinterest.errLoadPins': '그 보드의 핀을 불러오지 못했습니다',

@@ -6,8 +6,8 @@ import type { Layer, Trace } from '../types/database'
 import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, type Ordered } from '../lib/order'
 import { feelSpring, feelStep } from '../lib/dragFeel'
 import { panelDrop, type PanelDropTarget } from '../lib/panelDrop'
-import { nextTextName } from '../lib/traceNames'
-import { mapRowToLayer, reloadLayers } from '../hooks/useLayers'
+import { cleanTitle, nextTextName } from '../lib/traceNames'
+import { createGroup as insertGroup, mapRowToLayer, reloadLayers } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
 import { buildTraceInsertRow } from '../lib/traceInsert'
@@ -327,26 +327,13 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const keyAmong = async <T extends Ordered>(others: T[], index: number, write: (item: T, key: string) => Promise<void>) =>
     (await keysAmong(others, index, 1, write))[0]
 
-  // On top of the other groups. Two people doing this at the same moment may
-  // pick the same key; the tie is broken by id, the same way for everyone.
   const doCreateGroupNow = async (name: string) => {
     if (!supabase || !name.trim() || !canEdit) return
-
-    const [orderKey] = keysOnTop(useGameStore.getState().layers)
-    const { data, error } = await (supabase.from('layers') as any).insert({
-      name: name.trim(),
-      order_key: orderKey,
-      is_group: true,
-      user_id: username,
-      lobby_id: lobbyId,
-    }).select()
-
-    if (error) {
-      alert(`Failed to create group: ${error.message}`)
-      return
+    try {
+      await insertGroup(lobbyId, name.trim(), userId)
+    } catch (err) {
+      alert(`Failed to create group: ${(err as Error).message}`)
     }
-    const created = Array.isArray(data) ? data[0] : data
-    if (created) useGameStore.getState().putLayer(mapRowToLayer(created))
   }
 
   const deleteGroup = (layerId: string) => {
@@ -455,7 +442,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
   // What a trace's row says: its name, or the start of its title.
   const rowLabel = (trace: Trace) =>
-    (trace.type === 'text' && trace.layerName) || trace.content.substring(0, 20) || t('atrium.layers.untitled')
+    (trace.type === 'text' && trace.layerName) || cleanTitle(trace.content).substring(0, 20) || t('atrium.layers.untitled')
 
   // The field a name is edited in, in place of the label.
   const renameField = (maxLength?: number) => (

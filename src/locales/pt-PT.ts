@@ -473,7 +473,7 @@ const ptPT: Catalogue = {
   'atrium.pinterest.fetching': 'A obter pins de "{board}"...',
   'atrium.pinterest.foundSoFar': '{count} pins encontrados até agora',
   'atrium.pinterest.confirmImport': 'Importar {count} pins de "{board}"?',
-  'atrium.pinterest.confirmNote': 'Cada pin passa a ser um trace incorporado, disposto à volta da tua vista atual. Os pins cuja imagem não possa ser ligada aparecem como um cartão de ligação para o pin original.',
+  'atrium.pinterest.confirmNote': 'Cada pin passa a ser um trace incorporado, disposto à volta da tua vista atual. Os pins cuja imagem não possa ser ligada aparecem como um cartão de ligação para o pin original. Vão para um novo grupo com o nome da pasta.',
   'atrium.pinterest.importAction': 'Importar {count} pins',
   'atrium.pinterest.importing': 'A importar pins...',
   'atrium.pinterest.errLoadPins': 'Não foi possível carregar os pins desse painel',

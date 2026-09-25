@@ -470,7 +470,7 @@ const ptBR: Catalogue = {
   'atrium.pinterest.fetching': 'Buscando pins de "{board}"...',
   'atrium.pinterest.foundSoFar': '{count} pins encontrados até agora',
   'atrium.pinterest.confirmImport': 'Importar {count} pins de "{board}"?',
-  'atrium.pinterest.confirmNote': 'Cada pin vira um trace incorporado, disposto ao redor da sua vista atual. Pins cuja imagem não puder ser carregada aparecem como um cartão de link para o pin original.',
+  'atrium.pinterest.confirmNote': 'Cada pin vira um trace incorporado, disposto ao redor da sua vista atual. Pins cuja imagem não puder ser carregada aparecem como um cartão de link para o pin original. Eles vão para um novo grupo com o nome da pasta.',
   'atrium.pinterest.importAction': 'Importar {count} pins',
   'atrium.pinterest.importing': 'Importando pins...',
   'atrium.pinterest.errLoadPins': 'Não foi possível carregar os pins dessa pasta',

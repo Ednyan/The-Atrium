@@ -466,7 +466,7 @@ const es: Catalogue = {
   'atrium.pinterest.fetching': 'Obteniendo pines de «{board}»...',
   'atrium.pinterest.foundSoFar': '{count} pines encontrados por ahora',
   'atrium.pinterest.confirmImport': '¿Importar {count} pines de «{board}»?',
-  'atrium.pinterest.confirmNote': 'Cada pin se convierte en un trace incrustado, colocado alrededor de tu vista actual. Los pines cuya imagen no se pueda enlazar aparecerán como una tarjeta de enlace al pin original.',
+  'atrium.pinterest.confirmNote': 'Cada pin se convierte en un trace incrustado, colocado alrededor de tu vista actual. Los pines cuya imagen no se pueda enlazar aparecerán como una tarjeta de enlace al pin original. Se colocan en un grupo nuevo con el nombre del tablero.',
   'atrium.pinterest.importAction': 'Importar {count} pines',
   'atrium.pinterest.importing': 'Importando pines...',
   'atrium.pinterest.errLoadPins': 'No se pudieron cargar los pines de ese tablero',

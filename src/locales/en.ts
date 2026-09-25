@@ -372,7 +372,7 @@ export const en = {
   'atrium.pinterest.fetching': 'Fetching pins from "{board}"...',
   'atrium.pinterest.foundSoFar': '{count} pins found so far',
   'atrium.pinterest.confirmImport': 'Import {count} pins from "{board}"?',
-  'atrium.pinterest.confirmNote': 'Each pin becomes an embed trace, laid out around your current view. Pins whose image fails to hotlink show as a link card back to the original pin instead.',
+  'atrium.pinterest.confirmNote': 'Each pin becomes an embed trace, laid out around your current view. Pins whose image fails to hotlink show as a link card back to the original pin instead. They go into a new group named after the board.',
   'atrium.pinterest.importAction': 'Import {count} pins',
   'atrium.pinterest.importing': 'Importing pins...',
   'atrium.pinterest.errLoadPins': 'Failed to load pins from that board',

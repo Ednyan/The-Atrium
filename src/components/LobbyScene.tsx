@@ -5643,7 +5643,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           lobbyId={lobbyId}
           worldCenter={pinterestImportAnchor || { x: positionRef.current.x, y: positionRef.current.y }}
           packingShape={packingShapeRef.current}
-          activeLayerId={activeLayerId}
         />
       )}
 

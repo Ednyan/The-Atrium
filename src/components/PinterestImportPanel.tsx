@@ -5,7 +5,9 @@ import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { packBoxesAroundCenter, scaleToDisplayBox, getDefaultTraceBoxSize } from '../lib/binPack'
 import { newTraceOrderFields } from '../lib/order'
-import { nextUntitledName } from '../lib/traceNames'
+import { cleanTitle, firstFreeName, nextUntitledName } from '../lib/traceNames'
+import { createGroup } from '../hooks/useLayers'
+import { queueLayerChange } from '../lib/layerQueue'
 import {
   fetchPinterestBoards,
   fetchPinterestBoardPins,
@@ -18,12 +20,11 @@ interface PinterestImportPanelProps {
   lobbyId: string
   worldCenter: { x: number; y: number }
   packingShape: 'square' | 'circle'
-  activeLayerId: string | null
 }
 
 type Step = 'boards' | 'pins-loading' | 'confirm' | 'importing' | 'error'
 
-export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, packingShape, activeLayerId }: PinterestImportPanelProps) {
+export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, packingShape }: PinterestImportPanelProps) {
   const { t } = useTranslation()
   const { userId, username, addTrace } = useGameStore()
   const [step, setStep] = useState<Step>('boards')
@@ -85,12 +86,24 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
       )
       const offsets = packBoxesAroundCenter(sizes, 24, packingShape)
 
-      // In the chosen group, or ungrouped, on top of what's there in pin order.
-      const orderFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, pins.length)
-      // A pin with no title or description is Untitled N, not nameless.
+      // The board comes in as a group of its own, named after it, on top of
+      // the others -- "Board 2" when the atrium already has a "Board". Made
+      // through the layer queue, so it can't interleave with a layer change
+      // already under way.
+      const boardName = cleanTitle(selectedBoard?.name) || 'Pinterest'
+      const group = await queueLayerChange(() => {
+        const name = firstFreeName(useGameStore.getState().layers.map(l => l.name), n => (n === 1 ? boardName : `${boardName} ${n}`))
+        return createGroup(lobbyId, name, userId)
+      })
+
+      // In that group, in pin order.
+      const orderFields = newTraceOrderFields(useGameStore.getState().traces, group.id, pins.length)
+      // A pin whose title and description are blank -- often only spaces or
+      // invisible characters, which showed as an empty row -- is Untitled N.
       const titles: string[] = []
       for (const pin of pins) {
-        titles.push(pin.title || pin.description || nextUntitledName(useGameStore.getState().traces, n => t('atrium.layers.numberedUntitled', { n }), titles))
+        titles.push(cleanTitle(pin.title) || cleanTitle(pin.description)
+          || nextUntitledName(useGameStore.getState().traces, n => t('atrium.layers.numberedUntitled', { n }), titles))
       }
 
       const rows = pins.map((pin, i) => ({

@@ -469,7 +469,7 @@ const de: Catalogue = {
   'atrium.pinterest.fetching': 'Pins von „{board}“ werden geladen...',
   'atrium.pinterest.foundSoFar': '{count} Pins bisher gefunden',
   'atrium.pinterest.confirmImport': '{count} Pins von „{board}“ importieren?',
-  'atrium.pinterest.confirmNote': 'Jeder Pin wird zu einem eingebetteten Trace, angeordnet um deine aktuelle Ansicht. Pins, deren Bild sich nicht laden lässt, erscheinen als Linkkarte zum ursprünglichen Pin.',
+  'atrium.pinterest.confirmNote': 'Jeder Pin wird zu einem eingebetteten Trace, angeordnet um deine aktuelle Ansicht. Pins, deren Bild sich nicht laden lässt, erscheinen als Linkkarte zum ursprünglichen Pin. Sie kommen in eine neue Gruppe mit dem Namen der Pinnwand.',
   'atrium.pinterest.importAction': '{count} Pins importieren',
   'atrium.pinterest.importing': 'Pins werden importiert...',
   'atrium.pinterest.errLoadPins': 'Die Pins dieser Pinnwand konnten nicht geladen werden',

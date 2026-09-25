@@ -29,7 +29,19 @@ export function nextUntitledName(
   return firstFreeName([...traces.filter(t => t.type !== 'text').map(t => t.content), ...alsoTaken], nameFor)
 }
 
+// A name as it will show, whitespace run together and invisible characters
+// gone: zero-width spaces and the like, which Pinterest titles are full of.
+// Joiners (U+200C, U+200D) only at the ends -- inside, they hold emoji like
+// the heart on fire together. A title of nothing but these is no title at
+// all; it showed as a blank row.
+export function cleanTitle(text: string | null | undefined): string {
+  return (text ?? '')
+    .replace(/[\u200B\u2060\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s\u200C\u200D]+|[\s\u200C\u200D]+$/g, '')
+}
+
 // A file's name without its extension: "Sunset.final.png" -> "Sunset.final".
 export function fileTitle(fileName: string): string {
-  return fileName.replace(/\.[^./\\]+$/, '').trim()
+  return cleanTitle(fileName.replace(/\.[^./\\]+$/, ''))
 }

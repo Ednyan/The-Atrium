@@ -470,7 +470,7 @@ const it: Catalogue = {
   'atrium.pinterest.fetching': 'Recupero dei pin da "{board}"...',
   'atrium.pinterest.foundSoFar': '{count} pin trovati finora',
   'atrium.pinterest.confirmImport': 'Importare {count} pin da "{board}"?',
-  'atrium.pinterest.confirmNote': 'Ogni pin diventa un trace incorporato, disposto attorno alla tua vista attuale. I pin la cui immagine non si carica appaiono come una scheda di collegamento al pin originale.',
+  'atrium.pinterest.confirmNote': 'Ogni pin diventa un trace incorporato, disposto attorno alla tua vista attuale. I pin la cui immagine non si carica appaiono come una scheda di collegamento al pin originale. Finiscono in un nuovo gruppo con il nome della bacheca.',
   'atrium.pinterest.importAction': 'Importa {count} pin',
   'atrium.pinterest.importing': 'Importazione dei pin...',
   'atrium.pinterest.errLoadPins': 'Impossibile caricare i pin di quella bacheca',

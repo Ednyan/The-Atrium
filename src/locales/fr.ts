@@ -468,7 +468,7 @@ const fr: Catalogue = {
   'atrium.pinterest.fetching': 'Récupération des épingles de « {board} »...',
   'atrium.pinterest.foundSoFar': '{count} épingles trouvées jusqu’ici',
   'atrium.pinterest.confirmImport': 'Importer {count} épingles de « {board} » ?',
-  'atrium.pinterest.confirmNote': 'Chaque épingle devient un trace intégré, disposé autour de votre vue actuelle. Les épingles dont l’image ne peut pas être chargée apparaissent comme une carte de lien vers l’épingle d’origine.',
+  'atrium.pinterest.confirmNote': 'Chaque épingle devient un trace intégré, disposé autour de votre vue actuelle. Les épingles dont l’image ne peut pas être chargée apparaissent comme une carte de lien vers l’épingle d’origine. Elles vont dans un nouveau groupe portant le nom du tableau.',
   'atrium.pinterest.importAction': 'Importer {count} épingles',
   'atrium.pinterest.importing': 'Importation des épingles...',
   'atrium.pinterest.errLoadPins': 'Impossible de charger les épingles de ce tableau',

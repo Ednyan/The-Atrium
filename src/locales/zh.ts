@@ -389,7 +389,7 @@ const zh: Catalogue = {
   'atrium.pinterest.fetching': '正在从“{board}”获取 Pin……',
   'atrium.pinterest.foundSoFar': '已找到 {count} 个 Pin',
   'atrium.pinterest.confirmImport': '要从“{board}”导入 {count} 个 Pin 吗？',
-  'atrium.pinterest.confirmNote': '每个 Pin 都会变成一个嵌入 trace，排布在你当前视野周围。图片无法直接加载的 Pin 会显示为指向原 Pin 的链接卡片。',
+  'atrium.pinterest.confirmNote': '每个 Pin 都会变成一个嵌入 trace，排布在你当前视野周围。图片无法直接加载的 Pin 会显示为指向原 Pin 的链接卡片。它们会放进一个以图板命名的新组。',
   'atrium.pinterest.importAction': '导入 {count} 个 Pin',
   'atrium.pinterest.importing': '正在导入 Pin……',
   'atrium.pinterest.errLoadPins': '无法从该画板加载 Pin',

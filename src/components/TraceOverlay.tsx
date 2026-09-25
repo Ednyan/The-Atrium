@@ -29,7 +29,7 @@ import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { toEmbedUrl } from '../lib/embedUrl'
 import { drawRanks, inOrder, keyAt, keysBetween, keysOnTop, keysOnTopOfGroup, type Ordered } from '../lib/order'
-import { mapRowToLayer, reloadLayers } from '../hooks/useLayers'
+import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
@@ -945,28 +945,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const name = rawName.trim()
     if (!supabase || !lobbyId || !name) return
 
-    const [orderKey] = keysOnTop(useGameStore.getState().layers)
-    const { data, error } = await (supabase.from('layers') as any).insert({
-      name,
-      order_key: orderKey,
-      is_group: true,
-      user_id: username,
-      lobby_id: lobbyId,
-    }).select()
-
-    if (error) {
-      console.error('[layers] could not create group:', error)
+    let group
+    try {
+      group = await createGroup(lobbyId, name, userId)
+    } catch (err) {
+      console.error('[layers] could not create group:', err)
       return
     }
-
-    const created = Array.isArray(data) ? data[0] : data
-    if (created?.id) {
-      useGameStore.getState().putLayer(mapRowToLayer(created))
-      if (traceIds.length > 0) await moveIntoGroup(traceIds, created.id)
-    }
-    // Desktop has no realtime to tell anyone else.
-    window.dispatchEvent(new Event('atrium:layers-changed'))
-  }, [lobbyId, username, moveIntoGroup])
+    if (traceIds.length > 0) await moveIntoGroup(traceIds, group.id)
+  }, [lobbyId, userId, moveIntoGroup])
 
   // Ctrl+G: the selection into a new group called "Group N", N the lowest
   // number no group here already has. Names are read fresh rather than from

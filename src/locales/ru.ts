@@ -472,7 +472,7 @@ const ru: Catalogue = {
   'atrium.pinterest.fetching': 'Загрузка пинов с доски «{board}»...',
   'atrium.pinterest.foundSoFar': 'найдено пинов: {count}',
   'atrium.pinterest.confirmImport': 'Импортировать {count} пинов с доски «{board}»?',
-  'atrium.pinterest.confirmNote': 'Каждый пин становится встроенным трейсом и располагается вокруг текущего вида. Пины, изображение которых не удалось загрузить, показываются карточкой со ссылкой на исходный пин.',
+  'atrium.pinterest.confirmNote': 'Каждый пин становится встроенным трейсом и располагается вокруг текущего вида. Пины, изображение которых не удалось загрузить, показываются карточкой со ссылкой на исходный пин. Они попадут в новую группу с названием доски.',
   'atrium.pinterest.importAction': 'Импортировать {count} пинов',
   'atrium.pinterest.importing': 'Импорт пинов...',
   'atrium.pinterest.errLoadPins': 'Не удалось загрузить пины с этой доски',
