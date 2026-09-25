@@ -613,8 +613,6 @@ const fr: Catalogue = {
   'atrium.profile.animations': 'Animations',
   'atrium.profile.dragBounce': 'Sensation au glisser : {value} %',
   'atrium.profile.dragBounceHint': 'Une trace déplacée suit le pointeur avec un léger retard, s\'incline dans le mouvement et se pose avec un petit rebond. 0 la déplace de façon rigide.',
-  'atrium.profile.viewFloat': 'Vue flottante : {value} %',
-  'atrium.profile.viewFloatHint': 'Quand tu t\'arrêtes, l\'atrium dérive doucement, comme en suspension. Le moindre mouvement le stabilise. 0 le laisse immobile.',
   'atrium.profile.floating': 'Traces flottantes : {value} %',
   'atrium.profile.floatingHint': 'Les traces dérivent doucement d\'elles-mêmes, comme si la salle respirait. 0 les laisse immobiles.',
   'atrium.profile.momentum': 'Élan au lancer : {value} %',

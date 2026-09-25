@@ -615,8 +615,6 @@ const ptBR: Catalogue = {
   'atrium.profile.animations': 'Animações',
   'atrium.profile.dragBounce': 'Sensação ao arrastar: {value}%',
   'atrium.profile.dragBounceHint': 'Um trace arrastado segue o ponteiro com um leve atraso, inclina na direção do puxão e assenta com um pequeno quique. 0 o move de forma rígida.',
-  'atrium.profile.viewFloat': 'Vista flutuante: {value}%',
-  'atrium.profile.viewFloatHint': 'Quando você para, o atrium oscila suavemente, como se flutuasse. Qualquer movimento o acalma. 0 o mantém parado.',
   'atrium.profile.floating': 'Traces flutuantes: {value}%',
   'atrium.profile.floatingHint': 'Os traces flutuam suavemente sozinhos, como se a sala respirasse. 0 os mantém parados.',
   'atrium.profile.momentum': 'Inércia ao arremessar: {value}%',

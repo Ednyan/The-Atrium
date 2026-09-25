@@ -250,9 +250,6 @@ function floatTiming(id: string): { duration: number; delay: number } {
 
 // How far, in screen pixels, a trace drifts at Floating 100%.
 const FLOAT_MAX_PX = 8
-// How far the whole view drifts at Floating view 100%. Shared with the grid's
-// layer in LobbyScene, which must move by exactly as much.
-export const VIEW_FLOAT_MAX_PX = 20
 
 // What Shift snaps a dragged trace onto when the atrium has no grid size of
 // its own. The same fallback LobbyScene draws with, so an atrium saved before
@@ -415,7 +412,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, viewFloat, links, putLink, dropLink } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -2161,13 +2158,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (!strength || ids.length === 0) return
     // Loose enough to trail noticeably, damped enough that it settles with a
     // hint of overshoot (under 3%) rather than a wobble.
-    const omega = (2 * Math.PI) / (80 + 200 * strength)
+    const period = 80 + 200 * strength
     const damping = 0.75
     // One spring per trace, chasing where the trace is actually drawn right
     // now -- its own left/top -- rather than the pointer. The pointer and the
     // position React last drew can be a frame apart, and a spring chasing one
     // while being added to the other made the trace twitch.
-    const springs = new Map<string, { x: number; y: number; vx: number; vy: number; peak: number; w: number; h: number }>()
+    const springs = new Map<string, { x: number; y: number; vx: number; vy: number; peak: number; w: number; h: number; reach: number; mass: number; omega: number }>()
     const moved = new Set<HTMLElement>()
     let raf = 0, last = performance.now()
     const feel = {
@@ -2184,13 +2181,34 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const tick = (now: number) => {
       const dt = Math.min(now - last, 48)
       last = now
+      // Shift is for placing a trace exactly -- snapping, centring, lining it
+      // up -- so while it's held the trace moves rigidly, as it always did,
+      // and lets go of any trail at once. Released mid-drag, the feel starts
+      // again from rest.
+      const rigid = dragShiftRef.current
       let stirring = false
       for (const id of ids) {
         const box = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
         if (!box) continue
         const tx = parseFloat(box.style.left), ty = parseFloat(box.style.top)
         let sp = springs.get(id)
-        if (!sp) springs.set(id, sp = { x: tx, y: ty, vx: 0, vy: 0, peak: 0, w: box.offsetWidth, h: box.offsetHeight })
+        if (!sp) {
+          const w = box.offsetWidth, h = box.offsetHeight, reach = Math.hypot(w, h) / 2 || 1
+          // Bigger is heavier: from about 300px across, a trace answers the
+          // pull more slowly -- its trail builds and settles over longer, to
+          // the same distance -- needs a longer pull before it trails at all,
+          // and leans less. A small card flicks about; a large board shouldn't.
+          const mass = Math.min(3, Math.max(1, reach / 150))
+          springs.set(id, sp = { x: tx, y: ty, vx: 0, vy: 0, peak: 0, w, h, reach, mass, omega: (2 * Math.PI) / (period * Math.sqrt(mass)) })
+        }
+        if (rigid) {
+          Object.assign(sp, { x: tx, y: ty, vx: 0, vy: 0, peak: 0 })
+          box.style.translate = ''
+          box.style.rotate = ''
+          dragOffsetsRef.current.delete(id)
+          continue
+        }
+        const omega = sp.omega
         for (let left = dt; left > 0; left -= 4) {
           const h = Math.min(left, 4)
           sp.vx += (omega * omega * (tx - sp.x) - 2 * damping * omega * sp.vx) * h
@@ -2201,20 +2219,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         const rawX = sp.x - tx, rawY = sp.y - ty
         if (Math.hypot(rawX, rawY) > 0.3 || Math.hypot(sp.vx, sp.vy) > 0.01) stirring = true
         // A minimum of momentum before any of it shows. Scaled by the largest
-        // trail this drag has reached, eased in between 3 and 12 pixels: a
-        // nudge or a jittery hand never gets past the start of that, so the
-        // trace just moves, and a real pull brings the full trail, lean and
-        // settle -- with nothing in between ever switching on abruptly.
+        // trail this drag has reached, eased in between 3 and 12 pixels (times
+        // the mass): a nudge or a jittery hand never gets past the start of
+        // that, so the trace just moves, and a real pull brings the full
+        // trail, lean and settle -- with nothing in between ever switching on
+        // abruptly.
         sp.peak = Math.max(sp.peak, Math.hypot(rawX, rawY))
-        const engage = Math.min(1, Math.max(0, (sp.peak - 3) / 9))
+        const engage = Math.min(1, Math.max(0, (sp.peak - 3 * sp.mass) / (9 * sp.mass)))
         const k = engage * engage * (3 - 2 * engage)
-        const ox = rawX * k, oy = rawY * k
+        const give = k / Math.sqrt(sp.mass)
+        const ox = rawX * give, oy = rawY * give
         // Leaning into the pull, as a card held by its top edge does: dragged
         // right, the trailing side swings back and it tips clockwise. Capped
         // by size, since the same tilt swings a big trace's corners much
-        // further: no corner travels more than about 12 pixels.
-        const want = (Math.max(-5, Math.min(5, -ox * 0.15)) * Math.PI) / 180
-        const lean = Math.sign(want) * Math.min(Math.abs(want), 12 / (Math.hypot(sp.w, sp.h) / 2 || 1))
+        // further: no corner travels more than about 12 pixels. The cap is
+        // eased into on a big trace, which reaches it, so its lean never stops
+        // dead; a small one keeps the hard cap it rarely gets near.
+        const want = (Math.max(-5, Math.min(5, (-ox * 0.15) / sp.mass)) * Math.PI) / 180
+        const cap = 12 / sp.reach
+        const lean = sp.mass > 1 ? cap * Math.tanh(want / cap) : Math.sign(want) * Math.min(Math.abs(want), cap)
         const cos = Math.cos(lean), sin = Math.sin(lean)
         // A rotate pivots on the element's layout box's centre, but the trace
         // is drawn shifted back half its size from there; the extra translate
@@ -5520,7 +5543,10 @@ return (
         // once -- without needing to know which of the many per-type
         // renderers below is drawing it.
         filter: isPressed ? 'brightness(1.35)' : undefined,
-        willChange: 'transform',
+        // translate and rotate too: the drag feel moves a trace through them,
+        // and named here they're left to the compositor rather than risking
+        // a big image being repainted for every frame of it.
+        willChange: 'transform, translate, rotate',
         transformOrigin: 'center center',
         // Floating (Profile > Animations): a slow drift of a few
         // pixels. Held still while selected, pressed, edited in place,
@@ -6989,14 +7015,8 @@ return (
   return (
     <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
       {/* Everything anchored to the world -- traces and their handles -- in
-          one layer, so the floating view (see LobbyScene) moves it together
-          with the grid and leaves the menus and panels still. The cursors are
-          drawn after it: a moved layer is a stacking context of its own, and
-          inside it they couldn't rise above the menus the way they always have. */}
-      <div
-        className={`view-drift${viewFloat > 0 && !isDrawingMode ? ' view-floating' : ''}`}
-        style={{ position: 'absolute', inset: 0, ['--view-amp' as any]: `${(viewFloat / 100) * VIEW_FLOAT_MAX_PX}px` }}
-      >
+          one layer, with the cursors drawn after it, above. */}
+      <div style={{ position: 'absolute', inset: 0 }}>
       {/* Render traces AND player in z-index order */}
       {/* Connections, under every trace: from centre to centre, so where
           a thread meets a trace it disappears under it. Arrows sit on the

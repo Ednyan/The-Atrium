@@ -614,8 +614,6 @@ const de: Catalogue = {
   'atrium.profile.animations': 'Animationen',
   'atrium.profile.dragBounce': 'Zieh-Gefühl: {value}%',
   'atrium.profile.dragBounceHint': 'Ein gezogener Trace folgt dem Zeiger leicht verzögert, neigt sich in den Zug und kommt mit einem kleinen Federn zur Ruhe. 0 bewegt ihn starr.',
-  'atrium.profile.viewFloat': 'Schwebende Ansicht: {value}%',
-  'atrium.profile.viewFloatHint': 'Wenn du innehältst, treibt das Atrium sanft, als würde es schweben. Jede Bewegung beruhigt es. 0 hält es still.',
   'atrium.profile.floating': 'Schwebende Traces: {value}%',
   'atrium.profile.floatingHint': 'Traces treiben von selbst sanft umher, als würde der Raum atmen. 0 hält sie still.',
   'atrium.profile.momentum': 'Wurfschwung: {value}%',

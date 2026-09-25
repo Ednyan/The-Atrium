@@ -542,8 +542,6 @@ const zh: Catalogue = {
   'atrium.profile.animations': '动画',
   'atrium.profile.dragBounce': '拖动手感：{value}%',
   'atrium.profile.dragBounceHint': '拖动的 Trace 会稍微滞后于指针，顺着拉动方向倾斜，并带着轻微回弹停下。设为 0 则生硬跟随。',
-  'atrium.profile.viewFloat': '漂浮视角：{value}%',
-  'atrium.profile.viewFloatHint': '停下时，Atrium 会像悬浮一样轻轻漂动。任何操作都会让它平稳下来。设为 0 则保持静止。',
   'atrium.profile.floating': '漂浮的 Trace：{value}%',
   'atrium.profile.floatingHint': 'Trace 会自己轻轻漂动，仿佛房间在呼吸。设为 0 则保持静止。',
   'atrium.profile.momentum': '甩出惯性：{value}%',

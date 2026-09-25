@@ -9,7 +9,7 @@ import { readPackingShape } from '../lib/atriumPreferences'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
-import TraceOverlay, { VIEW_FLOAT_MAX_PX } from './TraceOverlay'
+import TraceOverlay from './TraceOverlay'
 import LayerPanel, { TRACE_DRAG_DATA_KEY, LAYER_DRAG_DATA_KEY } from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
@@ -932,7 +932,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // world's layer in TraceOverlay drift together, always, by the same CSS
   // animation -- run by the compositor, so it stays smooth however busy the
   // page is. Not while drawing: the strokes are on a canvas of their own.
-  const viewFloat = useGameStore(s => s.viewFloat)
 
   // Drawing history. Snapshots of the whole stroke list rather than a stack of
   // strokes, because "clear" has to be undoable too and there is no single
@@ -4618,8 +4617,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {/* Pixi Canvas */}
         <div
           ref={canvasRef}
-          className={`absolute inset-0 view-drift${viewFloat > 0 && !isDrawingMode ? ' view-floating' : ''}`}
-          style={{ ['--view-amp' as any]: `${(viewFloat / 100) * VIEW_FLOAT_MAX_PX}px` }}
+          className="absolute inset-0"
         />
         
         {/* Trace Content Overlay */}

@@ -617,8 +617,6 @@ const ru: Catalogue = {
   'atrium.profile.animations': 'Анимации',
   'atrium.profile.dragBounce': 'Ощущение перетаскивания: {value}%',
   'atrium.profile.dragBounceHint': 'Перетаскиваемый Trace чуть отстаёт от указателя, наклоняется по ходу движения и останавливается с лёгким отскоком. 0 двигает его жёстко.',
-  'atrium.profile.viewFloat': 'Парящий вид: {value}%',
-  'atrium.profile.viewFloatHint': 'Когда вы замираете, Atrium мягко покачивается, будто парит. Любое движение его успокаивает. 0 оставляет его неподвижным.',
   'atrium.profile.floating': 'Парящие Trace: {value}%',
   'atrium.profile.floatingHint': 'Trace сами понемногу плавают, будто комната дышит. 0 оставляет их на месте.',
   'atrium.profile.momentum': 'Инерция броска: {value}%',

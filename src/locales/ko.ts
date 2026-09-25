@@ -543,8 +543,6 @@ const ko: Catalogue = {
   'atrium.profile.animations': '애니메이션',
   'atrium.profile.dragBounce': '드래그 느낌: {value}%',
   'atrium.profile.dragBounceHint': '드래그하는 Trace가 포인터를 살짝 늦게 따라오고, 당기는 쪽으로 기울며, 작게 튕기며 멈춥니다. 0이면 딱딱하게 움직입니다.',
-  'atrium.profile.viewFloat': '떠다니는 화면: {value}%',
-  'atrium.profile.viewFloatHint': '잠시 멈추면 Atrium이 떠 있는 듯 부드럽게 흔들립니다. 움직이면 바로 멈춥니다. 0이면 고정됩니다.',
   'atrium.profile.floating': '떠다니는 Trace: {value}%',
   'atrium.profile.floatingHint': 'Trace가 방이 숨 쉬듯 저절로 살며시 떠다닙니다. 0이면 가만히 있습니다.',
   'atrium.profile.momentum': '던질 때 관성: {value}%',

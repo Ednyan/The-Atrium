@@ -42,7 +42,7 @@ const PRESET_COLORS = [
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, viewFloat, setViewFloat } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce } = useGameStore()
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -555,7 +555,6 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
           </div>
 
           <Slider min={0} max={100} step={1} label={t('atrium.profile.dragBounce', { value: dragBounce })} hint={t('atrium.profile.dragBounceHint')} value={dragBounce} onChange={setDragBounce} />
-          <Slider min={0} max={100} step={1} label={t('atrium.profile.viewFloat', { value: viewFloat })} hint={t('atrium.profile.viewFloatHint')} value={viewFloat} onChange={setViewFloat} />
           <Slider min={0} max={100} step={1} label={t('atrium.profile.floating', { value: traceFloat })} hint={t('atrium.profile.floatingHint')} value={traceFloat} onChange={setTraceFloat} />
           <Slider min={0} max={100} step={1} label={t('atrium.profile.momentum', { value: traceMomentum })} hint={t('atrium.profile.momentumHint')} value={traceMomentum} onChange={setTraceMomentum} />
 

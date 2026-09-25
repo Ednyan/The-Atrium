@@ -50,7 +50,6 @@ interface GameState {
   // trace trails and settles, how much the view drifts when left alone, how
   // much traces drift on their own, and how far a thrown one glides on.
   dragBounce: number
-  viewFloat: number
   traceFloat: number
   traceMomentum: number
   cursorState: CursorState
@@ -78,7 +77,6 @@ interface GameState {
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
   setDragBounce: (level: number) => void
-  setViewFloat: (level: number) => void
   setTraceFloat: (level: number) => void
   setTraceMomentum: (level: number) => void
   setCursorState: (state: CursorState) => void
@@ -125,6 +123,13 @@ interface GameState {
 }
 
 const clampLevel = (level: number) => Math.max(0, Math.min(100, Math.round(level)))
+
+// A 0-100 setting, clamped and remembered: the state to set.
+function keepLevel<K extends 'dragBounce' | 'traceFloat' | 'traceMomentum'>(key: K, level: number) {
+  const clamped = clampLevel(level)
+  try { localStorage.setItem(key, String(clamped)) } catch { /* kept for this session only */ }
+  return { [key]: clamped } as { [P in K]: number }
+}
 
 // A 0-100 setting from localStorage, or its default when missing, unreadable
 // or out of range.
@@ -174,7 +179,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     return stored !== null ? stored === 'true' : true
   })(),
   dragBounce: readLevel('dragBounce', 50),
-  viewFloat: readLevel('viewFloat', 30),
   traceFloat: readLevel('traceFloat', 0),
   traceMomentum: readLevel('traceMomentum', 0),
   cursorState: 'default',
@@ -225,26 +229,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     localStorage.setItem('traceFadeEnabled', String(enabled))
     set({ traceFadeEnabled: enabled })
   },
-  setDragBounce: (level) => {
-    const clamped = clampLevel(level)
-    try { localStorage.setItem('dragBounce', String(clamped)) } catch { /* kept for this session only */ }
-    set({ dragBounce: clamped })
-  },
-  setViewFloat: (level) => {
-    const clamped = clampLevel(level)
-    try { localStorage.setItem('viewFloat', String(clamped)) } catch { /* kept for this session only */ }
-    set({ viewFloat: clamped })
-  },
-  setTraceFloat: (level) => {
-    const clamped = clampLevel(level)
-    try { localStorage.setItem('traceFloat', String(clamped)) } catch { /* kept for this session only */ }
-    set({ traceFloat: clamped })
-  },
-  setTraceMomentum: (level) => {
-    const clamped = clampLevel(level)
-    try { localStorage.setItem('traceMomentum', String(clamped)) } catch { /* kept for this session only */ }
-    set({ traceMomentum: clamped })
-  },
+  setDragBounce: (level) => set(keepLevel('dragBounce', level)),
+  setTraceFloat: (level) => set(keepLevel('traceFloat', level)),
+  setTraceMomentum: (level) => set(keepLevel('traceMomentum', level)),
   setCursorState: (cursorState) => set({ cursorState }),
   
   updateOtherUser: (userId, presence) =>

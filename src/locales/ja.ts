@@ -539,8 +539,6 @@ const ja: Catalogue = {
   'atrium.profile.animations': 'アニメーション',
   'atrium.profile.dragBounce': 'ドラッグの感触: {value}%',
   'atrium.profile.dragBounceHint': 'ドラッグした Trace がポインタに少し遅れてついてきて、引く方向に傾き、軽く弾んで止まります。0 でそのまま動きます。',
-  'atrium.profile.viewFloat': '浮遊する視点: {value}%',
-  'atrium.profile.viewFloatHint': '手を止めると、Atrium が浮かんでいるようにゆっくり揺れます。動かすとすぐに落ち着きます。0 で静止します。',
   'atrium.profile.floating': '浮遊する Trace: {value}%',
   'atrium.profile.floatingHint': 'Trace が部屋の呼吸のように、ひとりでにゆっくり漂います。0 で静止します。',
   'atrium.profile.momentum': '投げたときの慣性: {value}%',

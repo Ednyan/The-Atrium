@@ -480,55 +480,6 @@ body.dragging * {
    the placement preview draws in LobbyScene, so editing a shape looks like
    making it. The Pixi frame advances 0.02 rad a frame between opacities 0.35
    and 0.55: one full breath per ~5.2s at 60fps, so 2.6s each way here. */
-/* The floating view (Profile > Animations): the grid's layer and the world's
-   layer in TraceOverlay drift together by this, always. A CSS animation so the
-   compositor runs it, smooth whatever the page is doing; --view-amp, set on
-   each layer, is how far. The path is a smooth loop sampled every 1/36 of its
-   26 seconds and followed linearly between samples -- an ease on each step
-   would slow to a stop at every one of them. It starts and ends at rest, so
-   switching it on never jumps the view. */
-.view-drift { will-change: translate; }
-.view-floating { animation: view-float 26s linear infinite; }
-@keyframes view-float {
-  0% { translate: calc(var(--view-amp) * 0.000) calc(var(--view-amp) * 0.000); }
-  2.78% { translate: calc(var(--view-amp) * 0.139) calc(var(--view-amp) * 0.073); }
-  5.56% { translate: calc(var(--view-amp) * 0.243) calc(var(--view-amp) * 0.064); }
-  8.33% { translate: calc(var(--view-amp) * 0.312) calc(var(--view-amp) * -0.042); }
-  11.11% { translate: calc(var(--view-amp) * 0.349) calc(var(--view-amp) * -0.236); }
-  13.89% { translate: calc(var(--view-amp) * 0.358) calc(var(--view-amp) * -0.490); }
-  16.67% { translate: calc(var(--view-amp) * 0.346) calc(var(--view-amp) * -0.761); }
-  19.44% { translate: calc(var(--view-amp) * 0.322) calc(var(--view-amp) * -1.005); }
-  22.22% { translate: calc(var(--view-amp) * 0.294) calc(var(--view-amp) * -1.185); }
-  25% { translate: calc(var(--view-amp) * 0.268) calc(var(--view-amp) * -1.282); }
-  27.78% { translate: calc(var(--view-amp) * 0.248) calc(var(--view-amp) * -1.298); }
-  30.56% { translate: calc(var(--view-amp) * 0.236) calc(var(--view-amp) * -1.255); }
-  33.33% { translate: calc(var(--view-amp) * 0.230) calc(var(--view-amp) * -1.190); }
-  36.11% { translate: calc(var(--view-amp) * 0.226) calc(var(--view-amp) * -1.139); }
-  38.89% { translate: calc(var(--view-amp) * 0.217) calc(var(--view-amp) * -1.134); }
-  41.67% { translate: calc(var(--view-amp) * 0.197) calc(var(--view-amp) * -1.190); }
-  44.44% { translate: calc(var(--view-amp) * 0.157) calc(var(--view-amp) * -1.298); }
-  47.22% { translate: calc(var(--view-amp) * 0.093) calc(var(--view-amp) * -1.434); }
-  50% { translate: calc(var(--view-amp) * 0.000) calc(var(--view-amp) * -1.558); }
-  52.78% { translate: calc(var(--view-amp) * -0.122) calc(var(--view-amp) * -1.632); }
-  55.56% { translate: calc(var(--view-amp) * -0.270) calc(var(--view-amp) * -1.622); }
-  58.33% { translate: calc(var(--view-amp) * -0.438) calc(var(--view-amp) * -1.516); }
-  61.11% { translate: calc(var(--view-amp) * -0.615) calc(var(--view-amp) * -1.322); }
-  63.89% { translate: calc(var(--view-amp) * -0.791) calc(var(--view-amp) * -1.069); }
-  66.67% { translate: calc(var(--view-amp) * -0.953) calc(var(--view-amp) * -0.798); }
-  69.44% { translate: calc(var(--view-amp) * -1.087) calc(var(--view-amp) * -0.554); }
-  72.22% { translate: calc(var(--view-amp) * -1.183) calc(var(--view-amp) * -0.374); }
-  75% { translate: calc(var(--view-amp) * -1.232) calc(var(--view-amp) * -0.277); }
-  77.78% { translate: calc(var(--view-amp) * -1.229) calc(var(--view-amp) * -0.260); }
-  80.56% { translate: calc(var(--view-amp) * -1.173) calc(var(--view-amp) * -0.303); }
-  83.33% { translate: calc(var(--view-amp) * -1.069) calc(var(--view-amp) * -0.369); }
-  86.11% { translate: calc(var(--view-amp) * -0.923) calc(var(--view-amp) * -0.419); }
-  88.89% { translate: calc(var(--view-amp) * -0.747) calc(var(--view-amp) * -0.424); }
-  91.67% { translate: calc(var(--view-amp) * -0.553) calc(var(--view-amp) * -0.369); }
-  94.44% { translate: calc(var(--view-amp) * -0.356) calc(var(--view-amp) * -0.260); }
-  97.22% { translate: calc(var(--view-amp) * -0.168) calc(var(--view-amp) * -0.125); }
-  100% { translate: calc(var(--view-amp) * -0.000) calc(var(--view-amp) * -0.000); }
-}
-
 /* A trace drifting on its own (Profile > Animations > Floating). Animated
    through the individual `translate` property rather than `transform`: the
    trace's container already holds its position, turn and flip in transform,

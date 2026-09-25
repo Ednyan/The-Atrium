@@ -517,8 +517,6 @@ export const en = {
   'atrium.profile.animations': 'Animations',
   'atrium.profile.dragBounce': 'Drag feel: {value}%',
   'atrium.profile.dragBounceHint': 'A trace you drag trails the pointer slightly, leans into the pull and settles with a small bounce. 0 moves it rigidly.',
-  'atrium.profile.viewFloat': 'Floating view: {value}%',
-  'atrium.profile.viewFloatHint': 'When you pause, the atrium drifts gently, as if hovering. Any movement settles it. 0 keeps it still.',
   'atrium.profile.floating': 'Floating traces: {value}%',
   'atrium.profile.floatingHint': 'Traces drift gently on their own, as if the room were breathing. 0 keeps them still.',
   'atrium.profile.momentum': 'Throw momentum: {value}%',

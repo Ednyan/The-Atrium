@@ -615,8 +615,6 @@ const it: Catalogue = {
   'atrium.profile.animations': 'Animazioni',
   'atrium.profile.dragBounce': 'Sensazione di trascinamento: {value}%',
   'atrium.profile.dragBounceHint': 'Una trace trascinata segue il puntatore con un lieve ritardo, si inclina nella direzione e si ferma con un piccolo rimbalzo. 0 la muove in modo rigido.',
-  'atrium.profile.viewFloat': 'Vista fluttuante: {value}%',
-  'atrium.profile.viewFloatHint': 'Quando ti fermi, l\'atrium ondeggia piano, come sospeso. Qualsiasi movimento lo ferma. 0 lo tiene immobile.',
   'atrium.profile.floating': 'Trace fluttuanti: {value}%',
   'atrium.profile.floatingHint': 'Le trace fluttuano piano da sole, come se la stanza respirasse. 0 le tiene ferme.',
   'atrium.profile.momentum': 'Slancio del lancio: {value}%',
