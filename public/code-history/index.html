@@ -11,17 +11,33 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
   canvas.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 18px; top: 58px; pointer-events: none; max-width: min(640px, calc(100vw - 36px)); }
-  /* Back to the landing page, there from the first moment. */
-  #back { position: fixed; left: 18px; top: 14px; z-index: 2; background: #13131a; color: var(--fg); border: 1px solid var(--line);
-          padding: 6px 12px; text-decoration: none; letter-spacing: .08em; }
-  #back:hover { border-color: var(--accent); }
+  #hud { position: fixed; left: 62px; top: 14px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* Back to the landing page: a tab down the whole left edge, the way the
+     landing page's own link sits on its right one -- this page is to the right
+     of that one, and the two slide into each other (see @view-transition). */
+  #back { position: fixed; left: 0; top: 0; bottom: 0; width: 44px; z-index: 3; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 14px; background: #0d0d13; border-right: 1px solid var(--line); color: var(--fg); text-decoration: none;
+          transition: background .25s ease, border-color .25s ease, width .25s ease; }
+  #back:hover { background: #15151d; border-right-color: var(--accent); width: 50px; }
+  #back span { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .3em; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+  #back b { font-weight: normal; transition: transform .25s ease; }
+  #back:hover b { transform: translateX(-3px); }
+
+  /* The landing page and this one slide into each other, as neighbours: it
+     goes off to the left as this comes in from the right. (Back, the landing
+     page's styles do the reverse.) Where a browser can't, it simply changes
+     page. */
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-off-left; }
+  ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-right; }
+  @keyframes slide-off-left { to { transform: translateX(-100%); } }
+  @keyframes slide-in-right { from { transform: translateX(100%); } }
   #date { font-size: 30px; letter-spacing: .06em; }
   #stats { color: var(--dim); margin-top: 2px; }
   #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
   #legend { position: fixed; right: 18px; top: 16px; color: var(--dim); text-align: right; pointer-events: none; }
   #legend b { font-weight: normal; }
-  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  #bar { position: fixed; left: 62px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
   #bar button, #bar select { background: #13131a; color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
   #bar button:hover, #bar select:hover { border-color: var(--accent); }
   #track { flex: 1; position: relative; }
@@ -59,7 +75,7 @@
 </head>
 <body class="intro">
 <canvas id="c"></canvas>
-<a id="back" href="/">← <span data-t="back">Back</span></a>
+<a id="back" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
 <div id="intro"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1><p id="explain" data-t="explain"></p></div>
 <button id="skip" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
@@ -70,6 +86,6 @@
   <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
-<script src="growth.js"></script>
+<script src="growth.js?v=e7c5a4e6aeb3"></script>
 </body>
 </html>

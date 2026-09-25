@@ -11,17 +11,33 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
   canvas.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 18px; top: 58px; pointer-events: none; max-width: min(640px, calc(100vw - 36px)); }
-  /* Back to the landing page, there from the first moment. */
-  #back { position: fixed; left: 18px; top: 14px; z-index: 2; background: #13131a; color: var(--fg); border: 1px solid var(--line);
-          padding: 6px 12px; text-decoration: none; letter-spacing: .08em; }
-  #back:hover { border-color: var(--accent); }
+  #hud { position: fixed; left: 62px; top: 14px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* Back to the landing page: a tab down the whole left edge, the way the
+     landing page's own link sits on its right one -- this page is to the right
+     of that one, and the two slide into each other (see @view-transition). */
+  #back { position: fixed; left: 0; top: 0; bottom: 0; width: 44px; z-index: 3; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 14px; background: #0d0d13; border-right: 1px solid var(--line); color: var(--fg); text-decoration: none;
+          transition: background .25s ease, border-color .25s ease, width .25s ease; }
+  #back:hover { background: #15151d; border-right-color: var(--accent); width: 50px; }
+  #back span { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .3em; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+  #back b { font-weight: normal; transition: transform .25s ease; }
+  #back:hover b { transform: translateX(-3px); }
+
+  /* The landing page and this one slide into each other, as neighbours: it
+     goes off to the left as this comes in from the right. (Back, the landing
+     page's styles do the reverse.) Where a browser can't, it simply changes
+     page. */
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-off-left; }
+  ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-right; }
+  @keyframes slide-off-left { to { transform: translateX(-100%); } }
+  @keyframes slide-in-right { from { transform: translateX(100%); } }
   #date { font-size: 30px; letter-spacing: .06em; }
   #stats { color: var(--dim); margin-top: 2px; }
   #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
   #legend { position: fixed; right: 18px; top: 16px; color: var(--dim); text-align: right; pointer-events: none; }
   #legend b { font-weight: normal; }
-  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  #bar { position: fixed; left: 62px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
   #bar button, #bar select { background: #13131a; color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
   #bar button:hover, #bar select:hover { border-color: var(--accent); }
   #track { flex: 1; position: relative; }
@@ -59,7 +75,7 @@
 </head>
 <body class="intro">
 <canvas id="c"></canvas>
-<a id="back" href="/">← <span data-t="back">Back</span></a>
+<a id="back" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
 <div id="intro"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1><p id="explain" data-t="explain"></p></div>
 <button id="skip" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
@@ -79,40 +95,40 @@ const D = /*DATA*/null
 // The name is never translated: it's the title, in English, in every one.
 // The stages' notes are commit messages, and stay as they were written.
 const T = {
-  en: { lead: "You're about to see the code history of", explain: 'What follows is every change made to its code, from the first file to today. Each node is a file or a piece of code; each line, a connection between them.', skip: 'Skip intro', back: 'Back', play: 'Play', pause: 'Pause', replay: 'Replay', era: 'before git', tip: 'package or concept',
+  en: { lead: "You're about to see the code history of", explain: 'What follows is every change made to its code, from the first file to today. Each node is a file or a piece of code; each line, a connection between them.', skip: 'Skip intro', back: 'Back to homepage', play: 'Play', pause: 'Pause', replay: 'Replay', era: 'before git', tip: 'package or concept',
     legend: ['new', 'removed', 'glow: edited', 'folder', 'other file', 'scroll to zoom', 'drag to move', 'double-click to follow again', 'space to pause'],
     stats: (f, fi, c, l) => `${f} folders · ${fi} files · ${c} pieces of code · ${l} connections` },
-  es: { lead: 'Estás a punto de ver la historia del código de', explain: 'Lo que sigue es cada cambio hecho en su código, desde el primer archivo hasta hoy. Cada nodo es un archivo o un fragmento de código; cada línea, una conexión entre ellos.', skip: 'Saltar intro', back: 'Volver', play: 'Reproducir', pause: 'Pausa', replay: 'Repetir', era: 'antes de git', tip: 'paquete o concepto',
+  es: { lead: 'Estás a punto de ver la historia del código de', explain: 'Lo que sigue es cada cambio hecho en su código, desde el primer archivo hasta hoy. Cada nodo es un archivo o un fragmento de código; cada línea, una conexión entre ellos.', skip: 'Saltar intro', back: 'Volver al inicio', play: 'Reproducir', pause: 'Pausa', replay: 'Repetir', era: 'antes de git', tip: 'paquete o concepto',
     legend: ['nuevo', 'eliminado', 'brillo: editado', 'carpeta', 'otro archivo', 'rueda para acercar', 'arrastra para mover', 'doble clic para volver a seguir', 'espacio para pausar'],
     stats: (f, fi, c, l) => `${f} carpetas · ${fi} archivos · ${c} fragmentos de código · ${l} conexiones` },
-  'pt-BR': { lead: 'Você está prestes a ver a história do código de', explain: 'A seguir, cada mudança feita no código, do primeiro arquivo até hoje. Cada nó é um arquivo ou um trecho de código; cada linha, uma conexão entre eles.', skip: 'Pular introdução', back: 'Voltar', play: 'Reproduzir', pause: 'Pausar', replay: 'Repetir', era: 'antes do git', tip: 'pacote ou conceito',
+  'pt-BR': { lead: 'Você está prestes a ver a história do código de', explain: 'A seguir, cada mudança feita no código, do primeiro arquivo até hoje. Cada nó é um arquivo ou um trecho de código; cada linha, uma conexão entre eles.', skip: 'Pular introdução', back: 'Voltar para a página inicial', play: 'Reproduzir', pause: 'Pausar', replay: 'Repetir', era: 'antes do git', tip: 'pacote ou conceito',
     legend: ['novo', 'removido', 'brilho: editado', 'pasta', 'outro arquivo', 'role para aproximar', 'arraste para mover', 'clique duplo para voltar a seguir', 'espaço para pausar'],
     stats: (f, fi, c, l) => `${f} pastas · ${fi} arquivos · ${c} trechos de código · ${l} conexões` },
-  'pt-PT': { lead: 'Estás prestes a ver a história do código de', explain: 'A seguir, cada alteração feita ao código, do primeiro ficheiro até hoje. Cada nó é um ficheiro ou um excerto de código; cada linha, uma ligação entre eles.', skip: 'Saltar introdução', back: 'Voltar', play: 'Reproduzir', pause: 'Pausar', replay: 'Repetir', era: 'antes do git', tip: 'pacote ou conceito',
+  'pt-PT': { lead: 'Estás prestes a ver a história do código de', explain: 'A seguir, cada alteração feita ao código, do primeiro ficheiro até hoje. Cada nó é um ficheiro ou um excerto de código; cada linha, uma ligação entre eles.', skip: 'Saltar introdução', back: 'Voltar à página inicial', play: 'Reproduzir', pause: 'Pausar', replay: 'Repetir', era: 'antes do git', tip: 'pacote ou conceito',
     legend: ['novo', 'removido', 'brilho: editado', 'pasta', 'outro ficheiro', 'roda para aproximar', 'arrasta para mover', 'duplo clique para voltar a seguir', 'espaço para pausar'],
     stats: (f, fi, c, l) => `${f} pastas · ${fi} ficheiros · ${c} excertos de código · ${l} ligações` },
-  fr: { lead: "Vous allez découvrir l'histoire du code de", explain: "Voici chaque modification apportée à son code, du premier fichier à aujourd'hui. Chaque nœud est un fichier ou un morceau de code ; chaque ligne, une connexion entre eux.", skip: "Passer l'intro", back: 'Retour', play: 'Lecture', pause: 'Pause', replay: 'Rejouer', era: 'avant git', tip: 'paquet ou concept',
+  fr: { lead: "Vous allez découvrir l'histoire du code de", explain: "Voici chaque modification apportée à son code, du premier fichier à aujourd'hui. Chaque nœud est un fichier ou un morceau de code ; chaque ligne, une connexion entre eux.", skip: "Passer l'intro", back: "Retour à l'accueil", play: 'Lecture', pause: 'Pause', replay: 'Rejouer', era: 'avant git', tip: 'paquet ou concept',
     legend: ['nouveau', 'supprimé', 'lueur : modifié', 'dossier', 'autre fichier', 'molette pour zoomer', 'glisser pour déplacer', 'double-clic pour suivre à nouveau', 'espace pour mettre en pause'],
     stats: (f, fi, c, l) => `${f} dossiers · ${fi} fichiers · ${c} morceaux de code · ${l} connexions` },
-  de: { lead: 'Gleich siehst du die Code-Geschichte von', explain: 'Was folgt, ist jede Änderung an seinem Code, von der ersten Datei bis heute. Jeder Knoten ist eine Datei oder ein Stück Code; jede Linie eine Verbindung zwischen ihnen.', skip: 'Intro überspringen', back: 'Zurück', play: 'Abspielen', pause: 'Pause', replay: 'Nochmal', era: 'vor Git', tip: 'Paket oder Konzept',
+  de: { lead: 'Gleich siehst du die Code-Geschichte von', explain: 'Was folgt, ist jede Änderung an seinem Code, von der ersten Datei bis heute. Jeder Knoten ist eine Datei oder ein Stück Code; jede Linie eine Verbindung zwischen ihnen.', skip: 'Intro überspringen', back: 'Zurück zur Startseite', play: 'Abspielen', pause: 'Pause', replay: 'Nochmal', era: 'vor Git', tip: 'Paket oder Konzept',
     legend: ['neu', 'entfernt', 'Leuchten: bearbeitet', 'Ordner', 'andere Datei', 'scrollen zum Zoomen', 'ziehen zum Verschieben', 'Doppelklick, um wieder zu folgen', 'Leertaste zum Pausieren'],
     stats: (f, fi, c, l) => `${f} Ordner · ${fi} Dateien · ${c} Code-Stücke · ${l} Verbindungen` },
-  it: { lead: 'Stai per vedere la storia del codice di', explain: 'Quello che segue è ogni modifica fatta al suo codice, dal primo file a oggi. Ogni nodo è un file o un pezzo di codice; ogni linea, un collegamento tra loro.', skip: 'Salta intro', back: 'Indietro', play: 'Riproduci', pause: 'Pausa', replay: 'Riguarda', era: 'prima di git', tip: 'pacchetto o concetto',
+  it: { lead: 'Stai per vedere la storia del codice di', explain: 'Quello che segue è ogni modifica fatta al suo codice, dal primo file a oggi. Ogni nodo è un file o un pezzo di codice; ogni linea, un collegamento tra loro.', skip: 'Salta intro', back: 'Torna alla home', play: 'Riproduci', pause: 'Pausa', replay: 'Riguarda', era: 'prima di git', tip: 'pacchetto o concetto',
     legend: ['nuovo', 'rimosso', 'bagliore: modificato', 'cartella', 'altro file', 'scorri per lo zoom', 'trascina per spostare', 'doppio clic per seguire di nuovo', 'spazio per mettere in pausa'],
     stats: (f, fi, c, l) => `${f} cartelle · ${fi} file · ${c} pezzi di codice · ${l} collegamenti` },
-  ru: { lead: 'Сейчас вы увидите историю кода', explain: 'Дальше — каждое изменение его кода, от первого файла до сегодняшнего дня. Каждый узел — это файл или фрагмент кода; каждая линия — связь между ними.', skip: 'Пропустить', back: 'Назад', play: 'Смотреть', pause: 'Пауза', replay: 'Повторить', era: 'до git', tip: 'пакет или понятие',
+  ru: { lead: 'Сейчас вы увидите историю кода', explain: 'Дальше — каждое изменение его кода, от первого файла до сегодняшнего дня. Каждый узел — это файл или фрагмент кода; каждая линия — связь между ними.', skip: 'Пропустить', back: 'На главную', play: 'Смотреть', pause: 'Пауза', replay: 'Повторить', era: 'до git', tip: 'пакет или понятие',
     legend: ['новое', 'удалено', 'свечение: изменено', 'папка', 'другой файл', 'прокрутка — масштаб', 'перетаскивание — перемещение', 'двойной щелчок — снова следовать', 'пробел — пауза'],
     stats: (f, fi, c, l) => `папок: ${f} · файлов: ${fi} · фрагментов кода: ${c} · связей: ${l}` },
-  zh: { lead: '你即将看到以下项目的代码历史', explain: '接下来是它的代码从第一个文件到今天的每一次改动。每个节点是一个文件或一段代码；每条线是它们之间的一个连接。', skip: '跳过开场', back: '返回', play: '播放', pause: '暂停', replay: '重播', era: 'git 之前', tip: '包或概念',
+  zh: { lead: '你即将看到以下项目的代码历史', explain: '接下来是它的代码从第一个文件到今天的每一次改动。每个节点是一个文件或一段代码；每条线是它们之间的一个连接。', skip: '跳过开场', back: '返回首页', play: '播放', pause: '暂停', replay: '重播', era: 'git 之前', tip: '包或概念',
     legend: ['新增', '删除', '发光：已编辑', '文件夹', '其他文件', '滚动缩放', '拖动移动', '双击重新跟随', '空格暂停'],
     stats: (f, fi, c, l) => `${f} 个文件夹 · ${fi} 个文件 · ${c} 段代码 · ${l} 个连接` },
-  ja: { lead: 'これからご覧いただくのは、次のコードの歴史です', explain: '最初のファイルから今日まで、そのコードに加えられたすべての変更です。ノードはひとつのファイルかコードの一部、線はそれらのつながりです。', skip: 'イントロをスキップ', back: '戻る', play: '再生', pause: '一時停止', replay: 'もう一度', era: 'git 以前', tip: 'パッケージまたは概念',
+  ja: { lead: 'これからご覧いただくのは、次のコードの歴史です', explain: '最初のファイルから今日まで、そのコードに加えられたすべての変更です。ノードはひとつのファイルかコードの一部、線はそれらのつながりです。', skip: 'イントロをスキップ', back: 'ホームに戻る', play: '再生', pause: '一時停止', replay: 'もう一度', era: 'git 以前', tip: 'パッケージまたは概念',
     legend: ['新規', '削除', '光：編集', 'フォルダー', 'その他のファイル', 'スクロールで拡大縮小', 'ドラッグで移動', 'ダブルクリックで追従に戻る', 'スペースで一時停止'],
     stats: (f, fi, c, l) => `フォルダー ${f} · ファイル ${fi} · コード ${c} · つながり ${l}` },
-  ko: { lead: '이제 보시게 될 것은 다음 프로젝트의 코드 역사입니다', explain: '첫 파일부터 오늘까지, 코드에 있었던 모든 변화입니다. 각 노드는 파일이나 코드 조각이고, 각 선은 그 사이의 연결입니다.', skip: '인트로 건너뛰기', back: '돌아가기', play: '재생', pause: '일시정지', replay: '다시 보기', era: 'git 이전', tip: '패키지 또는 개념',
+  ko: { lead: '이제 보시게 될 것은 다음 프로젝트의 코드 역사입니다', explain: '첫 파일부터 오늘까지, 코드에 있었던 모든 변화입니다. 각 노드는 파일이나 코드 조각이고, 각 선은 그 사이의 연결입니다.', skip: '인트로 건너뛰기', back: '홈으로 돌아가기', play: '재생', pause: '일시정지', replay: '다시 보기', era: 'git 이전', tip: '패키지 또는 개념',
     legend: ['새로 생김', '삭제됨', '빛: 수정됨', '폴더', '기타 파일', '스크롤로 확대·축소', '드래그로 이동', '더블클릭으로 다시 따라가기', '스페이스로 일시정지'],
     stats: (f, fi, c, l) => `폴더 ${f} · 파일 ${fi} · 코드 조각 ${c} · 연결 ${l}` },
-  hi: { lead: 'आगे आप इस परियोजना के कोड का इतिहास देखेंगे', explain: 'पहली फ़ाइल से आज तक, इसके कोड में हुआ हर बदलाव। हर नोड एक फ़ाइल या कोड का एक टुकड़ा है; हर रेखा उनके बीच का एक जुड़ाव।', skip: 'परिचय छोड़ें', back: 'वापस', play: 'चलाएँ', pause: 'रोकें', replay: 'फिर से चलाएँ', era: 'git से पहले', tip: 'पैकेज या अवधारणा',
+  hi: { lead: 'आगे आप इस परियोजना के कोड का इतिहास देखेंगे', explain: 'पहली फ़ाइल से आज तक, इसके कोड में हुआ हर बदलाव। हर नोड एक फ़ाइल या कोड का एक टुकड़ा है; हर रेखा उनके बीच का एक जुड़ाव।', skip: 'परिचय छोड़ें', back: 'होमपेज पर वापस', play: 'चलाएँ', pause: 'रोकें', replay: 'फिर से चलाएँ', era: 'git से पहले', tip: 'पैकेज या अवधारणा',
     legend: ['नया', 'हटाया गया', 'चमक: बदला गया', 'फ़ोल्डर', 'अन्य फ़ाइल', 'ज़ूम के लिए स्क्रॉल करें', 'हिलाने के लिए खींचें', 'फिर से फ़ॉलो करने के लिए डबल-क्लिक', 'रोकने के लिए स्पेस'],
     stats: (f, fi, c, l) => `${f} फ़ोल्डर · ${fi} फ़ाइलें · कोड के ${c} टुकड़े · ${l} जुड़ाव` },
 }

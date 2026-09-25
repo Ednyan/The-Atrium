@@ -14,6 +14,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The code history (public/code-history) is the landing page's neighbour to
+   the right, and the two slide into each other. Going there, its page runs the
+   slide; coming back, this one does: that page goes off to the right as this
+   comes in from the left. Where a browser can't, it simply changes page. */
+@view-transition { navigation: auto; }
+::view-transition-old(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-off-right; }
+::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-left; }
+@keyframes slide-off-right { to { transform: translateX(100%); } }
+@keyframes slide-in-left { from { transform: translateX(-100%); } }
+
 /* Things in the atrium's world layer that keep their size on screen whatever
    the zoom -- a trace's name under it, a handle -- anchored to a point in the
    world. lib/worldCamera scales them back while it scales the layer, about

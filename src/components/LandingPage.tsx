@@ -271,6 +271,9 @@ const sections: Section[] = [
 
 const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
 
+// The height of the code-history band under the bar.
+const CODE_HISTORY_BAND = 'clamp(52px, 5.5vw, 84px)'
+
 // The sticky bar's height (h-14). Both the jump and the scroll-spy measure
 // against it, so it is written once.
 const NAV_HEIGHT = 56
@@ -853,10 +856,35 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </div>
       </div>
 
-      {/* SECTION 1: The Digital Atrium -- the title */}
+      {/* The code history (public/code-history, a page of its own): a band of the
+          finished graph -- every file and connection the code has had -- right
+          under the bar, edge to edge, dark in either theme as the graph is.
+          Its link sits against the screen's right edge because the code
+          history is this page's neighbour to the right: the two slide into
+          each other (@view-transition, here in index.css and in that page). */}
+      <a
+        href="/code-history/"
+        className="group relative flex items-stretch overflow-hidden"
+        style={{ height: CODE_HISTORY_BAND, backgroundColor: '#07070b' }}
+      >
+        <img
+          src="/code-history/banner.webp"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity duration-500"
+        />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 55%, rgb(7 7 11 / 0.9))' }} />
+        <span className="relative ml-auto flex items-center gap-3 px-5 sm:px-8 border-l border-white/25 bg-black/60 text-white text-[11px] sm:text-xs tracking-[0.22em] uppercase group-hover:bg-white group-hover:text-black transition-colors">
+          {t('landing.codeHistory')}
+          <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+        </span>
+      </a>
+
+      {/* SECTION 1: The Digital Atrium -- the title. The first screen still, less
+          the band above it. */}
       <section
         ref={el => sectionRefs.current[0] = el}
-        className="min-h-[calc(100vh-3.5rem)] flex items-center px-5 sm:px-10 lg:px-16 pt-10 pb-24 relative overflow-hidden"
+        className="flex items-center px-5 sm:px-10 lg:px-16 pt-10 pb-24 relative overflow-hidden"
+        style={{ minHeight: `calc(100vh - 3.5rem - ${CODE_HISTORY_BAND})` }}
       >
         {/* Corner brackets */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30 pointer-events-none" />
@@ -909,24 +937,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             the product directly under the headline. */}
         <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-center">
 
-          {/* The code history (public/code-history, a page of its own): a band
-              of the finished graph -- every file and connection the code has
-              had -- and the way in. Dark in either theme, as the graph is. */}
-          <a
-            href="/code-history/"
-            className="lg:col-span-2 group relative block overflow-hidden border border-nier-border/40 hover:border-nier-border/80 transition-colors"
-            style={{ height: 'clamp(84px, 11vw, 150px)', backgroundColor: '#07070b' }}
-          >
-            <img
-              src="/code-history/banner.webp"
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
-            />
-            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 50%, rgb(7 7 11 / 0.85))' }} />
-            <span className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 border border-white/50 bg-black/70 px-4 sm:px-6 py-2.5 text-[11px] sm:text-sm tracking-[0.18em] uppercase text-white group-hover:bg-white group-hover:text-black transition-colors">
-              {t('landing.codeHistory')} →
-            </span>
-          </a>
 
           {/* LEFT: type + actions */}
           <div className="text-left">

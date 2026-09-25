@@ -27,7 +27,7 @@ rebuilds what it hasn't seen. graphify now and then crashes on start or on
 exit; a stage whose graph didn't come out is retried.
 """
 
-import colorsys, difflib, html, io, json, math, os, random, re, shutil, subprocess, sys, tarfile, threading, time, urllib.parse, webbrowser
+import colorsys, difflib, hashlib, html, io, json, math, os, random, re, shutil, subprocess, sys, tarfile, threading, time, urllib.parse, webbrowser
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -504,9 +504,15 @@ def publish(html: str) -> None:
     # beside it.
     head, rest = html.split('<script>', 1)
     script, tail = rest.split('</script>', 1)
+    #
+    # Named for its contents (?v=): the site lets a browser keep growth.js for
+    # four hours without asking, and the page for none, so a new page ran an
+    # old script -- one that didn't know the new Skip button or fill the new
+    # legend. A new script is now a new address.
     PUBLISHED.mkdir(parents=True, exist_ok=True)
+    version = hashlib.sha256(script.encode('utf-8')).hexdigest()[:12]
     (PUBLISHED / 'growth.js').write_text(script, encoding='utf-8')
-    (PUBLISHED / 'index.html').write_text(head + '<script src="growth.js"></script>' + tail, encoding='utf-8')
+    (PUBLISHED / 'index.html').write_text(head + f'<script src="growth.js?v={version}"></script>' + tail, encoding='utf-8')
     print(f'published {PUBLISHED.relative_to(REPO)}/')
 
 
