@@ -2699,24 +2699,15 @@ export async function resolveLocalStreamUrl(url: string): Promise<string> {
   }
 }
 
-/**
- * Pre-seed the resolved URL cache so freshly uploaded files render instantly
- * without a redundant disk read.
- */
+// A freshly uploaded file, shown from the file itself (a blob URL over it)
+// until its vault copy exists. Both caches: the blob one that export and PDF
+// rendering read, and the stream one that every <img>, <video> and <audio>
+// reads. Seeding only the first left a new picture pointing at a vault copy
+// still being written -- fine for one, whose write usually won the race, but
+// in a batch the writes queue up, and a picture further down failed to load
+// with nothing to retry it. A copy of it, made later, loaded fine.
 export function preCacheLocalUrl(localUrl: string, blobUrl: string) {
   resolvedUrlCache.set(localUrl, blobUrl)
-}
-
-// The same, for the cache the video and audio resolver actually reads.
-//
-// preCacheLocalUrl seeds resolvedUrlCache, but resolveLocalStreamUrl consults
-// resolvedStreamUrlCache and nothing else -- so a freshly imported video never
-// saw the pre-seeded blob at all. It got an asset URL for a file that was still
-// being written, and played only once the write happened to catch up.
-//
-// Seeding this one instead means the trace plays from the file the user
-// dropped, which is complete and sitting still, from the moment it appears.
-export function preCacheLocalStreamUrl(localUrl: string, blobUrl: string) {
   resolvedStreamUrlCache.set(localUrl, blobUrl)
 }
 

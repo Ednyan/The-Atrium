@@ -1015,38 +1015,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     await createGroupAndMove(traceIds, t('atrium.layers.numberedGroup', { n }))
   }, [lobbyId, canEdit, createGroupAndMove])
 
-  // Which imports are still being copied into the vault. Their media is left
-  // alone until the file is whole -- see the resolver above.
-  const [pendingWrites, setPendingWrites] = useState<Set<string>>(new Set())
-  useEffect(() => {
-    const onStarted = (event: Event) => {
-      const detail = (event as CustomEvent).detail
-      const localUrl = detail?.localUrl as string | undefined
-      if (!localUrl) return
-      // Only held back when there is nothing else to read. An import that
-      // seeded the original file can be played from it straight away: that
-      // file is complete and nothing is writing to it, unlike the copy.
-      if (detail?.playable) return
-      setPendingWrites(prev => new Set(prev).add(localUrl))
-    }
-    const onFinished = (event: Event) => {
-      const localUrl = (event as CustomEvent).detail?.localUrl as string | undefined
-      if (!localUrl) return
-      setPendingWrites(prev => {
-        if (!prev.has(localUrl)) return prev
-        const next = new Set(prev)
-        next.delete(localUrl)
-        return next
-      })
-    }
-    window.addEventListener('atrium:vault-write-start', onStarted)
-    window.addEventListener('atrium:vault-write-complete', onFinished)
-    return () => {
-      window.removeEventListener('atrium:vault-write-start', onStarted)
-      window.removeEventListener('atrium:vault-write-complete', onFinished)
-    }
-  }, [])
-
   // A vault write finished, so the file it was copying now exists on disk and
   // the trace should read from there rather than through the blob URL it was
   // given at import. Re-resolving changes the element's src, which is also
@@ -1396,7 +1364,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     traces.forEach(trace => {
       if ((trace.type === 'audio' || trace.type === 'video') && trace.mediaUrl?.startsWith('local://')) {
         if (localMediaUrls[trace.id]) return
-        // Not while the file is still being written.
+        // A file still being written is never resolved here: an import seeds
+        // the dropped file itself (preCacheLocalUrl), which this reads first.
+        // Before that, it was:
         //
         // resolveLocalStreamUrl builds an asset URL out of the path without
         // asking whether anything is there yet, so a freshly imported video
@@ -1407,7 +1377,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         // with. That is what kept the canvas stuttering for the whole import,
         // and why it happened for video and not for a PDF of any size: only
         // video and audio resolve through here.
-        if (pendingWrites.has(trace.mediaUrl)) return
         // Streamed, not read. This is the difference between opening an
         // atrium of videos and waiting for every one of them to be copied
         // into memory first.
@@ -1420,7 +1389,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         })
       }
     })
-  }, [traces, pendingWrites])
+  }, [traces])
 
   // ESC key to deselect trace and close menus
   useEffect(() => {

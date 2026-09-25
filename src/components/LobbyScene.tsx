@@ -4050,32 +4050,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (isDesktop && supabase) {
       const localUrl = `local://traces/${storagePath}`
 
-      // Everything except video and audio gets a blob URL so its trace can
-      // appear before anything has been written.
-      //
-      // Video and audio deliberately do not. A blob URL over a large video
-      // asks the webview to parse the whole thing to find its index -- which,
-      // unless the file has been through a faststart pass, lives at the END --
-      // so it reads most of the file before it can show a single frame. That
-      // read lands on the main thread, at the same moment the vault write is
-      // reading the same file, and it is what made importing a video stutter
-      // long after the import panel had gone. A 69MB PDF through the identical
-      // write path is seamless, which is what ruled the write out.
-      //
-      // So they wait. The trace appears immediately either way; the media
-      // element simply has no source until the copy finishes, at which point
-      // it resolves to the file on disk and streams it properly, seeking to
-      // the index instead of swallowing the file to find it.
-      const isStreamedMedia = file.type.startsWith('video/') || file.type.startsWith('audio/')
-      const blobUrl = URL.createObjectURL(file)
-      import('../lib/localDb').then(m => {
-        m.preCacheLocalUrl(localUrl, blobUrl)
-        // Video and audio read from a different cache, and reading the file
-        // the user dropped is what lets them play before the vault copy
-        // exists. It is complete and nothing is writing to it -- unlike the
-        // copy, which is exactly what made pointing at the copy so expensive.
-        if (isStreamedMedia) m.preCacheLocalStreamUrl(localUrl, blobUrl)
-      })
+      // Shown from the file the user dropped -- complete, and nothing is
+      // writing to it -- until the vault copy exists (see preCacheLocalUrl).
+      // Awaited so it is in place before the trace that will read it.
+      ;(await import('../lib/localDb')).preCacheLocalUrl(localUrl, URL.createObjectURL(file))
       // Written in the background so the trace can appear immediately -- but
       // not ignored.
       //
@@ -4086,17 +4064,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // is cached in memory, and "Missing file" the next time the atrium was
       // opened. Nothing anywhere said a word. A background write may be
       // invisible while it works; it must not be invisible when it does not.
-      // Announced before it starts, so the overlay knows not to point a media
-      // element at a file that is only part-way written.
-      // `playable` says the original file is already on offer, so the trace
-      // has something complete to read from and does not have to wait. Carried
-      // on the event because the overlay reaches localDb through a lazy import
-      // -- kept lazy so the web build never pulls in Tauri -- and so cannot ask
-      // the cache a synchronous question.
-      window.dispatchEvent(new CustomEvent('atrium:vault-write-start', {
-        detail: { localUrl, playable: isStreamedMedia },
-      }))
-
       void supabase.storage.from('traces').upload(storagePath, file)
         .then(({ error }: { error: any }) => {
           if (error) {

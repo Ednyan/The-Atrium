@@ -1106,7 +1106,91 @@ fn report_fatal(message: &str) {
     }
 }
 
+// The per-user folders, taken from the account this process runs as.
+//
+// On a PC with an administrator (migue) and a standard account (carla), the
+// app running as carla tried to keep its webview data in migue's profile --
+// C:\Users\migue\AppData\Local\...\EBWebView -- and failed, since one account
+// can't write in another's. A process can run as one account with another's
+// environment: an installer started with the administrator's password launches
+// the app as the signed-in user, so it doesn't run elevated, but hands on its
+// own environment -- USERPROFILE, APPDATA, LOCALAPPDATA and TEMP all migue's.
+// Everything that looks for a per-user folder (the webview, the database, the
+// vault settings) then looks in the wrong profile.
+//
+// So when the environment's profile isn't this account's, it is rebuilt from
+// the account itself, before anything reads it. Run first thing in main, while
+// the process has a single thread.
+#[cfg(windows)]
+fn repair_user_environment() {
+    use std::ffi::{c_void, OsString};
+    use std::os::windows::ffi::OsStringExt;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentProcess() -> *mut c_void;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
+    }
+    #[link(name = "userenv")]
+    extern "system" {
+        fn GetUserProfileDirectoryW(token: *mut c_void, dir: *mut u16, size: *mut u32) -> i32;
+        fn CreateEnvironmentBlock(block: *mut *mut c_void, token: *mut c_void, inherit: i32) -> i32;
+        fn DestroyEnvironmentBlock(block: *mut c_void) -> i32;
+    }
+    const TOKEN_QUERY: u32 = 0x0008;
+    const TOKEN_DUPLICATE: u32 = 0x0002;
+
+    unsafe {
+        let mut token = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &mut token) == 0 {
+            return;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        if GetUserProfileDirectoryW(token, buf.as_mut_ptr(), &mut len) != 0 {
+            let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            let own = OsString::from_wide(&buf[..end]).to_string_lossy().into_owned();
+            let current = std::env::var("USERPROFILE").unwrap_or_default();
+            let mut block = std::ptr::null_mut();
+            if !own.eq_ignore_ascii_case(&current) && CreateEnvironmentBlock(&mut block, token, 0) != 0 {
+                // NAME=VALUE strings, one after another, ending with an empty
+                // one. Kept as UTF-16 throughout, so nothing is lost or cut
+                // mid-character. Names starting with "=" (the per-drive "=C:"
+                // folders) are skipped: they have nothing to do with the
+                // profile, and set_var panics on a name containing "=".
+                const EQ: u16 = b'=' as u16;
+                let mut at = block as *const u16;
+                loop {
+                    let mut n = 0;
+                    while *at.add(n) != 0 {
+                        n += 1;
+                    }
+                    if n == 0 {
+                        break;
+                    }
+                    let entry = std::slice::from_raw_parts(at, n);
+                    if entry[0] != EQ {
+                        if let Some(eq) = entry.iter().position(|&c| c == EQ) {
+                            std::env::set_var(OsString::from_wide(&entry[..eq]), OsString::from_wide(&entry[eq + 1..]));
+                        }
+                    }
+                    at = at.add(n + 1);
+                }
+                DestroyEnvironmentBlock(block);
+                eprintln!("[startup] environment was {}'s, rebuilt for {}", current, own);
+            }
+        }
+        CloseHandle(token);
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    repair_user_environment();
     std::panic::set_hook(Box::new(|info| report_fatal(&info.to_string())));
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
