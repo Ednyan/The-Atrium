@@ -2331,8 +2331,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => {
     if (!canvasRef.current || appRef.current) return
 
-    let cancelled = false
-
     // Use full viewport dimensions
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
@@ -2350,8 +2348,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       //
       // Rendering at devicePixelRatio was tried, to stop curves looking
       // pixelated on a high-DPI screen, and reverted: on a 2x display it means
-      // four times the pixels every frame for the grid, particles, ground
-      // elements and indicators, which cost more than the sharpness was worth.
+      // four times the pixels every frame for the grid, particles and
+      // indicators, which cost more than the sharpness was worth.
       // Traces are DOM elements and were never affected either way.
       resizeTo: window,
     })
@@ -2457,20 +2455,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Initialize theme manager
       const themeManager = new ThemeManager(worldContainer, {
         particleCount: 100,
-        groundDensity: 0.5,
         // Seeded here too, not just in the later updateConfig: particles are
-        // created right after loadTheme() below, and their blend mode is
-        // chosen from the background at creation time.
+        // created right below, and their blend mode is chosen from the
+        // background at creation time.
         backgroundColor: bgColor,
       })
       themeManagerRef.current = themeManager
-      
-      // Load theme assets asynchronously
-      themeManager.loadTheme().then(() => {
-        if (!cancelled) {
-          themeManager.createParticles(viewportWidth, viewportHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
-        }
-      })
+      themeManager.createParticles(viewportWidth, viewportHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
 
       // Player avatar now rendered in DOM (TraceOverlay) for z-index support
       // Keep reference but make invisible
@@ -2886,15 +2877,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           if (raw >= 1) cameraFlyToRef.current = null
         }
 
-        // Smooth zoom interpolation with snap-to-target to prevent jitter
-        const zoomLerpSpeed = 0.1 // Slower for smoother animation
+        // The zoom eases toward its target: most of the way in about a quarter
+        // of a second. Measured in time, not frames -- a tenth of the gap per
+        // frame, as it was, took twice as long on a 60Hz screen as on a
+        // 120Hz one, and longer again whenever a frame came late.
         const zoomDiff = targetZoomRef.current - zoomRef.current
-        
+
         // Snap to target if very close (prevents oscillation/jitter)
         if (Math.abs(zoomDiff) < 0.003) {
           zoomRef.current = targetZoomRef.current
         } else {
-          zoomRef.current += zoomDiff * zoomLerpSpeed
+          zoomRef.current += zoomDiff * (1 - Math.pow(0.82, app.ticker.deltaMS / (1000 / 60)))
         }
         
         // Check if zoom is stable (reached target)
@@ -2950,7 +2943,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         lastFrameZoom = zoomRef.current
         const k = zoomRef.current / sentView.zoom
         const layer = traceWorldLayerRef.current
-        if (layer && now < zoomEndsAt && k > 0.8 && k < 1.25 && !mouseHeld) {
+        const zooming = now < zoomEndsAt
+        if (layer && zooming && k > 0.8 && k < 1.25 && !mouseHeld) {
           // Where the layer's (0, 0) now is: screen = world * zoom + offset,
           // and it was laid out with sentView's.
           layer.style.transform = `translate(${newOffsetX - sentView.x * k}px, ${newOffsetY - sentView.y * k}px) scale(${k})`
@@ -2966,10 +2960,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           }
           // In the same frame as the layout it stood in for -- or, for a zoom
           // that ended where it began, simply so the layer is drawn flat again.
+          // Left to the compositor until the zoom is over, though: let go at a
+          // new layout midway and taken back the next frame, the layer was
+          // drawn twice over for it.
           if (layer && layerScaled) {
             layer.style.transform = ''
-            layer.style.willChange = ''
-            layerScaled = false
+            if (!zooming) {
+              layer.style.willChange = ''
+              layerScaled = false
+            }
           }
         }
         
@@ -2977,50 +2976,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // frame the view moves -- with the traces, above -- and not otherwise.
         if (offsetChanged || zoomMoved) updateGridRef.current?.()
         
-        // Update theme manager
-        const themeManager = themeManagerRef.current
-        if (themeManager) {
-          const camX = cameraPositionRef.current.x
-          const camY = cameraPositionRef.current.y
-          
-          // Always update floating particles (they should animate continuously)
-          themeManager.updateParticles(camX, camY, viewportWidth, viewportHeight)
-          
-          const playerPos = { x: positionRef.current.x, y: positionRef.current.y }
-          const tracePositions = tracesDataRef.current.map(t => ({ x: t.x, y: t.y }))
-          
-          // Only GENERATE ground elements when zoom is stable (expensive)
-          if (frameCounter % 2 === 0 && zoomIsStable) {
-            // Cover the visible canvas plus a 30% ring for pan pre-loading.
-            //
-            // Expressed as a multiple of the half-viewport, not an absolute
-            // pixel margin: cullGroundElements measures distance normalized
-            // per axis, so a fixed margin lands at a different normalized
-            // depth horizontally than vertically, and the short axis could
-            // generate past the cull threshold and thrash. This extent stays
-            // below that threshold (1.6) on both axes.
-            //
-            // The old bounds spanned a FULL viewport on each side, i.e. 4x
-            // the visible area, most of it never seen.
-            const GROUND_GEN_EXTENT = 1.3
-            const worldHalfW = (viewportWidth / zoomRef.current) / 2
-            const worldHalfH = (viewportHeight / zoomRef.current) / 2
-            const minX = camX - worldHalfW * GROUND_GEN_EXTENT
-            const minY = camY - worldHalfH * GROUND_GEN_EXTENT
-            const maxX = camX + worldHalfW * GROUND_GEN_EXTENT
-            const maxY = camY + worldHalfH * GROUND_GEN_EXTENT
+        // Floating particles, which drift every frame.
+        themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)
 
-            themeManager.generateGroundElements(
-              minX, minY, maxX, maxY
-            )
-          }
-          
-          // Always CULL ground elements (handles fade-out during zoom to prevent flickering)
-          if (frameCounter % 2 === 0) {
-            themeManager.cullGroundElements(camX, camY, viewportWidth, viewportHeight, playerPos.x, playerPos.y, tracePositions, zoomRef.current)
-          }
-        }
-        
         // NOTE: Lighting is now handled in TraceOverlay.tsx using DOM elements with blur
         // The Pixi.js lighting layer is kept for potential future use but not actively rendering
         if (lightingLayerRef.current) {
@@ -3463,7 +3421,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
 
     return () => {
-      cancelled = true
       // Cleanup theme manager
       if (themeManagerRef.current) {
         themeManagerRef.current.destroy()
@@ -3559,38 +3516,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const themeSettings = currentLobby.themeSettings
 
       themeManagerRef.current.updateConfig({
-        gridColor: themeSettings?.gridColor ? parseInt(themeSettings.gridColor.replace('#', ''), 16) : 0x3b82f6,
         particleColor:themeSettings?.particleColor ? parseInt(themeSettings.particleColor.replace('#', ''), 16) : 0xffffff,
         particlesEnabled: themeSettings?.particlesEnabled ?? true,
-        groundEnabled: themeSettings?.groundParticlesEnabled ?? true,
-        groundDensity: themeSettings?.groundElementDensity ?? 0.5,
-        groundElementScale: themeSettings?.groundElementScale ?? 0.0625,
-        groundElementScaleRange: themeSettings?.groundElementScaleRange ?? 0.025,
         particleOpacity: themeSettings?.particleOpacity ?? 0.6,
         particleDensity: themeSettings?.particleDensity ?? 1.0,
-        groundParticleOpacity: themeSettings?.groundParticleOpacity ?? 1.0,
-        groundPatternMode: themeSettings?.groundPatternMode ?? 'grid',
-        gridSpacing: themeSettings?.gridSpacing ?? 100,
-        groundCoverFullView: themeSettings?.groundCoverFullView ?? true,
-        backgroundColor: themeSettings?.backgroundColor ? parseInt(themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f,
+        backgroundColor: bgColor,
       })
 
       // Recreate particles with new settings
       themeManagerRef.current.createParticles(window.innerWidth, window.innerHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
-
-      // Handle ground elements
-      if (themeSettings?.groundParticlesEnabled === false) {
-        // Clear ground elements if disabled
-        themeManagerRef.current.clearGroundElements()
-      } else if (themeSettings?.groundParticleUrls && themeSettings.groundParticleUrls.length > 0) {
-        // Use custom ground elements - this completely replaces the default ones
-        themeManagerRef.current.clearGroundElements() // Clear existing first
-        themeManagerRef.current.loadCustomGroundElements(themeSettings.groundParticleUrls)
-      } else {
-        // No custom URLs provided - reload default ground elements
-        themeManagerRef.current.clearGroundElements()
-        themeManagerRef.current.loadTheme() // This will load default ground elements
-      }
     }
   }, [currentLobby?.themeSettings])
 

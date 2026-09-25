@@ -1,7 +1,7 @@
 # 🎨 Theme Customization Guide
 
 ## Overview
-Lobby owners can customize the visual appearance of their lobby including grid, background, particles, and ground elements.
+Lobby owners can customize the visual appearance of their lobby including grid, background and particles.
 
 ## Accessing Theme Customization
 
@@ -36,31 +36,6 @@ Lobby owners can customize the visual appearance of their lobby including grid, 
   - Only visible when particles are enabled
   - Default: White (`#ffffff`)
   - Tip: Try subtle colors that match your theme
-
-### 4. Ground Elements
-- **Enable/Disable**: Toggle ground decorations (rocks, plants, etc.)
-  - Default: Enabled
-  
-- **Ground Element URLs**: Add custom images to appear on the ground
-  - Enter direct image URLs or paths
-  - Multiple URLs can be added
-  - Each URL represents a different ground element type
-  - Elements are randomly placed and scaled
-
-#### Ground Element URL Examples:
-```
-https://example.com/rock.png
-https://example.com/grass.png
-/themes/ground/stone.png
-/themes/ground/flower.png
-```
-
-#### Tips for Ground Elements:
-- Use transparent PNG images for best results
-- Smaller file sizes load faster
-- Images should ideally have transparent backgrounds
-- The system will randomly scale and place them
-- You can use both external URLs and local paths
 
 ## Saving Changes
 1. Click **"Save Theme"** at the bottom of the panel
@@ -97,8 +72,6 @@ The theme settings are stored as JSON in the database:
   backgroundColor?: string     // Hex color (e.g., "#0a0a0f")
   particlesEnabled?: boolean   // true/false
   particleColor?: string       // Hex color (e.g., "#ffffff")
-  groundParticlesEnabled?: boolean  // true/false
-  groundParticleUrls?: string[]     // Array of image URLs
 }
 ```
 
@@ -108,8 +81,6 @@ The theme settings are stored as JSON in the database:
 - Background Color: `#0a0a0f` (dark)
 - Particles Enabled: `true`
 - Particle Color: `#ffffff` (white)
-- Ground Enabled: `true`
-- Ground URLs: `[]` (empty, uses default assets)
 
 ## Examples
 
@@ -130,20 +101,16 @@ The theme settings are stored as JSON in the database:
 - Grid Color: `#cccccc` (light gray)
 - Grid Opacity: `0.15`
 - Particles Enabled: `false`
-- Ground Enabled: `false`
 
 ### Nature Theme
 - Background: `#1a2f1a` (dark green)
 - Grid Color: `#2d5016` (forest green)
 - Grid Opacity: `0.2`
 - Particle Color: `#90ee90` (light green)
-- Ground URLs: Add grass and flower images
 
 ## Performance Notes
 - Theme changes apply instantly without reloading
 - Particle count is fixed at 100 (can be adjusted in code)
-- Ground elements are generated dynamically based on camera position
-- Too many ground element URLs may impact loading time
 
 ## Troubleshooting
 
@@ -151,12 +118,6 @@ The theme settings are stored as JSON in the database:
 - Ensure you're the lobby owner
 - Check browser console for errors
 - Verify the migration was run successfully
-
-### Custom ground images not appearing
-- Check that URLs are accessible (try opening in browser)
-- Ensure images are in supported formats (PNG, JPG, WebP)
-- Check browser console for loading errors
-- For local paths, ensure files exist in `/public/themes/ground/`
 
 ### Particles not visible
 - Check that particles are enabled
@@ -167,7 +128,6 @@ The theme settings are stored as JSON in the database:
 Potential additions to the theme system:
 - Particle count control
 - Particle speed control
-- Ground element density control
 - Custom player colors per lobby
 - Theme presets (save/load themes)
 - Import/export theme configurations

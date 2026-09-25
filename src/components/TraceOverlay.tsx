@@ -5342,8 +5342,8 @@ const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight
 // Debug logging for image dimensions
 // Selected trace rendering
 
-// Edge fade, measured per axis against the actual screen edges (the
-// same rectangular vignette the ground elements use). This was a
+// Edge fade, measured per axis against the actual screen edges -- a
+// rectangular vignette. This was a
 // CIRCLE sized to the viewport's diagonal half-length, which is why
 // the fade behaved so oddly: on a 16:9 screen the left/right edges
 // sit inside that circle's fade band (visible dimming) while the

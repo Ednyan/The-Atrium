@@ -7,8 +7,8 @@
 // room wearing Abyss can never drift apart.
 //
 // What is written out here is only what a room has and a trace does not --
-// how strong the grid is, how far apart, how many particles, what sits on the
-// floor. Those are tuned per theme by eye.
+// how strong the grid is and how many particles. Those are tuned per theme by
+// eye.
 //
 // Kept here rather than in the customisation panel so the panel and the
 // creation flow cannot end up offering different versions of the same named
@@ -22,12 +22,6 @@ interface RoomFeel {
   gridOpacity: number
   particleOpacity: number
   particleDensity: number
-  groundParticleOpacity: number
-  groundPatternMode: string
-  gridSpacing?: number
-  groundElementScale: number
-  groundElementScaleRange: number
-  groundElementDensity: number
 }
 
 const FEEL: Record<TracePreset['id'], RoomFeel> = {
@@ -35,23 +29,11 @@ const FEEL: Record<TracePreset['id'], RoomFeel> = {
     gridOpacity: 0.24,
     particleOpacity: 0.45,
     particleDensity: 0.8,
-    groundParticleOpacity: 0.82,
-    groundPatternMode: 'grid',
-    gridSpacing: 125,
-    groundElementScale: 0.06,
-    groundElementScaleRange: 0.02,
-    groundElementDensity: 0.55,
   },
   abyss: {
     gridOpacity: 0.3,
     particleOpacity: 0.55,
     particleDensity: 1.2,
-    groundParticleOpacity: 0.9,
-    groundPatternMode: 'grid',
-    gridSpacing: 90,
-    groundElementScale: 0.055,
-    groundElementScaleRange: 0.03,
-    groundElementDensity: 0.8,
   },
   markerboard: {
     // Its grid is pure black, where the other two are mid-tones, so the same
@@ -59,11 +41,6 @@ const FEEL: Record<TracePreset['id'], RoomFeel> = {
     gridOpacity: 0.1,
     particleOpacity: 0.65,
     particleDensity: 1,
-    groundParticleOpacity: 0.68,
-    groundPatternMode: 'random',
-    groundElementScale: 0.07,
-    groundElementScaleRange: 0.05,
-    groundElementDensity: 0.45,
   },
 }
 
@@ -77,7 +54,6 @@ function roomFrom(preset: TracePreset) {
       backgroundColor: preset.fill,
       particlesEnabled: true,
       particleColor: preset.border,
-      groundParticlesEnabled: false,
       ...feel,
     },
   }
