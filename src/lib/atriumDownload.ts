@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { fetchAllLobbyTraces } from '../hooks/useTraces'
+import { drawRanks, inOrder } from './order'
 
 // Produces the same version-2 export envelope ExportDatabase writes on
 // desktop, so a web download drops straight into the desktop app's existing
@@ -29,6 +30,15 @@ export function atriumEnvelope(
   traces: any[],
   links: any[],
 ) {
+  // Order travels as keys. For versions from before them, which order by
+  // number, each group's and each trace's place is also given as z_index,
+  // counted from the bottom.
+  const layerRank = new Map(inOrder(layers.map((l: any) => ({ id: l.id, orderKey: l.order_key ?? null })))
+    .map((l, i) => [l.id, i + 1]))
+  const traceRank = drawRanks(
+    traces.map((t: any) => ({ id: t.id, layerId: t.layer_id ?? null, orderKey: t.order_key ?? null })),
+    layers.map((l: any) => ({ id: l.id, orderKey: l.order_key ?? null })),
+  )
   return {
     version: 3,
     exportedAt: new Date().toISOString(),
@@ -36,7 +46,8 @@ export function atriumEnvelope(
     lobby,
     layers: layers.map((l: any) => ({
       name: l.name,
-      z_index: l.z_index,
+      order_key: l.order_key ?? null,
+      z_index: layerRank.get(l.id) ?? 0,
       is_group: l.is_group,
       parent_id: l.parent_id,
       _local_id: l.id,
@@ -52,7 +63,7 @@ export function atriumEnvelope(
     traces: traces.map((t: any) => {
       // Ownership is the importer's to reassign, to its own atrium and user.
       const { created_at, user_id, lobby_id, ...rest } = t
-      return { ...rest, _local_layer_id: t.layer_id }
+      return { ...rest, z_index: traceRank.get(t.id) ?? 0, _local_layer_id: t.layer_id }
     }),
     links: links.map((l: any) => ({
       from_trace: l.from_trace,

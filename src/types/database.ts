@@ -159,7 +159,9 @@ export interface Trace {
   ignoreClicks?: boolean // Make trace unselectable with left click (for backgrounds)
   // Layer system
   layerId?: string | null
-  zIndex?: number
+  // Its place among the traces of its group (lib/order). Null only for a trace
+  // saved by a version from before order keys.
+  orderKey?: string | null
   // Lobby association
   lobbyId?: string
 }
@@ -168,7 +170,8 @@ export interface Layer {
   id: string
   createdAt: string
   name: string
-  zIndex: number
+  // Its place among the atrium's groups (lib/order).
+  orderKey?: string | null
   isGroup: boolean
   parentId?: string | null
   userId: string

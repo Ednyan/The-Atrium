@@ -7,7 +7,7 @@ import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, ty
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
-import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace } from '../lib/layerZIndex'
+import { newTraceOrderFields } from '../lib/order'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { currentTracePreset } from '../lib/tracePresets'
@@ -269,7 +269,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     onShapeDraftChange?.({ ...shapeStyle, width: shapeWidth, height: shapeHeight })
   }, [shapeDragArmed, shapeWidth, shapeHeight, shapeStyle, onShapeDraftChange])
   
-  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes, traces } = useGameStore()
+  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGameStore()
   const lobbyFull = isLobbyFull()
   
   // Use trace position if provided, otherwise fall back to character position
@@ -494,15 +494,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
       // Save to Supabase if available
       if (supabase) {
-        const layerFields = activeLayerId
-          ? {
-              layer_id: activeLayerId,
-              z_index: await computeZIndexForNewTraceInLayer(
-                activeLayerId,
-                traces.filter(t => t.layerId === activeLayerId)
-              ),
-            }
-          : { z_index: computeZIndexForNewUngroupedTrace(traces) }
+        const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
 
         const { data, error} = await supabase.from('traces').insert({
           // Don't specify id - let database generate UUID

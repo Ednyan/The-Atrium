@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
+import { keysFromNumbers } from '../lib/order'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -43,6 +44,8 @@ interface AtriumExport {
   layers: Array<{
     name: string
     z_index: number
+    // From files made since order keys (lib/order); older ones have only z_index.
+    order_key?: string | null
     is_group: boolean | number
     parent_id: string | null
     _local_id: string
@@ -161,6 +164,9 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
       // Create layers and build ID mapping
       const layerIdMap: Record<string, string> = {}
+      // An older file orders by number only: keys from those, in its order.
+      const layerKeys = keysFromNumbers(parsed.layers, l => l.z_index ?? 0)
+      const traceKeys = keysFromNumbers(parsed.traces, tr => tr.z_index ?? 0, tr => tr._local_layer_id ?? null)
       if (parsed.layers.length > 0) {
         setProgress(t('transfer.import.layers'))
         for (const layer of parsed.layers) {
@@ -169,6 +175,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             .insert({
               name: layer.name,
               z_index: layer.z_index,
+              order_key: layer.order_key ?? layerKeys.get(layer) ?? null,
               is_group: !!layer.is_group,
               parent_id: layer.parent_id ? layerIdMap[layer.parent_id] || null : null,
               user_id: user.id,
@@ -357,6 +364,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           user_id: user.id,
           lobby_id: lobbyId,
           layer_id: mappedLayerId,
+          order_key: trace.order_key ?? traceKeys.get(trace) ?? null,
           media_url: mediaUrl || null,
           image_url: imageUrl || null,
         }

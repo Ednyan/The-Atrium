@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { UserPresence, Trace } from '../types/database'
+import type { UserPresence, Trace, Layer } from '../types/database'
 import { isDesktop } from '../lib/supabase'
 import { recordTraceCreated } from '../lib/supportAppeal'
 import type { TraceLink } from '../lib/traceLinks'
@@ -113,6 +113,14 @@ interface GameState {
   // From someone else, live: applied unless it's being edited here.
   receiveLink: (link: TraceLink) => void
   forgetLink: (id: string) => void
+
+  // The atrium's groups (the layers table), in no particular order -- sort
+  // with inOrder (lib/order). One list for the canvas, which draws by it, and
+  // the Layer panel, which edits it; each used to load a copy of its own.
+  layers: Layer[]
+  setLayers: (layers: Layer[]) => void
+  putLayer: (layer: Layer) => void
+  forgetLayer: (id: string) => void
   markLinksSaved: (ids: string[]) => void
   setIsSavingChanges: (saving: boolean) => void
 
@@ -304,6 +312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       traces: [],
       links: [],
+      layers: [],
       pendingLinks: new Set<string>(),
       deletedLinks: new Set<string>(),
       savedLinks: new Set<string>(),
@@ -392,6 +401,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     savedLinks.delete(id)
     return { links: state.links.filter(l => l.id !== id), savedLinks }
   }),
+  layers: [],
+  setLayers: (layers) => set({ layers }),
+  putLayer: (layer) => set((state) => ({ layers: [...state.layers.filter(l => l.id !== layer.id), layer] })),
+  forgetLayer: (id) => set((state) => ({ layers: state.layers.filter(l => l.id !== id) })),
   markLinksSaved: (ids) => set((state) => {
     const savedLinks = new Set(state.savedLinks)
     for (const id of ids) savedLinks.add(id)

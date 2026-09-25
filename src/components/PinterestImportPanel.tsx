@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { packBoxesAroundCenter, scaleToDisplayBox, getDefaultTraceBoxSize } from '../lib/binPack'
-import { getTraceBaseZIndex } from '../lib/layerZIndex'
+import { newTraceOrderFields } from '../lib/order'
 import {
   fetchPinterestBoards,
   fetchPinterestBoardPins,
@@ -24,7 +24,7 @@ type Step = 'boards' | 'pins-loading' | 'confirm' | 'importing' | 'error'
 
 export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, packingShape, activeLayerId }: PinterestImportPanelProps) {
   const { t } = useTranslation()
-  const { userId, username, traces, addTrace } = useGameStore()
+  const { userId, username, addTrace } = useGameStore()
   const [step, setStep] = useState<Step>('boards')
   const [boards, setBoards] = useState<PinterestBoard[]>([])
   const [boardsLoading, setBoardsLoading] = useState(true)
@@ -84,13 +84,8 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
       )
       const offsets = packBoxesAroundCenter(sizes, 24, packingShape)
 
-      let baseLayerZIndex = 0
-      let existingInLayer = 0
-      if (activeLayerId && supabase) {
-        const { data } = await supabase.from('layers').select('z_index').eq('id', activeLayerId).single()
-        baseLayerZIndex = getTraceBaseZIndex((data as any)?.z_index ?? 0)
-        existingInLayer = traces.filter(t => t.layerId === activeLayerId).length
-      }
+      // In the chosen group, or ungrouped, on top of what's there in pin order.
+      const orderFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, pins.length)
 
       const rows = pins.map((pin, i) => ({
         user_id: userId,
@@ -108,7 +103,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
         lobby_id: lobbyId,
         show_description: false,
         show_filename: false,
-        ...(activeLayerId ? { layer_id: activeLayerId, z_index: baseLayerZIndex + existingInLayer + i + 1 } : {}),
+        ...orderFields[i],
       }))
 
       // Bulk insert in chunks -- Postgrest can take one big array insert, but

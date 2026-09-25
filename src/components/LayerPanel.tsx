@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import { useTranslation, pluralCategory } from '../lib/i18n'
-import type { Layer } from '../types/database'
-import { TRACE_LAYER_MULTIPLIER } from '../lib/layerZIndex'
+import type { Layer, Trace } from '../types/database'
+import { drawRanks, inOrder, keyAt, keysBetween, keysOnTop, keysOnTopOfGroup, type Ordered } from '../lib/order'
+import { mapRowToLayer, reloadLayers } from '../hooks/useLayers'
+import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
@@ -99,16 +101,11 @@ interface LayerPanelProps {
 export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSetSelection, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
-  const { traces, username, userId, setPlayerZIndex, addTrace, removeTrace } = useGameStore()
-  const [layers, setLayersState] = useState<Layer[]>([])
-  // The list as it is now, for layer changes to read when they run -- which,
-  // queued behind another (lib/layerQueue), can be well after they were asked
-  // for. Set together with the state rather than after the render it causes.
-  const layersRef = useRef<Layer[]>([])
-  const setLayers = (next: Layer[]) => {
-    layersRef.current = next
-    setLayersState(next)
-  }
+  const { traces, username, userId, addTrace, removeTrace } = useGameStore()
+  // The atrium's groups, from the store (hooks/useLayers loads and keeps them).
+  // Changes read useGameStore.getState().layers instead: queued behind another
+  // (lib/layerQueue), they run after this render's copy is out of date.
+  const layers = useGameStore(s => s.layers)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [draggedTraceId, setDraggedTraceId] = useState<string | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
@@ -215,119 +212,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }, [rowMenu])
 
-  const loadLayers = useCallback(async () => {
-    if (!supabase) {
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('layers')
-      .select('*')
-      .eq('lobby_id', lobbyId)
-      .order('z_index', { ascending: false })
-
-    if (error || !data) {
-      return
-    }
-
-    const mappedLayers: Layer[] = data.map((row: any) => ({
-      id: row.id,
-      createdAt: row.created_at,
-      name: row.name,
-      zIndex: row.z_index,
-      isGroup: row.is_group,
-      parentId: row.parent_id,
-      userId: row.user_id,
-      lobbyId: row.lobby_id,
-    }))
-
-    // Self-heal: duplicate z-indexes are not only legacy data. Two people
-    // creating a group at the same moment both compute maxZIndex + 1 from
-    // their own copy of the list and land on the same number -- which is why
-    // this can start happening in a busy atrium on an ordinary day.
-    //
-    // Duplicates break reordering outright: the renumber in reorderLayers
-    // compares each layer's current z_index against its target and skips the
-    // write when they match, so with collisions some layers never move. That
-    // is the "it said it updated but stayed in the same place" report.
-    const hasDuplicateZIndex = new Set(mappedLayers.map(l => l.zIndex)).size !== mappedLayers.length
-
-    // Always render something. This used to `return` before setLayers when
-    // duplicates were found, so if the repair below couldn't write -- a
-    // viewer without edit rights, or an RLS denial, both of which fail
-    // silently -- the panel kept displaying whatever it had loaded before,
-    // forever. A reorder would write, reload, hit this branch, and leave the
-    // stale list on screen, which looks exactly like "nothing happened".
-    setLayers(mappedLayers)
-
-    // Guarded against re-entry: repair calls loadLayers again, and if the
-    // writes didn't take, that finds the same duplicates and repairs again.
-    // Without this flag that recursion never terminates.
-    //
-    // Queued, and not awaited: loadLayers runs inside other changes, and one
-    // that waited for a queued repair would be waiting for itself.
-    if (hasDuplicateZIndex && canEdit && !repairInFlightRef.current) {
-      repairInFlightRef.current = true
-      void queueLayerChange(() => repairDuplicateZIndexes(layersRef.current))
-        .finally(() => { repairInFlightRef.current = false })
-    }
-  }, [lobbyId, canEdit])
-
-  // True while a duplicate-z_index repair is running, so the reload it
-  // triggers can't start another one.
-  const repairInFlightRef = useRef(false)
-
-  const repairDuplicateZIndexes = async (layersToFix: Layer[]) => {
-    if (!supabase) return
-
-    const sorted = [...layersToFix].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-
-    for (let i = 0; i < sorted.length; i++) {
-      await updateLayerZIndex(sorted[i].id, i + 1)
-    }
-
-    // Set player z-index to be on top (above all layers)
-    setPlayerZIndex(sorted.length + 1)
-
-    await loadLayers()
-  }
-
-  // Groups made outside this panel -- the canvas's New Group and Ctrl+G --
-  // announce themselves, since on desktop there is no realtime to tell us.
-  useEffect(() => {
-    const reload = () => { void loadLayers() }
-    window.addEventListener('atrium:layers-changed', reload)
-    return () => window.removeEventListener('atrium:layers-changed', reload)
-  }, [loadLayers])
-
-  // Load layers from database, scoped to this atrium only
-  useEffect(() => {
-    loadLayers()
-
-    // Subscribe to layer changes for this atrium only
-    if (!supabase) return
-
-    const channel = supabase
-      .channel(`layers-channel-${lobbyId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'layers',
-          filter: `lobby_id=eq.${lobbyId}`,
-        },
-                () => {
-          loadLayers()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      channel.unsubscribe()
-    }
-  }, [loadLayers, lobbyId])
-
   const createGroup = () => {
     if (!supabase) {
       alert('Supabase not initialized')
@@ -338,43 +222,75 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     setDialogTargetId(null)
   }
 
+  // ---- Order (lib/order): one key per move ----------------------------------
+
+  // A group's traces, bottom to top.
+  const groupBottomUp = (layerId: string | null) =>
+    inOrder(useGameStore.getState().traces.filter(t => (t.layerId ?? null) === layerId))
+
+  // A trace's new place (and group, if given): shown at once, then written.
+  // A refusal puts back the trace as it was.
+  const writeTraceKey = async (trace: Trace, orderKey: string, layerId?: string | null) => {
+    if (!supabase) return
+    const store = useGameStore.getState()
+    const before = store.traces.find(t => t.id === trace.id) ?? trace
+    const moved = layerId === undefined ? { orderKey } : { orderKey, layerId }
+    store.addTrace({ ...before, ...moved })
+    const update: Record<string, unknown> = { order_key: orderKey }
+    if (layerId !== undefined) update.layer_id = layerId
+    const { error } = await (supabase.from('traces') as any).update(update).eq('id', trace.id)
+    if (error) {
+      console.error('Error moving trace:', error)
+      useGameStore.getState().addTrace(before)
+    }
+  }
+
+  // A group's new place: shown at once, then written. .select() so a refusal
+  // can't pass for success -- RLS doesn't raise on a forbidden UPDATE, the row
+  // just isn't matched -- and on one, the groups are read back as they are.
+  const writeLayerKey = async (layer: Layer, orderKey: string) => {
+    if (!supabase) return
+    useGameStore.getState().putLayer({ ...layer, orderKey })
+    const { data, error } = await (supabase.from('layers') as any)
+      .update({ order_key: orderKey }).eq('id', layer.id).select('id')
+    if (error || !Array.isArray(data) || data.length === 0) {
+      console.error('Error moving group:', error ?? 'no row updated -- gone, or write access denied')
+      await reloadLayers(lobbyId)
+    }
+  }
+
+  // A key for position `index` among `others` (bottom to top). Should two of
+  // them share a key there's no room between, and they are re-keyed in their
+  // order first -- rare, and the only move that writes more than one row.
+  const keyAmong = async <T extends Ordered>(others: T[], index: number, write: (item: T, key: string) => Promise<void>) => {
+    const key = keyAt(others, index)
+    if (key !== null) return key
+    const sorted = inOrder(others)
+    const fresh = keysBetween(null, null, sorted.length)
+    for (let i = 0; i < sorted.length; i++) await write(sorted[i], fresh[i])
+    return keyAt(sorted.map((item, i) => ({ ...item, orderKey: fresh[i] })), index)!
+  }
+
+  // On top of the other groups. Two people doing this at the same moment may
+  // pick the same key; the tie is broken by id, the same way for everyone.
   const doCreateGroupNow = async (name: string) => {
     if (!supabase || !name.trim() || !canEdit) return
 
-    // Read the current top from the database rather than from local state.
-    // Two people creating a group at once both computed maxZIndex + 1 from
-    // their own (equally stale) copy of the list and picked the same number,
-    // which is how an atrium that had been fine for weeks suddenly grew
-    // duplicate z-indexes and stopped reordering. This narrows the window to
-    // the round-trip instead of however long the panel had been open.
-    //
-    // Still not airtight -- two inserts inside that window can collide -- so
-    // the self-heal in loadLayers stays as the backstop.
-    const { data: topLayer } = await (supabase
-      .from('layers') as any)
-      .select('z_index')
-      .eq('lobby_id', lobbyId)
-      .order('z_index', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const maxZIndex = Math.max(topLayer?.z_index ?? 0, ...layersRef.current.map(l => l.zIndex), 0)
-    const newZIndex = maxZIndex + 1
-
-    const { error } = await (supabase.from('layers') as any).insert({
+    const [orderKey] = keysOnTop(useGameStore.getState().layers)
+    const { data, error } = await (supabase.from('layers') as any).insert({
       name: name.trim(),
-      z_index: newZIndex,
+      order_key: orderKey,
       is_group: true,
       user_id: username,
       lobby_id: lobbyId,
-    })
+    }).select()
 
     if (error) {
       alert(`Failed to create group: ${error.message}`)
       return
     }
-
-    await loadLayers()
+    const created = Array.isArray(data) ? data[0] : data
+    if (created) useGameStore.getState().putLayer(mapRowToLayer(created))
   }
 
   const deleteGroup = (layerId: string) => {
@@ -429,7 +345,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       onSetActiveLayer?.(null)
     }
 
-    await loadLayers()
+    await reloadLayers(lobbyId)
   }
 
   // Deletes a single trace directly (grouped or ungrouped) -- previously the
@@ -467,7 +383,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       return
     }
 
-    await loadLayers()
+    await reloadLayers(lobbyId)
   }
 
   // Deletes the group but keeps its traces, moving them out to Ungrouped.
@@ -489,7 +405,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
 
     if (layerId === activeLayerId) onSetActiveLayer?.(null)
-    await loadLayers()
+    await reloadLayers(lobbyId)
   }
 
   // Copies a group and everything in it into a brand-new group, so the copies
@@ -497,16 +413,19 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // what duplicating the traces alone would do -- they inherit layer_id).
   const duplicateGroupNow = async (layerId: string) => {
     if (!supabase || !canEdit || !userId) return
-    const source = layersRef.current.find(l => l.id === layerId)
-    if (!source) return
+    const groups = inOrder(useGameStore.getState().layers)
+    const at = groups.findIndex(l => l.id === layerId)
+    if (at === -1) return
+    const source = groups[at]
 
     setIsBusy(true)
     try {
-      const maxZIndex = Math.max(...layersRef.current.map(l => l.zIndex), 0)
+      // Just above the original.
+      const orderKey = keyAt(groups, at + 1) ?? keysOnTop(groups)[0]
       const { data: created, error: layerError } = await (supabase.from('layers') as any)
         .insert({
           name: `${source.name} copy`,
-          z_index: maxZIndex + 1,
+          order_key: orderKey,
           is_group: true,
           user_id: userId,
           lobby_id: lobbyId,
@@ -518,26 +437,25 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         console.error('Error duplicating group:', layerError)
         return
       }
+      useGameStore.getState().putLayer(mapRowToLayer(created))
 
-      // getTracesForLayer returns top-of-stack first, but getTraceZIndexForOrder
-      // treats a higher orderIndex as higher in the stack. Feeding it the list
-      // as-is handed the topmost trace the lowest z-index, so every duplicated
-      // group came out with its contents flipped. Reversing to bottom-first
-      // makes orderIndex ascend with z-index.
-      const sourceTraces = [...getTracesForLayer(layerId)].reverse()
+      // The copies keep their keys: a key orders a trace within its group, so
+      // the same keys in the new group are the same order.
+      const sourceTraces = groupBottomUp(layerId)
       if (sourceTraces.length > 0) {
-        const rows = sourceTraces.map((trace, index) => ({
+        const rows = sourceTraces.map(trace => ({
           ...buildTraceInsertRow(trace, userId, username, lobbyId, 0, 0),
           layer_id: created.id,
-          z_index: getTraceZIndexForOrder(created.id, created.z_index, index),
         }))
-        const { error: tracesError } = await (supabase.from('traces') as any).insert(rows)
+        const { data: inserted, error: tracesError } = await (supabase.from('traces') as any).insert(rows).select()
         if (tracesError) {
           console.error('Error duplicating group traces:', tracesError)
+        } else if (Array.isArray(inserted)) {
+          // Onto the canvas too. Left to realtime, which desktop doesn't have,
+          // the copies only appeared once the atrium was opened again.
+          for (const row of inserted) useGameStore.getState().addTrace(mapRowToTrace(row))
         }
       }
-
-      await loadLayers()
     } finally {
       setIsBusy(false)
     }
@@ -550,15 +468,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     setIsBusy(true)
     try {
-      // Same 20px nudge the canvas duplicate uses, so the copy is visibly
-      // offset instead of hiding exactly behind the original.
-      const row = buildTraceInsertRow(trace, userId, username, lobbyId, 20, 20)
+      // Just above the original, in its group -- and the same 20px nudge the
+      // canvas duplicate uses, so the copy doesn't hide exactly behind it.
+      const group = groupBottomUp(trace.layerId ?? null)
+      const at = group.findIndex(t => t.id === traceId)
+      const orderKey = keyAt(group, at + 1) ?? keysOnTop(group)[0]
+      const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 20, 20), order_key: orderKey }
       const { data, error } = await (supabase.from('traces') as any).insert(row).select().single()
       if (error || !data) {
         console.error('Error duplicating trace:', error)
         return
       }
-      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, createdAt: data.created_at })
+      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, createdAt: data.created_at, orderKey })
     } finally {
       setIsBusy(false)
     }
@@ -627,148 +548,44 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  // Into a group (or Ungrouped, for null), on top of it: one write.
   const moveTraceToLayerNow = async (traceId: string, layerId: string | null) => {
     if (!supabase || !canEdit) return
-
-    const currentLayerId = useGameStore.getState().traces.find(t => t.id === traceId)?.layerId ?? null
-    if (currentLayerId === layerId) return
-
-    // Calculate the z-index for this trace
-    let newZIndex: number
-    if (layerId === null) {
-      const ungroupedTraces = getTracesForLayer(null).filter(t => t.id !== traceId)
-      newZIndex = getTraceZIndexForOrder(null, ungroupedTraces.length, ungroupedTraces.length)
-    } else {
-      // Find the layer and calculate base z-index
-      const targetLayer = layersRef.current.find(l => l.id === layerId)
-      if (!targetLayer) return
-      
-      // Get existing traces in this layer
-      const layerTraces = useGameStore.getState().traces.filter(t => t.layerId === layerId && t.id !== traceId)
-      
-      newZIndex = getTraceZIndexForOrder(layerId, targetLayer.zIndex, layerTraces.length)
-    }
-
-    const { error } = await (supabase.from('traces') as any)
-      .update({ layer_id: layerId, z_index: newZIndex })
-      .eq('id', traceId)
-
-    if (error) {
-      console.error('Error moving trace:', error)
-    } else {
-      // Optimistic local update - realtime subscription may drop this
-      // due to pendingChanges guard, so update the store directly
-      const trace = useGameStore.getState().traces.find(t => t.id === traceId)
-      if (trace) {
-        addTrace({ ...trace, layerId: layerId, zIndex: newZIndex })
-      }
-    }
+    const store = useGameStore.getState()
+    const trace = store.traces.find(t => t.id === traceId)
+    if (!trace || (trace.layerId ?? null) === layerId) return
+    if (layerId !== null && !store.layers.some(l => l.id === layerId)) return
+    const [orderKey] = keysOnTopOfGroup(store.traces.filter(t => t.id !== traceId), layerId)
+    await writeTraceKey(trace, orderKey, layerId)
   }
 
-  // Moves every trace in the batch to layerId together, computing each
-  // one's z-index up front against the target's existing trace count (not
-  // by calling moveTraceToLayer in a loop, which would recompute the "next
-  // free" z-index from the same stale traces snapshot each time and collide
-  // every moved trace onto the same slot).
+  // Several into a group together, on top of it, in the order they were drawn
+  // in: one write each, since each changes group.
   const moveTracesToLayerNow = async (traceIds: string[], layerId: string | null) => {
     if (!supabase || traceIds.length === 0 || !canEdit) return
-
+    const store = useGameStore.getState()
+    if (layerId !== null && !store.layers.some(l => l.id === layerId)) return
     const idsToMove = new Set(traceIds)
-    const tracesToMove = useGameStore.getState().traces.filter(t => idsToMove.has(t.id) && (t.layerId ?? null) !== layerId)
-    if (tracesToMove.length === 0) return
-
-    const baseLayerZIndex = layerId === null ? 0 : (layersRef.current.find(l => l.id === layerId)?.zIndex ?? 0)
-    const existingInTarget = getTracesForLayer(layerId).filter(t => !idsToMove.has(t.id))
-    let orderIndex = existingInTarget.length
-
-    for (const trace of tracesToMove) {
-      const newZIndex = getTraceZIndexForOrder(layerId, baseLayerZIndex, orderIndex)
-      orderIndex++
-
-      const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: layerId, z_index: newZIndex })
-        .eq('id', trace.id)
-
-      if (error) {
-        console.error('Error moving trace:', error)
-      } else {
-        addTrace({ ...trace, layerId: layerId, zIndex: newZIndex })
-      }
-    }
+    const ranks = drawRanks(store.traces, store.layers)
+    const moving = store.traces
+      .filter(t => idsToMove.has(t.id) && (t.layerId ?? null) !== layerId)
+      .sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0))
+    const keys = keysOnTopOfGroup(store.traces.filter(t => !idsToMove.has(t.id)), layerId, moving.length)
+    for (let i = 0; i < moving.length; i++) await writeTraceKey(moving[i], keys[i], layerId)
   }
 
-  const getTraceBaseZIndex = (layerId: string | null, layerZIndex?: number) => {
-    if (layerId === null) return 0
-    const resolvedLayerZIndex = layerZIndex ?? layersRef.current.find(l => l.id === layerId)?.zIndex
-    if (resolvedLayerZIndex === undefined) return 0
-    return resolvedLayerZIndex * TRACE_LAYER_MULTIPLIER
-  }
-
-  const getTraceZIndexForOrder = (layerId: string | null, layerZIndexOrLength: number, orderIndex: number) => {
-    if (layerId === null) {
-      return orderIndex + 1
-    }
-    return getTraceBaseZIndex(layerId, layerZIndexOrLength) + orderIndex + 1
-  }
-
-  const persistTraceOrder = async (layerId: string | null, orderedTraces: typeof traces, layerZIndex?: number) => {
-    if (!supabase) return
-
-    const total = orderedTraces.length
-    const resolvedLayerZIndex = layerZIndex ?? layersRef.current.find(l => l.id === layerId)?.zIndex ?? 0
-    const updates = orderedTraces.map((trace, index) => {
-      const orderIndex = total - index - 1
-      return {
-        trace,
-        newZIndex: layerId === null
-          ? getTraceZIndexForOrder(null, 0, orderIndex)
-          : getTraceZIndexForOrder(layerId, resolvedLayerZIndex, orderIndex),
-      }
-    })
-
-    // Every local update first, in one synchronous pass, so the panel
-    // re-renders once and straight into the finished order.
-    //
-    // This used to sit inside the loop below, after each write: with five
-    // traces in a group that meant five round trips, each landing one new
-    // z-index and re-sorting the list around it, so the rows visibly shuffled
-    // through four wrong orders on the way to the right one. Dragging looked
-    // broken because what you were watching WAS broken -- just briefly, and
-    // then repaired. React batches these into a single render because nothing
-    // is awaited between them.
-    for (const { trace, newZIndex } of updates) {
-      addTrace({ ...trace, zIndex: newZIndex })
-    }
-
-    // The writes still go one at a time. Sending them together would be
-    // quicker, but the desktop build puts these through SQLite, and a burst of
-    // concurrent writers is a good way to find out what its locking does under
-    // pressure. Nothing is watching them land any more, so their speed stopped
-    // being what anybody sees.
-    for (const { trace, newZIndex } of updates) {
-      await (supabase.from('traces') as any)
-        .update({ z_index: newZIndex })
-        .eq('id', trace.id)
-    }
-  }
-
+  // One step up or down its group, past its neighbour: one write.
   const moveTraceWithinLayerNow = async (traceId: string, layerId: string | null, direction: 'up' | 'down') => {
     if (!supabase || !canEdit) return
-
-    const orderedTraces = getTracesForLayer(layerId)
-    const currentIndex = orderedTraces.findIndex(t => t.id === traceId)
-    if (currentIndex === -1) return
-
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-    if (targetIndex < 0 || targetIndex >= orderedTraces.length) return
-
-    const reorderedTraces = [...orderedTraces]
-    ;[reorderedTraces[currentIndex], reorderedTraces[targetIndex]] = [reorderedTraces[targetIndex], reorderedTraces[currentIndex]]
-
-    const layerZIndex = layerId === null ? undefined : layersRef.current.find(l => l.id === layerId)?.zIndex
+    const group = groupBottomUp(layerId)
+    const index = group.findIndex(t => t.id === traceId)
+    const target = direction === 'up' ? index + 1 : index - 1
+    if (index === -1 || target < 0 || target >= group.length) return
+    const others = group.filter(t => t.id !== traceId)
+    const orderKey = await keyAmong(others, target, (t, key) => writeTraceKey(t, key))
     setIsReordering(true)
     try {
-      await persistTraceOrder(layerId, reorderedTraces, layerZIndex)
+      await writeTraceKey(group[index], orderKey)
     } finally {
       setIsReordering(false)
     }
@@ -781,34 +598,18 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // via the up/down buttons.
   const moveTraceToPositionNow = async (traceId: string, targetTraceId: string) => {
     if (!supabase || !canEdit || traceId === targetTraceId) return
-    const draggedTrace = useGameStore.getState().traces.find(t => t.id === traceId)
-    const targetTrace = useGameStore.getState().traces.find(t => t.id === targetTraceId)
-    if (!draggedTrace || !targetTrace) return
+    const store = useGameStore.getState()
+    const dragged = store.traces.find(t => t.id === traceId)
+    const target = store.traces.find(t => t.id === targetTraceId)
+    if (!dragged || !target) return
 
-    const targetLayerId = targetTrace.layerId ?? null
-
-    if ((draggedTrace.layerId ?? null) !== targetLayerId) {
-      const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: targetLayerId })
-        .eq('id', traceId)
-      if (error) {
-        console.error('Error moving trace to layer:', error)
-        return
-      }
-      // Optimistic local update -- realtime subscription may drop this due
-      // to the pendingChanges guard, same as moveTraceToLayer above.
-      addTrace({ ...draggedTrace, layerId: targetLayerId })
-    }
-
-    const existingInTarget = getTracesForLayer(targetLayerId).filter(t => t.id !== traceId)
-    const targetIndex = existingInTarget.findIndex(t => t.id === targetTraceId)
-    if (targetIndex === -1) return
-
-    const finalOrder = [...existingInTarget]
-    finalOrder.splice(targetIndex, 0, { ...draggedTrace, layerId: targetLayerId })
-
-    const layerZIndex = targetLayerId === null ? undefined : layersRef.current.find(l => l.id === targetLayerId)?.zIndex
-    await persistTraceOrder(targetLayerId, finalOrder, layerZIndex)
+    // "Before it" in the list, which runs top first: just above it.
+    const layerId = target.layerId ?? null
+    const others = groupBottomUp(layerId).filter(t => t.id !== traceId)
+    const at = others.findIndex(t => t.id === targetTraceId)
+    if (at === -1) return
+    const orderKey = await keyAmong(others, at + 1, (t, key) => writeTraceKey(t, key))
+    await writeTraceKey(dragged, orderKey, (dragged.layerId ?? null) !== layerId ? layerId : undefined)
   }
 
   const handleTraceDragStart = (e: React.DragEvent<HTMLElement>, traceId: string) => {
@@ -960,77 +761,30 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     await handleDropTargetDrop(e, targetLayerId)
   }
 
-  // Moves a group to sit where targetLayerId currently is, renumbering every
-  // layer's z_index to match the new visual order (rather than a pairwise
-  // swap like moveLayerUp/moveLayerDown, since a drag can reorder across
-  // more than one position at once).
+  // Moves a group to where targetLayerId is in the list, as a drag does: one
+  // write, its key between its new neighbours.
   const reorderLayersNow = async (sourceLayerId: string, targetLayerId: string) => {
     if (!supabase || !canEdit) return
 
-    const sorted = [...layersRef.current].sort((a, b) => b.zIndex - a.zIndex)
-    const draggedIndex = sorted.findIndex(l => l.id === sourceLayerId)
-    const targetIndex = sorted.findIndex(l => l.id === targetLayerId)
-    if (draggedIndex === -1 || targetIndex === -1) return
+    // Top first, as the list shows them.
+    const shown = inOrder(useGameStore.getState().layers).reverse()
+    const from = shown.findIndex(l => l.id === sourceLayerId)
+    const to = shown.findIndex(l => l.id === targetLayerId)
+    if (from === -1 || to === -1) return
+    const reordered = [...shown]
+    const [moved] = reordered.splice(from, 1)
+    reordered.splice(to, 0, moved)
 
-    const reordered = [...sorted]
-    const [movedLayer] = reordered.splice(draggedIndex, 1)
-    reordered.splice(targetIndex, 0, movedLayer)
-
-    const total = reordered.length
-    const renumbered = reordered.map((layer, i) => ({ ...layer, zIndex: total - i }))
-
-    // Show the new order immediately, before anything is written.
-    //
-    // Persisting a reorder is one request per layer plus one per trace inside
-    // every layer that moved, all sequential -- so on the web the panel used
-    // to sit unchanged for as long as that took, which is why the desktop
-    // (writing to local SQLite) felt instant by comparison. The writes below
-    // are unchanged; only the moment the user sees the result has moved.
-    //
-    // On failure loadLayers() runs regardless and puts back whatever the
-    // database actually holds, so an optimistic view can't persist as a lie.
-    setLayers(renumbered)
-
+    // Back to bottom-up, where keys ascend: its place among the rest.
+    const others = shown.filter(l => l.id !== sourceLayerId)
+    const index = reordered.length - 1 - to
     setIsReordering(true)
     try {
-      for (let i = 0; i < total; i++) {
-        const newZIndex = total - i
-        if (reordered[i].zIndex !== newZIndex) {
-          await updateLayerZIndex(reordered[i].id, newZIndex)
-        }
-      }
-      await loadLayers()
+      const orderKey = await keyAmong(others, index, (l, key) => writeLayerKey(l, key))
+      await writeLayerKey(moved, orderKey)
     } finally {
       setIsReordering(false)
     }
-  }
-
-  const updateLayerZIndex = async (layerId: string, newZIndex: number) => {
-    if (!supabase || !canEdit) return
-
-    // .select() so a rejection can't pass for success. RLS doesn't raise on a
-    // forbidden UPDATE -- the row simply isn't visible to the statement, so it
-    // matches nothing and returns no error. Without this, a blocked write and
-    // a successful one are indistinguishable here, and the only symptom is the
-    // panel reloading the unchanged order: "it updated but stayed in place".
-    const { data: updated, error: layerError } = await (supabase.from('layers') as any)
-      .update({ z_index: newZIndex })
-      .eq('id', layerId)
-      .select('id')
-
-    if (layerError) {
-      console.error('Error updating layer z-index:', layerError)
-      return
-    }
-
-    if (!updated || updated.length === 0) {
-      console.warn(
-        `Layer ${layerId}: z-index update affected no rows. The row is either gone or write access is denied by RLS (user_can_edit_lobby).`
-      )
-      return
-    }
-
-    await persistTraceOrder(layerId, getTracesForLayer(layerId), newZIndex)
   }
 
   const toggleGroup = (groupId: string) => {
@@ -1077,61 +831,21 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     return () => cancelAnimationFrame(raf)
   }, [selectedTraceId, traces, expandedGroups])
 
-  // Swaps two layers' z-indexes without ever committing a state where they
-  // share one.
-  //
-  // THIS IS HOW DUPLICATE Z-INDEXES GOT CREATED BY A SINGLE USER. The old
-  // version wrote `a := b.zIndex` and then `b := a.zIndex`. Despite the
-  // variable being called tempZIndex, there was no temporary value -- between
-  // those two writes both rows genuinely held the same number in the
-  // database. Anything that stopped the second write made that permanent: a
-  // failed request (updateLayerZIndex logs and returns on error), closing the
-  // tab, navigating away, going offline.
-  //
-  // And the window was not small. updateLayerZIndex also rewrites the
-  // z-index of every trace in the layer, one request each, sequentially -- so
-  // the gap between the two halves of the swap was as long as it took to
-  // rewrite an entire group's traces. On a slow or flaky connection that is
-  // seconds, with the database sitting in the duplicated state throughout.
-  //
-  // Parking the first layer on an unused index first costs one extra write
-  // and makes every intermediate state collision-free. An interruption now
-  // leaves one layer at the top rather than two layers tied.
-  const swapLayerZIndexes = async (a: Layer, b: Layer) => {
-    const parkingZIndex = Math.max(...layersRef.current.map(l => l.zIndex), 0) + 1
-    await updateLayerZIndex(a.id, parkingZIndex)
-    await updateLayerZIndex(b.id, a.zIndex)
-    await updateLayerZIndex(a.id, b.zIndex)
-    await loadLayers()
-  }
-
-  const moveLayerUpNow = async (layer: Layer) => {
+  // One place up or down among the groups: one write.
+  const moveLayerByOne = async (layer: Layer, direction: 'up' | 'down') => {
     if (!supabase || !canEdit) return
-
-    // Find layer above this one
-    const sortedLayers = [...layersRef.current].sort((a, b) => b.zIndex - a.zIndex)
-    const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
-    if (currentIndex <= 0) return // Already at top, or gone
-
-    // The explicit persistTraceOrder calls that used to follow are gone:
-    // updateLayerZIndex already reorders the layer's traces, so each layer's
-    // traces were being rewritten twice per move.
-    // The layer as it is now, not as it was when clicked: a change queued
-    // ahead of this one may have renumbered it.
-    await swapLayerZIndexes(sortedLayers[currentIndex], sortedLayers[currentIndex - 1])
+    // As it is now, not as it was when clicked: a change queued ahead of
+    // this one may have moved it.
+    const groups = inOrder(useGameStore.getState().layers)
+    const index = groups.findIndex(l => l.id === layer.id)
+    const target = direction === 'up' ? index + 1 : index - 1
+    if (index === -1 || target < 0 || target >= groups.length) return
+    const others = groups.filter(l => l.id !== layer.id)
+    const orderKey = await keyAmong(others, target, (l, key) => writeLayerKey(l, key))
+    await writeLayerKey(groups[index], orderKey)
   }
-
-  const moveLayerDownNow = async (layer: Layer) => {
-    if (!supabase || !canEdit) return
-
-    const sortedLayers = [...layersRef.current].sort((a, b) => b.zIndex - a.zIndex)
-    const currentIndex = sortedLayers.findIndex(l => l.id === layer.id)
-    if (currentIndex === -1 || currentIndex === sortedLayers.length - 1) {
-      return
-    }
-
-    await swapLayerZIndexes(sortedLayers[currentIndex], sortedLayers[currentIndex + 1])
-  }
+  const moveLayerUpNow = (layer: Layer) => moveLayerByOne(layer, 'up')
+  const moveLayerDownNow = (layer: Layer) => moveLayerByOne(layer, 'down')
 
   // What the buttons, menus, drops and dialogs call: each change through the
   // queue, so one never starts while another is part-way through. The ...Now
@@ -1158,9 +872,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
   // Get traces for a specific layer
   const getTracesForLayer = (layerId: string | null) => {
-    return useGameStore.getState().traces
-      .filter(t => (t.layerId ?? null) === layerId)
-      .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0)) // Highest z-index first (top of layer)
+    return groupBottomUp(layerId).reverse() // top of the group first
   }
 
   // Get ungrouped traces, sorted the same way grouped traces are (highest
@@ -1238,37 +950,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     else onSelectTrace?.(traceId)
   }
 
-  // Self-heal ungrouped z-indexes. A trace created with no active layer is
-  // inserted at z_index 0 (the DB default), so multiple ungrouped traces
-  // collide at 0 with no defined stacking order -- which is why the top of
-  // the ungrouped section wasn't actually the highest-z trace. When we detect
-  // colliding z-indexes among ungrouped traces, renumber them into a proper
-  // distinct sequence, preserving their current top-to-bottom display order.
-  // Ungrouped traces get base 0 (z = 1..N), always below any group (base
-  // >= 100), so the whole section stays stacked beneath every group. Editors
-  // only; the ref guards against re-entrancy while the async renumber's
-  // optimistic updates land, and the distinct-z check stops it re-running
-  // once healed.
-  const isHealingUngroupedRef = useRef(false)
-  useEffect(() => {
-    if (!canEdit || isHealingUngroupedRef.current) return
-    const ung = getTracesForLayer(null)
-    if (ung.length < 2) return
-    const zs = ung.map(t => t.zIndex ?? 0)
-    if (new Set(zs).size === zs.length) return // already distinct -- nothing to heal
-    isHealingUngroupedRef.current = true
-    queueLayerChange(() => persistTraceOrder(null, getTracesForLayer(null), undefined))
-      .finally(() => { isHealingUngroupedRef.current = false })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [traces, canEdit])
-
-  // Sort layers by z-index (highest first)
-  const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex)
-
-  // Create a list of layer items
-  const allItems = [
-    ...sortedLayers.map(l => ({ type: 'layer' as const, data: l, zIndex: l.zIndex })),
-  ].sort((a, b) => b.zIndex - a.zIndex)
+  // The groups, top first.
+  const sortedLayers = inOrder(layers).reverse()
+  const allItems = sortedLayers.map(l => ({ type: 'layer' as const, data: l }))
 
   return (
     <div 

@@ -57,7 +57,7 @@ export function buildTraceInsertRow(
     light_radius: trace.lightRadius ?? 200,
     light_offset_x: trace.lightOffsetX ?? 0,
     light_offset_y: trace.lightOffsetY ?? 0,
-    z_index: trace.zIndex ?? 0,
+    order_key: trace.orderKey ?? null,
     ignore_clicks: trace.ignoreClicks ?? false,
   }
 

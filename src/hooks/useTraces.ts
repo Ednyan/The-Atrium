@@ -106,7 +106,7 @@ export function mapRowToTrace(row: any): Trace {
     enableInteraction: row.enable_interaction ?? false,
     ignoreClicks: row.ignore_clicks ?? false,
     layerId: row.layer_id ?? null,
-    zIndex: row.z_index ?? 0,
+    orderKey: row.order_key ?? null,
     lobbyId: row.lobby_id,
     // Shape properties
     shapeType: row.shape_type,

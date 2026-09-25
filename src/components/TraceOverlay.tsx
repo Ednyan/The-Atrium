@@ -28,7 +28,8 @@ import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { toEmbedUrl } from '../lib/embedUrl'
-import { getTraceBaseZIndex, topOfLayer } from '../lib/layerZIndex'
+import { drawRanks, inOrder, keyAt, keysBetween, keysOnTop, keysOnTopOfGroup, type Ordered } from '../lib/order'
+import { mapRowToLayer, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
@@ -304,9 +305,8 @@ const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
 const TRACE_CLIPBOARD_MIME = 'application/x-digital-atrium-traces'
 const TRACE_CLIPBOARD_TEXT_SENTINEL = '__DIGITAL_ATRIUM_TRACE_CLIPBOARD__'
 
-// Trace z-index encodes layer*100 + order-within-layer (see layerZIndex.ts)
-// and is intentionally left uncapped so traces compare correctly across
-// layers. Selection handles (the `z-[1000000]` Tailwind classes below),
+// A trace's z-index is its place in the drawing order (lib/order's
+// drawRanks: 1 at the bottom, up to the number of traces). Selection handles (the `z-[1000000]` Tailwind classes below),
 // other users' cursors, and the local player's own cursor all need to stay
 // above every trace regardless, so they use fixed values far above any
 // realistic trace z-index rather than a small constant the traces have to
@@ -314,14 +314,11 @@ const TRACE_CLIPBOARD_TEXT_SENTINEL = '__DIGITAL_ATRIUM_TRACE_CLIPBOARD__'
 // this file's original (pre-uncapped-trace-zIndex) hardcoded values of 50,
 // 999, and 10003 respectively.
 const OTHER_USER_CURSOR_Z_INDEX = 2_000_000
-// Own-cursor z-index floor: playerZIndex*100 is meant to place the local
-// cursor above all layers (it's set to (layerCount+1)*100 -- see
-// LayerPanel's repairDuplicateZIndexes), but that's frequently far below the
-// handle/other-cursor z-index above (e.g. the default playerZIndex of 1000
-// is only 100,000) since it was never designed with editing UI in mind.
-// Flooring the value used for both sort position and the cursor's actual
-// rendered zIndex keeps the player's own cursor on top without touching the
-// stored playerZIndex value other code relies on. This also has to clear
+// Own-cursor z-index floor: playerZIndex*100 (a stored setting, 1000 by
+// default) is far below the handle/other-cursor z-index above, since it was
+// never designed with editing UI in mind. Flooring the value used for both
+// sort position and the cursor's rendered zIndex keeps the player's own
+// cursor on top. This also has to clear
 // the menu/panel z-index further down (Manage/Profile/Layer panels etc.) --
 // the own cursor indicator is expected to stay visible above open menus,
 // unlike traces/handles/other users' cursors.
@@ -430,7 +427,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink } = useGameStore()
+  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers } = useGameStore()
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -790,9 +787,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   }, [contextMenu?.traceId])
   // "Move to Group" side flyout -- lets the user reassign the selected
   // trace(s) to a layer group (or Ungrouped) straight from the canvas
-  // context menu, without opening the Layer panel. Needs its own lightweight
-  // list of this atrium's groups since TraceOverlay doesn't otherwise load
-  // them (the Layer panel does, but it isn't always mounted).
+  // context menu, without opening the Layer panel. The groups are the store's
+  // (hooks/useLayers).
   const [contextMenuGroupOpen, setContextMenuGroupOpen] = useState(false)
   const [groupFlyoutRect, setGroupFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
   const groupFlyoutCloseTimer = useRef<number | null>(null)
@@ -813,7 +809,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // Asking on open fixes it on both platforms without depending on realtime:
     // it is one small query, at the moment somebody is about to read the
     // answer, and it cannot be stale by the time the flyout paints.
-    void loadGroupLayers()
+    if (lobbyId) void reloadLayers(lobbyId)
   }
   const keepGroupFlyoutOpen = () => {
     if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
@@ -873,7 +869,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     selectFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuSelectOpen(false), 200)
   }
 
-  const [groupLayers, setGroupLayers] = useState<{ id: string; name: string; zIndex: number }[]>([])
+  const groupLayers = React.useMemo(() => inOrder(layers).reverse(), [layers])
+  // Each trace's place in the drawing order (lib/order) -- ungrouped at the
+  // bottom, then each group from the bottom up -- as its CSS z-index. Doubled,
+  // so a trace's light (one below it) has a level of its own between it and
+  // the trace under it.
+  const drawRank = React.useMemo(() => drawRanks(traces, layers), [traces, layers])
+  const zOf = (trace: Trace) => (drawRank.get(trace.id) ?? 0) * 2
 
   // How many rows of the Move to Group flyout are shown before it scrolls:
   // New Group, Ungrouped, and three groups.
@@ -909,94 +911,38 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const borders = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0)
     setGroupFlyoutMaxHeight(last.offsetTop + last.offsetHeight + padBottom + borders)
   }, [contextMenuGroupOpen, groupLayers.length])
-  // Hoisted out of the effect below so opening the flyout can ask again -- see
-  // openGroupFlyout for why once-on-mount was not enough.
-  const loadGroupLayers = useCallback(async () => {
-    if (!supabase || !lobbyId) return
-    const { data } = await (supabase!.from('layers') as any)
-      .select('id, name, z_index')
-      .eq('lobby_id', lobbyId)
-    if (!data) return
-    setGroupLayers(
-      data
-        .map((l: any) => ({ id: l.id, name: l.name, zIndex: l.z_index ?? 0 }))
-        .sort((a: any, b: any) => b.zIndex - a.zIndex)
-    )
-  }, [lobbyId])
-
-  useEffect(() => {
-    if (!supabase || !lobbyId) return
-    let cancelled = false
-    const loadLayers = async () => {
-      if (cancelled) return
-      await loadGroupLayers()
-    }
-    loadLayers()
-    const channel = supabase
-      .channel(`traceoverlay-layers-${lobbyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'layers', filter: `lobby_id=eq.${lobbyId}` }, () => loadLayers())
-      .subscribe()
-    return () => {
-      cancelled = true
-      channel.unsubscribe()
-    }
-  }, [lobbyId, loadGroupLayers])
-
   // Reassigns the given traces to a layer group (or Ungrouped when
-  // targetLayerId is null), placing them at the top of that group. Mirrors
-  // the z-index scheme in LayerPanel/layerZIndex (base = layerZIndex*100,
-  // then order within the layer).
-  //
-  // knownLayerZIndex is for a group made a moment ago: this render's
-  // groupLayers does not have it yet, and looking it up there failed quietly --
-  // which is why the New Group dialog said it would move the traces and then
-  // made an empty group.
-  const moveIntoGroup = useCallback(async (traceIds: string[], targetLayerId: string | null, knownLayerZIndex?: number) => {
+  // targetLayerId is null), on top of it, in the order they were drawn in.
+  // One write each: the trace's group and its key there.
+  const moveIntoGroup = useCallback(async (traceIds: string[], targetLayerId: string | null) => {
     if (!supabase || !canEdit || traceIds.length === 0) return
     const store = useGameStore.getState()
-    const allTraces = store.traces
-    const targetLayerZ = targetLayerId ? knownLayerZIndex ?? groupLayers.find(l => l.id === targetLayerId)?.zIndex : null
-    if (targetLayerId && targetLayerZ === undefined) return
-    const baseZ = targetLayerZ != null ? getTraceBaseZIndex(targetLayerZ) : 0
     const idSet = new Set(traceIds)
-    let nextZ = topOfLayer(baseZ, allTraces.filter(t => (t.layerId ?? null) === targetLayerId && !idSet.has(t.id)))
-    for (const id of traceIds) {
-      const trace = allTraces.find(t => t.id === id)
-      if (!trace || (trace.layerId ?? null) === targetLayerId) continue
-      const newZ = nextZ++
+    const ranks = drawRanks(store.traces, store.layers)
+    const moving = store.traces
+      .filter(t => idSet.has(t.id) && (t.layerId ?? null) !== targetLayerId)
+      .sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0))
+    const keys = keysOnTopOfGroup(store.traces.filter(t => !idSet.has(t.id)), targetLayerId, moving.length)
+    for (let i = 0; i < moving.length; i++) {
       const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: targetLayerId, z_index: newZ })
-        .eq('id', id)
-      if (!error) {
-        store.addTrace({ ...trace, layerId: targetLayerId, zIndex: newZ })
-      }
+        .update({ layer_id: targetLayerId, order_key: keys[i] })
+        .eq('id', moving[i].id)
+      if (error) continue
+      // As it is now, not as it was read: edits waiting for Save stay.
+      const now = useGameStore.getState().traces.find(t => t.id === moving[i].id) ?? moving[i]
+      useGameStore.getState().addTrace({ ...now, layerId: targetLayerId, orderKey: keys[i] })
     }
-  }, [canEdit, groupLayers])
+  }, [canEdit])
 
-  // Makes a group and drops the traces straight into it.
-  //
-  // Mirrors LayerPanel's createGroup -- same table, same shape, same z-index
-  // rule of "one above the current top" -- and then reuses moveTracesToGroup
-  // rather than writing a second version of that. Reloads the flyout's own
-  // list on the way out so the new group is there the moment the dialog
-  // closes, which is the whole point of offering this here.
+  // Makes a group, on top of the others, and drops the traces straight into it.
   const makeGroupWith = useCallback(async (traceIds: string[], rawName: string) => {
     const name = rawName.trim()
     if (!supabase || !lobbyId || !name) return
 
-    const { data: topLayer } = await (supabase
-      .from('layers') as any)
-      .select('z_index')
-      .eq('lobby_id', lobbyId)
-      .order('z_index', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const newZIndex = Math.max(topLayer?.z_index ?? 0, ...groupLayers.map(l => l.zIndex), 0) + 1
-
+    const [orderKey] = keysOnTop(useGameStore.getState().layers)
     const { data, error } = await (supabase.from('layers') as any).insert({
       name,
-      z_index: newZIndex,
+      order_key: orderKey,
       is_group: true,
       user_id: username,
       lobby_id: lobbyId,
@@ -1008,16 +954,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
 
     const created = Array.isArray(data) ? data[0] : data
-    if (created?.id && traceIds.length > 0) {
-      await moveIntoGroup(traceIds, created.id, created.z_index ?? newZIndex)
+    if (created?.id) {
+      useGameStore.getState().putLayer(mapRowToLayer(created))
+      if (traceIds.length > 0) await moveIntoGroup(traceIds, created.id)
     }
-
-    await loadGroupLayers()
-    // The Layer panel hears about it from here. Its realtime subscription
-    // would do it on the web, but desktop has none, and an open panel went
-    // on showing the atrium as it was before the group existed.
+    // Desktop has no realtime to tell anyone else.
     window.dispatchEvent(new Event('atrium:layers-changed'))
-  }, [lobbyId, username, groupLayers, loadGroupLayers, moveIntoGroup])
+  }, [lobbyId, username, moveIntoGroup])
 
   // Ctrl+G: the selection into a new group called "Group N", N the lowest
   // number no group here already has. Names are read fresh rather than from
@@ -2497,8 +2440,30 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const offsetX = 50
     const offsetY = 50
 
+    // Each copy just above its original, in the original's group. A pasted
+    // trace from another atrium has no original here, and its group isn't
+    // this atrium's: it goes on top of the ungrouped ones.
+    const store = useGameStore.getState()
+    const known = new Set(store.layers.map(l => l.id))
+    const working = new Map<string | null, Ordered[]>()
+    const placed = sourceTraces.map(trace => {
+      const layerId = trace.layerId && known.has(trace.layerId) ? trace.layerId : null
+      if (!working.has(layerId)) working.set(layerId, store.traces.filter(t => (t.layerId ?? null) === layerId))
+      const group = working.get(layerId)!
+      const sorted = inOrder(group)
+      const at = sorted.findIndex(t => t.id === trace.id)
+      const key = (at === -1 ? null : keyAt(sorted, at + 1)) ?? keysOnTop(group)[0]
+      // Seen by the copies after it, so two from one group don't collide.
+      group.push({ id: `copy-${group.length}`, orderKey: key })
+      return { layerId, orderKey: key }
+    })
+
     if (supabase) {
-      const insertRows = sourceTraces.map(trace => buildDuplicateInsert(trace, offsetX, offsetY))
+      const insertRows = sourceTraces.map((trace, index) => ({
+        ...buildDuplicateInsert(trace, offsetX, offsetY),
+        layer_id: placed[index].layerId,
+        order_key: placed[index].orderKey,
+      }))
       const { data, error } = await (supabase.from('traces') as any).insert(insertRows).select()
 
       if (error) {
@@ -2519,6 +2484,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           createdAt: insertedRow?.created_at ?? new Date().toISOString(),
           lobbyId: insertedRow?.lobby_id ?? lobbyId ?? trace.lobbyId,
           isLocked: false,
+          layerId: placed[index].layerId,
+          orderKey: placed[index].orderKey,
         }
       })
 
@@ -2674,68 +2641,42 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     await duplicateTraces(tracesToDuplicate)
   }
 
-  // Moves a trace to the top/bottom of its own group's (or the ungrouped
-  // pool's) stacking order -- right-click menu equivalent of dragging it to
-  // either end of its group in the Layer panel. Reuses the group's existing
-  // set of z-index values (just permuted) rather than computing new ones,
-  // so it never needs to know the layer's own z-index and can't drift the
-  // group outside whatever numeric range it already occupies.
-  const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
-    const trace = traces.find(t => t.id === traceId)
-    if (!trace) return
-    const groupTraces = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
-    if (groupTraces.length <= 1) {
-      setContextMenu(null)
-      return
+  // Puts a trace at `index` among the others of its group (bottom to top):
+  // one new key, saved with the rest. Should two of them share a key there is
+  // no room between, and the group is re-keyed in its order first -- rare.
+  const placeInGroup = (trace: Trace, others: Trace[], index: number) => {
+    let key = keyAt(others, index)
+    if (key === null) {
+      const sorted = inOrder(others)
+      const fresh = keysBetween(null, null, sorted.length)
+      sorted.forEach((t, i) => updateTraceCustomization(t.id, { orderKey: fresh[i] }))
+      key = keyAt(sorted.map((t, i) => ({ ...t, orderKey: fresh[i] })), index)
     }
-
-    const sorted = [...groupTraces].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-    const zIndexes = sorted.map(t => t.zIndex ?? 0)
-    const withoutTrace = sorted.filter(t => t.id !== traceId)
-    const reordered = edge === 'top' ? [...withoutTrace, trace] : [trace, ...withoutTrace]
-
-    reordered.forEach((t, i) => {
-      const newZIndex = zIndexes[i]
-      if ((t.zIndex ?? 0) !== newZIndex) {
-        updateTraceCustomization(t.id, { zIndex: newZIndex })
-      }
-    })
-
-    setContextMenu(null)
+    if (key !== null) updateTraceCustomization(trace.id, { orderKey: key })
   }
 
-  // One-step version of moveTraceToGroupEdge -- swaps with just the next
-  // trace up/down in the same group's stacking order, instead of jumping
-  // all the way to the front/back.
-  const moveTraceOneStep = (traceId: string, direction: 'up' | 'down') => {
+  const groupOf = (trace: Trace) => traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
+
+  // To the top or bottom of its own group (or of the ungrouped ones) -- the
+  // right-click menu's version of dragging it to either end in the Layer panel.
+  const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
+    setContextMenu(null)
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
-    const groupTraces = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
-    if (groupTraces.length <= 1) {
-      setContextMenu(null)
-      return
-    }
+    const others = groupOf(trace).filter(t => t.id !== traceId)
+    if (others.length > 0) placeInGroup(trace, others, edge === 'top' ? others.length : 0)
+  }
 
-    const sorted = [...groupTraces].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-    const zIndexes = sorted.map(t => t.zIndex ?? 0)
-    const currentIndex = sorted.findIndex(t => t.id === traceId)
-    const targetIndex = direction === 'up' ? currentIndex + 1 : currentIndex - 1
-    if (currentIndex === -1 || targetIndex < 0 || targetIndex >= sorted.length) {
-      setContextMenu(null)
-      return
-    }
-
-    const reordered = [...sorted]
-    ;[reordered[currentIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[currentIndex]]
-
-    reordered.forEach((t, i) => {
-      const newZIndex = zIndexes[i]
-      if ((t.zIndex ?? 0) !== newZIndex) {
-        updateTraceCustomization(t.id, { zIndex: newZIndex })
-      }
-    })
-
+  // One step up or down its group, past the next trace that way.
+  const moveTraceOneStep = (traceId: string, direction: 'up' | 'down') => {
     setContextMenu(null)
+    const trace = traces.find(t => t.id === traceId)
+    if (!trace) return
+    const group = inOrder(groupOf(trace))
+    const index = group.findIndex(t => t.id === traceId)
+    const target = direction === 'up' ? index + 1 : index - 1
+    if (index === -1 || target < 0 || target >= group.length) return
+    placeInGroup(trace, group.filter(t => t.id !== traceId), target)
   }
 
   const MAX_REORGANIZE_TRACES = 100
@@ -4810,10 +4751,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Memoize sorted items to avoid re-sorting on every render
   const sortedItems = React.useMemo(() => {
     return [
-      ...visibleTraces.map(trace => ({ type: 'trace' as const, trace, zIndex: trace.zIndex ?? 0 })),
+      ...visibleTraces.map(trace => ({ type: 'trace' as const, trace, zIndex: zOf(trace) })),
       { type: 'player' as const, trace: null, zIndex: Math.max(playerZIndex * 100, OWN_CURSOR_MIN_Z_INDEX) }
     ].sort((a, b) => a.zIndex - b.zIndex)
-  }, [visibleTraces, playerZIndex])
+    // drawRank too: reordering a group changes no trace, only the order.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTraces, playerZIndex, drawRank])
 
   // Renders a path/polyline shape's visible SVG. Called inline from within
   // the main sortedItems render (below) at the trace's own sorted position,
@@ -4939,7 +4882,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           width: '100%',
           height: '100%',
           overflow: 'visible',
-          zIndex: trace.zIndex ?? 0,
+          zIndex: zOf(trace),
           pointerEvents: 'none'
         }}
       >
@@ -5491,21 +5434,20 @@ return (
 
         Coming first in the DOM is not enough, and was the bug: this is
         positioned but had no z-index, while every trace sets one from
-        trace.zIndex. A positioned element without a z-index paints
+        its place in the order. A positioned element without a z-index paints
         below every positioned sibling that has one -- so a light did
         not sit under its own trace, it sat under ALL of them, and
         lighting something meant washing the floor beneath the whole
         atrium instead.
 
         One below its own trace puts it above everything the trace is
-        above, and below the trace itself. z-indexes here are
-        layer*100 + order (see layerZIndex.ts), so there is always room
-        for the light in the gap between one trace and the next. */}
+        above, and below the trace itself: trace z-indexes go up in twos
+        (zOf), leaving that level free. */}
     {trace.illuminate && (
       <div
         className="absolute pointer-events-none"
         style={{
-          zIndex: (trace.zIndex ?? 0) - 1,
+          zIndex: zOf(trace) - 1,
           left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
           top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
           width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
@@ -5530,12 +5472,9 @@ return (
         CSS opacity < 1 establishes its own stacking context, which
         would otherwise isolate the inner z-index from comparing
         correctly against other traces once this fades with distance.
-        Not capped: a trace's z_index encodes layer*100 + order
-        (see layerZIndex.ts), so any trace in a non-first layer
-        already exceeds a small cap -- capping collapsed all of them
-        to the same value, which then had to fall back to DOM order
-        (see HANDLE_Z_INDEX below for how handles stay on top instead). */}
-    <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: trace.zIndex ?? 0 }}>
+        Handles stay above every trace by using far larger values
+        (see HANDLE_Z_INDEX below). */}
+    <div style={{ opacity: traceOpacity, willChange: 'transform', position: 'relative', zIndex: zOf(trace) }}>
     {/* Container for positioning - doesn't scale */}
     <div
       data-trace-element="true"
@@ -5550,7 +5489,7 @@ return (
         // regardless of value, since a positioned element with a
         // set z-index paints above siblings that rely on implicit
         // DOM-order stacking.
-        zIndex: trace.zIndex ?? 0,
+        zIndex: zOf(trace),
         // The pressed state adds a slight inset scale on top of the
         // existing transform, so a clickable trace visibly depresses.
         // Folded into the same transform string rather than applied to

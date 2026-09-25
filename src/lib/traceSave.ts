@@ -155,7 +155,7 @@ export async function saveAllChanges(): Promise<void> {
         light_pulse_speed: trace.lightPulseSpeed,
         enable_interaction: trace.enableInteraction,
         ignore_clicks: trace.ignoreClicks,
-        z_index: trace.zIndex,
+        order_key: trace.orderKey ?? null,
       }
 
       // Add optional fields

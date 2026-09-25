@@ -24,6 +24,7 @@ import { useGameStore } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
+import { useLayers } from './hooks/useLayers'
 import { saveAllChanges } from './lib/traceSave'
 import { handlePinterestCallback, hasPendingDesktopPinterestFlow } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
@@ -1143,6 +1144,7 @@ function AppInner() {
     : null
   const { isLoading: tracesLoading } = useTraces(preloadLobbyId)
   useTraceLinks(preloadLobbyId)
+  useLayers(preloadLobbyId)
 
   // Once access is verified, the entering cinematic's video is preloaded,
   // AND trace/local-media loading has finished, transition from the loading

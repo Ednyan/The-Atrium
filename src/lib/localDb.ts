@@ -1213,6 +1213,7 @@ export async function initLocalDb(): Promise<void> {
       ignore_clicks INTEGER DEFAULT 0,
       layer_id TEXT,
       z_index INTEGER DEFAULT 0,
+      order_key TEXT,
       lobby_id TEXT,
       shape_type TEXT,
       shape_color TEXT,
@@ -1238,6 +1239,7 @@ export async function initLocalDb(): Promise<void> {
       created_at TEXT DEFAULT (datetime('now')),
       name TEXT NOT NULL,
       z_index INTEGER NOT NULL DEFAULT 0,
+      order_key TEXT,
       is_group INTEGER DEFAULT 1,
       parent_id TEXT,
       user_id TEXT NOT NULL,
@@ -1278,6 +1280,32 @@ export async function initLocalDb(): Promise<void> {
     await db.execute('ALTER TABLE trace_links ADD COLUMN label_on_hover INTEGER NOT NULL DEFAULT 0')
   } catch {
     // Column already exists — ignore
+  }
+
+  // Order keys (lib/order; the web's add_order_keys.sql, which keys existing
+  // rows the same way): each trace's place in its group, each group's among
+  // the atrium's. Rows from before them are keyed once, from where they stand.
+  for (const table of ['traces', 'layers']) {
+    try {
+      await db.execute(`ALTER TABLE ${table} ADD COLUMN order_key TEXT`)
+    } catch {
+      // Column already exists — ignore
+    }
+  }
+  const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+  const digit = (of: string) => `substr('${BASE62}', ${of} + 1, 1)`
+  const rankKey = `'c' || ${digit('(ranked.n / 3844) % 62')} || ${digit('(ranked.n / 62) % 62')} || ${digit('ranked.n % 62')}`
+  for (const [table, partition] of [['traces', 'lobby_id, layer_id'], ['layers', 'lobby_id']]) {
+    try {
+      await db.execute(
+        `WITH ranked AS (SELECT id, ROW_NUMBER() OVER (PARTITION BY ${partition} ORDER BY z_index, created_at, id) - 1 AS n `
+        + `FROM ${table} WHERE order_key IS NULL) `
+        + `UPDATE ${table} SET order_key = ${rankKey} FROM ranked WHERE ${table}.id = ranked.id`,
+      )
+    } catch (e) {
+      // Not fatal: a row without a key is drawn on top of its group.
+      console.error(`[localDb] could not key the order of ${table}:`, e)
+    }
   }
 
   await db.execute(`

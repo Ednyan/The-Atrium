@@ -28,7 +28,7 @@ import { record, undo as undoHistory, redo as redoHistory, clearHistory, canUndo
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { computeZIndexForNewTraceInLayer, computeZIndexForNewUngroupedTrace, getTraceBaseZIndex } from '../lib/layerZIndex'
+import { newTraceOrderFields } from '../lib/order'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
@@ -1699,15 +1699,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     const startPosition = clickedTracePosition || positionRef.current
 
-    const layerFields = activeLayerId
-      ? {
-          layer_id: activeLayerId,
-          z_index: await computeZIndexForNewTraceInLayer(
-            activeLayerId,
-            traces.filter(t => t.layerId === activeLayerId)
-          ),
-        }
-      : { z_index: computeZIndexForNewUngroupedTrace(traces) }
+    const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
 
     const { data, error } = await supabase.from('traces').insert({
       user_id: userId,
@@ -2006,9 +1998,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const originX = anchor.x - ((cols - 1) * cellWidth) / 2
     const originY = anchor.y - ((rowCount - 1) * cellHeight) / 2
 
-    const baseZ = activeLayerId
-      ? 0
-      : computeZIndexForNewUngroupedTrace(traces) - 1
+    // On top of the group, in page order. (Placed in a group, the pages used
+    // to be numbered 1 upwards -- below the group's own range.)
+    const orderFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, pages.length)
 
     const { preCacheLocalUrl } = await import('../lib/localDb')
     const stamp = Date.now()
@@ -2044,8 +2036,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         show_filename: false,
         width: boxes[i].width,
         height: boxes[i].height,
-        ...(activeLayerId ? { layer_id: activeLayerId } : {}),
-        z_index: baseZ + i + 1,
+        ...orderFields[i],
       })
     }
 
@@ -2140,23 +2131,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const offsets = packBoxesAroundCenter(sizes, 24, packingShapeRef.current)
 
     if (supabase) {
-      // Resolve the active layer's z-index once up front (a single query)
-      // instead of once per item -- z_index for each row is then computed
-      // locally, mirroring how LayerPanel's moveTracesToLayer avoids
-      // recomputing "next free slot" from the same stale count per item.
-      let layerFields: { layer_id?: string; z_index: number }[] | null = null
-      if (activeLayerId) {
-        const { data: layerData } = await supabase.from('layers').select('z_index').eq('id', activeLayerId).single()
-        const layerZIndex = (layerData as any)?.z_index
-        const baseZ = layerZIndex !== undefined && layerZIndex !== null ? getTraceBaseZIndex(layerZIndex) : 0
-        const existingCount = traces.filter(t => t.layerId === activeLayerId).length
-        layerFields = urls.map((_, i) => ({ layer_id: activeLayerId, z_index: baseZ + existingCount + i + 1 }))
-      } else {
-        // Ungrouped: stack each pasted embed one above the last, all above the
-        // current highest ungrouped z (base 0, so still below every group).
-        const baseZ = computeZIndexForNewUngroupedTrace(traces) - 1
-        layerFields = urls.map((_, i) => ({ z_index: baseZ + i + 1 }))
-      }
+      // Each one above the last, all on top of the group.
+      const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, urls.length)
 
       const rows = urls.map((url, i) => ({
         user_id: userId,
@@ -2175,7 +2151,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // it was packed at, as the single-link paths already do.
         ...(!probed[i] && boxes[i] ? boxes[i] : {}),
         ...(seeThrough[i] ? { show_border: false, show_background: false } : {}),
-        ...(layerFields ? layerFields[i] : {}),
+        ...layerFields[i],
       }))
 
       const { data, error } = await supabase.from('traces').insert(rows as any).select()
@@ -4131,20 +4107,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     file?: Blob,
   ) => {
     if (supabase) {
-      // Read the live store (not the render-time `traces` closure) so a
-      // multi-file/URL drop loop -- which addTrace's each inserted row back
-      // synchronously -- keeps computing a fresh, higher ungrouped z-index
-      // per item instead of colliding them all at the same value.
-      const liveTraces = useGameStore.getState().traces
-      const layerFields = activeLayerId
-        ? {
-            layer_id: activeLayerId,
-            z_index: await computeZIndexForNewTraceInLayer(
-              activeLayerId,
-              liveTraces.filter(t => t.layerId === activeLayerId)
-            ),
-          }
-        : { z_index: computeZIndexForNewUngroupedTrace(liveTraces) }
+      // The live store, not the render-time `traces`, so a multi-file drop --
+      // which adds each inserted row back before the next -- stacks each one
+      // above the last instead of giving them all the same place.
+      const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
 
       // An embed's proportions have to be decided from its link, because they
       // can't be measured: a cross-origin frame cannot report the size of what
@@ -4489,15 +4455,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             editSaved = true
           }
         } else {
-        const layerFields = activeLayerId
-          ? {
-              layer_id: activeLayerId,
-              z_index: await computeZIndexForNewTraceInLayer(
-                activeLayerId,
-                traces.filter(t => t.layerId === activeLayerId)
-              ),
-            }
-          : {}
+        const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
 
         const { data, error } = await supabase.from('traces').insert({
           user_id: userId,

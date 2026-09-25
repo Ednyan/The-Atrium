@@ -96,6 +96,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             .insert({
               name: layer.name,
               z_index: layer.z_index,
+              order_key: layer.order_key ?? null,
               is_group: layer.is_group,
               parent_id: layer.parent_id ? layerIdMap[layer.parent_id] || null : null,
               user_id: remoteUserId,
@@ -188,6 +189,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             ignore_clicks: trace.ignore_clicks,
             layer_id: trace.layer_id ? layerIdMap[trace.layer_id] || null : null,
             z_index: trace.z_index,
+            order_key: trace.order_key ?? null,
             lobby_id: mappedLobbyId,
             shape_type: trace.shape_type,
             shape_color: trace.shape_color,
