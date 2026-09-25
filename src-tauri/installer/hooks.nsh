@@ -35,6 +35,13 @@
 ; else works without admin: the user's own folder, elsewhere on C:\ such as
 ; C:\Apps, or another drive.
 ;
+; And AppData\LocalLow, which is writable but worse: it's the sandbox folder,
+; and whatever is put in it is labelled low integrity. Windows runs a program
+; from a low-labelled file at low integrity, and a low-integrity program can't
+; write to its own user's AppData or temp folder -- so the webview couldn't make
+; its data folder, and the app opened as a white flash and closed, leaving a
+; process behind. That happened on a standard account whose copy was put there.
+;
 ; Both pieces are set from here because this file is included (line 28 of the
 ; generated script) before the folder page is declared: MUI reads
 ; MUI_DIRECTORYPAGE_TEXT_TOP when that page is inserted, and .onVerifyInstDir is
@@ -42,7 +49,7 @@
 ; is defined by Tauri's template -- checked -- so nothing is overridden. The
 ; updater runs the installer passively, which skips this page altogether.
 
-!define MUI_DIRECTORYPAGE_TEXT_TOP "Setup will install The Digital Atrium in the following folder. To use a different one, click Browse.$\r$\n$\r$\nProgram Files and Windows need administrator rights, so Next stays disabled there. Any folder in your user folder, elsewhere on C:\ (such as C:\Apps) or on another drive works."
+!define MUI_DIRECTORYPAGE_TEXT_TOP "Setup will install The Digital Atrium in the following folder. To use a different one, click Browse.$\r$\n$\r$\nProgram Files and Windows need administrator rights, and AppData\LocalLow runs programs with restricted rights, so Next stays disabled there. Any other folder in your user folder, elsewhere on C:\ (such as C:\Apps) or on another drive works."
 
 Var AtriumBlockedDir
 
@@ -72,6 +79,7 @@ Function .onVerifyInstDir
   !insertmacro _AtriumUnder "$PROGRAMFILES64"
   !insertmacro _AtriumUnder "$PROGRAMFILES"
   !insertmacro _AtriumUnder "$WINDIR"
+  !insertmacro _AtriumUnder "$PROFILE\AppData\LocalLow"
   Pop $R8
   Pop $R7
   ; Abort here disables Next rather than ending anything.

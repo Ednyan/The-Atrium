@@ -1151,6 +1151,8 @@ mod win {
         pub fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
         pub fn GetTokenInformation(token: *mut c_void, class: u32, info: *mut c_void, len: u32, written: *mut u32) -> i32;
         pub fn GetUserNameW(name: *mut u16, size: *mut u32) -> i32;
+        pub fn GetSidSubAuthorityCount(sid: *mut c_void) -> *mut u8;
+        pub fn GetSidSubAuthority(sid: *mut c_void, index: u32) -> *mut u32;
     }
     #[link(name = "userenv")]
     extern "system" {
@@ -1160,15 +1162,24 @@ mod win {
     }
 }
 
-// The account this process runs as, and whether it runs elevated -- asked of
-// Windows, not read from USERNAME, which is the environment's and can be
-// another account's (see below). On carla's account the app was started from
-// a permission prompt, and left no log in her temp folder: run as the
-// administrator, it would have written it in his.
+// The account this process runs as, whether it runs elevated, and its
+// integrity level -- asked of Windows, not read from USERNAME, which is the
+// environment's and can be another account's (see below).
 #[cfg(windows)]
-fn process_account() -> String {
+struct ProcessAccount {
+    description: String,
+    // The integrity level's RID: 0x1000 low, 0x2000 medium, 0x3000 high.
+    integrity: Option<u32>,
+}
+
+#[cfg(windows)]
+const MEDIUM_INTEGRITY: u32 = 0x2000;
+
+#[cfg(windows)]
+fn process_account() -> ProcessAccount {
     use win::*;
     const TOKEN_ELEVATION: u32 = 20;
+    const TOKEN_INTEGRITY_LEVEL: u32 = 25;
     unsafe {
         let mut buf = [0u16; 257];
         let mut len = buf.len() as u32;
@@ -1179,14 +1190,57 @@ fn process_account() -> String {
             "?".into()
         };
         let mut elevated = 0u32;
+        let mut integrity = None;
         let mut token = std::ptr::null_mut();
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) != 0 {
             let mut written = 0;
             GetTokenInformation(token, TOKEN_ELEVATION, &mut elevated as *mut u32 as *mut _, 4, &mut written);
+            // A TOKEN_MANDATORY_LABEL -- a pointer to a SID, then the SID --
+            // in a u64 buffer so the pointer is read aligned. The level is the
+            // SID's last sub-authority.
+            let mut label = [0u64; 16];
+            if GetTokenInformation(token, TOKEN_INTEGRITY_LEVEL, label.as_mut_ptr() as *mut _, 128, &mut written) != 0 {
+                let sid = label[0] as *mut std::ffi::c_void;
+                let count = *GetSidSubAuthorityCount(sid);
+                if count > 0 {
+                    integrity = Some(*GetSidSubAuthority(sid, count as u32 - 1));
+                }
+            }
             CloseHandle(token);
         }
-        if elevated != 0 { format!("{}, elevated", name) } else { name }
+        let level = match integrity {
+            Some(l) if l < 0x1000 => "untrusted",
+            Some(l) if l < MEDIUM_INTEGRITY => "low integrity",
+            Some(l) if l < 0x3000 => "medium integrity",
+            Some(_) => "high integrity",
+            None => "integrity unknown",
+        };
+        let description = if elevated != 0 { format!("{}, elevated, {}", name, level) } else { format!("{}, {}", name, level) };
+        ProcessAccount { description, integrity }
     }
+}
+
+// Why the app can't run at low integrity, for the message that says so.
+//
+// Below medium it can write almost nowhere in its own profile -- not its
+// AppData, not the temp folder -- so the webview can't make its data folder,
+// and the window opened as a white flash and closed, leaving a process behind
+// with no log to say why. That was a copy installed in AppData\LocalLow, the
+// sandbox folder: whatever is put there is labelled low, and Windows runs a
+// program from a low-labelled file at low integrity. The installer refuses
+// that folder now (installer/hooks.nsh); a copy already there is told to move.
+#[cfg(windows)]
+fn low_integrity_message(exe: &std::path::Path) -> String {
+    let folder = exe.parent().map(|p| p.display().to_string()).unwrap_or_default();
+    let why = if folder.to_lowercase().contains("\\appdata\\locallow") {
+        format!("It is installed in {}, inside AppData\\LocalLow. Windows runs programs from that folder with restricted rights", folder)
+    } else {
+        "Windows is running it with restricted rights (low integrity)".to_string()
+    };
+    format!(
+        "The Digital Atrium can't run like this.\n\n{}, and with them it can't save anything -- not even the data its window needs.\n\nUninstall it, then install it again into the folder the installer suggests.",
+        why
+    )
 }
 
 // The per-user folders, taken from the account this process runs as.
@@ -1270,13 +1324,16 @@ fn main() {
     let _ = std::fs::remove_file(startup_log_path());
     #[cfg(windows)]
     let account = process_account();
+    #[cfg(windows)]
+    let account_description = account.description.clone();
     #[cfg(not(windows))]
-    let account = env("USER");
+    let account_description = env("USER");
+    let exe = std::env::current_exe().unwrap_or_default();
     log_startup(&format!(
         "start {} as {} ({})",
         env!("CARGO_PKG_VERSION"),
-        account,
-        std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
+        account_description,
+        exe.display()
     ));
     log_startup(&format!("environment before: {}", before));
     log_startup(&format!(
@@ -1290,6 +1347,13 @@ fn main() {
         log_startup(&format!("panic: {}", info));
         report_fatal(&info.to_string())
     }));
+    // Said plainly, and ended, rather than a white flash and a process left
+    // behind: see low_integrity_message.
+    #[cfg(windows)]
+    if account.integrity.is_some_and(|level| level < MEDIUM_INTEGRITY) {
+        report_fatal(&low_integrity_message(&exe));
+        return;
+    }
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
