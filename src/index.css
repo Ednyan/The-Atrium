@@ -24,6 +24,24 @@
   transform-origin: 0 0;
 }
 
+/* The edge fade (Profile > Trace Edge Fade): traces thin out toward the
+   screen's edges, as a mask on a wrapper that stays put while the camera
+   moves the world layer inside it. Each edge fades over 6% of its axis; the
+   two directions multiply. It was an opacity per trace, set from how far the
+   trace sat past the edge -- the whole trace faded at once rather than the
+   part near the edge, and it was worked out anew for every trace at every
+   layout. */
+.world-vignette {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent);
+  mask-composite: intersect;
+}
+
 /* While lib/worldCamera moves the world layer on the compositor, the layer is
    an isolated group: a blend mode inside it blends with the layer alone, not
    with the atrium behind it. A trace's light, screened onto the ground, came

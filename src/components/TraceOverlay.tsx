@@ -171,8 +171,6 @@ interface TraceOverlayProps {
   // The atrium's grid line spacing, so Shift-dragging snaps to the lines that
   // are actually drawn rather than to a number this file decided on its own.
   gridLineSpacing?: number
-  lobbyWidth: number
-  lobbyHeight: number
   zoom: number
   worldOffset: { x: number; y: number }
   // The layer of world content, for LobbyScene to scale whole while a zoom
@@ -647,7 +645,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -5374,8 +5372,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return [
       // The view, and what every trace is drawn with. `t` is one function
       // whatever the language, so the language stands in for it.
-      zoom, worldOffset, lobbyWidth, lobbyHeight, atriumBackground, canEdit, language,
-      showTraceTypeLabels, traceFadeEnabled, traceFloat,
+      zoom, worldOffset, atriumBackground, canEdit, language, showTraceTypeLabels, traceFloat,
       // This trace.
       zOf(trace), localTraceTransforms[id], imageDimensions[id], imageProxySources[id], imageRetryCount[id],
       failedImages.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
@@ -5472,64 +5469,13 @@ const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight
 // Debug logging for image dimensions
 // Selected trace rendering
 
-// Edge fade, measured per axis against the actual screen edges -- a
-// rectangular vignette. This was a
-// CIRCLE sized to the viewport's diagonal half-length, which is why
-// the fade behaved so oddly: on a 16:9 screen the left/right edges
-// sit inside that circle's fade band (visible dimming) while the
-// top/bottom edges never reach it (no fade at all). Normalizing each
-// axis to its own half-extent makes 1.0 mean "at the edge" in every
-// direction, so all four sides behave identically.
-const viewportCenterX = lobbyWidth / 2
-const viewportCenterY = lobbyHeight / 2
-
-// Measure from the trace's nearest EDGE, not its center. Center-only
-// distance made zoomed-in traces vanish outright: zoom a large trace
-// until it fills the screen and its center can sit well past the cull
-// boundary while its body still covers the viewport -- observable as
-// "the trace disappears once more than half of it leaves the view".
-// Subtracting the on-screen half-extent means a trace only fades/culls
-// once the whole thing has actually left the neighbourhood of the
-// screen. Rotated traces use their half-diagonal on both axes -- a
-// conservative bound, since an axis-aligned extent understates how far
-// a rotated corner can reach.
-const { width: cullBaseW, height: cullBaseH } = getTraceSize(trace)
-const cullW = trace.type === 'shape' ? (trace.width || 200) : cullBaseW * (trace.cropWidth ?? 1)
-const cullH = trace.type === 'shape' ? (trace.height || 200) : cullBaseH * (trace.cropHeight ?? 1)
-let halfW = (cullW * ((transform as any).scaleX ?? 1) * zoom) / 2
-let halfH = (cullH * ((transform as any).scaleY ?? 1) * zoom) / 2
-if ((transform.rotation ?? 0) % 360 !== 0) {
-  const halfDiag = Math.hypot(halfW, halfH)
-  halfW = halfDiag
-  halfH = halfDiag
-}
-const normalizedX = Math.max(0, Math.abs(screenX - viewportCenterX) - halfW) / viewportCenterX
-const normalizedY = Math.max(0, Math.abs(screenY - viewportCenterY) - halfH) / viewportCenterY
-const normalizedDistance = Math.max(normalizedX, normalizedY)
-
-// Fade begins just inside the edge (a trace sitting exactly on the
-// edge renders at ~2/3 opacity) and finishes a quarter-viewport past
-// it -- present enough to notice, without dimming the working area.
-const fadeStart = 0.88
-const fadeEnd = 1.25
-
-// With the fade toggled off (Profile -> Trace Edge Fade), traces hold
-// full opacity right up to the cull boundary below, which stays either
-// way -- the fade is a visual preference, the cull is what keeps
-// off-screen DOM cheap.
-let traceOpacity = 1.0
-if (traceFadeEnabled && normalizedDistance > fadeStart) {
-  const fadeProgress = (normalizedDistance - fadeStart) / (fadeEnd - fadeStart)
-  traceOpacity = Math.max(0, 1 - fadeProgress)
-}
-
-// Don't render if completely transparent or far outside viewport
-// EXCEPTION: Keep rendering if media is playing (video/audio) OR if it's an interactive embed
-const isPlayingMedia = playingMedia.has(trace.id)
-const isInteractiveEmbed = trace.type === 'embed' && trace.enableInteraction
-if (!isPlayingMedia && !isInteractiveEmbed && (traceOpacity <= 0 || normalizedDistance > fadeEnd)) {
-  return null
-}
+// No fade or cull of its own here. The edge fade is one screen-fixed mask on
+// the world layer (.world-vignette in index.css), and what's drawn is
+// visibleTraces: everything within CULL_MARGIN of the screen, which the
+// camera relies on (lib/worldCamera). Each trace faded by its own distance
+// from the edge -- the whole trace at once, not the part near the edge -- and
+// was dropped a quarter-screen out, so traces just off-screen popped in
+// mid-pan.
 
 // Path shapes render their visible line inline here (via
 // renderPathSvg), at this trace's own sorted DOM position, instead
@@ -5576,7 +5522,7 @@ return (
           height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
           borderRadius: '50%',
           background: trace.lightColor ?? '#ffffff',
-          opacity: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+          opacity: (trace.lightIntensity ?? 1.0) * 0.8,
           mixBlendMode: 'screen',
           filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
           animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
@@ -5584,19 +5530,17 @@ return (
           marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
           marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
           willChange: 'transform, opacity',
-          ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8 * traceOpacity,
+          ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8,
         }}
       />
     )}
     
     {/* The trace itself */}
-    {/* position+zIndex here too (not just the inner container):
-        CSS opacity < 1 establishes its own stacking context, which
-        would otherwise isolate the inner z-index from comparing
-        correctly against other traces once this fades with distance.
-        Handles stay above every trace by using far larger values
-        (see HANDLE_Z_INDEX below). */}
-    <div style={{ opacity: traceOpacity, position: 'relative', zIndex: zOf(trace) }}>
+    {/* position+zIndex here too (not just the inner container), so this
+        wrapper compares with other traces on the same terms. Handles stay
+        above every trace by using far larger values (see HANDLE_Z_INDEX
+        below). */}
+    <div style={{ position: 'relative', zIndex: zOf(trace) }}>
     {/* Container for positioning - doesn't scale */}
     <div
       data-trace-element="true"
@@ -7132,6 +7076,9 @@ return (
     <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
       {/* Everything anchored to the world -- traces and their handles -- in
           one layer, with the cursors drawn after it, above. */}
+      {/* The edge fade: a mask on this wrapper, which stays put while the
+          camera moves the world layer inside it. */}
+      <div className={traceFadeEnabled ? 'world-vignette' : undefined} style={{ position: 'absolute', inset: 0 }}>
       <div ref={worldLayerRef} style={{ position: 'absolute', inset: 0, transformOrigin: '0 0' }}>
       {/* Render traces AND player in z-index order */}
       {/* Connections, under every trace: from centre to centre, so where
@@ -7575,6 +7522,7 @@ return (
             </div>
           )
         })}
+      </div>
       </div>
 
         {linkMenuAt && (

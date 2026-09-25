@@ -27,6 +27,12 @@ const DEFAULT_THEME: ThemeConfig = {
 
 // The atrium's floating particles. (It placed pictures on the ground as well
 // once -- stones, grass -- which nobody wanted: gone, with their settings.)
+// `offset` brought into [-half, half) by whole field widths (2 * half).
+export function wrapInto(offset: number, half: number): number {
+  const width = 2 * half
+  return ((((offset + half) % width) + width) % width) - half
+}
+
 export class ThemeManager {
   private config: ThemeConfig
   private particles: Particle[] = []
@@ -138,9 +144,7 @@ export class ThemeManager {
       // Update position
       particle.worldX += particle.vx
       particle.worldY += particle.vy
-      particle.sprite.x = particle.worldX
-      particle.sprite.y = particle.worldY
-      
+
       // Calculate distance from camera center for fade effect
       const dx = particle.worldX - cameraX
       const dy = particle.worldY - cameraY
@@ -159,23 +163,15 @@ export class ThemeManager {
       // windows, so particles that drifted off the top/bottom could wander
       // far out of view for a long time before ever wrapping back in,
       // making the field look like it was slowly thinning out.
-      const relX = particle.worldX - cameraX
-      const relY = particle.worldY - cameraY
-
-      const wrapDistanceX = viewportWidth * 1.5
-      const wrapDistanceY = viewportHeight * 1.5
-
-      if (relX < -wrapDistanceX) {
-        particle.worldX = cameraX + wrapDistanceX
-      } else if (relX > wrapDistanceX) {
-        particle.worldX = cameraX - wrapDistanceX
-      }
-
-      if (relY < -wrapDistanceY) {
-        particle.worldY = cameraY + wrapDistanceY
-      } else if (relY > wrapDistanceY) {
-        particle.worldY = cameraY - wrapDistanceY
-      }
+      //
+      // By whole widths of the field, so a particle keeps its place in it.
+      // Set down exactly at the far edge instead, every particle that left
+      // in the same frame -- dozens, on a fast pan -- landed on one line, in
+      // a cluster.
+      particle.worldX = cameraX + wrapInto(particle.worldX - cameraX, viewportWidth * 1.5)
+      particle.worldY = cameraY + wrapInto(particle.worldY - cameraY, viewportHeight * 1.5)
+      particle.sprite.x = particle.worldX
+      particle.sprite.y = particle.worldY
       
       // Gentle pulsing opacity combined with distance fade
       const baseAlpha = 0.2

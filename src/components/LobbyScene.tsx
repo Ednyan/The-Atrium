@@ -4304,8 +4304,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             traces={traces}
             atriumBackground={currentLobby?.themeSettings?.backgroundColor}
             gridLineSpacing={currentLobby?.themeSettings?.gridLineSpacing}
-            lobbyWidth={window.innerWidth}
-            lobbyHeight={window.innerHeight}
             zoom={zoom}
             worldOffset={worldOffset}
             worldLayerRef={traceWorldLayerRef}
