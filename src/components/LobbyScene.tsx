@@ -10,7 +10,7 @@ import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
-import { bend, curveMiddle } from '../lib/traceLinks'
+import { threadCrosses, type Box } from '../lib/traceLinks'
 import LayerPanel, { TRACE_DRAG_DATA_KEY, LAYER_DRAG_DATA_KEY } from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
@@ -2681,8 +2681,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 // size isn't available here -- that's computed inside
                 // TraceOverlay -- but the same default-size table used for
                 // bin-packing is a reasonable stand-in for hit-testing).
-                const matchedIds = tracesDataRef.current
-                  .filter(trace => {
+                const boxOf = (trace: (typeof tracesDataRef.current)[number]): Box => {
                     let left: number, right: number, top: number, bottom: number
 
                     // A path is where its points are. Its stored
@@ -2708,28 +2707,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                       top = trace.y - halfH
                       bottom = trace.y + halfH
                     }
-
-                    return left < wx2 && right > wx1 && top < wy2 && bottom > wy1
-                  })
-                  .map(trace => trace.id)
-
-                setMultiSelectRequest(matchedIds)
-
-                // Threads whose middle is in the area, from the same centres
-                // (a path's from its points).
-                const byId = new Map(tracesDataRef.current.map(trace => [trace.id, trace]))
-                const centre = (id: string) => {
-                  const trace = byId.get(id)
-                  if (!trace) return null
-                  const box = isPathTrace(trace) ? pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2) : null
-                  return box ? { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 } : { x: trace.x, y: trace.y }
+                    return { left, top, right, bottom }
                 }
+                const area = { left: wx1, top: wy1, right: wx2, bottom: wy2 }
+
+                setMultiSelectRequest(tracesDataRef.current
+                  .filter(trace => {
+                    const box = boxOf(trace)
+                    return box.left < area.right && box.right > area.left && box.top < area.bottom && box.bottom > area.top
+                  })
+                  .map(trace => trace.id))
+
+                // And the threads it crosses, wherever they show.
+                const byId = new Map(tracesDataRef.current.map(trace => [trace.id, trace]))
                 setLinkSelectRequest(useGameStore.getState().links.filter(link => {
-                  const a = centre(link.from), b = centre(link.to)
-                  if (!a || !b) return false
-                  const c = bend(a.x, a.y, b.x, b.y)
-                  const m = curveMiddle(a.x, a.y, c.x, c.y, b.x, b.y)
-                  return m.x > wx1 && m.x < wx2 && m.y > wy1 && m.y < wy2
+                  const a = byId.get(link.from), b = byId.get(link.to)
+                  return !!a && !!b && threadCrosses(boxOf(a), boxOf(b), area)
                 }).map(link => link.id))
 
                 // This mouseup is immediately followed by a native 'click'

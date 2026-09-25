@@ -119,6 +119,29 @@ export function curveEntry(ax: number, ay: number, cx: number, cy: number, bx: n
   return { ...at(t), dx: 2 * u * (cx - ax) + 2 * t * (bx - cx), dy: 2 * u * (cy - ay) + 2 * t * (by - cy) }
 }
 
+export interface Box { left: number; top: number; right: number; bottom: number }
+
+// Whether a thread between the traces boxed `a` and `b` shows anywhere inside
+// `area` -- for area selection, so sweeping across a thread anywhere takes
+// it. Only the part that shows counts: under its two traces, where it runs on
+// to their centres, it doesn't, or boxing a trace would take every thread
+// running out from under it.
+// ponytail: sampled at 64 points, so an area thinner than the gap between two
+// of them (a long thread's length / 64) can slip through; intersect the curve
+// with the area's edges if that ever matters.
+export function threadCrosses(a: Box, b: Box, area: Box): boolean {
+  const ax = (a.left + a.right) / 2, ay = (a.top + a.bottom) / 2
+  const bx = (b.left + b.right) / 2, by = (b.top + b.bottom) / 2
+  const c = bend(ax, ay, bx, by)
+  const within = (box: Box, x: number, y: number) => x > box.left && x < box.right && y > box.top && y < box.bottom
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64, u = 1 - t
+    const x = u * u * ax + 2 * u * t * c.x + t * t * bx, y = u * u * ay + 2 * u * t * c.y + t * t * by
+    if (within(area, x, y) && !within(a, x, y) && !within(b, x, y)) return true
+  }
+  return false
+}
+
 // An arrowhead with its tip at (tx, ty), pointing away from (fx, fy): three
 // points for a filled triangle.
 export function arrowhead(tx: number, ty: number, fx: number, fy: number, size: number) {

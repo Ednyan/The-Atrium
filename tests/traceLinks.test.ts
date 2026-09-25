@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink } from '../src/lib/traceLinks.ts'
+import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, threadCrosses } from '../src/lib/traceLinks.ts'
 
 const near = (a: { x: number; y: number }, x: number, y: number) =>
   assert.ok(Math.abs(a.x - x) < 1e-9 && Math.abs(a.y - y) < 1e-9, `${a.x},${a.y} is not ${x},${y}`)
@@ -61,4 +61,17 @@ test('carried threads follow their traces to new ids, and nothing else comes', (
     { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false },
   ])
   assert.deepEqual(carryLinks(undefined, ids), [])
+})
+
+test('an area takes a thread it crosses anywhere, but not where it runs under its traces', () => {
+  const box = (x: number, y: number, r: number) => ({ left: x - r, top: y - r, right: x + r, bottom: y + r })
+  const a = box(0, 0, 50), b = box(1000, 0, 50)
+  // A thin strip across it, well away from the middle.
+  assert.ok(threadCrosses(a, b, { left: 200, top: -500, right: 230, bottom: 500 }))
+  // Its middle, bowed off the straight line (half as far as its bend point).
+  assert.ok(threadCrosses(a, b, box(500, 70, 20)))
+  // Only one trace, where the thread is hidden beneath it.
+  assert.ok(!threadCrosses(a, b, box(0, 0, 60)))
+  // Nowhere near.
+  assert.ok(!threadCrosses(a, b, box(500, -300, 50)))
 })

@@ -2308,12 +2308,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setLinkMenuAt(null)
   }
 
-  // Threads from an area selection: all selected, none of them the one with
-  // the delete button -- the menu and the Delete key cover them all.
+  // Threads from an area selection, all selected; the first carries the
+  // delete button, with their count -- the plainest sign they were taken.
   useEffect(() => {
     if (!linkSelectRequest) return
     setSelectedLinks(new Set(linkSelectRequest))
-    setPrimaryLink(null)
+    setPrimaryLink(linkSelectRequest[0] ?? null)
     setLinkMenuAt(null)
   }, [linkSelectRequest])
 
@@ -2333,13 +2333,26 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     pushLinksOp(before, after, true)
   }
 
-  const pressLink = (id: string, e: React.PointerEvent) => {
-    e.stopPropagation()
+  // This thread and nothing else.
+  const selectOnlyLink = (id: string) => {
     setSelectedTraceId(null)
     setMultiSelectedIds(new Set())
+    setSelectedLinks(new Set([id]))
+    setPrimaryLink(id)
+  }
+
+  const pressLink = (id: string, e: React.PointerEvent) => {
+    e.stopPropagation()
+    // A right-press is the menu's, which keeps the selection when this thread
+    // is in it. Handled here, it collapsed the selection to this one first.
+    if (e.button === 2) return
+    if (!e.shiftKey || !canEdit) {
+      selectOnlyLink(id)
+      return
+    }
+    // Shift adds or takes away this one, and leaves the rest, traces included.
     setPrimaryLink(id)
     setSelectedLinks(prev => {
-      if (!e.shiftKey || !canEdit) return new Set([id])
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -2351,10 +2364,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     e.preventDefault()
     e.stopPropagation()
     if (!canEdit) return
-    if (!selectedLinksRef.current.has(id)) {
-      setSelectedLinks(new Set([id]))
-      setPrimaryLink(id)
-    }
+    if (!selectedLinksRef.current.has(id)) selectOnlyLink(id)
     setLinkMenuAt({ x: e.clientX, y: e.clientY })
   }
 
