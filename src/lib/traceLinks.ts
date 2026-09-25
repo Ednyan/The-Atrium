@@ -20,6 +20,8 @@ export interface TraceLink {
   // The label is shown always unless this is set; then only on hover (or
   // while the thread is selected, which is how touch gets to it).
   labelOnHover: boolean
+  // Drawn as a straight line rather than hanging in a curve.
+  straight: boolean
 }
 
 export const DEFAULT_LINK_WIDTH = 2
@@ -38,6 +40,7 @@ export function mapRowToLink(row: any): TraceLink {
     width: typeof row.width === 'number' && row.width > 0 ? Math.min(row.width, 40) : DEFAULT_LINK_WIDTH,
     label: typeof row.label === 'string' ? row.label.slice(0, 80) : '',
     labelOnHover: !!row.label_on_hover,
+    straight: !!row.straight,
   }
 }
 
@@ -52,6 +55,7 @@ export function linkRow(link: TraceLink) {
     width: link.width,
     label: link.label || null,
     label_on_hover: link.labelOnHover,
+    straight: link.straight,
   }
 }
 
@@ -79,11 +83,19 @@ export function joins(link: TraceLink, a: string, b: string): boolean {
   return (link.from === a && link.to === b) || (link.from === b && link.to === a)
 }
 
-// The control point of a thread from A to B: off the straight line by a share
-// of its length, always to the same side of the direction of travel, as
-// graphify bends its edges.
+// The control point of a thread from A to B: hanging below the straight line,
+// as a string between two pins does -- by a share of how far apart they are
+// sideways, so between two traces one above the other it hangs straight. It
+// used to bend to one side of the direction of travel, which put some threads
+// curving upward, against gravity.
 export function bend(ax: number, ay: number, bx: number, by: number, amount = 0.14) {
-  return { x: (ax + bx) / 2 - (by - ay) * amount, y: (ay + by) / 2 + (bx - ax) * amount }
+  return { x: (ax + bx) / 2, y: (ay + by) / 2 + Math.abs(bx - ax) * amount }
+}
+
+// Where a thread's control point rests: hanging, or on the line for a
+// straight one (a quadratic curve through its own midpoint is a line).
+export function restOf(straight: boolean, ax: number, ay: number, bx: number, by: number) {
+  return straight ? { x: (ax + bx) / 2, y: (ay + by) / 2 } : bend(ax, ay, bx, by)
 }
 
 // Where a thread from (ax, ay), bent through (cx, cy), enters the box of the
@@ -129,10 +141,10 @@ export interface Box { left: number; top: number; right: number; bottom: number 
 // ponytail: sampled at 64 points, so an area thinner than the gap between two
 // of them (a long thread's length / 64) can slip through; intersect the curve
 // with the area's edges if that ever matters.
-export function threadCrosses(a: Box, b: Box, area: Box): boolean {
+export function threadCrosses(a: Box, b: Box, area: Box, straight = false): boolean {
   const ax = (a.left + a.right) / 2, ay = (a.top + a.bottom) / 2
   const bx = (b.left + b.right) / 2, by = (b.top + b.bottom) / 2
-  const c = bend(ax, ay, bx, by)
+  const c = restOf(straight, ax, ay, bx, by)
   const within = (box: Box, x: number, y: number) => x > box.left && x < box.right && y > box.top && y < box.bottom
   for (let i = 0; i <= 64; i++) {
     const t = i / 64, u = 1 - t

@@ -219,6 +219,9 @@ interface TraceOverlayProps {
   // Layer panel (a sibling, not a child, of this component) can highlight
   // every multi-selected trace/group, not just the single selectedTraceId.
   onMultiSelectionChange?: (ids: string[]) => void
+  // A trace's customize panel (or the batch one) opened -- LobbyScene clears
+  // the Layer, Locations and Create Trace panels from around it.
+  onCustomizeOpen?: () => void
   // Mirrors LobbyScene's canEdit (per lobbies.edit_permission_mode). Server
   // enforcement lives in RLS (user_can_edit_lobby); this just keeps the
   // editing UI (context menu, Customize/Batch Edit panels) from opening for
@@ -406,7 +409,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1049,6 +1052,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
   const [showBatchEditPanel, setShowBatchEditPanel] = useState(false) // Batch-edit shared properties across multiSelectedIds
+  // Opening a customize panel clears the ones around it (onCustomizeOpen), so
+  // the view isn't crowded.
+  const customizing = (!!editingTrace && canEdit) || showBatchEditPanel
+  useEffect(() => {
+    if (customizing) onCustomizeOpen?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customizing])
 
   // Report the current multi-selection up to LobbyScene so the Layer panel
   // (a sibling component) can mirror the highlight.
@@ -2295,7 +2305,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     for (const from of sources) {
       // Not to itself, and not twice: one thread per pair, either way round.
       if (from === target || existing.some(l => joins(l, from, target)) || made.some(l => joins(l, from, target))) continue
-      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false })
+      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false })
     }
     if (made.length === 0) return
     for (const link of made) putLink(link)
@@ -8173,16 +8183,27 @@ return (
 
             {/* The layer's name, first -- the one field that used to be called a
                 label, a caption or a description depending on the trace. */}
-            <TraceNameField
-              label={t('atrium.customize.layerName')}
-              value={editingTrace.content ?? ''}
-              placeholder={t('atrium.layers.untitled')}
-              // A shape's name is drawn on the shape, and was capped at 50 for that.
-              maxLength={editingTrace.type === 'shape' ? 50 : 256}
-              readOnly={editingTrace.type === 'text'}
-              onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
-              onCommit={(value) => updateTraceCustomization(editingTrace.id, { content: value })}
-            />
+            {/* A text trace's name is its own (Text 1, ...): its content is its text. */}
+            {editingTrace.type === 'text' ? (
+              <TraceNameField
+                label={t('atrium.customize.layerName')}
+                value={editingTrace.layerName ?? ''}
+                placeholder={t('atrium.layers.untitled')}
+                maxLength={60}
+                onChange={(value) => setEditingTrace({ ...editingTrace, layerName: value })}
+                onCommit={(value) => { if (value.trim()) updateTraceCustomization(editingTrace.id, { layerName: value.trim() }) }}
+              />
+            ) : (
+              <TraceNameField
+                label={t('atrium.customize.layerName')}
+                value={editingTrace.content ?? ''}
+                placeholder={t('atrium.layers.untitled')}
+                // A shape's name is drawn on the shape, and was capped at 50 for that.
+                maxLength={editingTrace.type === 'shape' ? 50 : 256}
+                onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
+                onCommit={(value) => updateTraceCustomization(editingTrace.id, { content: value })}
+              />
+            )}
             
             <div className="space-y-5">
               {/* Shape controls first, directly under the name -- where the create

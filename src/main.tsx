@@ -4,12 +4,20 @@ import App from './App.tsx'
 import ToastHost from './components/ToastHost.tsx'
 import StartupFailure from './components/StartupFailure.tsx'
 import './index.css'
-import { localDbReady } from './lib/supabase'
+import { localDbReady, isDesktop } from './lib/supabase'
+
+// Into the desktop app's startup log (see main.rs).
+const noteStartup = (line: string) => {
+  if (!isDesktop) return
+  import('@tauri-apps/api/core').then(m => m.invoke('startup_log', { line })).catch(() => {})
+}
+noteStartup('loaded')
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
 // Wait for local DB initialization before rendering (resolves instantly in web mode)
 localDbReady.then(() => {
+  noteStartup('local database ready')
   root.render(
     <React.StrictMode>
       <App />
@@ -28,6 +36,7 @@ localDbReady.then(() => {
   // screen used to print for everything alike. VAULT_IN_USE is returned
   // verbatim by prepare_live_database precisely so it can be recognised here.
   const message = error instanceof Error ? error.message : String(error)
+  noteStartup(`could not start: ${message}`)
   const reason = message.includes('VAULT_IN_USE') ? 'vault-in-use' : 'unknown'
 
   root.render(

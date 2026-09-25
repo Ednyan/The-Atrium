@@ -29,7 +29,7 @@ import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { newTraceOrderFields } from '../lib/order'
-import { nextTextName } from '../lib/traceNames'
+import { fileTitle, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
@@ -2700,7 +2700,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 const byId = new Map(tracesDataRef.current.map(trace => [trace.id, trace]))
                 setLinkSelectRequest(useGameStore.getState().links.filter(link => {
                   const a = byId.get(link.from), b = byId.get(link.to)
-                  return !!a && !!b && threadCrosses(boxOf(a), boxOf(b), area)
+                  return !!a && !!b && threadCrosses(boxOf(a), boxOf(b), area, link.straight)
                 }).map(link => link.id))
 
                 // This mouseup is immediately followed by a native 'click'
@@ -3786,7 +3786,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
       const probed = traceType === 'image' ? await probeImageFileDimensions(file) : null
       const size = probed ? scaleToDisplayBox(probed) : getDefaultTraceBoxSize(traceType)
-      pending.push({ traceType, content: `${traceType} drop`, file, size })
+      // Named after its file, without the extension -- the title shown beside
+      // it and its name in the Layer panel. A file with no name to give is
+      // Untitled N.
+      const title = fileTitle(file.name)
+        || nextUntitledName(useGameStore.getState().traces, n => t('atrium.layers.numberedUntitled', { n }), pending.map(p => p.content))
+      pending.push({ traceType, content: title, file, size })
     }
 
     // Phase 2: pack the batch around the drop point, then upload/insert.
@@ -4582,6 +4587,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             onEditDrawing={handleEditDrawing}
             hiddenTraceId={editingDrawingId}
             onMultiSelectionChange={setMultiSelectedTraceIds}
+            onCustomizeOpen={() => { closeSidePanels(); setShowTracePanel(false) }}
             canEdit={canEdit}
           />
         </div>

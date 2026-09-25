@@ -1076,6 +1076,31 @@ async fn download_remote_image(url: String) -> Result<tauri::ipc::Response, Stri
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+// What happened at startup, step by step, in the temp folder -- rewritten each
+// launch. For a machine that isn't here: on a standard Windows account the app
+// was seen to close at once while a process stayed running, with no error to
+// go on. Each line says how far it got, which account and folders it saw, and
+// every window and exit event after that.
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+fn startup_log_path() -> PathBuf {
+    std::env::temp_dir().join("The Digital Atrium - startup.log")
+}
+
+fn log_startup(line: &str) {
+    use std::io::Write;
+    let ms = STARTED.get_or_init(std::time::Instant::now).elapsed().as_millis();
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(startup_log_path()) {
+        let _ = writeln!(file, "{:>7}ms  {}", ms, line);
+    }
+}
+
+// The frontend's own steps, into the same log.
+#[tauri::command]
+fn startup_log(line: String) {
+    log_startup(&format!("frontend: {}", line));
+}
+
 // A failure the app can't show itself, made visible.
 //
 // A standard Windows account saw the app close the moment it opened, with
@@ -1101,8 +1126,13 @@ fn report_fatal(message: &str) {
             path.display()
         ));
         let caption = wide("The Digital Atrium");
+        // In front, and taking the foreground: with no window of its own to
+        // sit over, it can otherwise open behind everything and leave the
+        // app looking closed while it waits.
         const MB_ICONERROR: u32 = 0x10;
-        unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), MB_ICONERROR) };
+        const MB_SETFOREGROUND: u32 = 0x10000;
+        const MB_TOPMOST: u32 = 0x40000;
+        unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST) };
     }
 }
 
@@ -1189,9 +1219,29 @@ fn repair_user_environment() {
 }
 
 fn main() {
+    let env = |name: &str| std::env::var(name).unwrap_or_default();
+    let before = format!("USERPROFILE={} LOCALAPPDATA={} TEMP={}", env("USERPROFILE"), env("LOCALAPPDATA"), env("TEMP"));
     #[cfg(windows)]
     repair_user_environment();
-    std::panic::set_hook(Box::new(|info| report_fatal(&info.to_string())));
+    // After the repair, so the log lands in this account's temp folder.
+    let _ = std::fs::remove_file(startup_log_path());
+    log_startup(&format!(
+        "start {} as {} ({})",
+        env!("CARGO_PKG_VERSION"),
+        env("USERNAME"),
+        std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
+    ));
+    log_startup(&format!("environment before: {}", before));
+    log_startup(&format!(
+        "environment now:    USERPROFILE={} LOCALAPPDATA={} TEMP={}",
+        env("USERPROFILE"),
+        env("LOCALAPPDATA"),
+        env("TEMP")
+    ));
+    std::panic::set_hook(Box::new(|info| {
+        log_startup(&format!("panic: {}", info));
+        report_fatal(&info.to_string())
+    }));
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
@@ -1219,6 +1269,14 @@ fn main() {
         // machine.
         .setup(|app| {
             let handle = app.handle();
+            let paths = handle.path();
+            log_startup(&format!(
+                "setup: app data {:?}, local data {:?}, config {:?}",
+                paths.app_data_dir(),
+                paths.app_local_data_dir(),
+                paths.app_config_dir()
+            ));
+            log_startup(&format!("setup: vault {:?}", current_vault_base_path(handle)));
             match current_vault_base_path(handle) {
                 Ok(base_path) => {
                     if let Err(e) = app.asset_protocol_scope().allow_directory(&base_path, true) {
@@ -1228,6 +1286,9 @@ fn main() {
                 Err(e) => eprintln!("[vault] could not resolve the vault path for the asset scope: {}", e),
             }
             Ok(())
+        })
+        .on_page_load(|webview, payload| {
+            log_startup(&format!("page {:?} in {}: {}", payload.event(), webview.label(), payload.url()));
         })
         .manage(VaultWrites::default())
         // Holds the open handle on the current vault's lock file for as long as
@@ -1255,10 +1316,29 @@ fn main() {
             remove_path,
             rename_path,
             consolidate_runtime_media,
-            download_remote_image
+            download_remote_image,
+            startup_log
         ])
-        .run(tauri::generate_context!());
-    if let Err(e) = result {
-        report_fatal(&e.to_string());
+        .build(tauri::generate_context!());
+    match result {
+        Ok(app) => {
+            log_startup("built; running");
+            app.run(|_, event| match event {
+                tauri::RunEvent::WindowEvent { label, event, .. } => match event {
+                    // Not the moves and resizes: only what can end a window.
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                        log_startup(&format!("window {}: {:?}", label, event))
+                    }
+                    _ => {}
+                },
+                tauri::RunEvent::ExitRequested { code, .. } => log_startup(&format!("exit requested ({:?})", code)),
+                tauri::RunEvent::Exit => log_startup("exit"),
+                _ => {}
+            });
+        }
+        Err(e) => {
+            log_startup(&format!("could not start: {}", e));
+            report_fatal(&e.to_string());
+        }
     }
 }

@@ -3,15 +3,17 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, threadCrosses } from '../src/lib/traceLinks.ts'
+import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, restOf, threadCrosses } from '../src/lib/traceLinks.ts'
 
 const near = (a: { x: number; y: number }, x: number, y: number) =>
   assert.ok(Math.abs(a.x - x) < 1e-9 && Math.abs(a.y - y) < 1e-9, `${a.x},${a.y} is not ${x},${y}`)
 
-test('a thread bends to one side of its direction, by a share of its length', () => {
+test('a thread hangs: below the line either way round, straight when one end is above the other', () => {
   near(bend(0, 0, 100, 0), 50, 14)
-  // The other way round, the other side -- so A->B and B->A never overlap.
-  near(bend(100, 0, 0, 0), 50, -14)
+  near(bend(100, 0, 0, 0), 50, 14)
+  near(bend(0, 0, 100, 60), 50, 44)
+  near(bend(0, 0, 0, 100), 0, 50)
+  near(restOf(true, 0, 0, 100, 0), 50, 0)
 })
 
 test('an arrow sits where the curve itself enters the box, heading as the curve does', () => {
@@ -57,8 +59,8 @@ test('carried threads follow their traces to new ids, and nothing else comes', (
     { from_trace: 'c', to_trace: 'b', arrow: 'sideways', label: 7 },
   ], ids)
   assert.deepEqual(rows, [
-    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false },
-    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false },
+    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false, straight: false },
+    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false, straight: false },
   ])
   assert.deepEqual(carryLinks(undefined, ids), [])
 })

@@ -18,3 +18,18 @@ export function nextTextName(
 ): string {
   return firstFreeName([...traces.filter(t => t.type === 'text').map(t => t.layerName), ...alsoTaken], nameFor)
 }
+
+// The next free "Untitled N" among the titles of traces other than text ones
+// (a text trace's content is its text, not a title).
+export function nextUntitledName(
+  traces: { type: string; content?: string | null }[],
+  nameFor: (n: number) => string,
+  alsoTaken: string[] = [],
+): string {
+  return firstFreeName([...traces.filter(t => t.type !== 'text').map(t => t.content), ...alsoTaken], nameFor)
+}
+
+// A file's name without its extension: "Sunset.final.png" -> "Sunset.final".
+export function fileTitle(fileName: string): string {
+  return fileName.replace(/\.[^./\\]+$/, '').trim()
+}

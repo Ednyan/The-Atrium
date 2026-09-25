@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { arrowhead, bend, curveEntry, curveMiddle, type LinkArrow, type TraceLink } from '../lib/traceLinks'
+import { arrowhead, bend, curveEntry, curveMiddle, restOf, type LinkArrow, type TraceLink } from '../lib/traceLinks'
 import { Check, ColourField, Slider } from './ShapeStyleControls'
 
 // Where a trace is, in world units: its centre, its box's half-size and turn
@@ -78,7 +78,7 @@ export default function TraceLinksLayer({
       if (oa || ob) stirring = true
       const ax = a.x + (oa ? oa.x / zoom : 0), ay = a.y + (oa ? oa.y / zoom : 0)
       const bx = b.x + (ob ? ob.x / zoom : 0), by = b.y + (ob ? ob.y / zoom : 0)
-      const rest = bend(ax, ay, bx, by)
+      const rest = restOf(link.straight, ax, ay, bx, by)
       let sp = springs.current.get(link.id)
       if (!sp) springs.current.set(link.id, sp = { x: rest.x, y: rest.y, vx: 0, vy: 0 })
       for (let left = dt; left > 0; left -= 4) {
@@ -290,6 +290,24 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
         />
         <div className="mt-2.5">
           <Check checked={first.labelOnHover} onChange={labelOnHover => onEdit({ labelOnHover })} label={t('atrium.links.labelOnHover')} />
+        </div>
+      </div>
+      <div>
+        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.line')}</label>
+        <div className="grid grid-cols-2 gap-1">
+          {([false, true] as const).map(straight => (
+            <button
+              key={String(straight)}
+              type="button"
+              aria-pressed={first.straight === straight}
+              onClick={() => onEdit({ straight })}
+              className={`h-8 border text-[10px] tracking-[0.15em] uppercase transition-colors ${first.straight === straight
+                ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'}`}
+            >
+              {straight ? t('atrium.links.straight') : t('atrium.links.curved')}
+            </button>
+          ))}
         </div>
       </div>
       <div>

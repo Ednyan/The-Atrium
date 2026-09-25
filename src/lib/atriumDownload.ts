@@ -73,6 +73,7 @@ export function atriumEnvelope(
       width: l.width,
       label: l.label,
       label_on_hover: l.label_on_hover,
+      straight: l.straight,
     })),
   }
 }

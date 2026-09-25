@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { firstFreeName, nextTextName } from '../src/lib/traceNames.ts'
+import { fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../src/lib/traceNames.ts'
 
 const text = (n: number) => `Text ${n}`
 
@@ -17,4 +17,12 @@ test('only text traces count, and a batch counts itself', () => {
   const traces = [{ type: 'text', layerName: 'Text 1' }, { type: 'image', layerName: 'Text 2' }, { type: 'text', layerName: null }]
   assert.equal(nextTextName(traces, text), 'Text 2')
   assert.equal(nextTextName(traces, text, ['Text 2']), 'Text 3')
+})
+
+test('Untitled N counts titles, not text; a file keeps its name without the extension', () => {
+  const traces = [{ type: 'image', content: 'Untitled 1' }, { type: 'text', content: 'Untitled 2' }]
+  assert.equal(nextUntitledName(traces, n => `Untitled ${n}`), 'Untitled 2')
+  assert.equal(fileTitle('Sunset.final.png'), 'Sunset.final')
+  assert.equal(fileTitle('no extension'), 'no extension')
+  assert.equal(fileTitle('.png'), '')
 })

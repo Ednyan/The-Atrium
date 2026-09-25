@@ -5,6 +5,7 @@ import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { packBoxesAroundCenter, scaleToDisplayBox, getDefaultTraceBoxSize } from '../lib/binPack'
 import { newTraceOrderFields } from '../lib/order'
+import { nextUntitledName } from '../lib/traceNames'
 import {
   fetchPinterestBoards,
   fetchPinterestBoardPins,
@@ -86,12 +87,17 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
 
       // In the chosen group, or ungrouped, on top of what's there in pin order.
       const orderFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, pins.length)
+      // A pin with no title or description is Untitled N, not nameless.
+      const titles: string[] = []
+      for (const pin of pins) {
+        titles.push(pin.title || pin.description || nextUntitledName(useGameStore.getState().traces, n => t('atrium.layers.numberedUntitled', { n }), titles))
+      }
 
       const rows = pins.map((pin, i) => ({
         user_id: userId,
         username,
         type: 'embed',
-        content: pin.title || pin.description || '',
+        content: titles[i],
         position_x: worldCenter.x + offsets[i].x,
         position_y: worldCenter.y + offsets[i].y,
         media_url: pin.imageUrl,

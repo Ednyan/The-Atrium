@@ -134,11 +134,20 @@ function addToSkyline(skyline: SkylineSegment[], start: number, width: number, h
 }
 
 function packSquare(boxes: PackBox[], gap: number): PackedOffset[] {
-  const totalArea = boxes.reduce((sum, b) => sum + (b.width + gap) * (b.height + gap), 0)
   const widestBox = Math.max(...boxes.map(b => b.width)) + gap
-  // Square-ish target width from total area, floored at the single widest
-  // box so there's always room to place at least one item per pass.
-  const targetWidth = Math.max(Math.sqrt(totalArea) * 1.05, widestBox)
+  // The row width: as many average boxes as makes the whole squarest --
+  // width and height closest -- plus a hair, so that many really fit. It was
+  // the square root of the total area, which with boxes all one size is
+  // seldom a whole number of them: four 300x200 pictures got 566px, two
+  // needed 648, and they stacked in a single column.
+  const spanW = boxes.reduce((sum, b) => sum + b.width + gap, 0) / boxes.length
+  const spanH = boxes.reduce((sum, b) => sum + b.height + gap, 0) / boxes.length
+  let columns = 1
+  for (let c = 2; c <= boxes.length; c++) {
+    const side = (cols: number) => Math.max(cols * spanW, Math.ceil(boxes.length / cols) * spanH)
+    if (side(c) < side(columns)) columns = c
+  }
+  const targetWidth = Math.max(columns * spanW + 0.5, widestBox)
 
   const order = boxes.map((_, i) => i).sort((a, b) => boxes[b].height - boxes[a].height)
   let skyline: SkylineSegment[] = [{ x: 0, width: targetWidth, height: 0 }]
