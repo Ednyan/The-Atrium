@@ -181,6 +181,8 @@ interface TraceOverlayProps {
   // A new array reference is sent each time (even for the same set), so
   // the effect that consumes it always fires.
   multiSelectRequest?: string[] | null
+  // Threads to select, the same way -- from a canvas area selection.
+  linkSelectRequest?: string[] | null
   // One-shot request from the Layer panel: open the customize UI for these
   // traces. One id opens that trace's own panel; several select them and open
   // batch edit. A new array reference is sent each time, like
@@ -388,7 +390,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -2306,6 +2308,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setLinkMenuAt(null)
   }
 
+  // Threads from an area selection: all selected, none of them the one with
+  // the delete button -- the menu and the Delete key cover them all.
+  useEffect(() => {
+    if (!linkSelectRequest) return
+    setSelectedLinks(new Set(linkSelectRequest))
+    setPrimaryLink(null)
+    setLinkMenuAt(null)
+  }, [linkSelectRequest])
+
   const deleteLinks = (ids: Iterable<string>) => {
     const gone = useGameStore.getState().links.filter(l => new Set(ids).has(l.id))
     clearLinkSelection()
@@ -2357,7 +2368,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     for (const from of sources) {
       // Not to itself, and not twice: one thread per pair, either way round.
       if (from === target || existing.some(l => joins(l, from, target)) || made.some(l => joins(l, from, target))) continue
-      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '' })
+      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false })
     }
     if (made.length === 0) return
     for (const link of made) putLink(link)
@@ -2405,7 +2416,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const box = localShapePoints[id]
       ? traceBoxFor({ ...trace, shapePoints: localShapePoints[id] })
       : traceBoxFor(trace, localTraceTransforms[id])
-    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, colour: trace.borderColor || getBorderColor(trace.type) }
+    // A path's box is its points', already turned; anything else turns about its centre.
+    const turn = isPathTrace(trace) ? 0 : (((localTraceTransforms[id] || getTraceTransform(trace)).rotation ?? 0) * Math.PI) / 180
+    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || getBorderColor(trace.type) }
   }
 
   // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
@@ -4133,7 +4146,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       if (selectedLinksRef.current.size > 0 && (e.key === 'Delete' || e.key === 'Backspace') && !typingHere && canEdit) {
         e.preventDefault()
         deleteLinks(selectedLinksRef.current)
-        return
+        if (!selectedTraceId && multiSelectedIds.size === 0) return
       }
       // Backspace as well as Delete, because on a Mac keyboard the key marked
       // "delete" IS Backspace -- most of them have no Delete key at all, so the

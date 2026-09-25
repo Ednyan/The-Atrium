@@ -10,6 +10,7 @@ import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
+import { bend, curveMiddle } from '../lib/traceLinks'
 import LayerPanel, { TRACE_DRAG_DATA_KEY, LAYER_DRAG_DATA_KEY } from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
@@ -673,6 +674,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
   const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
+  const [linkSelectRequest, setLinkSelectRequest] = useState<string[] | null>(null)
   // Same one-shot shape as multiSelectRequest: a fresh array every time, so
   // asking to customize the same traces twice fires the effect twice.
   const [customizeRequest, setCustomizeRequest] = useState<string[] | null>(null)
@@ -2713,6 +2715,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
                 setMultiSelectRequest(matchedIds)
 
+                // Threads whose middle is in the area, from the same centres
+                // (a path's from its points).
+                const byId = new Map(tracesDataRef.current.map(trace => [trace.id, trace]))
+                const centre = (id: string) => {
+                  const trace = byId.get(id)
+                  if (!trace) return null
+                  const box = isPathTrace(trace) ? pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2) : null
+                  return box ? { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 } : { x: trace.x, y: trace.y }
+                }
+                setLinkSelectRequest(useGameStore.getState().links.filter(link => {
+                  const a = centre(link.from), b = centre(link.to)
+                  if (!a || !b) return false
+                  const c = bend(a.x, a.y, b.x, b.y)
+                  const m = curveMiddle(a.x, a.y, c.x, c.y, b.x, b.y)
+                  return m.x > wx1 && m.x < wx2 && m.y > wy1 && m.y < wy2
+                }).map(link => link.id))
+
                 // This mouseup is immediately followed by a native 'click'
                 // event (mousedown and mouseup both landed on/near the same
                 // empty-canvas element), which TraceOverlay's own "click
@@ -4635,6 +4654,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
+            linkSelectRequest={linkSelectRequest}
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}

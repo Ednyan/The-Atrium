@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrowhead, bend, boxEdge, carryLinks, curveMiddle, joins, linkRow, mapRowToLink } from '../src/lib/traceLinks.ts'
+import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink } from '../src/lib/traceLinks.ts'
 
 const near = (a: { x: number; y: number }, x: number, y: number) =>
   assert.ok(Math.abs(a.x - x) < 1e-9 && Math.abs(a.y - y) < 1e-9, `${a.x},${a.y} is not ${x},${y}`)
@@ -14,14 +14,20 @@ test('a thread bends to one side of its direction, by a share of its length', ()
   near(bend(100, 0, 0, 0), 50, -14)
 })
 
-test('an arrow tip sits on the box border, not at the hidden centre', () => {
-  assert.deepEqual(boxEdge(0, 0, 50, 20, 200, 0), { x: 50, y: 0 })
-  assert.deepEqual(boxEdge(0, 0, 50, 20, 0, -100), { x: 0, y: -20 })
-  // Pointing at a corner-ish angle, the nearer edge wins.
-  const p = boxEdge(0, 0, 50, 20, 100, 100)
-  assert.ok(Math.abs(p.y - 20) < 1e-9 && Math.abs(p.x - 20) < 1e-9)
-  // Something inside the box is its own edge.
-  assert.deepEqual(boxEdge(0, 0, 50, 20, 10, 5), { x: 10, y: 5 })
+test('an arrow sits where the curve itself enters the box, heading as the curve does', () => {
+  // Straight: on the border, head-on.
+  const s = curveEntry(-200, 0, -100, 0, 0, 0, 50, 20)!
+  assert.ok(Math.abs(s.x + 50) < 1e-4 && Math.abs(s.y) < 1e-9 && s.dx > 0 && s.dy === 0)
+  // Bent: where the curve crosses the border (-50, 10.5), aimed along the
+  // curve -- not at (-50, 14) on the line from the centre toward the bend.
+  const b = bend(-200, 0, 0, 0)
+  const e = curveEntry(-200, 0, b.x, b.y, 0, 0, 50, 20)!
+  assert.ok(Math.abs(e.x + 50) < 1e-4 && Math.abs(e.y - 10.5) < 1e-4, `${e.x},${e.y}`)
+  assert.ok(Math.abs(e.dy / e.dx + 0.14) < 1e-4)
+  // Turned a quarter, the box is 20 wide along the thread.
+  assert.ok(Math.abs(curveEntry(-200, 0, -100, 0, 0, 0, 50, 20, Math.PI / 2)!.x + 20) < 1e-4)
+  // Starting inside the box: no room for an arrow.
+  assert.equal(curveEntry(-10, 0, -5, 0, 0, 0, 50, 20), null)
 })
 
 test('an arrowhead points from where the curve comes in', () => {
@@ -51,8 +57,8 @@ test('carried threads follow their traces to new ids, and nothing else comes', (
     { from_trace: 'c', to_trace: 'b', arrow: 'sideways', label: 7 },
   ], ids)
   assert.deepEqual(rows, [
-    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi' },
-    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null },
+    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false },
+    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false },
   ])
   assert.deepEqual(carryLinks(undefined, ids), [])
 })

@@ -40,7 +40,7 @@ function SectionRule({ label }: { label: string }) {
   )
 }
 
-function Check({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+export function Check({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
   return (
     <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
       <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${checked ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>

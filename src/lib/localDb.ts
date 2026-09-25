@@ -1270,9 +1270,15 @@ export async function initLocalDb(): Promise<void> {
       arrow TEXT NOT NULL DEFAULT 'none',
       color TEXT,
       width REAL NOT NULL DEFAULT 2,
-      label TEXT
+      label TEXT,
+      label_on_hover INTEGER NOT NULL DEFAULT 0
     )
   `)
+  try {
+    await db.execute('ALTER TABLE trace_links ADD COLUMN label_on_hover INTEGER NOT NULL DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS lobby_locations (
@@ -1854,24 +1860,27 @@ function buildWhereClauses(filters: QueryFilter[], params: any[]): string {
 
 // ---- Row conversion: SQLite (snake_case, integers for bools) <-> Supabase format ----
 
+// Columns SQLite holds as 0/1 and the app as true/false.
+const BOOL_COLUMNS: Record<string, string[]> = {
+  traces: ['show_border', 'show_background', 'show_description', 'show_filename',
+    'text_bold', 'text_italic', 'text_underline', 'is_locked', 'is_clickable', 'illuminate',
+    'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
+    'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow'],
+  lobbies: ['is_public', 'autosave_enabled'],
+  layers: ['is_group'],
+  profiles: [],
+  lobby_access_lists: [],
+  lobby_locations: ['is_locked'],
+  trace_links: ['label_on_hover'],
+}
+
 function convertRowFromSql(table: string, row: any): any {
   if (!row) return row
   const out: any = { ...row }
 
   // Convert SQLite integers to booleans for known boolean columns
-  const boolColumns: Record<string, string[]> = {
-    traces: ['show_border', 'show_background', 'show_description', 'show_filename',
-      'text_bold', 'text_italic', 'text_underline', 'is_locked', 'is_clickable', 'illuminate',
-      'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
-      'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow'],
-    lobbies: ['is_public', 'autosave_enabled'],
-    layers: ['is_group'],
-    profiles: [],
-    lobby_access_lists: [],
-    lobby_locations: ['is_locked'],
-  }
 
-  const cols = boolColumns[table] || []
+  const cols = BOOL_COLUMNS[table] || []
   for (const col of cols) {
     if (col in out) {
       out[col] = sqlBool(out[col])
@@ -1902,19 +1911,8 @@ function convertRowToSql(table: string, row: any): any {
   const out: any = { ...row }
 
   // Convert booleans to integers
-  const boolColumns: Record<string, string[]> = {
-    traces: ['show_border', 'show_background', 'show_description', 'show_filename',
-      'text_bold', 'text_italic', 'text_underline', 'is_locked', 'is_clickable', 'illuminate',
-      'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
-      'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow'],
-    lobbies: ['is_public', 'autosave_enabled'],
-    layers: ['is_group'],
-    profiles: [],
-    lobby_access_lists: [],
-    lobby_locations: ['is_locked'],
-  }
 
-  const cols = boolColumns[table] || []
+  const cols = BOOL_COLUMNS[table] || []
   for (const col of cols) {
     if (col in out && typeof out[col] === 'boolean') {
       out[col] = toSqlBool(out[col])

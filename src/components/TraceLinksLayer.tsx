@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { arrowhead, bend, boxEdge, curveMiddle, type LinkArrow, type TraceLink } from '../lib/traceLinks'
-import { ColourField, Slider } from './ShapeStyleControls'
+import { arrowhead, bend, curveEntry, curveMiddle, type LinkArrow, type TraceLink } from '../lib/traceLinks'
+import { Check, ColourField, Slider } from './ShapeStyleControls'
 
-// Where a trace is, in world units: its centre, its box's half-size, and the
-// colour its border is drawn in (a thread's colour when it has none of its own).
-export interface LinkEnd { x: number; y: number; hw: number; hh: number; colour: string }
+// Where a trace is, in world units: its centre, its box's half-size and turn
+// (radians), and the colour its border is drawn in (a thread's colour when it
+// has none of its own).
+export interface LinkEnd { x: number; y: number; hw: number; hh: number; turn: number; colour: string }
 
 type Parts = {
   line?: SVGPathElement | null
@@ -94,16 +95,16 @@ export default function TraceLinksLayer({
       el.line.setAttribute('d', d)
       el.glow?.setAttribute('d', d)
       el.hit?.setAttribute('d', d)
-      // Arrow tips on the border, where they can be seen: the thread runs on
-      // under the trace to its centre.
-      const head = (poly: SVGPolygonElement | null | undefined, end: LinkEnd, at: { x: number; y: number }) => {
+      // Arrow tips where the curve meets the border, aimed along it.
+      const head = (poly: SVGPolygonElement | null | undefined, end: LinkEnd, at: { x: number; y: number }, from: { x: number; y: number }) => {
         if (!poly) return
-        const tip = boxEdge(at.x, at.y, end.hw * zoom, end.hh * zoom, c.x, c.y)
-        const p = arrowhead(tip.x, tip.y, c.x, c.y, 6 + Math.max(0.75, link.width * Math.sqrt(zoom)) * 2)
+        const tip = curveEntry(from.x, from.y, c.x, c.y, at.x, at.y, end.hw * zoom, end.hh * zoom, end.turn)
+        if (!tip) { poly.setAttribute('points', ''); return }
+        const p = arrowhead(tip.x, tip.y, tip.x - tip.dx, tip.y - tip.dy, 6 + Math.max(0.75, link.width * Math.sqrt(zoom)) * 2)
         poly.setAttribute('points', `${p[0]},${p[1]} ${p[2]},${p[3]} ${p[4]},${p[5]}`)
       }
-      head(el.headTo, b, sb)
-      head(el.headFrom, a, sa)
+      head(el.headTo, b, sb, sa)
+      head(el.headFrom, a, sa, sb)
       if (el.middle) {
         const mid = curveMiddle(sa.x, sa.y, c.x, c.y, sb.x, sb.y)
         el.middle.style.left = `${mid.x}px`
@@ -178,11 +179,11 @@ export default function TraceLinksLayer({
         })}
       </svg>
 
-      {/* At each thread's middle: its label, shown on hover -- or while
-          selected, which is how a touch screen, with no hover, gets to it --
+      {/* At each thread's middle: its label -- always, or for a thread set to
+          show it on hover, while hovered or selected (how touch gets to it) --
           and on the one last clicked, the delete button. */}
       {links.map(link => {
-        const showLabel = !!link.label && (hovered === link.id || selected.has(link.id))
+        const showLabel = !!link.label && (!link.labelOnHover || hovered === link.id || selected.has(link.id))
         const showDelete = canEdit && primary === link.id
         if (!showLabel && !showDelete) return null
         return (
@@ -287,6 +288,9 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
           onChange={e => onEdit({ label: e.target.value })}
           className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60"
         />
+        <div className="mt-2.5">
+          <Check checked={first.labelOnHover} onChange={labelOnHover => onEdit({ labelOnHover })} label={t('atrium.links.labelOnHover')} />
+        </div>
       </div>
       <div>
         <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.arrow')}</label>

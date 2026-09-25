@@ -17,6 +17,9 @@ export interface TraceLink {
   color: string | null
   width: number
   label: string
+  // The label is shown always unless this is set; then only on hover (or
+  // while the thread is selected, which is how touch gets to it).
+  labelOnHover: boolean
 }
 
 export const DEFAULT_LINK_WIDTH = 2
@@ -34,6 +37,7 @@ export function mapRowToLink(row: any): TraceLink {
     // the database refuses.
     width: typeof row.width === 'number' && row.width > 0 ? Math.min(row.width, 40) : DEFAULT_LINK_WIDTH,
     label: typeof row.label === 'string' ? row.label.slice(0, 80) : '',
+    labelOnHover: !!row.label_on_hover,
   }
 }
 
@@ -47,6 +51,7 @@ export function linkRow(link: TraceLink) {
     color: link.color,
     width: link.width,
     label: link.label || null,
+    label_on_hover: link.labelOnHover,
   }
 }
 
@@ -81,14 +86,37 @@ export function bend(ax: number, ay: number, bx: number, by: number, amount = 0.
   return { x: (ax + bx) / 2 - (by - ay) * amount, y: (ay + by) / 2 + (bx - ax) * amount }
 }
 
-// Where a line from a box's centre (cx, cy) out toward (qx, qy) crosses the
-// edge of the box (half-sizes hw, hh). Where an arrowhead goes: the thread
-// runs to the centre, under the trace, so the tip belongs on the border.
-export function boxEdge(cx: number, cy: number, hw: number, hh: number, qx: number, qy: number) {
-  const dx = qx - cx, dy = qy - cy
-  if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const t = Math.min(dx ? hw / Math.abs(dx) : Infinity, dy ? hh / Math.abs(dy) : Infinity)
-  return t >= 1 ? { x: qx, y: qy } : { x: cx + dx * t, y: cy + dy * t }
+// Where a thread from (ax, ay), bent through (cx, cy), enters the box of the
+// trace it ends at -- centre (bx, by), half-sizes hw and hh, turned by `turn`
+// radians -- and the way it's heading there: an arrowhead's tip and aim. The
+// thread runs on under the trace to its centre, so the border is where a tip
+// can be seen, and it's found on the curve itself: the straight line from the
+// centre toward the bend meets the border somewhere else, further off the
+// bigger the trace. Null when the thread starts inside the box, as between
+// overlapping traces.
+export function curveEntry(ax: number, ay: number, cx: number, cy: number, bx: number, by: number, hw: number, hh: number, turn = 0) {
+  const cos = Math.cos(turn), sin = Math.sin(turn)
+  const at = (t: number) => {
+    const u = 1 - t
+    return { x: u * u * ax + 2 * u * t * cx + t * t * bx, y: u * u * ay + 2 * u * t * cy + t * t * by }
+  }
+  const inside = (t: number) => {
+    const p = at(t), dx = p.x - bx, dy = p.y - by
+    return Math.abs(dx * cos + dy * sin) <= hw && Math.abs(dy * cos - dx * sin) <= hh
+  }
+  // Stepped back from the end, which is inside, to the first point that
+  // isn't -- the last crossing, even on a curve that grazes a corner first --
+  // then the step between them halved down to nothing.
+  let hi = 1, lo = 1
+  do { hi = lo; lo = Math.max(0, lo - 1 / 32) } while (lo > 0 && inside(lo))
+  if (inside(lo)) return null
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2
+    if (inside(mid)) hi = mid
+    else lo = mid
+  }
+  const t = hi, u = 1 - t
+  return { ...at(t), dx: 2 * u * (cx - ax) + 2 * t * (bx - cx), dy: 2 * u * (cy - ay) + 2 * t * (by - cy) }
 }
 
 // An arrowhead with its tip at (tx, ty), pointing away from (fx, fy): three
