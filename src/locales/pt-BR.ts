@@ -1116,7 +1116,6 @@ const ptBR: Catalogue = {
   'atrium.layers.allowInteract': 'Permitir selecionar/arrastar no atrium',
   'atrium.layers.preventInteract': 'Impedir selecionar/arrastar no atrium',
   'atrium.layers.newGroupTitle': 'Nome do novo grupo',
-  'atrium.layers.renameGroupTitle': 'Renomear grupo',
   'common.duplicate': 'Duplicar',
   'common.select': 'Selecionar',
   'atrium.layers.untitled': 'Sem título',

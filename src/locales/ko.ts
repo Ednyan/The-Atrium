@@ -1072,7 +1072,6 @@ const ko: Catalogue = {
   'atrium.layers.allowInteract': '캔버스에서 고르고 끌 수 있게 해요',
   'atrium.layers.preventInteract': '캔버스에서 고르거나 끌지 못하게 해요',
   'atrium.layers.newGroupTitle': '새 그룹 이름',
-  'atrium.layers.renameGroupTitle': '그룹 이름 바꾸기',
   'common.duplicate': '복제',
   'common.select': '선택',
   'atrium.layers.untitled': '이름 없음',

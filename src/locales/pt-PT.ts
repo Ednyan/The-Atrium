@@ -1119,7 +1119,6 @@ const ptPT: Catalogue = {
   'atrium.layers.allowInteract': 'Permitir selecionar/arrastar no atrium',
   'atrium.layers.preventInteract': 'Impedir selecionar/arrastar no atrium',
   'atrium.layers.newGroupTitle': 'Nome do novo grupo',
-  'atrium.layers.renameGroupTitle': 'Mudar nome do grupo',
   'common.duplicate': 'Duplicar',
   'common.select': 'Selecionar',
   'atrium.layers.untitled': 'Sem título',

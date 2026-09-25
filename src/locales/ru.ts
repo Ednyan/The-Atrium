@@ -1118,7 +1118,6 @@ const ru: Catalogue = {
   'atrium.layers.allowInteract': 'Разрешить выделение/перетаскивание в atrium',
   'atrium.layers.preventInteract': 'Запретить выделение/перетаскивание в atrium',
   'atrium.layers.newGroupTitle': 'Название новой группы',
-  'atrium.layers.renameGroupTitle': 'Переименовать группу',
   'common.duplicate': 'Дублировать',
   'common.select': 'Выбрать',
   'atrium.layers.untitled': 'Без названия',

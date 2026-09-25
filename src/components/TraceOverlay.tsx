@@ -41,6 +41,7 @@ import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
 import { DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
+import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -2112,15 +2113,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     dragFeelRef.current?.stop()
     const strength = dragBounceRef.current / 100
     if (!strength || ids.length === 0) return
-    // Loose enough to trail noticeably, damped enough that it settles with a
-    // hint of overshoot (under 3%) rather than a wobble.
-    const period = 80 + 200 * strength
-    const damping = 0.75
     // One spring per trace, chasing where the trace is actually drawn right
     // now -- its own left/top -- rather than the pointer. The pointer and the
     // position React last drew can be a frame apart, and a spring chasing one
     // while being added to the other made the trace twitch.
-    const springs = new Map<string, { x: number; y: number; vx: number; vy: number; peak: number; w: number; h: number; reach: number; mass: number; omega: number }>()
+    const springs = new Map<string, FeelSpring>()
     const moved = new Set<HTMLElement>()
     let raf = 0, last = performance.now()
     const feel = {
@@ -2148,57 +2145,21 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         if (!box) continue
         const tx = parseFloat(box.style.left), ty = parseFloat(box.style.top)
         let sp = springs.get(id)
-        if (!sp) {
-          const w = box.offsetWidth, h = box.offsetHeight, reach = Math.hypot(w, h) / 2 || 1
-          // Bigger is heavier: from about 300px across, a trace answers the
-          // pull more slowly -- its trail builds and settles over longer, to
-          // the same distance -- needs a longer pull before it trails at all,
-          // and leans less. A small card flicks about; a large board shouldn't.
-          const mass = Math.min(3, Math.max(1, reach / 150))
-          springs.set(id, sp = { x: tx, y: ty, vx: 0, vy: 0, peak: 0, w, h, reach, mass, omega: (2 * Math.PI) / (period * Math.sqrt(mass)) })
-        }
+        if (!sp) springs.set(id, sp = feelSpring(tx, ty, box.offsetWidth, box.offsetHeight, strength))
         if (rigid) {
-          Object.assign(sp, { x: tx, y: ty, vx: 0, vy: 0, peak: 0 })
+          feelRest(sp, tx, ty)
           box.style.translate = ''
           box.style.rotate = ''
           dragOffsetsRef.current.delete(id)
           continue
         }
-        const omega = sp.omega
-        for (let left = dt; left > 0; left -= 4) {
-          const h = Math.min(left, 4)
-          sp.vx += (omega * omega * (tx - sp.x) - 2 * damping * omega * sp.vx) * h
-          sp.vy += (omega * omega * (ty - sp.y) - 2 * damping * omega * sp.vy) * h
-          sp.x += sp.vx * h
-          sp.y += sp.vy * h
-        }
-        const rawX = sp.x - tx, rawY = sp.y - ty
-        if (Math.hypot(rawX, rawY) > 0.3 || Math.hypot(sp.vx, sp.vy) > 0.01) stirring = true
-        // A minimum of momentum before any of it shows. Scaled by the largest
-        // trail this drag has reached, eased in between 3 and 12 pixels (times
-        // the mass): a nudge or a jittery hand never gets past the start of
-        // that, so the trace just moves, and a real pull brings the full
-        // trail, lean and settle -- with nothing in between ever switching on
-        // abruptly.
-        sp.peak = Math.max(sp.peak, Math.hypot(rawX, rawY))
-        const engage = Math.min(1, Math.max(0, (sp.peak - 3 * sp.mass) / (9 * sp.mass)))
-        const k = engage * engage * (3 - 2 * engage)
-        const give = k / Math.sqrt(sp.mass)
-        const ox = rawX * give, oy = rawY * give
-        // Leaning into the pull, as a card held by its top edge does: dragged
-        // right, the trailing side swings back and it tips clockwise. Capped
-        // by size, since the same tilt swings a big trace's corners much
-        // further: no corner travels more than about 12 pixels. The cap is
-        // eased into on a big trace, which reaches it, so its lean never stops
-        // dead; a small one keeps the hard cap it rarely gets near.
-        const want = (Math.max(-5, Math.min(5, (-ox * 0.15) / sp.mass)) * Math.PI) / 180
-        const cap = 12 / sp.reach
-        const lean = sp.mass > 1 ? cap * Math.tanh(want / cap) : Math.sign(want) * Math.min(Math.abs(want), cap)
+        const { ox, oy, lean, moving } = feelStep(sp, tx, ty, dt)
+        if (moving) stirring = true
         const cos = Math.cos(lean), sin = Math.sin(lean)
         // A rotate pivots on the element's layout box's centre, but the trace
         // is drawn shifted back half its size from there; the extra translate
         // turns it about its own centre instead.
-        const dx = -sp.w / 2, dy = -sp.h / 2
+        const dx = -sp.width / 2, dy = -sp.height / 2
         box.style.translate = `${dx - (dx * cos - dy * sin) + ox}px ${dy - (dx * sin + dy * cos) + oy}px`
         box.style.rotate = `${lean}rad`
         moved.add(box)

@@ -1068,7 +1068,6 @@ const ja: Catalogue = {
   'atrium.layers.allowInteract': 'キャンバス上での選択とドラッグを許可します',
   'atrium.layers.preventInteract': 'キャンバス上での選択とドラッグを禁止します',
   'atrium.layers.newGroupTitle': '新しいグループの名前',
-  'atrium.layers.renameGroupTitle': 'グループ名を変更',
   'common.duplicate': '複製',
   'common.select': '選択',
   'atrium.layers.untitled': '名称未設定',

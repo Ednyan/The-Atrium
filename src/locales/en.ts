@@ -1018,7 +1018,6 @@ export const en = {
   'atrium.layers.allowInteract': 'Allow selecting/dragging on the canvas',
   'atrium.layers.preventInteract': 'Prevent selecting/dragging on the canvas',
   'atrium.layers.newGroupTitle': 'New Group Name',
-  'atrium.layers.renameGroupTitle': 'Rename Group',
   'common.duplicate': 'Duplicate',
   'common.select': 'Select',
   'atrium.layers.untitled': 'Untitled',

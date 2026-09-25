@@ -1071,7 +1071,6 @@ const zh: Catalogue = {
   'atrium.layers.allowInteract': '允许在画布上选中和拖动',
   'atrium.layers.preventInteract': '禁止在画布上选中和拖动',
   'atrium.layers.newGroupTitle': '新组的名字',
-  'atrium.layers.renameGroupTitle': '重命名组',
   'common.duplicate': '创建副本',
   'common.select': '选中',
   'atrium.layers.untitled': '未命名',

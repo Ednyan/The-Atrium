@@ -1114,7 +1114,6 @@ const fr: Catalogue = {
   'atrium.layers.allowInteract': 'Autoriser la sélection/le déplacement dans l’atrium',
   'atrium.layers.preventInteract': 'Empêcher la sélection/le déplacement dans l’atrium',
   'atrium.layers.newGroupTitle': 'Nom du nouveau groupe',
-  'atrium.layers.renameGroupTitle': 'Renommer le groupe',
   'common.duplicate': 'Dupliquer',
   'common.select': 'Sélectionner',
   'atrium.layers.untitled': 'Sans titre',

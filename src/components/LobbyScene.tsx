@@ -11,7 +11,7 @@ import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay from './TraceOverlay'
 import { threadCrosses, type Box } from '../lib/traceLinks'
-import LayerPanel, { TRACE_DRAG_DATA_KEY, LAYER_DRAG_DATA_KEY } from './LayerPanel'
+import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
 import { LobbyManagement } from './LobbyManagement'
@@ -3658,8 +3658,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // drag but drop doesn't (or vice versa), the overlay either flashes or gets
   // stuck on with no way to clear it short of a reload.
   const isInternalDrag = (e: React.DragEvent) =>
-    e.dataTransfer.types.includes(TRACE_DRAG_DATA_KEY) ||
-    e.dataTransfer.types.includes(LAYER_DRAG_DATA_KEY) ||
     e.dataTransfer.types.includes(LOCATION_DRAG_DATA_KEY)
 
   // Everything on the clipboard this canvas can do something with: image files
