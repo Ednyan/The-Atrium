@@ -174,6 +174,9 @@ interface TraceOverlayProps {
   lobbyHeight: number
   zoom: number
   worldOffset: { x: number; y: number }
+  // The layer of world content, for LobbyScene to scale whole while a zoom
+  // is under way.
+  worldLayerRef?: React.Ref<HTMLDivElement>
   // Moves the camera by a world-space delta. The camera lives in LobbyScene,
   // so dragging a trace past the edge of the view has to ask for the scroll
   // rather than perform it.
@@ -409,7 +412,7 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -6991,7 +6994,7 @@ return (
     <div style={{ cursor: 'none', pointerEvents: 'none', touchAction: 'none' }}>
       {/* Everything anchored to the world -- traces and their handles -- in
           one layer, with the cursors drawn after it, above. */}
-      <div style={{ position: 'absolute', inset: 0 }}>
+      <div ref={worldLayerRef} style={{ position: 'absolute', inset: 0, transformOrigin: '0 0' }}>
       {/* Render traces AND player in z-index order */}
       {/* Connections, under every trace: from centre to centre, so where
           a thread meets a trace it disappears under it. Arrows sit on the

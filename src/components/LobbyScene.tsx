@@ -499,7 +499,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     touchstart: ((e: TouchEvent) => void) | null,
     touchmove: ((e: TouchEvent) => void) | null,
     touchend: ((e: TouchEvent) => void) | null,
-  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null })
+    mouseHeld: ((e: PointerEvent) => void) | null,
+  }>({ mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null, mouseHeld: null })
+  // TraceOverlay's layer of world content, scaled as a whole while a zoom is
+  // under way (see the ticker).
+  const traceWorldLayerRef = useRef<HTMLDivElement | null>(null)
   const lastTouchDistRef = useRef<number | null>(null)
   const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
 
@@ -2387,12 +2391,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const theme = themeSettingsRef.current
         if (theme?.gridEnabled === false) return
         const color = theme?.gridColor ? parseInt(theme.gridColor.replace('#', ''), 16) : 0x3b82f6
-        grid.lineStyle(1, color, theme?.gridOpacity ?? 0.2)
         // From the atrium's own settings, so the lines are the ones the user
         // asked for -- and the ones Shift-dragging snaps onto, which reads
         // the same value.
         const step = (theme?.gridLineSpacing ?? 50) * zoomRef.current
-        if (step < 2) return // closer than that is a fill, not a grid
+        // Fading out as the lines close up with a zoom out: as set from 32px
+        // apart, gone at 12px, and from there not drawn at all -- closer
+        // than that is a haze, and hundreds of lines to draw every frame.
+        const fade = Math.min(1, (step - 12) / 20)
+        if (fade <= 0) return
+        grid.lineStyle(1, color, (theme?.gridOpacity ?? 0.2) * fade)
         const width = window.innerWidth, height = window.innerHeight
         const at = (offset: number) => ((offset % step) + step) % step
         // +0.5: a 1px line centred on a pixel covers it exactly.
@@ -2841,12 +2849,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       eventHandlersRef.current.touchstart = handleTouchStart
       eventHandlersRef.current.touchmove = handleTouchMove
       eventHandlersRef.current.touchend = handleTouchEnd
+      // Whether a mouse button is down -- in the capture phase, so a trace
+      // that stops its own mousedown from spreading is still seen.
+      let mouseHeld = false
+      const noteMouseHeld = (e: PointerEvent) => {
+        if (e.pointerType === 'mouse') mouseHeld = e.type === 'pointerdown'
+      }
+      window.addEventListener('pointerdown', noteMouseHeld, true)
+      window.addEventListener('pointerup', noteMouseHeld, true)
+      eventHandlersRef.current.mouseHeld = noteMouseHeld
 
       // Fluid animation loop
       let pulseTime = 0
       let frameCounter = 0
-      // What the traces were last given (see below).
+      // What the traces were last laid out at (see below).
       let sentView = { x: NaN, y: NaN, zoom: NaN }
+      let lastFrameZoom = NaN
+      let zoomEndsAt = 0
+      let layerScaled = false
       
       app.ticker.add(() => {
         frameCounter++
@@ -2883,12 +2903,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // Update world container scale
         worldContainer.scale.set(zoomRef.current)
         
-        // Update camera (world container offset based on camera position)
-        // Round to whole pixels to prevent sub-pixel jitter
+        // Update camera (world container offset based on camera position).
+        // On whole pixels at rest, for crisp edges -- but not while zooming:
+        // rounded afresh each frame, the offset moved by a pixel on some
+        // frames and not at all on others, so everything shuffled half a
+        // pixel back and forth as it grew or shrank.
         const rawX = -cameraPositionRef.current.x * zoomRef.current + viewportWidth / 2
         const rawY = -cameraPositionRef.current.y * zoomRef.current + viewportHeight / 2
-        worldContainer.x = Math.round(rawX)
-        worldContainer.y = Math.round(rawY)
+        worldContainer.x = zoomIsStable ? Math.round(rawX) : rawX
+        worldContainer.y = zoomIsStable ? Math.round(rawY) : rawY
         
         // Sync world offset for overlay
         const newOffsetX = worldContainer.x
@@ -2906,14 +2929,48 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // this closure captured them when the ticker was made -- which never
         // changed, so a zoom ending near where it began could stop a step
         // short of the grid.
+        //
+        // Except while a zoom is under way. Laid out afresh at each step, every
+        // box edge and every glyph was rounded to the pixel on its own, a
+        // little differently each frame -- traces and text shifting as they
+        // grew or shrank. Instead the layer they were last laid out in is
+        // scaled whole, by the compositor, and laid out again once the zoom
+        // has stopped: moving smoothly, then crisp at rest. It is also far less
+        // work than rendering every trace every frame, which is what made a
+        // long zoom out slow.
+        //
+        // Not past a quarter either way, though: the layer holds only what was
+        // on screen, with a margin, when it was laid out, and scaled up it
+        // blurs. Nor with a mouse button down -- a trace being dragged moves by
+        // the zoom it was laid out at.
         const offsetChanged = newOffsetX !== sentView.x || newOffsetY !== sentView.y
         const zoomMoved = zoomRef.current !== sentView.zoom
-        if (offsetChanged || zoomMoved) {
-          sentView = { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current }
-          flushSync(() => {
-            if (offsetChanged) setWorldOffset({ x: newOffsetX, y: newOffsetY })
-            if (zoomMoved) setZoom(zoomRef.current)
-          })
+        const now = performance.now()
+        if (zoomRef.current !== lastFrameZoom) zoomEndsAt = now + 120
+        lastFrameZoom = zoomRef.current
+        const k = zoomRef.current / sentView.zoom
+        const layer = traceWorldLayerRef.current
+        if (layer && now < zoomEndsAt && k > 0.8 && k < 1.25 && !mouseHeld) {
+          // Where the layer's (0, 0) now is: screen = world * zoom + offset,
+          // and it was laid out with sentView's.
+          layer.style.transform = `translate(${newOffsetX - sentView.x * k}px, ${newOffsetY - sentView.y * k}px) scale(${k})`
+          layer.style.willChange = 'transform'
+          layerScaled = true
+        } else {
+          if (offsetChanged || zoomMoved) {
+            sentView = { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current }
+            flushSync(() => {
+              if (offsetChanged) setWorldOffset({ x: newOffsetX, y: newOffsetY })
+              if (zoomMoved) setZoom(zoomRef.current)
+            })
+          }
+          // In the same frame as the layout it stood in for -- or, for a zoom
+          // that ended where it began, simply so the layer is drawn flat again.
+          if (layer && layerScaled) {
+            layer.style.transform = ''
+            layer.style.willChange = ''
+            layerScaled = false
+          }
         }
         
         // The grid is in screen space (drawGrid), so it's redrawn on every
@@ -3438,7 +3495,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (eventHandlersRef.current.touchend) {
         window.removeEventListener('touchend', eventHandlersRef.current.touchend)
       }
-      eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null }
+      if (eventHandlersRef.current.mouseHeld) {
+        window.removeEventListener('pointerdown', eventHandlersRef.current.mouseHeld, true)
+        window.removeEventListener('pointerup', eventHandlersRef.current.mouseHeld, true)
+      }
+      eventHandlersRef.current = { mousedown: null, mousemove: null, mouseup: null, contextmenu: null, wheel: null, touchstart: null, touchmove: null, touchend: null, mouseHeld: null }
       
       // Save camera position for this lobby+user before cleanup
       try {
@@ -4544,6 +4605,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             lobbyHeight={window.innerHeight}
             zoom={zoom}
             worldOffset={worldOffset}
+            worldLayerRef={traceWorldLayerRef}
             onEdgePan={panCameraBy}
             lobbyId={lobbyId}
             selectedTraceId={selectedTraceId}
