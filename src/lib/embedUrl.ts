@@ -102,3 +102,28 @@ export function defaultEmbedBox(rawUrl: string): { width: number; height: number
 export function isGoogleEmbed(url: string): boolean {
   return /(?:drive|docs)\.google\.com/.test(url)
 }
+
+// Videos, framed for the desktop app on macOS and Linux.
+//
+// There the app's pages are tauri://localhost, and a page with no http(s)
+// address sends no Referer with the frames it loads. YouTube now refuses to
+// play without one -- "Error 153, video player configuration error" -- so
+// embedded videos showed and would not play on a Mac. Framed from a page on the
+// site (public/embed/), the player is sent the site's address instead. Windows
+// serves the app from http://tauri.localhost, and the web from the site itself,
+// so neither needs it.
+//
+// The page frames only these hosts, and names them itself: the two lists are
+// checked against each other in tests/embedUrl.test.ts.
+export const EMBED_RELAY = 'https://digitalatrium.org/embed/'
+export const RELAYED_HOSTS = ['www.youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com']
+
+export function throughRelay(embedUrl: string): string {
+  try {
+    const url = new URL(embedUrl)
+    if (url.protocol !== 'https:' || !RELAYED_HOSTS.includes(url.hostname)) return embedUrl
+    return `${EMBED_RELAY}?src=${encodeURIComponent(url.href)}`
+  } catch {
+    return embedUrl
+  }
+}

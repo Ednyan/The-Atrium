@@ -67,3 +67,13 @@
   #                             fetches its own data: URLs to turn embedded
   #                             files back into blobs.
   Content-Security-Policy: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https: wss://rmowxvqkyxypgcbqcspy.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+
+# The video relay (public/embed/; see throughRelay in src/lib/embedUrl.ts): the
+# one page anything is meant to frame -- the desktop app on macOS and Linux,
+# whose pages are tauri://localhost. So the site-wide "never framed" above is
+# detached here and replaced by a policy of its own: framed by the app alone,
+# running its own script alone, and framing only the video players it names.
+/embed/*
+  ! X-Frame-Options
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors tauri: http://tauri.localhost https://tauri.localhost; base-uri 'none'; form-action 'none'

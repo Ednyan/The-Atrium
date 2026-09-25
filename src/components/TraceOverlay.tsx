@@ -28,7 +28,7 @@ import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
-import { toEmbedUrl } from '../lib/embedUrl'
+import { throughRelay, toEmbedUrl } from '../lib/embedUrl'
 import { drawRanks, inOrder, keyAt, keysBetween, keysOnTop, keysOnTopOfGroup, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
@@ -616,6 +616,11 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow }: {
       </div>
     )
 }
+
+// The desktop app on macOS and Linux runs from tauri://localhost, whose frames
+// carry no Referer, and YouTube won't play without one: videos go through the
+// site's relay page there (see throughRelay).
+const EMBED_NEEDS_RELAY = isDesktop && !/Windows/i.test(navigator.userAgent)
 
 // How long the trace stays visibly pressed after the click before the link
 // actually opens, so the press reads as a press rather than the atrium
@@ -4851,13 +4856,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }
     }
 
+    const framed = (url: string | null) => (url && EMBED_NEEDS_RELAY ? throughRelay(url) : url)
+
     // Check if it's HTML embed code (contains <iframe)
     if (content.includes('<iframe')) {
       const srcMatch = content.match(/src=["']([^"']+)["']/)
       if (srcMatch) {
         // Run through the converter too: pasting embed code with a share URL
         // inside it is a common enough mistake to be worth handling.
-        return httpOnly(toEmbedUrl(srcMatch[1]))
+        return framed(httpOnly(toEmbedUrl(srcMatch[1])))
       }
       return null
     }
@@ -4865,7 +4872,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // their embeddable form here (see lib/embedUrl). Done at render rather
     // than on save, so the trace keeps the link the user actually pasted and
     // embeds created before this start working without migrating anything.
-    return httpOnly(toEmbedUrl(content))
+    return framed(httpOnly(toEmbedUrl(content)))
   }, [])
 
   // Memoize visible traces to avoid recalculating on every render
