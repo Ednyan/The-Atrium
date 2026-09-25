@@ -1076,8 +1076,39 @@ async fn download_remote_image(url: String) -> Result<tauri::ipc::Response, Stri
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+// A failure the app can't show itself, made visible.
+//
+// A standard Windows account saw the app close the moment it opened, with
+// nothing on screen: a failure before the window exists has nowhere to be
+// shown, and a release build has no console. So a panic, or an error out of
+// the builder (a plugin that won't start, a webview that can't be made), is
+// written to a file in the temp folder and put in a message box -- which is
+// what it takes to know what went wrong on a machine that isn't here.
+fn report_fatal(message: &str) {
+    let path = std::env::temp_dir().join("The Digital Atrium - error.txt");
+    let _ = std::fs::write(&path, message);
+    eprintln!("{}", message);
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn MessageBoxW(hwnd: *mut std::ffi::c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
+        }
+        let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let text = wide(&format!(
+            "The Digital Atrium ran into an error and can't continue.\n\n{}\n\nThis was also saved to:\n{}",
+            message,
+            path.display()
+        ));
+        let caption = wide("The Digital Atrium");
+        const MB_ICONERROR: u32 = 0x10;
+        unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), MB_ICONERROR) };
+    }
+}
+
 fn main() {
-    tauri::Builder::default()
+    std::panic::set_hook(Box::new(|info| report_fatal(&info.to_string())));
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         // Reads the clipboard natively, which is the only way to do it without
@@ -1142,6 +1173,8 @@ fn main() {
             consolidate_runtime_media,
             download_remote_image
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+    if let Err(e) = result {
+        report_fatal(&e.to_string());
+    }
 }

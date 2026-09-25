@@ -828,7 +828,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }, [])
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const hudRef = useRef<HTMLDivElement>(null)
+  // The top-right bar the Leave button is in, for the leave prompt to open under.
+  const sessionBarRef = useRef<HTMLDivElement>(null)
 
   // Warn user when leaving/refreshing with unsaved changes
   useEffect(() => {
@@ -4819,7 +4820,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           Hide UI, the interface's light or dark, and the way out -- in that
           order, so the one you press by accident least often is furthest from
           the corner. */}
-      <div className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
+      <div ref={sessionBarRef} className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
         {!uiHidden && (
           <>
             <button
@@ -4872,7 +4873,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           a 22px header inside 6px of padding and a 1px rule. It was two-pixel
           borders and 8px padding, which made it eight pixels taller than
           everything standing beside it. */}
-      <div ref={hudRef} data-ui-element="true" className="relative px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '190px' }}>
+      <div data-ui-element="true" className="relative px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '190px' }}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-nier-bg"></div>
         <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-nier-bg"></div>
@@ -5971,15 +5972,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
       {/* Unsaved Changes Leave Dialog */}
       {showLeaveDialog && (() => {
-        const hudBottom = hudRef.current ? hudRef.current.getBoundingClientRect().bottom : 200
+        const barBottom = sessionBarRef.current ? sessionBarRef.current.getBoundingClientRect().bottom : 56
         return (
         <div
           className="fixed inset-0 z-[10000100] pointer-events-auto"
           onClick={() => setShowLeaveDialog(false)}
         >
           <div
-            className="bg-nier-black border border-nier-border/50 p-6 absolute left-4"
-            style={{ top: `${hudBottom + 8}px`, maxWidth: '200px' }}
+            className="bg-nier-black border border-nier-border/50 p-6 absolute right-4"
+            style={{ top: `${barBottom + 8}px`, maxWidth: '200px' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}

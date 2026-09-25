@@ -6560,7 +6560,13 @@ return (
               }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
-              className="w-full h-full bg-transparent resize-none outline-none border-2 border-white focus:border-gray-400"
+              // The same box as the text once it's applied: no border, padding
+              // or scrollbar of its own. The box is fitted to that text as it's
+              // typed, so a textarea's border and padding left it a few pixels
+              // short -- lines wrapped early, the last was cut and a scrollbar
+              // appeared. The frame is an outline instead, drawn in the
+              // padding around it and taking no room from the text.
+              className="block w-full h-full p-0 border-0 bg-transparent resize-none overflow-hidden outline outline-2 outline-offset-2 outline-white focus:outline-gray-400"
               style={textStyles}
             />
           ) : (

@@ -56,6 +56,23 @@ if (isDesktop) {
     .catch(() => { /* no version, no comparison, nothing asked */ })
 }
 
+// The webview's own zoom, refused on every screen of the desktop app.
+//
+// zoomHotkeysEnabled has to stay on in tauri.conf.json: wry ties WebView2's
+// pinch setting to it, and with pinch off the webview swallows a touchpad
+// pinch instead of passing it on as the ctrl+wheel the canvas zooms by. It was
+// turned on for exactly that (9b0544b) and off again for the keys (6589ee2),
+// which took the pinch with it. On, it also lets ctrl+wheel and ctrl with
+// plus, minus or zero scale the whole interface -- never wanted, so the page
+// refuses those itself, here, rather than only inside an atrium. Refusing them
+// doesn't stop them reaching the canvas, whose zoom reads both.
+if (isDesktop) {
+  window.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault() }, { passive: false })
+  window.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault()
+  })
+}
+
 type AtriumTransitionPhase = 'loading' | 'entering' | 'flash' | 'ready'
 
 const ANIMATION_FPS = 40

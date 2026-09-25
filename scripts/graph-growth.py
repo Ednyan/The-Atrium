@@ -3,6 +3,7 @@
     python scripts/graph-growth.py          # writes graphify-out/growth.html
     python scripts/graph-growth.py --open   # and opens it
     python scripts/graph-growth.py --cached # only what is already rebuilt (a preview)
+    python scripts/graph-growth.py --publish # and the page at digitalatrium.org/code-history
 
 Rebuilds graphify's code graph (AST only: local, no LLM) at every stage of
 the project and animates between them, so code that was later deleted, code
@@ -37,6 +38,7 @@ WORK = Path(os.environ.get('LOCALAPPDATA') or Path.home() / '.cache') / 'atrium-
 STAGES = WORK / 'stages'  # one JSON per rebuilt stage
 LANES = 6                 # stages rebuilt side by side, each in WORK/tree<n>
 OUT = REPO / 'graphify-out' / 'growth.html'
+PUBLISHED = REPO / 'public' / 'code-history'  # served as digitalatrium.org/code-history/
 TEMPLATE = Path(__file__).with_suffix('.html')
 
 
@@ -490,6 +492,16 @@ def main() -> None:
           f'{len(stages)} stages')
     if '--open' in sys.argv:
         webbrowser.open(OUT.as_uri())
+    # The site's policy runs no inline script (public/_headers), so the
+    # published page takes its script -- the data with it -- from a file
+    # beside it.
+    if '--publish' in sys.argv:
+        head, rest = html.split('<script>', 1)
+        script, tail = rest.split('</script>', 1)
+        PUBLISHED.mkdir(parents=True, exist_ok=True)
+        (PUBLISHED / 'growth.js').write_text(script, encoding='utf-8')
+        (PUBLISHED / 'index.html').write_text(head + '<script src="growth.js"></script>' + tail, encoding='utf-8')
+        print(f'published {PUBLISHED.relative_to(REPO)}/')
 
 
 if __name__ == '__main__':
