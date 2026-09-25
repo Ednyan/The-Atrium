@@ -11,11 +11,14 @@ const W = 1000, H = 600, MARGIN = 500
 // A stand-in for the layer: its style, and one element that keeps its size.
 function fakeLayer() {
   const label = { style: { scale: '' } }
+  const attributes = new Set<string>()
   const layer = {
     style: { transform: '', willChange: '' },
     querySelectorAll: () => [label],
+    setAttribute: (name: string) => { attributes.add(name) },
+    removeAttribute: (name: string) => { attributes.delete(name) },
   }
-  return { layer: layer as unknown as HTMLElement, style: layer.style, label }
+  return { layer: layer as unknown as HTMLElement, style: layer.style, label, attributes }
 }
 
 function setup(canScale = true) {
@@ -50,18 +53,20 @@ test('the transform puts every world point where a new layout would', () => {
 })
 
 test('a pan moves the layer, and is laid out once it stops', () => {
-  const { commits, frame, style } = setup()
+  const { commits, frame, style, attributes } = setup()
   frame({ x: 0, y: 0, zoom: 1 })
   assert.equal(commits.length, 1)
   for (let i = 1; i <= 10; i++) frame({ x: -i * 10, y: 0, zoom: 1 })
   assert.equal(commits.length, 1, 'no layout while it moves')
   assert.equal(style.transform, 'translate(-100px, 0px) scale(1)')
   assert.equal(style.willChange, 'transform')
+  assert.ok(attributes.has('data-camera-moving'), 'marked while it moves')
   // Still for longer than it takes to settle.
   for (let i = 0; i < 10; i++) frame({ x: -100, y: 0, zoom: 1 })
   assert.deepEqual(commits.at(-1), { x: -100, y: 0, zoom: 1 })
   assert.equal(style.transform, '')
   assert.equal(style.willChange, '')
+  assert.ok(!attributes.has('data-camera-moving'), 'and not at rest')
 })
 
 test('a long pan is laid out again before the edge of the layout shows', () => {

@@ -24,6 +24,18 @@
   transform-origin: 0 0;
 }
 
+/* While lib/worldCamera moves the world layer on the compositor, the layer is
+   an isolated group: a blend mode inside it blends with the layer alone, not
+   with the atrium behind it. A trace's light, screened onto the ground, came
+   out at full strength on a light atrium for as long as the view moved, and
+   went back when it stopped. So what blends with the ground carries what it
+   would look like over it, --over-ground, and is drawn plainly in that colour
+   while the layer moves -- over the ground, the very same pixels. */
+[data-camera-moving] [data-blends-with-ground] {
+  mix-blend-mode: normal !important;
+  background: var(--over-ground) !important;
+}
+
 /* Nier:Automata Inspired Theme */
 /* Colour as roles rather than as names.
  *
@@ -900,6 +912,11 @@ input[type='color']::-moz-color-swatch { border: none; }
   from { opacity: 0; transform: translateY(8px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+/* No backdrop-filter on these, or on anything else over the atrium. The
+   canvas behind repaints every frame -- its particles drift -- so a blur over
+   it is worked out again every frame: the delete dialog, blurred, took the
+   cursor from 59 frames a second to 17 over three hundred traces. Under an 80%
+   dim it hardly showed anyway. */
 .modal-backdrop { animation: backdrop-in 140ms ease-out both; }
 .modal-backdrop > * { animation: modal-in 220ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both; }
 

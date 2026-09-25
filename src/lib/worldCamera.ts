@@ -25,6 +25,11 @@
 // one, which costs a style write each per frame of a zoom, and nothing during
 // a pan; a single inherited CSS variable would be one write, but has the
 // browser restyle the whole layer every frame, and was slower by far.
+//
+// While it's on the compositor the layer carries data-camera-moving. It is an
+// isolated group then, so anything whose look depends on what's behind the
+// layer -- a blend mode, a backdrop filter -- can't see it, and uses that to
+// draw itself another way (see [data-blends-with-ground] in index.css).
 
 // screen = world * zoom + (x, y)
 export interface View {
@@ -105,6 +110,7 @@ export function createWorldCamera({ commit, margin, settleMs = 120, maxGrowth = 
         if (k < maxGrowth) {
           layer.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`
           layer.style.willChange = 'transform'
+          layer.setAttribute('data-camera-moving', '')
           active = true
           keepSize ??= Array.from(layer.querySelectorAll<HTMLElement>('[data-keeps-size]'))
           if (k !== keepSizeAt) {
@@ -128,6 +134,7 @@ export function createWorldCamera({ commit, margin, settleMs = 120, maxGrowth = 
         unscale()
         if (!moving) {
           layer.style.willChange = ''
+          layer.removeAttribute('data-camera-moving')
           active = false
         }
       }

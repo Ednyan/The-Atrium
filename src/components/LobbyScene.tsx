@@ -4357,7 +4357,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {importProgress && (
           <div
             className="absolute inset-0 z-[9999] pointer-events-auto flex items-center justify-center cursor-wait"
-            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.72)', backdropFilter: 'blur(2px)' }}
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.72)' }}
             onWheel={e => e.stopPropagation()}
             onContextMenu={e => e.preventDefault()}
           >

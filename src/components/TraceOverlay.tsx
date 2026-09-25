@@ -272,6 +272,16 @@ function hexToRgb(hex: string) {
     : { r: 255, g: 255, b: 255 }
 }
 
+// What `light`, screen-blended onto an atrium of colour `ground`, looks like:
+// the colour to draw plainly where screen can't reach the ground (see
+// [data-blends-with-ground] in index.css). The same at any opacity -- a colour
+// at alpha a over the ground is (1 - a) * ground + a * colour, blend or none.
+function screenOver(ground: string | undefined, light: string) {
+  const g = hexToRgb(ground || '#0a0a0f'), l = hexToRgb(light)
+  const screen = (a: number, b: number) => Math.round(255 - ((255 - a) * (255 - b)) / 255)
+  return `rgb(${screen(g.r, l.r)}, ${screen(g.g, l.g)}, ${screen(g.b, l.b)})`
+}
+
 // A cursor's outline, which is what separates it from the atrium: near-black
 // on a light one, white on a dark one.
 function cursorEdgeOn(background: string | undefined) {
@@ -5494,8 +5504,10 @@ return (
         (zOf), leaving that level free. */}
     {trace.illuminate && (
       <div
+        data-blends-with-ground=""
         className="absolute pointer-events-none"
         style={{
+          ['--over-ground' as any]: screenOver(atriumBackground, trace.lightColor ?? '#ffffff'),
           zIndex: zOf(trace) - 1,
           left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
           top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
@@ -9693,7 +9705,7 @@ return (
       {/* Full view modal (also the text-trace preview) */}
       {modalTrace && (
         <div
-          className="fixed inset-0 bg-nier-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setModalTrace(null)}
         >
           <div
@@ -10006,7 +10018,7 @@ return (
           red, since this creates something. */}
       {newGroupDialog && (
         <div
-          className="fixed inset-0 bg-nier-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => { if (!newGroupBusy) setNewGroupDialog(null) }}
         >
           <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
@@ -10076,7 +10088,7 @@ return (
 
       {deleteConfirmDialog && (
         <div
-          className="fixed inset-0 bg-nier-black/80 backdrop-blur-sm flex items-center justify-center z-[10000100] pointer-events-auto"
+          className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setDeleteConfirmDialog(null)}
         >
           {/* Scanline overlay */}
