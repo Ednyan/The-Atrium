@@ -5,7 +5,7 @@ import ShapeStyleControls from './ShapeStyleControls'
 import TraceNameField from './TraceNameField'
 import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
-import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { newTraceOrderFields } from '../lib/order'
 import { nextTextName } from '../lib/traceNames'
@@ -270,7 +270,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     onShapeDraftChange?.({ ...shapeStyle, width: shapeWidth, height: shapeHeight })
   }, [shapeDragArmed, shapeWidth, shapeHeight, shapeStyle, onShapeDraftChange])
   
-  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGameStore()
+  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGamePick('username', 'userId', 'position', 'addTrace', 'isLobbyFull', 'getLobbySizeBytes')
   const lobbyFull = isLobbyFull()
   
   // Use trace position if provided, otherwise fall back to character position

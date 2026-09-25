@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useGameStore } from '../store/gameStore'
+import { useGamePick } from '../store/gameStore'
 import ProfileSettings from './ProfileSettings'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
 import PinterestMark from './PinterestMark'
@@ -96,7 +96,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
   const [isHovered, setIsHovered] = useState<string | null>(null)
   const { t } = useTranslation()
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const { username, setUsername } = useGameStore()
+  const { username, setUsername } = useGamePick('username', 'setUsername')
 
   // Renaming in place, desktop only -- see the field itself for why the web
   // keeps sending people to Profile Settings.

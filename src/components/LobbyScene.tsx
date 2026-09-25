@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
-import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
 import { DONATE_CUT } from './DonateButton'
 import { currentTracePreset } from '../lib/tracePresets'
@@ -10,7 +10,8 @@ import { readPackingShape } from '../lib/atriumPreferences'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
-import TraceOverlay from './TraceOverlay'
+import TraceOverlay, { CULL_MARGIN } from './TraceOverlay'
+import { createWorldCamera } from '../lib/worldCamera'
 import { threadCrosses, type Box } from '../lib/traceLinks'
 import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
@@ -45,9 +46,18 @@ import PinterestImportPanel from './PinterestImportPanel'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
-const AVATAR_SIZE = 20
-const TRACE_RENDER_DISTANCE = 2000
-const TRACE_FADE_DISTANCE = 1500
+// Where the cursor is in the world, and the zoom, in the HUD. A component of
+// its own, subscribed on its own: the position changes with every movement of
+// the mouse, and nothing else on screen needs drawing again for it.
+function CursorReadout({ zoom }: { zoom: number }) {
+  const position = useGameStore(state => state.position)
+  return (
+    <p className="text-nier-bg/80 text-[11px] tracking-wider">
+      ({Math.round(position.x)}, {Math.round(position.y)}) • {zoom.toFixed(2)}x
+    </p>
+  )
+}
+
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.40
 // One keypress of zoom, and the same with Ctrl held.
@@ -438,17 +448,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const canvasRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const worldContainerRef = useRef<Container | null>(null)
-  const avatarsRef = useRef<Map<string, Graphics>>(new Map())
-  const tracesRef = useRef<Map<string, Container>>(new Map())
   const labelRef = useRef<Text | null>(null)
   const playerAvatarRef = useRef<Graphics | null>(null)
   const positionRef = useRef({ x: 0, y: 0 })
   const tracePlacementIndicatorRef = useRef<Graphics | null>(null)
   const traceIndicatorsRef = useRef<Container | null>(null)
   // Object pool for trace indicators to prevent memory leaks
-  const indicatorPoolRef = useRef<Array<{ graphics: Graphics, distanceText: Text, unitText: Text }>>([])
+  const indicatorPoolRef = useRef<Array<{ graphics: Graphics, distanceText: Text, unitText: Text, labelAt: number }>>([])
   const tracesDataRef = useRef<typeof traces>([])
-  const otherUsersRef = useRef<typeof otherUsers>({})
   const zoomRef = useRef(1.0)
   const targetZoomRef = useRef(1.0) // Target zoom for smooth interpolation
   const cameraRestoredRef = useRef(false) // Whether we restored a saved camera position
@@ -475,7 +482,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const isAreaSelectingRef = useRef(false)
   const areaSelectRectRef = useRef<HTMLDivElement>(null)
   const showTracePanelRef = useRef(false)
-  const worldOffsetRef = useRef({ x: 0, y: 0 })
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
   // Per-atrium: how a multi-item drop/paste batch gets arranged (see the
@@ -576,7 +582,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // periodically while open, rather than only on other state changes.
   const [, setOnlineUsersListTick] = useState(0)
   
-  const { username, position, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGameStore()
+  const { username, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'pendingChanges', 'deletedTraces', 'isSavingChanges', 'hasPendingChanges')
   const [showTracePanel, setShowTracePanel] = useState(false)
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
@@ -1513,11 +1519,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     tracesDataRef.current = traces
   }, [traces])
   
-  // Keep otherUsers ref in sync
-  useEffect(() => {
-    otherUsersRef.current = otherUsers
-  }, [otherUsers])
-  
   // T key shortcut to open trace panel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2250,14 +2251,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     } catch {}
   }, [lobbyId, userId])
 
-  // Keep position ref in sync
+  // The cursor's position, kept in a ref by subscribing to the store rather
+  // than by rendering for it: it changes with every movement of the mouse
+  // (see useGamePick). The camera starts on it when nothing was saved.
   useEffect(() => {
+    const { position } = useGameStore.getState()
     positionRef.current = position
-    // Initialize camera to center on player at start (only once, if no saved position)
     if (!cameraRestoredRef.current && cameraPositionRef.current.x === 0 && cameraPositionRef.current.y === 0) {
       cameraPositionRef.current = { x: position.x, y: position.y }
     }
-  }, [position])
+    return useGameStore.subscribe(state => { positionRef.current = state.position })
+  }, [])
   
   // Initialize presence for this lobby. Traces are now loaded earlier, from
   // App.tsx, so they're already in the store (and local media pre-resolved
@@ -2853,11 +2857,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Fluid animation loop
       let pulseTime = 0
       let frameCounter = 0
-      // What the traces were last laid out at (see below).
-      let sentView = { x: NaN, y: NaN, zoom: NaN }
-      let lastFrameZoom = NaN
-      let zoomEndsAt = 0
-      let layerScaled = false
+      // The traces' layer: laid out from React state, committed with
+      // flushSync so it's placed in the same frame as the grid (set plainly,
+      // it trailed the grid by a frame and caught up).
+      const worldCamera = createWorldCamera({
+        margin: CULL_MARGIN,
+        commit: (view, previous) => flushSync(() => {
+          if (!previous || view.x !== previous.x || view.y !== previous.y) setWorldOffset({ x: view.x, y: view.y })
+          if (!previous || view.zoom !== previous.zoom) setZoom(view.zoom)
+        }),
+      })
       
       app.ticker.add(() => {
         frameCounter++
@@ -2909,72 +2918,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // Sync world offset for overlay
         const newOffsetX = worldContainer.x
         const newOffsetY = worldContainer.y
-        worldOffsetRef.current = { x: newOffsetX, y: newOffsetY }
         
-        // The traces, which are DOM, placed from React state -- in this frame.
-        //
-        // Set plainly from here, that state was committed after this frame
-        // had already painted the grid, so the traces trailed the grid by a
-        // frame and caught up: the small correction seen all through a zoom.
-        // flushSync commits before the frame paints.
-        //
-        // Compared with what was last sent, not with zoom and worldOffset as
-        // this closure captured them when the ticker was made -- which never
-        // changed, so a zoom ending near where it began could stop a step
-        // short of the grid.
-        //
-        // Except while a zoom is under way. Laid out afresh at each step, every
-        // box edge and every glyph was rounded to the pixel on its own, a
-        // little differently each frame -- traces and text shifting as they
-        // grew or shrank. Instead the layer they were last laid out in is
-        // scaled whole, by the compositor, and laid out again once the zoom
-        // has stopped: moving smoothly, then crisp at rest. It is also far less
-        // work than rendering every trace every frame, which is what made a
-        // long zoom out slow.
-        //
-        // Not past a quarter either way, though: the layer holds only what was
-        // on screen, with a margin, when it was laid out, and scaled up it
-        // blurs. Nor with a mouse button down -- a trace being dragged moves by
-        // the zoom it was laid out at.
-        const offsetChanged = newOffsetX !== sentView.x || newOffsetY !== sentView.y
-        const zoomMoved = zoomRef.current !== sentView.zoom
+        // The traces, which are DOM, laid out from React state -- or, while
+        // the view moves, their layer moved and scaled whole: see
+        // lib/worldCamera. Not while a mouse button is down, unless for the
+        // pan itself: a trace being dragged moves by the view it was laid out
+        // at.
         const now = performance.now()
-        if (zoomRef.current !== lastFrameZoom) zoomEndsAt = now + 120
-        lastFrameZoom = zoomRef.current
-        const k = zoomRef.current / sentView.zoom
-        const layer = traceWorldLayerRef.current
-        const zooming = now < zoomEndsAt
-        if (layer && zooming && k > 0.8 && k < 1.25 && !mouseHeld) {
-          // Where the layer's (0, 0) now is: screen = world * zoom + offset,
-          // and it was laid out with sentView's.
-          layer.style.transform = `translate(${newOffsetX - sentView.x * k}px, ${newOffsetY - sentView.y * k}px) scale(${k})`
-          layer.style.willChange = 'transform'
-          layerScaled = true
-        } else {
-          if (offsetChanged || zoomMoved) {
-            sentView = { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current }
-            flushSync(() => {
-              if (offsetChanged) setWorldOffset({ x: newOffsetX, y: newOffsetY })
-              if (zoomMoved) setZoom(zoomRef.current)
-            })
-          }
-          // In the same frame as the layout it stood in for -- or, for a zoom
-          // that ended where it began, simply so the layer is drawn flat again.
-          // Left to the compositor until the zoom is over, though: let go at a
-          // new layout midway and taken back the next frame, the layer was
-          // drawn twice over for it.
-          if (layer && layerScaled) {
-            layer.style.transform = ''
-            if (!zooming) {
-              layer.style.willChange = ''
-              layerScaled = false
-            }
-          }
-        }
-        
+        const viewMoved = worldCamera.frame({
+          layer: traceWorldLayerRef.current,
+          view: { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current },
+          now,
+          width: window.innerWidth,
+          height: window.innerHeight,
+          canScale: !mouseHeld || isPanningRef.current,
+        })
+
         // The grid is in screen space (drawGrid), so it's redrawn on every
-        // frame the view moves -- with the traces, above -- and not otherwise.
-        if (offsetChanged || zoomMoved) updateGridRef.current?.()
+        // frame the view moves, and not otherwise.
+        if (viewMoved) updateGridRef.current?.()
         
         // Floating particles, which drift every frame.
         themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)
@@ -3182,7 +3144,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             unitText.anchor.set(0, 0.5)
             graphics.addChild(distanceText)
             graphics.addChild(unitText)
-            indicatorPoolRef.current.push({ graphics, distanceText, unitText })
+            indicatorPoolRef.current.push({ graphics, distanceText, unitText, labelAt: 0 })
           }
           
           // Hide all indicators first
@@ -3259,14 +3221,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             indicator.x = indicatorX
             indicator.y = indicatorY
             
-            // Update text
-            distanceText.text = `${Math.round(distance)}`
-            distanceText.style.fill = ink
-            unitText.style.fill = ink
+            // The distance in words, at most ten times a second. Set on every
+            // frame, a pan drew each label afresh -- letter by letter, for the
+            // letter spacing -- and sent it to the GPU, every frame, for a
+            // number changing too fast to read.
+            if (now - poolItem.labelAt > 100) {
+              distanceText.text = `${Math.round(distance)}`
+              distanceText.style.fill = ink
+              unitText.style.fill = ink
+              unitText.x = distanceText.width / 2 + 2
+              poolItem.labelAt = now
+            }
             distanceText.alpha = distanceAlpha * 0.8
             distanceText.y = bracketSize + 12
             unitText.alpha = distanceAlpha * 0.6
-            unitText.x = distanceText.width / 2 + 2
             unitText.y = bracketSize + 12
             
             indicator.visible = true
@@ -3275,148 +3243,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           } // end showIndicators else
         }
 
-        // Update other users in world space
-        const currentOtherUsers = otherUsersRef.current
-        
-        // Clean up avatars for users who have left
-        avatarsRef.current.forEach((avatar, id) => {
-          if (!currentOtherUsers[id]) {
-            const label = (avatar as any)?.label
-            if (label) {
-              label.destroy()
-            }
-            avatar.destroy()
-            avatarsRef.current.delete(id)
-          }
-        })
-        
-        Object.entries(currentOtherUsers).forEach(([id, user]) => {
-          let avatar = avatarsRef.current.get(id)
-          
-          if (!avatar) {
-            // Creating avatar for user
-            const newAvatar = new Graphics()
-            
-            // Convert hex color to integer (e.g., '#ff0000' -> 0xff0000)
-            const hexToInt = (hex: string) => {
-              const cleanHex = hex.replace('#', '')
-              return parseInt(cleanHex, 16)
-            }
-            const userColor = hexToInt(user.playerColor || '#ffffff')
-            
-            // Outer glow
-            newAvatar.beginFill(userColor, 0.1)
-            newAvatar.drawCircle(0, 0, AVATAR_SIZE + 8)
-            newAvatar.endFill()
-            
-            // Middle glow
-            newAvatar.beginFill(userColor, 0.3)
-            newAvatar.drawCircle(0, 0, AVATAR_SIZE + 4)
-            newAvatar.endFill()
-            
-            // Main circle
-            newAvatar.beginFill(userColor)
-            newAvatar.drawCircle(0, 0, AVATAR_SIZE)
-            newAvatar.endFill()
-            
-            newAvatar.x = user.x
-            newAvatar.y = user.y
-            worldContainer.addChild(newAvatar)
-            avatarsRef.current.set(id, newAvatar)
-
-            const otherLabel = new Text(user.username, {
-              fontSize: 12,
-              fill: userColor,
-            })
-            otherLabel.x = user.x
-            otherLabel.y = user.y - AVATAR_SIZE - 10
-            otherLabel.anchor.set(0.5)
-            worldContainer.addChild(otherLabel)
-            avatar = newAvatar
-            ;(avatar as any).label = otherLabel
-            ;(avatar as any).playerColor = user.playerColor
-          }
-
-          // Update avatar color if it changed
-          const currentColor = (avatar as any)?.playerColor
-          if (currentColor !== user.playerColor) {
-            // Redraw avatar with new color
-            const hexToInt = (hex: string) => {
-              const cleanHex = hex.replace('#', '')
-              return parseInt(cleanHex, 16)
-            }
-            const userColor = hexToInt(user.playerColor || '#ffffff')
-            
-            avatar.clear()
-            // Outer glow
-            avatar.beginFill(userColor, 0.1)
-            avatar.drawCircle(0, 0, AVATAR_SIZE + 8)
-            avatar.endFill()
-            // Middle glow
-            avatar.beginFill(userColor, 0.3)
-            avatar.drawCircle(0, 0, AVATAR_SIZE + 4)
-            avatar.endFill()
-            // Main circle
-            avatar.beginFill(userColor)
-            avatar.drawCircle(0, 0, AVATAR_SIZE)
-            avatar.endFill()
-            
-            ;(avatar as any).playerColor = user.playerColor
-            
-            // Update label color too
-            const otherLabel = (avatar as any)?.label
-            if (otherLabel) {
-              otherLabel.style.fill = userColor
-            }
-          }
-
-          // Smooth interpolation
-          if (avatar && avatar.transform) {
-            avatar.x += (user.x - avatar.x) * 0.1
-            avatar.y += (user.y - avatar.y) * 0.1
-          }
-          
-          const otherLabel = (avatar as any)?.label
-          if (otherLabel && otherLabel.transform) {
-            otherLabel.x = avatar.x
-            otherLabel.y = avatar.y - AVATAR_SIZE - 10
-          }
-          
-          // Fade based on distance
-          const dx = user.x - positionRef.current.x
-          const dy = user.y - positionRef.current.y
-          const distance = Math.sqrt(dx * dx + dy * dy)
-          
-          if (avatar && avatar.transform) {
-            if (distance > TRACE_RENDER_DISTANCE) {
-              avatar.visible = false
-              if (otherLabel && otherLabel.transform) otherLabel.visible = false
-            } else {
-              avatar.visible = true
-              if (otherLabel && otherLabel.transform) otherLabel.visible = true
-              
-              if (distance > TRACE_FADE_DISTANCE) {
-                const fadeAlpha = 1 - ((distance - TRACE_FADE_DISTANCE) / (TRACE_RENDER_DISTANCE - TRACE_FADE_DISTANCE))
-                avatar.alpha = Math.max(0, fadeAlpha)
-                if (otherLabel && otherLabel.transform) otherLabel.alpha = Math.max(0, fadeAlpha)
-              } else {
-                avatar.alpha = 1
-                if (otherLabel && otherLabel.transform) otherLabel.alpha = 1
-              }
-            }
-          }
-        })
-
-        // Other users are now rendered in TraceOverlay DOM, so hide all Pixi avatars
-        avatarsRef.current.forEach((avatar) => {
-          if (avatar) {
-            avatar.visible = false
-            const label = (avatar as any)?.label
-            if (label) {
-              label.visible = false
-            }
-          }
-        })
       })
     }
 
@@ -3472,8 +3298,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Clear all refs to help garbage collection
       cameraRestoredRef.current = false
       worldContainerRef.current = null
-      avatarsRef.current.clear()
-      tracesRef.current.clear()
       labelRef.current = null
       playerAvatarRef.current = null
       tracePlacementIndicatorRef.current = null
@@ -3482,7 +3306,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       gridRef.current = null
       updateGridRef.current = null
       tracesDataRef.current = []
-      otherUsersRef.current = {}
       
       // Destroy indicator pool objects to free GPU memory
       indicatorPoolRef.current.forEach(({ graphics, distanceText, unitText }) => {
@@ -3527,60 +3350,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       themeManagerRef.current.createParticles(window.innerWidth, window.innerHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
     }
   }, [currentLobby?.themeSettings])
-
-  // Update traces visualization with fade effect
-  useEffect(() => {
-    if (!appRef.current || !worldContainerRef.current) return
-    
-    const worldContainer = worldContainerRef.current
-    
-    // Create a set of current trace IDs for fast lookup
-    const currentTraceIds = new Set(traces.map(t => t.id))
-    
-    // Clean up containers for traces that no longer exist
-    tracesRef.current.forEach((container, id) => {
-      if (!currentTraceIds.has(id)) {
-        container.destroy({ children: true })
-        tracesRef.current.delete(id)
-      }
-    })
-
-    traces.forEach((trace) => {
-      if (!tracesRef.current.has(trace.id)) {
-        // Create simple marker for traces (DOM overlay handles actual content)
-        const container = new Container()
-        
-        // Don't add marker dots - traces are displayed via DOM overlay
-
-        container.x = trace.x
-        container.y = trace.y
-        
-        worldContainer.addChild(container)
-        tracesRef.current.set(trace.id, container)
-      }
-      
-      // Update trace visibility and fade based on distance
-      const traceContainer = tracesRef.current.get(trace.id)
-      if (traceContainer) {
-        const dx = trace.x - positionRef.current.x
-        const dy = trace.y - positionRef.current.y
-        const distance = Math.sqrt(dx * dx + dy * dy)
-        
-        if (distance > TRACE_RENDER_DISTANCE) {
-          traceContainer.visible = false
-        } else {
-          traceContainer.visible = true
-          
-          if (distance > TRACE_FADE_DISTANCE) {
-            const fadeAlpha = 1 - ((distance - TRACE_FADE_DISTANCE) / (TRACE_RENDER_DISTANCE - TRACE_FADE_DISTANCE))
-            traceContainer.alpha = Math.max(0, fadeAlpha)
-          } else {
-            traceContainer.alpha = 1
-          }
-        }
-      }
-    })
-  }, [traces, position])
 
   // Fullscreen toggle
   const toggleFullscreen = async () => {
@@ -4845,9 +4614,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             {currentLobby.name} {isLobbyOwner && t('atrium.hud.owner')}{!isLobbyOwner && isLobbyAdmin && t('atrium.hud.admin')}
           </p>
         )}
-        <p className="text-nier-bg/80 text-[11px] tracking-wider">
-          ({Math.round(position.x)}, {Math.round(position.y)}) • {zoomRef.current.toFixed(2)}x
-        </p>
+        <CursorReadout zoom={zoom} />
         <div className="flex gap-1 mt-1.5">
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
@@ -4893,10 +4660,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </button>
         <button
           onClick={() => {
-            // Reset camera to center of map
+            // Reset camera to center of map. Only the camera: the ticker
+            // places everything from it, and the traces' layout belongs to
+            // lib/worldCamera -- set here, it was set to the wrong offset (the
+            // world's origin at the screen's corner, not its middle) for a frame.
             cameraPositionRef.current = { x: 0, y: 0 }
-            worldOffsetRef.current = { x: 0, y: 0 }
-            setWorldOffset({ x: 0, y: 0 })
           }}
           className="atrium-btn w-full mt-1 text-center"
         >

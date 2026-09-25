@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, useGamePick } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { packBoxesAroundCenter, scaleToDisplayBox, getDefaultTraceBoxSize } from '../lib/binPack'
 import { newTraceOrderFields } from '../lib/order'
@@ -26,7 +26,7 @@ type Step = 'boards' | 'pins-loading' | 'confirm' | 'importing' | 'error'
 
 export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, packingShape }: PinterestImportPanelProps) {
   const { t } = useTranslation()
-  const { userId, username, addTrace } = useGameStore()
+  const { userId, username, addTrace } = useGamePick('userId', 'username', 'addTrace')
   const [step, setStep] = useState<Step>('boards')
   const [boards, setBoards] = useState<PinterestBoard[]>([])
   const [boardsLoading, setBoardsLoading] = useState(true)

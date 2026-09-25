@@ -5,7 +5,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
-import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
 import { isEditableTarget } from '../lib/editableTarget'
@@ -412,6 +412,207 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
   return segments.join(' ')
 }
 
+// Your own cursor. A component of its own, subscribed on its own: its look
+// changes as it passes over traces (cursorState), and inside TraceOverlay
+// every crossing drew every trace again.
+//
+// Placed straight from the pointer, not by rendering. It was placed from the
+// position in the store, which is only written after the mouse has moved two
+// world pixels -- so it stepped, zoomed in -- and which drew the whole overlay
+// again each time. On a layer of its own, too, so moving it doesn't repaint
+// the traces it passes over. Mounted while hidden, so it knows where to be
+// when it's shown again.
+let pointerAt: { x: number; y: number } | null = null
+
+function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow }: {
+  hidden: boolean
+  atriumBackground?: string
+  zIndex: number
+  pointerInWindow: boolean
+}) {
+  const { username, playerColor, cursorState, hideOwnNameTag } = useGamePick('username', 'playerColor', 'cursorState', 'hideOwnNameTag')
+  const elRef = useRef<HTMLDivElement | null>(null)
+  const place = useCallback((el: HTMLDivElement | null) => {
+    elRef.current = el
+    if (!el) return
+    // Unseen until the pointer has been somewhere, rather than in the corner.
+    el.style.visibility = pointerAt ? '' : 'hidden'
+    if (pointerAt) el.style.transform = `translate(${pointerAt.x}px, ${pointerAt.y}px)`
+  }, [])
+  useEffect(() => {
+    const follow = (e: PointerEvent) => {
+      pointerAt = { x: e.clientX, y: e.clientY }
+      const el = elRef.current
+      if (!el) return
+      el.style.visibility = ''
+      el.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`
+    }
+    const options = { capture: true, passive: true }
+    window.addEventListener('pointermove', follow, options)
+    window.addEventListener('pointerdown', follow, options)
+    return () => {
+      window.removeEventListener('pointermove', follow, options)
+      window.removeEventListener('pointerdown', follow, options)
+    }
+  }, [])
+
+    // Over the drawing canvas the brush circle is the cursor; a
+    // second one beside it only hides what is being drawn. Off it --
+    // on the drawing panel, a button -- the cursor is needed again.
+    if (hidden) return null
+    const rgb = hexToRgb(playerColor)
+    // The cursor used to be readable because of a drop shadow under it.
+    // With that gone, its outline follows the atrium instead.
+    const cursorEdge = cursorEdgeOn(atriumBackground)
+
+    // Get cursor SVG based on state
+    const getCursorSvg = () => {
+      const size = 24 // Fixed size regardless of zoom
+      const baseProps = {
+        width: size,
+        height: size,
+        viewBox: "0 0 24 24",
+        style: { 
+          transform: 'translate(-2px, -2px)',
+          transition: 'transform 0.1s ease-out',
+        } as React.CSSProperties
+      }
+
+      switch (cursorState) {
+        case 'pointer':
+          // Paint-drop cursor (for clickable items) -- an abstract
+          // blob with trailing streaks, as if a drop of paint were
+          // falling upward against gravity. See
+          // src/assets/cursors/hand-pointer.svg for the editable
+          // source (open in Illustrator to tweak further).
+          return (
+            <svg {...baseProps}>
+              <path
+                d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
+                fill={playerColor}
+                stroke={cursorEdge}
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )
+        case 'grab':
+          // Open hand (for draggable items)
+          return (
+            <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(1.1)' }}>
+              <path
+                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                fill={playerColor}
+                stroke="#90EE90"
+                strokeWidth="2"
+              />
+            </svg>
+          )
+        case 'grabbing':
+          // Closed hand (while dragging)
+          return (
+            <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(0.95)' }}>
+              <path
+                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                fill={playerColor}
+                stroke="#FFD700"
+                strokeWidth="2"
+              />
+            </svg>
+          )
+        case 'not-allowed':
+          // Red X indicator
+          return (
+            <svg {...baseProps}>
+              <path
+                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                fill={playerColor}
+                stroke="#FF4444"
+                strokeWidth="2"
+              />
+            </svg>
+          )
+        default:
+          // Default arrow cursor
+          return (
+            <svg {...baseProps}>
+              <path
+                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
+                fill={playerColor}
+                stroke={cursorEdge}
+                strokeWidth="1.5"
+              />
+            </svg>
+          )
+      }
+    }
+
+    // Player cursor
+    return (
+      <div
+        key="player-cursor"
+        ref={place}
+        style={{
+          // Moved by placeOwnCursor, not by a render.
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          willChange: 'transform',
+          pointerEvents: 'none',
+          zIndex,
+          // Out of the window, it fades away rather than standing where the
+          // pointer left; back in, it's there at once.
+          opacity: pointerInWindow ? 1 : 0,
+          transition: pointerInWindow ? undefined : 'opacity 700ms ease',
+        }}
+      >
+        {getCursorSvg()}
+        {/* Player label -- a user-chosen dark/near-black color used
+            to glow/blend into the also-dark background+canvas,
+            making the tag unreadable. Perceived luminance decides
+            whether the glow is the player's own color (fine for
+            lighter colors, which already contrast against the dark
+            backdrop) or a fixed light stroke/glow (for dark colors,
+            which otherwise vanish into their own background). */}
+        {!hideOwnNameTag && (() => {
+          const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
+          const isDarkColor = luminance < 90
+          return (
+          <div
+            style={{
+              position: 'absolute',
+              top: 20,
+              left: 12,
+              color: playerColor,
+              fontSize: '11px',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+              textShadow: isDarkColor
+                ? '0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
+                : `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+              WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
+              letterSpacing: '0.5px',
+              background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
+              border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
+              padding: '2px 6px',
+              borderRadius: '3px',
+            }}
+          >
+            {username}
+          </div>
+          )
+        })()}
+      </div>
+    )
+}
+
+// How far past the edges of the screen, in world units, traces are still
+// mounted. Also how far LobbyScene can slide this layer while a pan or zoom
+// runs before it has to be laid out again.
+export const CULL_MARGIN = 500
+
 export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, lobbyWidth, lobbyHeight, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t } = useTranslation()
     // Register an @font-face for each custom font bundled from
@@ -436,7 +637,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { position, username, playerZIndex, playerColor, cursorState, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOwnNameTag, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers } = useGameStore()
+  const { username, playerZIndex, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers } = useGamePick('username', 'playerZIndex', 'setCursorState', 'otherUsers', 'removeTrace', 'userId', 'addTrace', 'markTraceChanged', 'markTraceDeleted', 'pendingChanges', 'deletedTraces', 'hasPendingChanges', 'showTraceTypeLabels', 'hideOtherNameTags', 'hideOtherCursors', 'traceFadeEnabled', 'traceFloat', 'traceMomentum', 'dragBounce', 'links', 'putLink', 'dropLink', 'layers')
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -4642,7 +4843,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Memoize visible traces to avoid recalculating on every render
   // Only show traces that are within the viewport (with some margin)
   const visibleTraces = React.useMemo(() => {
-    const margin = 500 // Extra margin around viewport
+    const margin = CULL_MARGIN
     const viewportLeft = -worldOffset.x / zoom - margin
     const viewportTop = -worldOffset.y / zoom - margin
     const viewportRight = (window.innerWidth - worldOffset.x) / zoom + margin
@@ -5124,156 +5325,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // two can be drawn in different layers -- see the world layer below.
   const renderSortedItem = (item: (typeof sortedItems)[number]) => {
     if (item.type === 'player') {
-      // Over the drawing canvas the brush circle is the cursor; a
-      // second one beside it only hides what is being drawn. Off it --
-      // on the drawing panel, a button -- the cursor is needed again.
-      if (hideCursor) return null
-      // Render player cursor
-      const playerScreenX = position.x * zoom + worldOffset.x
-      const playerScreenY = position.y * zoom + worldOffset.y
-
-      const rgb = hexToRgb(playerColor)
-      // The cursor used to be readable because of a drop shadow under it.
-      // With that gone, its outline follows the atrium instead.
-      const cursorEdge = cursorEdgeOn(atriumBackground)
-
-      // Get cursor SVG based on state
-      const getCursorSvg = () => {
-        const size = 24 // Fixed size regardless of zoom
-        const baseProps = {
-          width: size,
-          height: size,
-          viewBox: "0 0 24 24",
-          style: { 
-            transform: 'translate(-2px, -2px)',
-            transition: 'transform 0.1s ease-out',
-          } as React.CSSProperties
-        }
-
-        switch (cursorState) {
-          case 'pointer':
-            // Paint-drop cursor (for clickable items) -- an abstract
-            // blob with trailing streaks, as if a drop of paint were
-            // falling upward against gravity. See
-            // src/assets/cursors/hand-pointer.svg for the editable
-            // source (open in Illustrator to tweak further).
-            return (
-              <svg {...baseProps}>
-                <path
-                  d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
-                  fill={playerColor}
-                  stroke={cursorEdge}
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )
-          case 'grab':
-            // Open hand (for draggable items)
-            return (
-              <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(1.1)' }}>
-                <path
-                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                  fill={playerColor}
-                  stroke="#90EE90"
-                  strokeWidth="2"
-                />
-              </svg>
-            )
-          case 'grabbing':
-            // Closed hand (while dragging)
-            return (
-              <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(0.95)' }}>
-                <path
-                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                  fill={playerColor}
-                  stroke="#FFD700"
-                  strokeWidth="2"
-                />
-              </svg>
-            )
-          case 'not-allowed':
-            // Red X indicator
-            return (
-              <svg {...baseProps}>
-                <path
-                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                  fill={playerColor}
-                  stroke="#FF4444"
-                  strokeWidth="2"
-                />
-              </svg>
-            )
-          default:
-            // Default arrow cursor
-            return (
-              <svg {...baseProps}>
-                <path
-                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                  fill={playerColor}
-                  stroke={cursorEdge}
-                  strokeWidth="1.5"
-                />
-              </svg>
-            )
-        }
-      }
-
-      // Player cursor
       return (
-        <div
+        <OwnCursor
           key="player-cursor"
-          style={{
-            position: 'absolute',
-            left: playerScreenX,
-            top: playerScreenY,
-            pointerEvents: 'none',
-            zIndex: item.zIndex,
-            // Out of the window, it fades away rather than standing where the
-            // pointer left; back in, it's there at once.
-            opacity: pointerInWindow ? 1 : 0,
-            transition: pointerInWindow ? undefined : 'opacity 700ms ease',
-          }}
-        >
-          {getCursorSvg()}
-          {/* Player label -- a user-chosen dark/near-black color used
-              to glow/blend into the also-dark background+canvas,
-              making the tag unreadable. Perceived luminance decides
-              whether the glow is the player's own color (fine for
-              lighter colors, which already contrast against the dark
-              backdrop) or a fixed light stroke/glow (for dark colors,
-              which otherwise vanish into their own background). */}
-          {!hideOwnNameTag && (() => {
-            const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
-            const isDarkColor = luminance < 90
-            return (
-            <div
-              style={{
-                position: 'absolute',
-                top: 20,
-                left: 12,
-                color: playerColor,
-                fontSize: '11px',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-                textShadow: isDarkColor
-                  ? '0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
-                  : `0 0 8px rgba(${rgb.r},${rgb.g},${rgb.b},0.5), 0 2px 4px rgba(0,0,0,0.8)`,
-                WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
-                letterSpacing: '0.5px',
-                background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
-                border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
-                padding: '2px 6px',
-                borderRadius: '3px',
-              }}
-            >
-              {username}
-            </div>
-            )
-          })()}
-        </div>
+          hidden={!!hideCursor}
+          atriumBackground={atriumBackground}
+          zIndex={item.zIndex}
+          pointerInWindow={pointerInWindow}
+        />
       )
     }
 
@@ -6541,9 +6600,13 @@ return (
         </>
       )}
 
-      {/* Username label - outside border container so it doesn't scale */}
+      {/* Username label - outside border container so it doesn't scale.
+          The same size at any zoom, and during one: see data-keeps-size in
+          index.css. Its anchor, the top middle, is at its own 0 0 once the
+          translate has centred it. */}
       {showFilename && trace.type !== 'shape' && (
         <div
+          data-keeps-size=""
           className="absolute text-xs font-semibold text-center pointer-events-none"
           style={{
             bottom: `-${20}px`,
@@ -6715,7 +6778,7 @@ return (
                             {/* Control handle */}
                             <div
                               data-trace-element="true"
-                              className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-10"
+                              data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-10"
                               style={{
                                 left: `${cp2ScreenX}px`,
                                 top: `${cp2ScreenY}px`,
@@ -6762,7 +6825,7 @@ return (
               return (
                 <div
                   data-trace-element="true"
-                  className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-10"
+                  data-keeps-size="" className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-10"
                   style={{
                     left: `${screenX}px`,
                     top: `${screenY}px`,
@@ -6966,7 +7029,7 @@ return (
             <div
               key={`crop-${corner}`}
               data-trace-element="true"
-              className="absolute trace-nier-handle trace-nier-handle-crop cursor-nwse-resize pointer-events-auto z-10"
+              data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-crop cursor-nwse-resize pointer-events-auto z-10"
               style={{
                 left: `${handleX}px`,
                 top: `${handleY}px`,
@@ -7040,7 +7103,7 @@ return (
                     {/* Main point handle */}
                     <div
                       data-trace-element="true"
-                      className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[1000000] ${
+                      data-keeps-size="" className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[1000000] ${
                         isPointSelected ? 'trace-nier-handle-active' : ''
                       }`}
                       style={{
@@ -7080,7 +7143,7 @@ return (
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
+                                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
                                 style={{ left: `${cp1ScreenX}px`, top: `${cp1ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -7112,7 +7175,7 @@ return (
                               </svg>
                               <div
                                 data-trace-element="true"
-                                className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
+                                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
                                 style={{ left: `${cp2ScreenX}px`, top: `${cp2ScreenY}px`, transform: 'translate(-50%, -50%)' }}
                                 onClick={(e) => e.stopPropagation()}
                                 onMouseDown={(e) => {
@@ -7148,7 +7211,7 @@ return (
                 return (
                   <div
                     data-trace-element="true"
-                    className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[1000000]"
+                    data-keeps-size="" className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[1000000]"
                     style={{ left: `${screenX}px`, top: `${screenY}px`, transform: 'translate(-50%, -50%)' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => {
@@ -7244,7 +7307,7 @@ return (
                   <div
                     key={corner}
                     data-trace-element="true"
-                    className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000000]"
+                    data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000000]"
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -7279,7 +7342,7 @@ return (
                   <div
                     key={edge}
                     data-trace-element="true"
-                    className={`absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[1000000] ${cursorClass}`}
+                    data-keeps-size="" className={`absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[1000000] ${cursorClass}`}
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
@@ -7294,7 +7357,7 @@ return (
               {/* Rotation handle at top */}
               <div
                 data-trace-element="true"
-                className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000000]"
+                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000000]"
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY - (borderHeight / 2 + 20)}px`,
@@ -7339,7 +7402,7 @@ return (
                 <div
                   key={`group-${corner}`}
                   data-trace-element="true"
-                  className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000001]"
+                  data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000001]"
                   style={{
                     left: `${corner.includes('r') ? boxLeft + boxWidth : boxLeft}px`,
                     top: `${corner.includes('b') ? boxTop + boxHeight : boxTop}px`,
@@ -7351,7 +7414,7 @@ return (
               ))}
               <div
                 data-trace-element="true"
-                className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000001]"
+                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000001]"
                 style={{
                   left: `${boxLeft + boxWidth / 2}px`,
                   top: `${boxTop - 20}px`,
@@ -7364,34 +7427,8 @@ return (
           )
         })()}
 
-      </div>
-
-        {linkMenuAt && (
-          <LinkMenu
-            at={linkMenuAt}
-            links={links.filter(l => selectedLinks.has(l.id))}
-            borderOf={link => placeTrace(link.from)?.colour ?? '#8f8f8f'}
-            onEdit={editLinks}
-            onDelete={() => deleteLinks(selectedLinksRef.current)}
-            onClose={() => setLinkMenuAt(null)}
-          />
-        )}
-
-        {/* While connecting: what to do next, and how not to. */}
-        {connectFrom && (
-          <div
-            className="fixed left-1/2 bottom-10 -translate-x-1/2 z-[10000050] pointer-events-none font-mono border px-5 py-3 text-center"
-            style={{ background: 'rgb(var(--c-ground) / 0.94)', borderColor: 'rgb(var(--c-line) / 0.7)' }}
-          >
-            <div className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.links.pickTarget')}</div>
-            <div className="text-nier-bg/60 text-[10px] tracking-[0.18em] uppercase mt-1">{t('atrium.links.escToCancel')}</div>
-          </div>
-        )}
-
-        {/* The player's own cursor, above everything, as it always was. */}
-        {sortedItems.filter(item => item.type === 'player').map(renderSortedItem)}
-
-        {/* Render other users' cursors */}
+        {/* Other people's cursors, in the world layer: placed in the world,
+            they move with it while a pan or zoom scales the layer whole. */}
         {!hideOtherCursors && Object.entries(otherUsers).map(([odUserId, user]) => {
           const userScreenX = user.x * zoom + worldOffset.x
           const userScreenY = user.y * zoom + worldOffset.y
@@ -7463,6 +7500,33 @@ return (
             </div>
           )
         })}
+      </div>
+
+        {linkMenuAt && (
+          <LinkMenu
+            at={linkMenuAt}
+            links={links.filter(l => selectedLinks.has(l.id))}
+            borderOf={link => placeTrace(link.from)?.colour ?? '#8f8f8f'}
+            onEdit={editLinks}
+            onDelete={() => deleteLinks(selectedLinksRef.current)}
+            onClose={() => setLinkMenuAt(null)}
+          />
+        )}
+
+        {/* While connecting: what to do next, and how not to. */}
+        {connectFrom && (
+          <div
+            className="fixed left-1/2 bottom-10 -translate-x-1/2 z-[10000050] pointer-events-none font-mono border px-5 py-3 text-center"
+            style={{ background: 'rgb(var(--c-ground) / 0.94)', borderColor: 'rgb(var(--c-line) / 0.7)' }}
+          >
+            <div className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.links.pickTarget')}</div>
+            <div className="text-nier-bg/60 text-[10px] tracking-[0.18em] uppercase mt-1">{t('atrium.links.escToCancel')}</div>
+          </div>
+        )}
+
+        {/* The player's own cursor, above everything, as it always was. */}
+        {sortedItems.filter(item => item.type === 'player').map(renderSortedItem)}
+
 
 
       {/* Live rotation angle, shown only during a rotate drag. Offset from the

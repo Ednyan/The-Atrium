@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -19,9 +19,9 @@ const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 // Nothing outside this hook needs the value in order to render, so it stays a
 // ref here and the channel connects immediately, exactly as it did before.
 export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void) {
-  const { userId, username, position, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGameStore()
+  const { userId, username, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGamePick('userId', 'username', 'playerColor', 'updateOtherUser', 'updateOtherUserPosition', 'removeOtherUser', 'setPosition')
   const channelRef = useRef<RealtimeChannel | null>(null)
-  const positionRef = useRef(position)
+  const positionRef = useRef(useGameStore.getState().position)
   const playerColorRef = useRef(playerColor)
   // Fixed once per atrium connection (not refreshed on every position/color
   // broadcast) so other users can compute "time in atrium" from it.
@@ -39,10 +39,9 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
   // resolves can't leak an operator into an atrium it entered invisibly.
   const ghostRef = useRef<boolean | null>(null)
 
-  // Keep position ref up to date
-  useEffect(() => {
-    positionRef.current = position
-  }, [position])
+  // Keep position ref up to date -- by subscribing, not by rendering for it:
+  // it changes with every movement of the mouse (see useGamePick).
+  useEffect(() => useGameStore.subscribe(state => { positionRef.current = state.position }), [])
 
   // Keep player color ref up to date
   useEffect(() => {
@@ -225,8 +224,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
         if (status === 'SUBSCRIBED' && !(await ghostPromise)) {
           await channel.track({
             username,
-            x: position.x,
-            y: position.y,
+            x: positionRef.current.x,
+            y: positionRef.current.y,
             playerColor: playerColorRef.current,
             online_at: new Date(joinedAtRef.current).toISOString(),
           })
@@ -245,8 +244,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // Sent as a lightweight broadcast (not track()) -- see comment above the
     // channel config for why position is kept out of the presence registry.
     let lastBroadcastTime = 0
-    let lastBroadcastX = position.x
-    let lastBroadcastY = position.y
+    let lastBroadcastX = positionRef.current.x
+    let lastBroadcastY = positionRef.current.y
     const MIN_BROADCAST_INTERVAL = 5000 // 5000ms = 1 update per 5 seconds max
     const MIN_MOVEMENT_DISTANCE = 42 // Only update if moved at least 42 pixels
 

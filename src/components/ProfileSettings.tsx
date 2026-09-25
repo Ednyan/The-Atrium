@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { friendlyAuthError } from '../lib/authErrors'
 import { supabase, isDesktop } from '../lib/supabase'
-import { useGameStore } from '../store/gameStore'
+import { useGamePick } from '../store/gameStore'
 import { deleteMyAccount, requestDeletionCode } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
@@ -24,7 +24,7 @@ interface ProfileSettingsProps {
 
 export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor } = useGameStore()
+  const { userId, username, setUsername, playerColor, setPlayerColor } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor')
   const [displayName, setDisplayName] = useState(username)
   const [actualUsername, setActualUsername] = useState('')
   const [canChange, setCanChange] = useState(isDesktop) // Desktop: always allowed

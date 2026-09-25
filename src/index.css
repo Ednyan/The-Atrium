@@ -14,6 +14,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Things in the atrium's world layer that keep their size on screen whatever
+   the zoom -- a trace's name under it, a handle -- anchored to a point in the
+   world. lib/worldCamera scales them back while it scales the layer, about
+   their own 0 0: that's where their anchor has to be -- the top left as
+   placed, or wherever a translate(-50%, ...) centring moves it, since the
+   scale property applies after transform. */
+[data-keeps-size] {
+  transform-origin: 0 0;
+}
+
 /* Nier:Automata Inspired Theme */
 /* Colour as roles rather than as names.
  *

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, useGamePick } from '../store/gameStore'
 import { useTranslation, pluralCategory } from '../lib/i18n'
 import type { Layer, Trace } from '../types/database'
 import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, type Ordered } from '../lib/order'
@@ -149,7 +149,7 @@ interface LayerPanelProps {
 export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSetSelection, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
-  const { traces, username, userId, addTrace, removeTrace } = useGameStore()
+  const { traces, username, userId, addTrace, removeTrace } = useGamePick('traces', 'username', 'userId', 'addTrace', 'removeTrace')
   // The atrium's groups, from the store (hooks/useLayers loads and keeps them).
   // Changes read useGameStore.getState().layers instead: queued behind another
   // (lib/layerQueue), they run after this render's copy is out of date.

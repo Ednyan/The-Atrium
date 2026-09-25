@@ -20,7 +20,7 @@ import { consumeSignInIntent } from './lib/signInIntent'
 import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { LobbyBrowser } from './components/LobbyBrowser'
-import { useGameStore } from './store/gameStore'
+import { useGameStore, useGamePick } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
@@ -903,7 +903,7 @@ function MovedNotice() {
 
 function AppInner() {
   const { t } = useTranslation()
-  const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGameStore()
+  const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGamePick('setUsername', 'setUserId', 'setPlayerColor', 'clearLobbyData')
 
   // Light or dark, published once at the root so every screen inherits it.
   //

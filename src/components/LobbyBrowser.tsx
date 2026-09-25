@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
-import { useGameStore } from '../store/gameStore'
+import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -77,7 +77,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vaultPath, setVaultPath] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
-  const { username } = useGameStore()
+  const { username } = useGamePick('username')
   const [vaultBusy, setVaultBusy] = useState(false)
   const [vaultError, setVaultError] = useState<string | null>(null)
 

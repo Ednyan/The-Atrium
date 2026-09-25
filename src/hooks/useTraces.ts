@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Trace } from '../types/database'
 
@@ -129,7 +129,7 @@ export function mapRowToTrace(row: any): Trace {
 }
 
 export function useTraces(lobbyId: string | null) {
-  const { setTraces, addTrace, removeTrace, setServerLobbySize } = useGameStore()
+  const { setTraces, addTrace, removeTrace, setServerLobbySize } = useGamePick('setTraces', 'addTrace', 'removeTrace', 'setServerLobbySize')
   // True while the initial trace fetch (and, on desktop, local media
   // pre-resolution) for this lobby is in flight. Callers (App.tsx) use this
   // to hold the atrium-entry loading screen open until data is actually

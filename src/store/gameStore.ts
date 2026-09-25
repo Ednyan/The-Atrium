@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import type { UserPresence, Trace, Layer } from '../types/database'
 import { isDesktop } from '../lib/supabase'
 import { recordTraceCreated } from '../lib/supportAppeal'
@@ -441,3 +442,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     return get().getLobbySizeBytes() >= LOBBY_SIZE_LIMIT
   },
 }))
+
+// Just these fields of the store, re-rendering only when one of them changes.
+//
+// useGameStore() with no selector takes all of it, and so re-renders on any
+// change to any of it -- the cursor's position among them, which changes with
+// every movement of the mouse. The app's root took it that way, and the
+// atrium, and the trace overlay: every twitch of the mouse drew the whole app
+// again, three hundred traces included.
+export function useGamePick<K extends keyof GameState>(...keys: K[]): Pick<GameState, K> {
+  return useGameStore(useShallow((state: GameState) => {
+    const picked = {} as Pick<GameState, K>
+    for (const key of keys) picked[key] = state[key]
+    return picked
+  }))
+}
