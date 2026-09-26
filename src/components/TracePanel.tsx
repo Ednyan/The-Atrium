@@ -242,9 +242,11 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setShapeHeight(Math.round(shapeDraftSize.height))
   }, [shapeDraftSize])
 
+  // The fields edited here: sent to the canvas as they change.
   const applyShapeSize = (width: number, height: number) => {
     setShapeWidth(width)
     setShapeHeight(height)
+    if (shapeDragArmed) onShapeDraftChange?.({ ...shapeStyle, width, height })
   }
 
   // Arms (and disarms) drag-to-size on the canvas. Disarmed on unmount too --
@@ -256,19 +258,23 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     return () => onShapeModeChange?.(false)
   }, [shapeDragArmed, onShapeModeChange])
 
-  // Fields -> canvas. One effect covering every field the preview draws, so
-  // the size, the shape and the corner radius can't drift apart -- and so the
-  // preview is on screen from the moment Shape is picked rather than only
-  // after something is dragged.
+  // Fields -> canvas: the style whenever it changes, with the size as it
+  // stands, and everything the moment Shape is picked, so the preview is on
+  // screen before anything is dragged. The size itself is sent only when it
+  // is edited here (applyShapeSize), never when it was taken from the canvas.
   //
-  // This does echo values that arrived from the canvas straight back at it.
-  // That terminates because LobbyScene ignores a draft equal to the one it
-  // already holds, keeping the object identity stable so the adopt effect
-  // above doesn't re-fire. Without that guard the two would bounce forever.
+  // It used to be sent from here on every change, echoing the canvas's own
+  // size back at it, rounded. A drag that moved on before the echo arrived
+  // had it overwrite the newer size; when this and the adopt effect above
+  // fired in the same render with different sizes, each copied the other's
+  // and the next render copied them back -- the shape flipping between two
+  // sizes for good, drag over or not.
   useEffect(() => {
     if (!shapeDragArmed) return
     onShapeDraftChange?.({ ...shapeStyle, width: shapeWidth, height: shapeHeight })
-  }, [shapeDragArmed, shapeWidth, shapeHeight, shapeStyle, onShapeDraftChange])
+    // Not on the size: see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapeDragArmed, shapeStyle, onShapeDraftChange])
   
   const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGamePick('username', 'userId', 'position', 'addTrace', 'isLobbyFull', 'getLobbySizeBytes')
   const lobbyFull = isLobbyFull()

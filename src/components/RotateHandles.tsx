@@ -9,13 +9,13 @@ import type React from 'react'
 // back toward the box: a moon, as a moon is drawn -- thickest out along the
 // diagonal, curling round to a point either side. It sits a little out from
 // the corner, clear of the scale handle there (which reaches 8.5 along the
-// diagonal), with about as much room at its tips as at its middle.
+// diagonal) by some 7px, with about as much room at its tips as at its middle.
 
 // All in screen pixels: the moon's radius, how thick it is at its thickest,
 // and how far out along the diagonal its centre sits.
 const R = 11
 const THICK = 0.37 * R
-const OUT = 6.5
+const OUT = 9
 // How far round either side of the diagonal the tips reach, in degrees: past
 // a half-circle, so it curls like a moon rather than lying flat like a bow.
 const REACH = 106
