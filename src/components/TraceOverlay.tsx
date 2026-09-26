@@ -5629,7 +5629,8 @@ return (
         // gliding, or in use as an interactive embed -- the handles,
         // grip and caret around it stay where they are, and something
         // being worked with shouldn't drift out from under the pointer.
-        ...(traceFloat > 0 && !isSelected && !isMultiSelected && !isPressed
+        // Not the shape being placed: it would drift while being sized.
+        ...(traceFloat > 0 && !isSelected && !isMultiSelected && !isPressed && trace.id !== SHAPE_DRAFT_ID
           && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
           && !(trace.type === 'embed' && trace.enableInteraction) ? {
           animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
@@ -5704,7 +5705,11 @@ return (
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
             pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
-            overflow: 'hidden',
+            // Not clipped, nor its SVG (shapeStyle): the shape is drawn
+            // inside its box already, stroke and all (the insets below), and
+            // on a turned shape a clip is the edge you see -- one the
+            // browser doesn't antialias, so it came out as a staircase.
+            overflow: 'visible',
             // While its customize panel is open the shape wears the
             // placement frame instead (drawn in the SVG below), so a
             // selection outline on top of it would be two frames.
@@ -5795,7 +5800,7 @@ return (
             const radiusPercentY = (cornerRadius / (height * shapeScaleY)) * 100
 
             // The shape, flipped within its box, and its crop (lib/traceFlip).
-            const shapeStyle = { clipPath: cropClip(shownCrop), transform: flipInBox(trace) || undefined, transformOrigin: 'top left' }
+            const shapeStyle = { clipPath: cropClip(shownCrop), transform: flipInBox(trace) || undefined, transformOrigin: 'top left', overflow: 'visible' as const }
 
             if (shapeType === 'rectangle') {
               return (
