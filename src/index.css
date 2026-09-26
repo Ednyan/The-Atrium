@@ -615,7 +615,7 @@ body.dragging * {
 
 /* The rotation handles (RotateHandles.tsx): crescents dressed as the square
    handles are -- .trace-nier-handle's face, edge, ring and glow, and its
-   grow on hover (about the corner, the SVG's origin). */
+   grow on hover (about the moon's own centre). */
 .trace-rotate-handle { filter: drop-shadow(0 0 5px rgba(181, 181, 181, 0.2)); }
 .trace-rotate-handle-body { transition: transform 0.12s ease; }
 .trace-rotate-handle-ring { fill: none; stroke: rgba(25, 25, 25, 0.9); stroke-width: 3; stroke-linejoin: round; }

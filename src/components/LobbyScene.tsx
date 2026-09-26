@@ -12,7 +12,7 @@ import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay, { CULL_MARGIN } from './TraceOverlay'
 import { createWorldCamera } from '../lib/worldCamera'
-import { threadCrosses, type Box } from '../lib/traceLinks'
+import { type Box } from '../lib/traceLinks'
 import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation } from '../types/database'
@@ -33,8 +33,7 @@ import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { newTraceOrderFields } from '../lib/order'
 import { fileTitle, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
-import { colourToNumber, PREVIEW_OPACITY, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
@@ -557,6 +556,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const handleShapeModeChange = useCallback((active: boolean) => {
     shapeDragArmedRef.current = active
+    setShapeArmed(active)
     // Leaving shape mode (switching type, or closing the panel) drops the
     // preview -- it describes a shape that is no longer being created.
     if (!active) {
@@ -567,8 +567,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }, [])
 
   // Whether the open panel is on a sizeable shape type, i.e. whether a drag on
-  // empty canvas should draw a shape instead of panning.
+  // the canvas should draw a shape instead of panning. As state too, for the
+  // layer that takes the pointer while it is (see shapeArmed below).
   const shapeDragArmedRef = useRef(false)
+  const [shapeArmed, setShapeArmed] = useState(false)
   const isShapeDraggingRef = useRef(false)
   const shapeDragStartWorldRef = useRef<{ x: number; y: number } | null>(null)
   // One-shot signal telling TraceOverlay "select this brand-new path and
@@ -690,7 +692,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // its own selection state internally, so this is passed down rather than
   // lifting that state up wholesale.
   const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
-  const [linkSelectRequest, setLinkSelectRequest] = useState<string[] | null>(null)
+  // A shift+drag area, in world units, for TraceOverlay to select from.
+  const [areaSelectRequest, setAreaSelectRequest] = useState<Box | null>(null)
   // Same one-shot shape as multiSelectRequest: a fresh array every time, so
   // asking to customize the same traces twice fires the effect twice.
   const [customizeRequest, setCustomizeRequest] = useState<string[] | null>(null)
@@ -2664,53 +2667,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 const wx2 = (Math.max(startX, e.clientX) - worldContainerRef.current.x) / zoom
                 const wy2 = (Math.max(startY, e.clientY) - worldContainerRef.current.y) / zoom
 
-                // Approximate each trace's footprint (real per-type rendered
-                // size isn't available here -- that's computed inside
-                // TraceOverlay -- but the same default-size table used for
-                // bin-packing is a reasonable stand-in for hit-testing).
-                const boxOf = (trace: (typeof tracesDataRef.current)[number]): Box => {
-                    let left: number, right: number, top: number, bottom: number
-
-                    // A path is where its points are. Its stored
-                    // x/y/width/height describe where it was first drawn and do
-                    // not move with it, so measuring one from them tests the
-                    // box against a rectangle the path left long ago: dragging
-                    // over the line selected nothing, and dragging over the
-                    // empty space it came from selected it. See pathBounds.
-                    const pathBox = isPathTrace(trace)
-                      ? pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2)
-                      : null
-
-                    if (pathBox) {
-                      ;({ minX: left, minY: top, maxX: right, maxY: bottom } = pathBox)
-                    } else {
-                      const size = (trace.width && trace.height) ? { width: trace.width, height: trace.height } : getDefaultTraceBoxSize(trace.type)
-                      const scaleX = trace.scaleX ?? trace.scale ?? 1
-                      const scaleY = trace.scaleY ?? trace.scale ?? 1
-                      const halfW = (size.width * scaleX) / 2
-                      const halfH = (size.height * scaleY) / 2
-                      left = trace.x - halfW
-                      right = trace.x + halfW
-                      top = trace.y - halfH
-                      bottom = trace.y + halfH
-                    }
-                    return { left, top, right, bottom }
-                }
-                const area = { left: wx1, top: wy1, right: wx2, bottom: wy2 }
-
-                setMultiSelectRequest(tracesDataRef.current
-                  .filter(trace => {
-                    const box = boxOf(trace)
-                    return box.left < area.right && box.right > area.left && box.top < area.bottom && box.bottom > area.top
-                  })
-                  .map(trace => trace.id))
-
-                // And the threads it crosses, wherever they show.
-                const byId = new Map(tracesDataRef.current.map(trace => [trace.id, trace]))
-                setLinkSelectRequest(useGameStore.getState().links.filter(link => {
-                  const a = byId.get(link.from), b = byId.get(link.to)
-                  return !!a && !!b && threadCrosses(boxOf(a), boxOf(b), area, link.straight)
-                }).map(link => link.id))
+                // The traces and threads it takes are worked out by TraceOverlay,
+                // which knows each trace's real size (see areaSelectRequest).
+                setAreaSelectRequest({ left: wx1, top: wy1, right: wx2, bottom: wy2 })
 
                 // This mouseup is immediately followed by a native 'click'
                 // event (mousedown and mouseup both landed on/near the same
@@ -2960,79 +2919,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const indicator = indicatorColorRef.current
 
         if (tracePlacementIndicatorRef.current && placementPos && draftSize) {
-          // Same slow breath as the placement marker, so the two don't feel
-          // like different pieces of UI.
-          pulseTime += 0.02
-          const breath = (Math.sin(pulseTime) + 1) / 2
-          const halfW = draftSize.width / 2
-          const halfH = draftSize.height / 2
-
-          const g = tracePlacementIndicatorRef.current
-          g.clear()
-
-          const left = placementPos.x - halfW
-          const top = placementPos.y - halfH
-
-          const drawGeometry = () => {
-            if (draftSize.shapeType === 'circle') {
-              g.drawEllipse(placementPos.x, placementPos.y, halfW, halfH)
-            } else if (draftSize.shapeType === 'triangle') {
-              // The finished triangle's own proportions -- apex 15% down, base
-              // 15% up, 15% in from each side (see the SVG in TraceOverlay) --
-              // so the preview is the shape that will appear, not a bigger
-              // one. Corner radius isn't drawn: rounding a polygon's corners
-              // needs arc construction this preview doesn't warrant.
-              const w = draftSize.width
-              const h = draftSize.height
-              g.drawPolygon([
-                left + w * 0.5, top + h * 0.15,
-                left + w * 0.85, top + h * 0.85,
-                left + w * 0.15, top + h * 0.85,
-              ])
-            } else if (draftSize.cornerRadius > 0) {
-              // Clamped to half the shorter side: past that Pixi draws nothing
-              // at all, so a large radius on a small shape made the preview
-              // vanish rather than round off.
-              const radius = Math.min(draftSize.cornerRadius, halfW, halfH)
-              g.drawRoundedRect(left, top, draftSize.width, draftSize.height, radius)
-            } else {
-              g.drawRect(left, top, draftSize.width, draftSize.height)
-            }
-          }
-
-          // The shape as it will look -- fill colour, outline colour and
-          // thickness, corner radius -- but at reduced opacity, so it still
-          // reads as something being made rather than something made. Every
-          // value is the panel's, updating as it is changed.
-          if (draftSize.shapeOutlineOnly) {
-            // alignment 0: drawn inside the edge, as the finished shape keeps
-            // its outline inside its box. The width is in world units, and
-            // this graphics object lives in the world, so it scales with zoom
-            // exactly as the real outline does.
-            g.lineStyle({
-              width: draftSize.shapeOutlineWidth,
-              color: colourToNumber(draftSize.shapeOutlineColor || draftSize.shapeColor),
-              alpha: draftSize.shapeOutlineOpacity * PREVIEW_OPACITY,
-              alignment: 0,
-            })
-          } else {
-            g.lineStyle(0)
-          }
-          if (!draftSize.shapeNoFill) g.beginFill(colourToNumber(draftSize.shapeColor), draftSize.shapeOpacity * PREVIEW_OPACITY)
-          drawGeometry()
-          if (!draftSize.shapeNoFill) g.endFill()
-
-          // Over it, the breathing frame that has always marked a shape being
-          // placed -- the "not finished yet" signal, and still visible when
-          // the shape has no fill and no outline to show.
-          g.lineStyle(1.5, indicator.primary, 0.35 + breath * 0.2)
-          drawGeometry()
-          // Centre mark, so a rectangle dragged out very small is still
-          // visible as a placement.
-          g.lineStyle(0)
-          g.beginFill(indicator.primary, 0.55)
-          g.drawCircle(placementPos.x, placementPos.y, 3)
-          g.endFill()
+          // A shape being placed is drawn by TraceOverlay (its shapeDraft),
+          // over the traces, where the shape it becomes will be; this canvas
+          // is under them all.
+          tracePlacementIndicatorRef.current.clear()
         } else if (tracePlacementIndicatorRef.current && placementPos) {
           // Placement marker: one colour, thin lines, and a slow breath.
           //
@@ -4312,7 +4202,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             selectedTraceId={selectedTraceId}
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
-            linkSelectRequest={linkSelectRequest}
+            areaSelectRequest={areaSelectRequest}
+            shapeDraft={shapeDraftSize && clickedTracePosition ? { draft: shapeDraftSize, ...clickedTracePosition } : null}
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
@@ -4325,6 +4216,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             canEdit={canEdit}
           />
         </div>
+
+        {/* While a shape is being placed, the pointer is the shape's: over a
+            trace as over empty canvas, so a shape can be drawn on top of one
+            -- to mark something on it -- instead of the press selecting it.
+            Over the traces (their layer is isolated), under the HUD and the
+            Create Trace panel. A plain layer: the canvas's own mouse handling
+            takes the drag, as it does on empty canvas. */}
+        {shapeArmed && <div className="absolute inset-0" style={{ zIndex: 1, pointerEvents: 'auto', cursor: 'crosshair' }} />}
 
         {/* Shift+drag area-selection rectangle -- position/size mutated
             directly on mousemove (see handleMouseMove), not React state.

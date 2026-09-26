@@ -193,6 +193,23 @@ export function threadCrosses(a: Box, b: Box, area: Box, straight = false): bool
   return false
 }
 
+// Whether a trace's box -- centre, half-size and turn (radians) -- reaches
+// into `area`, for area selection: the box as drawn, turned, not the bigger
+// box around it. Two rectangles overlap unless some edge of one has the
+// other wholly to its far side; for these, that is one of four axes.
+export function boxCrosses(cx: number, cy: number, hw: number, hh: number, turn: number, area: Box): boolean {
+  const cos = Math.abs(Math.cos(turn)), sin = Math.abs(Math.sin(turn))
+  // The area's axes: how far the turned box reaches along x and y.
+  const ex = hw * cos + hh * sin, ey = hw * sin + hh * cos
+  if (cx + ex <= area.left || cx - ex >= area.right || cy + ey <= area.top || cy - ey >= area.bottom) return false
+  // The box's own axes: the area's centre, and how far it reaches, along them.
+  const ax = (area.left + area.right) / 2 - cx, ay = (area.top + area.bottom) / 2 - cy
+  const aw = (area.right - area.left) / 2, ah = (area.bottom - area.top) / 2
+  const c = Math.cos(turn), s = Math.sin(turn)
+  const u = ax * c + ay * s, v = -ax * s + ay * c
+  return Math.abs(u) < hw + aw * cos + ah * sin && Math.abs(v) < hh + aw * sin + ah * cos
+}
+
 // An arrowhead with its tip at (tx, ty), pointing away from (fx, fy): three
 // points for a filled triangle.
 export function arrowhead(tx: number, ty: number, fx: number, fy: number, size: number) {

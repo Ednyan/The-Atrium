@@ -37,9 +37,9 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls from './ShapeStyleControls'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeStyle'
+import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
-import { DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
+import { DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import { cropClip, flipInBox } from '../lib/traceFlip'
@@ -191,8 +191,13 @@ interface TraceOverlayProps {
   // A new array reference is sent each time (even for the same set), so
   // the effect that consumes it always fires.
   multiSelectRequest?: string[] | null
-  // Threads to select, the same way -- from a canvas area selection.
-  linkSelectRequest?: string[] | null
+  // A canvas area selection (LobbyScene's shift+drag), in world units: the
+  // traces it reaches into and the threads it crosses are selected here,
+  // where each trace's real size is known. A new object each time.
+  areaSelectRequest?: Box | null
+  // The shape being placed from the Create Trace panel, drawn over every
+  // trace as it will look: its style and size, and its centre in world units.
+  shapeDraft?: { draft: ShapeDraft; x: number; y: number } | null
   // One-shot request from the Layer panel: open the customize UI for these
   // traces. One id opens that trace's own panel; several select them and open
   // batch edit. A new array reference is sent each time, like
@@ -327,6 +332,11 @@ const CROP_HANDLES = [
   { key: 'l', u: 0, v: 0.5 }, { key: 'r', u: 1, v: 0.5 },
   { key: 'bl', u: 0, v: 1 }, { key: 'b', u: 0.5, v: 1 }, { key: 'br', u: 1, v: 1 },
 ] as const
+
+// The shape being placed (TraceOverlay's shapeDraft), drawn as a trace: its
+// id, and its level -- over every trace and thread, under the handles.
+const SHAPE_DRAFT_ID = '__shape-draft__'
+const SHAPE_DRAFT_Z = 999_999
 
 // Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
 const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
@@ -661,7 +671,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, linkSelectRequest, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1130,7 +1140,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // light, one below it, and under that the threads whose lower end it is
   // (TraceLinksLayer).
   const drawRank = React.useMemo(() => drawRanks(traces, layers), [traces, layers])
-  const zOf = (trace: Trace) => (drawRank.get(trace.id) ?? 0) * 3
+  const zOf = (trace: Trace) => trace.id === SHAPE_DRAFT_ID ? SHAPE_DRAFT_Z : (drawRank.get(trace.id) ?? 0) * 3
+  // The shape being placed, as a trace of its own, drawn by the same renderer
+  // as every shape -- so the preview is the shape that will appear -- with
+  // the look a shape has while its panel is open, over every trace.
+  const draftTrace = React.useMemo((): Trace | null => shapeDraft ? {
+    ...shapeDraft.draft,
+    id: SHAPE_DRAFT_ID, type: 'shape', x: shapeDraft.x, y: shapeDraft.y, scaleX: 1, scaleY: 1, rotation: 0,
+    ignoreClicks: true, lobbyId: '', userId: '', username: '', createdAt: '',
+  } as Trace : null, [shapeDraft])
 
   // How many rows of the Move to Group flyout are shown before it scrolls:
   // New Group, Ungrouped, and three groups.
@@ -2471,14 +2489,37 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setLinkMenuAt(null)
   }
 
-  // Threads from an area selection, all selected; the first carries the
-  // delete button, with their count -- the plainest sign they were taken.
+  // An area selection: every trace the area reaches into, measured as it is
+  // drawn -- its picture's own shape, its crop, its turn -- and every thread
+  // it crosses where the thread shows. It used to be measured in LobbyScene
+  // from the stored width and height, or a default size per type, which for
+  // a picture drawn at another shape reached far past it: an area drawn
+  // nowhere near a trace could take it. The first thread carries the delete
+  // button, with their count -- the plainest sign they were taken.
   useEffect(() => {
-    if (!linkSelectRequest) return
-    setSelectedLinks(new Set(linkSelectRequest))
-    setPrimaryLink(linkSelectRequest[0] ?? null)
+    if (!areaSelectRequest) return
+    const area = areaSelectRequest
+    const { traces: all, links: threads } = useGameStore.getState()
+    const boxes = new Map(all.map(t => [t.id, traceBoxFor(t)]))
+    const picked = all.filter(t => {
+      const b = boxes.get(t.id)!
+      const turn = isPathTrace(t) ? 0 : ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
+      return boxCrosses(b.cx, b.cy, b.halfW, b.halfH, turn, area)
+    }).map(t => t.id)
+    const edges = (id: string) => {
+      const b = boxes.get(id)
+      return b && { left: b.cx - b.halfW, top: b.cy - b.halfH, right: b.cx + b.halfW, bottom: b.cy + b.halfH }
+    }
+    const crossed = threads.filter(l => {
+      const a = edges(l.from), b = edges(l.to)
+      return !!a && !!b && threadCrosses(a, b, area, l.straight)
+    }).map(l => l.id)
+    setMultiSelectedIds(new Set(picked))
+    setSelectedTraceId(picked[0] ?? null)
+    setSelectedLinks(new Set(crossed))
+    setPrimaryLink(crossed[0] ?? null)
     setLinkMenuAt(null)
-  }, [linkSelectRequest])
+  }, [areaSelectRequest])
 
   const deleteLinks = (ids: Iterable<string>) => {
     const gone = useGameStore.getState().links.filter(l => new Set(ids).has(l.id))
@@ -5728,7 +5769,7 @@ return (
             // (PREVIEW_OPACITY and previewFrameColour are shared with the
             // placement preview in LobbyScene). Editing and creating are
             // the same act, and now read as one.
-            const editing = editingTrace?.id === trace.id
+            const editing = editingTrace?.id === trace.id || trace.id === SHAPE_DRAFT_ID
             const k = editing ? PREVIEW_OPACITY : 1
             // 1.5 world units, like the preview frame, kept inside the box.
             const frameWidth = Math.max(1.5 * zoom, 1)
@@ -7012,7 +7053,13 @@ return (
           one layer, with the cursors drawn after it, above. */}
       {/* The edge fade: a mask on this wrapper, which stays put while the
           camera moves the world layer inside it. */}
-      <div className={traceFadeEnabled ? 'world-vignette' : undefined} style={{ position: 'absolute', inset: 0 }}>
+      {/* Isolated, fade or no fade (the fade's mask isolates it too): the
+          levels inside -- traces, their handles, far past everything else's
+          -- stay among themselves. Without it, with the fade off and the
+          camera at rest, a selected trace's handles came up over the HUD and
+          the drawing surface, and went back under them whenever the camera
+          moved. */}
+      <div className={traceFadeEnabled ? 'world-vignette' : undefined} style={{ position: 'absolute', inset: 0, isolation: 'isolate' }}>
       <div ref={worldLayerRef} style={{ position: 'absolute', inset: 0, transformOrigin: '0 0' }}>
       {/* Render traces AND player in z-index order */}
       {/* Connections, each at the level of the lower of its two traces,
@@ -7036,6 +7083,7 @@ return (
       />
 
       {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
+      {draftTrace && renderTrace(draftTrace)}
 
         {/* Render path point handles as absolute overlay (only for selected path) */}
         {selectedTraceId && (() => {

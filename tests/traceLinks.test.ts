@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, restOf, threadCrosses, visiblePart } from '../src/lib/traceLinks.ts'
+import { arrowhead, bend, boxCrosses, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, restOf, threadCrosses, visiblePart } from '../src/lib/traceLinks.ts'
 
 const near = (a: { x: number; y: number }, x: number, y: number) =>
   assert.ok(Math.abs(a.x - x) < 1e-9 && Math.abs(a.y - y) < 1e-9, `${a.x},${a.y} is not ${x},${y}`)
@@ -120,4 +120,17 @@ test('an area takes a thread it crosses anywhere, but not where it runs under it
   assert.ok(!threadCrosses(a, b, box(0, 0, 60)))
   // Nowhere near.
   assert.ok(!threadCrosses(a, b, box(500, -300, 50)))
+})
+
+test('an area takes a trace it reaches into, as the trace is turned', () => {
+  const area = { left: 100, top: 100, right: 200, bottom: 200 }
+  // Straight: in, touching nothing, and just clear of an edge.
+  assert.equal(boxCrosses(150, 150, 10, 10, 0, area), true)
+  assert.equal(boxCrosses(50, 50, 10, 10, 0, area), false)
+  assert.equal(boxCrosses(85, 150, 10, 10, 0, area), false)
+  // A long thin box turned 45deg past the area's corner: its bounding box
+  // reaches in, the box itself doesn't.
+  assert.equal(boxCrosses(60, 60, 80, 4, Math.PI / 4 + Math.PI / 2, area), false)
+  // The same box turned the other way lies along the diagonal, into the area.
+  assert.equal(boxCrosses(60, 60, 80, 4, Math.PI / 4, area), true)
 })
