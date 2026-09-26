@@ -613,15 +613,16 @@ body.dragging * {
   box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.95), 0 0 12px rgb(var(--c-fg) / 0.32);
 }
 
-/* The rotation handles (RotateHandles.tsx): a light arrow on a dark halo, the
-   handles' own two colours, so it reads on any ground. */
-.trace-rotate-handle-halo { fill: none; stroke: rgba(25, 25, 25, 0.9); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
-polygon.trace-rotate-handle-halo { fill: rgba(25, 25, 25, 0.9); }
-.trace-rotate-handle-line { fill: none; stroke: rgba(203, 203, 203, 0.95); stroke-width: 2; stroke-linecap: round; transition: stroke 0.18s ease; }
-.trace-rotate-handle-head { fill: rgba(203, 203, 203, 0.95); transition: fill 0.18s ease; }
-.trace-rotate-handle-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: grab; }
-.trace-rotate-handle:has(.trace-rotate-handle-hit:hover) .trace-rotate-handle-line { stroke: #fff; }
-.trace-rotate-handle:has(.trace-rotate-handle-hit:hover) .trace-rotate-handle-head { fill: #fff; }
+/* The rotation handles (RotateHandles.tsx): crescents dressed as the square
+   handles are -- .trace-nier-handle's face, edge, ring and glow, and its
+   grow on hover (about the corner, the SVG's origin). */
+.trace-rotate-handle { filter: drop-shadow(0 0 5px rgba(181, 181, 181, 0.2)); }
+.trace-rotate-handle-body { transition: transform 0.12s ease; }
+.trace-rotate-handle-ring { fill: none; stroke: rgba(25, 25, 25, 0.9); stroke-width: 3; stroke-linejoin: round; }
+.trace-rotate-handle-face { fill: rgba(40, 40, 40, 0.95); stroke: rgba(181, 181, 181, 0.95); stroke-width: 1; stroke-linejoin: round; transition: stroke 0.18s ease; }
+.trace-rotate-handle-hit { fill: transparent; stroke: transparent; stroke-width: 3; pointer-events: all; cursor: grab; }
+.trace-rotate-handle:has(.trace-rotate-handle-hit:hover) .trace-rotate-handle-body { transform: scale(1.14); }
+.trace-rotate-handle:has(.trace-rotate-handle-hit:hover) .trace-rotate-handle-face { stroke: rgb(var(--c-fg) / 0.95); }
 
 .trace-nier-handle-corner,
 .trace-nier-handle-edge,

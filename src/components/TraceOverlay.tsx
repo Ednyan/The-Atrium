@@ -3130,6 +3130,19 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     startPosRef.current = { x: e.clientX, y: e.clientY, corner: corner || '' }
     // copy transform including scaleX/scaleY
     startTransformRef.current = { ...transform }
+    // Cropping writes the trace's position with its crop, to the store alone
+    // (see the crop drag), so a local override left from an earlier drag
+    // goes: it would go on placing the trace where it was. It holds what the
+    // store holds, and is gone before the first step renders -- a press is
+    // rendered at once.
+    if (mode === 'crop') {
+      setLocalTraceTransforms(prev => {
+        if (!(trace.id in prev)) return prev
+        const next = { ...prev }
+        delete next[trace.id]
+        return next
+      })
+    }
     // Store starting crop values
     startCropRef.current = {
       cropX: trace.cropX ?? 0,
@@ -3616,7 +3629,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // One undo step for the crop and the move together, from where the
       // drag began (updates to one trace in a gesture are merged).
       pushUpdateOp(activeSelectedTraceId, { ...startCrop, x: start.x, y: start.y }, { ...crop, ...position })
-      updateTraceTransform(activeSelectedTraceId, position, { skipUndo: true })
+      // Crop and position in one write to the store, and nowhere else. The
+      // position also went to the local override (updateTraceTransform),
+      // which React renders on its own schedule: for a frame the trace was
+      // drawn with the new crop at the old place, then put right -- a
+      // jitter on every step of the drag.
       updateTraceCustomization(activeSelectedTraceId, { ...crop, ...position }, { skipUndo: true })
     } else if (transformMode === 'scale') {
       // Anchors the handle's OPPOSITE edge/corner in place, so dragging the
