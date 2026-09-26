@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { alphaBounds, isCustomBrush, isDrawingTrace, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
+import { alphaBounds, drawPlacedPicture, isCustomBrush, isDrawingTrace, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
 
 test('stamps land at the spacing, whatever the segments are', () => {
   const xs = (points: { x: number; y: number }[]) => stampPositions(points, () => 2).map(s => s.x)
@@ -67,4 +67,36 @@ test('a saved drawing is trimmed to what is left of it', () => {
   px[(2 * 4 + 2) * 4 + 3] = 1
   assert.deepEqual(alphaBounds(px, 4, 3), { minX: 1, minY: 1, maxX: 3, maxY: 3 })
   assert.equal(alphaBounds(new Array(4 * 3 * 4).fill(0), 4, 3), null)
+})
+
+// Where drawPlacedPicture puts each edge of the picture: a canvas that only
+// keeps its transform, and records where drawImage's left and right edges land.
+function drawnEdges(pl: Parameters<typeof drawPlacedPicture>[2]) {
+  let m = [1, 0, 0, 1, 0, 0]
+  const mul = (a: number, b: number, c: number, d: number, e: number, f: number) => {
+    m = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]]
+  }
+  const out: { left: number; right: number } = { left: NaN, right: NaN }
+  const ctx = {
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    translate: (x: number, y: number) => mul(1, 0, 0, 1, x, y),
+    scale: (x: number, y: number) => mul(x, 0, 0, y, 0, 0),
+    rotate: (r: number) => mul(Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r), 0, 0),
+    drawImage: (_img: unknown, x: number, _y: number, w: number) => {
+      out.left = m[0] * x + m[4]
+      out.right = m[0] * (x + w) + m[4]
+    },
+  }
+  drawPlacedPicture(ctx as unknown as CanvasRenderingContext2D, { naturalWidth: 200, naturalHeight: 100 } as HTMLImageElement, pl)
+  return out
+}
+
+test('an edited drawing is placed as the trace shows it: flipped whole, then cropped', () => {
+  const base = { cx: 0, cy: 0, rotation: 0, flipH: false, flipV: false, width: 100, height: 50, scaleX: 2, scaleY: 2, cropX: 0, cropY: 0, cropWidth: 0.5, cropHeight: 1 }
+  // Kept: the left half, in a window from -50 to 50. Unflipped, the
+  // picture's left edge is at the window's left.
+  assert.deepEqual(drawnEdges(base), { left: -50, right: 150 })
+  // Flipped, the whole picture turns over in its box, and the window shows
+  // the left half of that: the picture's right edge now at the window's left.
+  assert.deepEqual(drawnEdges({ ...base, flipH: true }), { left: 150, right: -50 })
 })

@@ -1,12 +1,29 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { arrowhead, bend, curveEntry, curveMiddle, restOf, type LinkArrow, type TraceLink } from '../lib/traceLinks'
+import { arrowhead, bend, curveMiddle, restOf, visiblePart, type LinkArrow, type TraceLink } from '../lib/traceLinks'
 import { Check, ColourField, Slider } from './ShapeStyleControls'
 
 // Where a trace is, in world units: its centre, its box's half-size and turn
-// (radians), and the colour its border is drawn in (a thread's colour when it
-// has none of its own).
-export interface LinkEnd { x: number; y: number; hw: number; hh: number; turn: number; colour: string }
+// (radians), the colour its border is drawn in (a thread's colour when it
+// has none of its own), and its level (its CSS z-index).
+export interface LinkEnd { x: number; y: number; hw: number; hh: number; turn: number; colour: string; z: number }
+
+// How wide a thread is drawn, in screen pixels, and the arrowheads on it.
+const lineWidth = (link: TraceLink, zoom: number) => Math.max(0.75, link.width * Math.sqrt(zoom))
+const headSize = (link: TraceLink, zoom: number) => 6 + lineWidth(link, zoom) * 2
+const headsTo = (link: TraceLink) => link.arrow === 'forward' || link.arrow === 'both'
+const headsFrom = (link: TraceLink) => link.arrow === 'back' || link.arrow === 'both'
+
+// A sheet the size of the view, in screen pixels, that draws nothing itself:
+// no viewBox and no clip, so a thread's paths are painted as if they were
+// the layer's own. An SVG boxed to its thread, with the viewBox and clip that
+// takes, split the painting at every thread: zooming with 400 threads on
+// screen, the browser spent 1.8s grouping it into layers against 1.1s.
+// ponytail: a thread between two traces breaks the GPU's batching of their
+// drawing, so with hundreds of threads on screen a zoom rasterises ~40%
+// longer (400: 67 -> 50fps; 60: no difference). If that ever matters, draw a
+// thread at the very bottom, together, when no trace below its level overlaps it.
+const SHEET = { position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' } as const
 
 type Parts = {
   line?: SVGPathElement | null
@@ -25,10 +42,14 @@ const SLACK = (2 * Math.PI) / 700
 const SLACK_DAMPING = 0.45
 
 /**
- * The threads between traces, under every trace. React says which threads
- * exist and how they look; where they run is written straight to the SVG by
- * layout(), after every render and on every frame while any of them is still
- * swinging -- so a thread can move without re-rendering every trace.
+ * The threads between traces. Each is drawn at the level of the lower of its
+ * two traces, just under it (and under its light): above everything that
+ * trace is above, below both its traces. It runs from border to border, so
+ * nothing of it is inside either trace, where it would only show through a
+ * transparent one. React says which threads exist and how they look; where
+ * they run is written straight to the SVG by layout(), after every render
+ * and on every frame while any of them is still swinging -- so a thread can
+ * move without re-rendering every trace.
  */
 export default function TraceLinksLayer({
   links, place, offsets, zoom, worldOffset, selected, primary, preview, canEdit, onPress, onMenu, onDelete, wakeRef,
@@ -58,10 +79,26 @@ export default function TraceLinksLayer({
   const frame = useRef(0)
   const lastTick = useRef(0)
 
-  const part = (id: string, key: keyof Parts) => (el: any) => {
-    const entry = parts.current.get(id) ?? {}
-    entry[key] = el
-    parts.current.set(id, entry)
+  // What each thread was last drawn from: while that holds, it's left as
+  // it is, so moving one trace redraws its threads and no others.
+  const drawn = useRef(new Map<string, string>())
+  // One callback per element, kept, so a render that changes nothing hands
+  // React nothing to re-attach; a new element (a glow on selecting, say)
+  // gets the thread drawn afresh.
+  const refs = useRef(new Map<string, (el: any) => void>())
+  const part = (id: string, key: keyof Parts) => {
+    const name = `${id} ${key}`
+    let ref = refs.current.get(name)
+    if (!ref) {
+      ref = (el: any) => {
+        const entry = parts.current.get(id) ?? {}
+        entry[key] = el
+        parts.current.set(id, entry)
+        drawn.current.delete(id)
+      }
+      refs.current.set(name, ref)
+    }
+    return ref
   }
 
   // Lays every thread out from where its traces are drawn now, first letting
@@ -91,22 +128,37 @@ export default function TraceLinksLayer({
       if (Math.hypot(rest.x - sp.x, rest.y - sp.y) * zoom > 0.1 || Math.hypot(sp.vx, sp.vy) * zoom > 0.002) stirring = true
 
       const sa = screen(ax, ay), sb = screen(bx, by), c = screen(sp.x, sp.y)
-      const d = `M ${sa.x} ${sa.y} Q ${c.x} ${c.y} ${sb.x} ${sb.y}`
+      const from = `${sa.x} ${sa.y} ${c.x} ${c.y} ${sb.x} ${sb.y} ${a.hw} ${a.hh} ${a.turn} ${b.hw} ${b.hh} ${b.turn} ${zoom} ${link.width} ${link.arrow} ${link.toCenter}`
+      if (drawn.current.get(link.id) === from) continue
+      drawn.current.set(link.id, from)
+      // Border to border; an end with an arrowhead stops under its base. Or,
+      // set to, centre to centre, running on under both traces -- with its
+      // arrowheads still on the borders, where they can be seen.
+      const size = headSize(link, zoom)
+      const seen = visiblePart(
+        sa.x, sa.y, c.x, c.y, sb.x, sb.y,
+        { hw: a.hw * zoom, hh: a.hh * zoom, turn: a.turn }, { hw: b.hw * zoom, hh: b.hh * zoom, turn: b.turn },
+        !link.toCenter && headsFrom(link) ? size * 0.8 : 0, !link.toCenter && headsTo(link) ? size * 0.8 : 0,
+      )
+      const d = link.toCenter
+        ? `M ${sa.x} ${sa.y} Q ${c.x} ${c.y} ${sb.x} ${sb.y}`
+        : seen ? `M ${seen.x0} ${seen.y0} Q ${seen.cx} ${seen.cy} ${seen.x1} ${seen.y1}` : ''
       el.line.setAttribute('d', d)
       el.glow?.setAttribute('d', d)
       el.hit?.setAttribute('d', d)
       // Arrow tips where the curve meets the border, aimed along it.
-      const head = (poly: SVGPolygonElement | null | undefined, end: LinkEnd, at: { x: number; y: number }, from: { x: number; y: number }) => {
+      const head = (poly: SVGPolygonElement | null | undefined, tip: { x: number; y: number; dx: number; dy: number } | undefined) => {
         if (!poly) return
-        const tip = curveEntry(from.x, from.y, c.x, c.y, at.x, at.y, end.hw * zoom, end.hh * zoom, end.turn)
         if (!tip) { poly.setAttribute('points', ''); return }
-        const p = arrowhead(tip.x, tip.y, tip.x - tip.dx, tip.y - tip.dy, 6 + Math.max(0.75, link.width * Math.sqrt(zoom)) * 2)
+        const p = arrowhead(tip.x, tip.y, tip.x - tip.dx, tip.y - tip.dy, size)
         poly.setAttribute('points', `${p[0]},${p[1]} ${p[2]},${p[3]} ${p[4]},${p[5]}`)
       }
-      head(el.headTo, b, sb, sa)
-      head(el.headFrom, a, sa, sb)
+      head(el.headTo, seen?.to)
+      head(el.headFrom, seen?.from)
       if (el.middle) {
-        const mid = curveMiddle(sa.x, sa.y, c.x, c.y, sb.x, sb.y)
+        const mid = seen && !link.toCenter
+          ? curveMiddle(seen.x0, seen.y0, seen.cx, seen.cy, seen.x1, seen.y1)
+          : curveMiddle(sa.x, sa.y, c.x, c.y, sb.x, sb.y)
         el.middle.style.left = `${mid.x}px`
         el.middle.style.top = `${mid.y}px`
       }
@@ -134,37 +186,39 @@ export default function TraceLinksLayer({
 
   return (
     <>
-      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}>
-        {links.map(link => {
-          const a = place(link.from)
-          if (!a || !place(link.to)) return null
-          const colour = link.color || a.colour
-          const width = Math.max(0.75, link.width * Math.sqrt(zoom))
-          const isSelected = selected.has(link.id)
-          return (
-            <g key={link.id}>
-              {isSelected && <path ref={part(link.id, 'glow')} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
-              <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeOpacity={isSelected ? 1 : 0.75} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
-              {(link.arrow === 'forward' || link.arrow === 'both') && <polygon ref={part(link.id, 'headTo')} fill={colour} />}
-              {(link.arrow === 'back' || link.arrow === 'both') && <polygon ref={part(link.id, 'headFrom')} fill={colour} />}
-              {/* Wider than it looks, and invisible, so a thin thread can still
-                  be hovered and clicked. Where it runs under a trace, the trace
-                  gets the click. */}
-              <path
-                ref={part(link.id, 'hit')}
-                data-link={link.id}
-                fill="none"
-                stroke="transparent"
-                strokeWidth={Math.max(12, width + 10)}
-                style={{ pointerEvents: 'stroke' }}
-                onPointerDown={e => onPress(link.id, e)}
-                onContextMenu={e => onMenu(link.id, e)}
-                onPointerEnter={() => setHovered(link.id)}
-                onPointerLeave={() => setHovered(h => (h === link.id ? null : h))}
-              />
-            </g>
-          )
-        })}
+      {/* An SVG each, so each can sit at its own level among the traces;
+          the one for the thread being drawn goes under them all. */}
+      {links.map(link => {
+        const a = place(link.from), b = place(link.to)
+        if (!a || !b) return null
+        const colour = link.color || a.colour
+        const width = lineWidth(link, zoom)
+        const isSelected = selected.has(link.id)
+        return (
+          <svg key={link.id} style={{ ...SHEET, zIndex: Math.min(a.z, b.z) - 2 }}>
+            {isSelected && <path ref={part(link.id, 'glow')} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
+            <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeOpacity={isSelected ? 1 : 0.75} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
+            {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} />}
+            {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} />}
+            {/* Wider than it looks, and invisible, so a thin thread can still
+                be hovered and clicked. Where a trace above covers it, the
+                trace gets the click. */}
+            <path
+              ref={part(link.id, 'hit')}
+              data-link={link.id}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={Math.max(12, width + 10)}
+              style={{ pointerEvents: 'stroke' }}
+              onPointerDown={e => onPress(link.id, e)}
+              onContextMenu={e => onMenu(link.id, e)}
+              onPointerEnter={() => setHovered(link.id)}
+              onPointerLeave={() => setHovered(h => (h === link.id ? null : h))}
+            />
+          </svg>
+        )
+      })}
+      <svg style={SHEET}>
         {preview && preview.from.map(id => {
           const from = place(id)
           if (!from) return null
@@ -306,6 +360,24 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
                 : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'}`}
             >
               {straight ? t('atrium.links.straight') : t('atrium.links.curved')}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.ends')}</label>
+        <div className="grid grid-cols-2 gap-1">
+          {([false, true] as const).map(toCenter => (
+            <button
+              key={String(toCenter)}
+              type="button"
+              aria-pressed={first.toCenter === toCenter}
+              onClick={() => onEdit({ toCenter })}
+              className={`h-8 border text-[10px] tracking-[0.15em] uppercase transition-colors ${first.toCenter === toCenter
+                ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'}`}
+            >
+              {toCenter ? t('atrium.links.toCenter') : t('atrium.links.toBorder')}
             </button>
           ))}
         </div>

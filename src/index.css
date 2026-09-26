@@ -613,10 +613,19 @@ body.dragging * {
   box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.95), 0 0 12px rgb(var(--c-fg) / 0.32);
 }
 
+/* The rotation handles (RotateHandles.tsx): a light arrow on a dark halo, the
+   handles' own two colours, so it reads on any ground. */
+.trace-rotate-handle-halo { fill: none; stroke: rgba(25, 25, 25, 0.9); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+polygon.trace-rotate-handle-halo { fill: rgba(25, 25, 25, 0.9); }
+.trace-rotate-handle-line { fill: none; stroke: rgba(203, 203, 203, 0.95); stroke-width: 2; stroke-linecap: round; transition: stroke 0.18s ease; }
+.trace-rotate-handle-head { fill: rgba(203, 203, 203, 0.95); transition: fill 0.18s ease; }
+.trace-rotate-handle-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: grab; }
+.trace-rotate-handle:has(.trace-rotate-handle-hit:hover) .trace-rotate-handle-line { stroke: #fff; }
+.trace-rotate-handle:has(.trace-rotate-handle-hit:hover) .trace-rotate-handle-head { fill: #fff; }
+
 .trace-nier-handle-corner,
 .trace-nier-handle-edge,
-.trace-nier-handle-control,
-.trace-nier-handle-rotate {
+.trace-nier-handle-control {
   width: 12px;
   height: 12px;
 }

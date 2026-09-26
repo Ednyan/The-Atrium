@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, restOf, threadCrosses } from '../src/lib/traceLinks.ts'
+import { arrowhead, bend, carryLinks, curveEntry, curveMiddle, joins, linkRow, mapRowToLink, restOf, threadCrosses, visiblePart } from '../src/lib/traceLinks.ts'
 
 const near = (a: { x: number; y: number }, x: number, y: number) =>
   assert.ok(Math.abs(a.x - x) < 1e-9 && Math.abs(a.y - y) < 1e-9, `${a.x},${a.y} is not ${x},${y}`)
@@ -32,6 +32,47 @@ test('an arrow sits where the curve itself enters the box, heading as the curve 
   assert.equal(curveEntry(-10, 0, -5, 0, 0, 0, 50, 20), null)
 })
 
+test('a thread shows only between the two borders, and stays on its curve', () => {
+  const box = { hw: 50, hh: 20, turn: 0 }
+  // Straight, between boxes centred at -200 and 0: from -150 to -50.
+  const s = visiblePart(-200, 0, -100, 0, 0, 0, box, box)!
+  near({ x: s.x0, y: s.y0 }, -150, 0)
+  near({ x: s.x1, y: s.y1 }, -50, 0)
+  // An arrowhead's worth off the end that has one.
+  const t = visiblePart(-200, 0, -100, 0, 0, 0, box, box, 0, 10)!
+  assert.ok(Math.abs(t.x1 + 60) < 1e-3, `${t.x1}`)
+  // Bent: the piece is a curve of its own that lies on the whole one --
+  // its middle is on it, and it starts and ends on the borders.
+  const b = bend(-300, 0, 0, 0)
+  const c = visiblePart(-300, 0, b.x, b.y, 0, 0, box, box)!
+  assert.ok(Math.abs(c.x0 + 250) < 1e-4 && Math.abs(c.x1 + 50) < 1e-4, `${c.x0} ${c.x1}`)
+  const mid = curveMiddle(c.x0, c.y0, c.cx, c.cy, c.x1, c.y1)
+  // The whole curve's x is linear in t here (the bend is midway), so the
+  // point on it at that x must have the same y.
+  const tm = (mid.x + 300) / 300, um = 1 - tm
+  assert.ok(Math.abs(mid.y - (2 * um * tm * b.y)) < 1e-4, `${mid.y}`)
+  // Overlapping traces: nothing between them shows.
+  assert.equal(visiblePart(-60, 0, -30, 0, 0, 0, box, box), null)
+})
+
+// The cost of drawing a thread border to border, per frame while threads
+// move: two edge searches each. Measured, not guessed.
+test('finding the borders is cheap enough to do for every thread every frame', () => {
+  const box = { hw: 120, hh: 80, turn: 0.3 }
+  const start = performance.now()
+  let n = 0
+  for (let i = 0; i < 20000; i++) {
+    const ax = -800 + (i % 97), b = bend(ax, 40, 600, -(i % 53))
+    if (visiblePart(ax, 40, b.x, b.y, 600, -(i % 53), box, box, 6, 6)) n++
+  }
+  const perThread = (performance.now() - start) / 20000
+  assert.equal(n, 20000)
+  // Well under a microsecond or two on a laptop; this bound only catches a
+  // blow-up (500 threads in under 5ms).
+  assert.ok(perThread < 0.01, `${(perThread * 1000).toFixed(2)} microseconds a thread`)
+  console.log(`visiblePart: ${(perThread * 1000).toFixed(2)} microseconds a thread`)
+})
+
 test('an arrowhead points from where the curve comes in', () => {
   const [tx, ty, x1, , x2] = arrowhead(10, 0, 0, 0, 4)
   assert.equal(tx, 10); assert.equal(ty, 0)
@@ -48,6 +89,9 @@ test('a pair is joined whichever way round, and rows round-trip', () => {
   // Unknown arrow, empty colour and a bad width fall back to the defaults.
   assert.equal(link.arrow, 'none'); assert.equal(link.color, null); assert.equal(link.width, 2)
   assert.equal(linkRow({ ...link, label: '' }).label, null)
+  // Border to border unless set otherwise, and the setting round-trips.
+  assert.equal(link.toCenter, false)
+  assert.equal(mapRowToLink(linkRow({ ...link, toCenter: true })).toCenter, true)
 })
 
 test('carried threads follow their traces to new ids, and nothing else comes', () => {
@@ -59,8 +103,8 @@ test('carried threads follow their traces to new ids, and nothing else comes', (
     { from_trace: 'c', to_trace: 'b', arrow: 'sideways', label: 7 },
   ], ids)
   assert.deepEqual(rows, [
-    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false, straight: false },
-    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false, straight: false },
+    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false, straight: false, to_center: false },
+    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false, straight: false, to_center: false },
   ])
   assert.deepEqual(carryLinks(undefined, ids), [])
 })

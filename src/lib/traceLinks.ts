@@ -1,5 +1,6 @@
-// Connections between traces: a curved thread from one trace's centre to
-// another's, drawn under both -- the traces are the nodes, as in graphify.
+// Connections between traces: a curved thread from one trace's border to
+// another's, aimed centre to centre and drawn at the level of the lower of
+// the two, under it -- the traces are the nodes, as in graphify.
 //
 // Kept free of the app's imports, so the geometry below can be tested on its
 // own. The table is trace_links; see supabase/migrations/add_trace_links.sql.
@@ -22,6 +23,9 @@ export interface TraceLink {
   labelOnHover: boolean
   // Drawn as a straight line rather than hanging in a curve.
   straight: boolean
+  // Runs on under its traces to their centres, rather than stopping at their
+  // borders (the default).
+  toCenter: boolean
 }
 
 export const DEFAULT_LINK_WIDTH = 2
@@ -41,6 +45,7 @@ export function mapRowToLink(row: any): TraceLink {
     label: typeof row.label === 'string' ? row.label.slice(0, 80) : '',
     labelOnHover: !!row.label_on_hover,
     straight: !!row.straight,
+    toCenter: !!row.to_center,
   }
 }
 
@@ -56,6 +61,7 @@ export function linkRow(link: TraceLink) {
     label: link.label || null,
     label_on_hover: link.labelOnHover,
     straight: link.straight,
+    to_center: link.toCenter,
   }
 }
 
@@ -100,12 +106,11 @@ export function restOf(straight: boolean, ax: number, ay: number, bx: number, by
 
 // Where a thread from (ax, ay), bent through (cx, cy), enters the box of the
 // trace it ends at -- centre (bx, by), half-sizes hw and hh, turned by `turn`
-// radians -- and the way it's heading there: an arrowhead's tip and aim. The
-// thread runs on under the trace to its centre, so the border is where a tip
-// can be seen, and it's found on the curve itself: the straight line from the
-// centre toward the bend meets the border somewhere else, further off the
-// bigger the trace. Null when the thread starts inside the box, as between
-// overlapping traces.
+// radians -- how far along the curve that is (t, 0 to 1), and the way it's
+// heading there: where the thread stops, and an arrowhead's tip and aim. It's
+// found on the curve itself: the straight line from the centre toward the
+// bend meets the border somewhere else, further off the bigger the trace.
+// Null when the thread starts inside the box, as between overlapping traces.
 export function curveEntry(ax: number, ay: number, cx: number, cy: number, bx: number, by: number, hw: number, hh: number, turn = 0) {
   const cos = Math.cos(turn), sin = Math.sin(turn)
   const at = (t: number) => {
@@ -128,7 +133,41 @@ export function curveEntry(ax: number, ay: number, cx: number, cy: number, bx: n
     else lo = mid
   }
   const t = hi, u = 1 - t
-  return { ...at(t), dx: 2 * u * (cx - ax) + 2 * t * (bx - cx), dy: 2 * u * (cy - ay) + 2 * t * (by - cy) }
+  return { ...at(t), t, dx: 2 * u * (cx - ax) + 2 * t * (bx - cx), dy: 2 * u * (cy - ay) + 2 * t * (by - cy) }
+}
+
+export interface EndBox { hw: number; hh: number; turn: number }
+
+// The part of a thread that shows: from where it leaves the box of the trace
+// it starts at to where it enters the one it ends at -- inside a trace it
+// would only be hidden, or show through a transparent one. A curve of its
+// own (ends and control point), plus where it crosses each border (`from`
+// and `to`, as curveEntry gives them) for the arrowheads. An end with an
+// arrowhead (`trimFrom`/`trimTo`, in the curve's units) stops that far short,
+// at the arrowhead's base, so the line's cap can't poke out past its tip.
+// Null when nothing shows, as between overlapping traces.
+export function visiblePart(
+  ax: number, ay: number, cx: number, cy: number, bx: number, by: number,
+  a: EndBox, b: EndBox, trimFrom = 0, trimTo = 0,
+) {
+  const to = curveEntry(ax, ay, cx, cy, bx, by, b.hw, b.hh, b.turn)
+  const from = curveEntry(bx, by, cx, cy, ax, ay, a.hw, a.hh, a.turn)
+  if (!to || !from) return null
+  // Trimmed along the curve by distance over speed there -- near enough over
+  // an arrowhead's length.
+  const t0 = 1 - from.t + trimFrom / (Math.hypot(from.dx, from.dy) || 1)
+  const t1 = to.t - trimTo / (Math.hypot(to.dx, to.dy) || 1)
+  if (t0 >= t1) return null
+  // The piece of a quadratic between t0 and t1 is a quadratic too, whose
+  // points are the curve's blossom at (t0, t0), (t0, t1) and (t1, t1).
+  const blossom = (u: number, v: number, p0: number, p1: number, p2: number) =>
+    (1 - u) * (1 - v) * p0 + ((1 - u) * v + u * (1 - v)) * p1 + u * v * p2
+  return {
+    x0: blossom(t0, t0, ax, cx, bx), y0: blossom(t0, t0, ay, cy, by),
+    cx: blossom(t0, t1, ax, cx, bx), cy: blossom(t0, t1, ay, cy, by),
+    x1: blossom(t1, t1, ax, cx, bx), y1: blossom(t1, t1, ay, cy, by),
+    from, to,
+  }
 }
 
 export interface Box { left: number; top: number; right: number; bottom: number }

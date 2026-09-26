@@ -1275,7 +1275,8 @@ export async function initLocalDb(): Promise<void> {
       width REAL NOT NULL DEFAULT 2,
       label TEXT,
       label_on_hover INTEGER NOT NULL DEFAULT 0,
-      straight INTEGER NOT NULL DEFAULT 0
+      straight INTEGER NOT NULL DEFAULT 0,
+      to_center INTEGER NOT NULL DEFAULT 0
     )
   `)
   try {
@@ -1285,6 +1286,11 @@ export async function initLocalDb(): Promise<void> {
   }
   try {
     await db.execute('ALTER TABLE trace_links ADD COLUMN straight INTEGER NOT NULL DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await db.execute('ALTER TABLE trace_links ADD COLUMN to_center INTEGER NOT NULL DEFAULT 0')
   } catch {
     // Column already exists — ignore
   }
@@ -1922,7 +1928,7 @@ const BOOL_COLUMNS: Record<string, string[]> = {
   profiles: [],
   lobby_access_lists: [],
   lobby_locations: ['is_locked'],
-  trace_links: ['label_on_hover', 'straight'],
+  trace_links: ['label_on_hover', 'straight', 'to_center'],
 }
 
 function convertRowFromSql(table: string, row: any): any {

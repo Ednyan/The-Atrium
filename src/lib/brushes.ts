@@ -468,10 +468,11 @@ export function isDrawingTrace(t: { type: string; mediaUrl?: string | null; cont
 }
 
 // Where a trace shows its picture on screen, as TraceOverlay lays it out:
-// centred on (cx, cy), turned by `rotation` degrees, mirrored by the flips.
-// The picture is fitted inside width x height (world units), that box is
-// stretched by scaleX/scaleY (screen px per world unit, zoom included), and a
-// crop keeps its share of the box and cuts away the rest.
+// centred on (cx, cy), turned by `rotation` degrees. The picture is fitted
+// inside width x height (world units) and mirrored there by the flips, that
+// box is stretched by scaleX/scaleY (screen px per world unit, zoom
+// included), and a crop keeps its share of the box and cuts away the rest --
+// of the flipped picture, as it's seen (lib/traceFlip).
 export interface TracePlacement {
   cx: number
   cy: number
@@ -520,10 +521,15 @@ export function drawPlacedPicture(ctx: CanvasRenderingContext2D, img: HTMLImageE
   ctx.save()
   ctx.translate(pl.cx, pl.cy)
   ctx.rotate(pl.rotation * Math.PI / 180)
-  ctx.scale(pl.flipH ? -1 : 1, pl.flipV ? -1 : 1)
   ctx.beginPath()
   ctx.rect(-p.clipW / 2, -p.clipH / 2, p.clipW, p.clipH)
   ctx.clip()
+  // Mirrored about the middle of the whole box, not of what the crop leaves.
+  const mx = -p.clipW / 2 + (pl.width / 2 - pl.cropX * pl.width) * pl.scaleX
+  const my = -p.clipH / 2 + (pl.height / 2 - pl.cropY * pl.height) * pl.scaleY
+  ctx.translate(mx, my)
+  ctx.scale(pl.flipH ? -1 : 1, pl.flipV ? -1 : 1)
+  ctx.translate(-mx, -my)
   ctx.drawImage(img, p.x, p.y, p.w, p.h)
   ctx.restore()
 }

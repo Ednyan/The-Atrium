@@ -41,6 +41,9 @@ import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf } from '../lib/shapeS
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
 import { DEFAULT_LINK_WIDTH, joins, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
+import RotateHandles from './RotateHandles'
+import { cropClip, flipInBox } from '../lib/traceFlip'
+import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
@@ -316,6 +319,14 @@ const ROTATION_SNAP_DEGREES = 5
 // very edge (screen pixels, converted to world units at the current zoom).
 const EDGE_PAN_ZONE_PX = 64
 const EDGE_PAN_MAX_SPEED_PX = 14
+
+// The crop frame's handles: the edges each moves (lib/traceCrop's dragCrop),
+// and where on the window it sits, as shares of it across and down.
+const CROP_HANDLES = [
+  { key: 'tl', u: 0, v: 0 }, { key: 't', u: 0.5, v: 0 }, { key: 'tr', u: 1, v: 0 },
+  { key: 'l', u: 0, v: 0.5 }, { key: 'r', u: 1, v: 0.5 },
+  { key: 'bl', u: 0, v: 1 }, { key: 'b', u: 0.5, v: 1 }, { key: 'br', u: 1, v: 1 },
+] as const
 
 // Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
 const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
@@ -1114,11 +1125,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const groupLayers = React.useMemo(() => inOrder(layers).reverse(), [layers])
   // Each trace's place in the drawing order (lib/order) -- ungrouped at the
-  // bottom, then each group from the bottom up -- as its CSS z-index. Doubled,
-  // so a trace's light (one below it) has a level of its own between it and
-  // the trace under it.
+  // bottom, then each group from the bottom up -- as its CSS z-index. Tripled,
+  // so between it and the trace under it there are two levels of its own: its
+  // light, one below it, and under that the threads whose lower end it is
+  // (TraceLinksLayer).
   const drawRank = React.useMemo(() => drawRanks(traces, layers), [traces, layers])
-  const zOf = (trace: Trace) => (drawRank.get(trace.id) ?? 0) * 2
+  const zOf = (trace: Trace) => (drawRank.get(trace.id) ?? 0) * 3
 
   // How many rows of the Move to Group flyout are shown before it scrolls:
   // New Group, Ungrouped, and three groups.
@@ -2529,7 +2541,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     for (const from of sources) {
       // Not to itself, and not twice: one thread per pair, either way round.
       if (from === target || existing.some(l => joins(l, from, target)) || made.some(l => joins(l, from, target))) continue
-      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false })
+      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false, toCenter: false })
     }
     if (made.length === 0) return
     for (const link of made) putLink(link)
@@ -2569,7 +2581,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const traceById = React.useMemo(() => new Map(traces.map(t => [t.id, t])), [traces])
   // Where a thread's end is: the trace's centre and box in world units, as it
-  // stands now (mid-drag included), and its border colour.
+  // stands now (mid-drag included), its border colour, and its level.
   const placeTrace = (id: string): LinkEnd | null => {
     const trace = traceById.get(id)
     if (!trace) return null
@@ -2579,7 +2591,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       : traceBoxFor(trace, localTraceTransforms[id])
     // A path's box is its points', already turned; anything else turns about its centre.
     const turn = isPathTrace(trace) ? 0 : (((localTraceTransforms[id] || getTraceTransform(trace)).rotation ?? 0) * Math.PI) / 180
-    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || getBorderColor(trace.type) }
+    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || getBorderColor(trace.type), z: zOf(trace) }
   }
 
   // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
@@ -3582,72 +3594,30 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         })
       }
     } else if (transformMode === 'crop') {
-      // Handle crop area adjustment
+      // The pointer's travel, turned into the trace's own axes and measured
+      // in shares of its whole box, moves the handle's edges (lib/traceCrop).
+      // The trace sits centred on its window, so it moves by as much as the
+      // window's centre did: the edges not being dragged stay put on screen.
+      // A shape is cropped in place, in a box that doesn't move.
+      const start = startTransformRef.current
       const { width, height } = getTraceSize(trace)
-      const transform = getTraceTransform(trace)
-      const containerWidth = width * (transform as any).scaleX * currentZoom
-      const containerHeight = height * (transform as any).scaleY * currentZoom
-      
-      // Convert pixel delta to crop percentage delta
-      const cropDeltaX = deltaX / containerWidth
-      const cropDeltaY = deltaY / containerHeight
-      
-      const corner = startPosRef.current.corner
+      const boxW = (trace.type === 'shape' ? (trace.width || 200) : width) * start.scaleX
+      const boxH = (trace.type === 'shape' ? (trace.height || 200) : height) * start.scaleY
+      const local = turn(deltaX / currentZoom, deltaY / currentZoom, -start.rotation)
       const startCrop = startCropRef.current
-      let newCropX = startCrop.cropX
-      let newCropY = startCrop.cropY
-      let newCropWidth = startCrop.cropWidth
-      let newCropHeight = startCrop.cropHeight
-      
-      // Adjust crop based on which corner is being dragged
-      if (corner === 'tl') {
-        // Top-left: adjust X, Y, width, height
-        const maxDeltaX = startCrop.cropWidth - 0.1
-        const maxDeltaY = startCrop.cropHeight - 0.1
-        const clampedDeltaX = Math.max(-startCrop.cropX, Math.min(maxDeltaX, cropDeltaX))
-        const clampedDeltaY = Math.max(-startCrop.cropY, Math.min(maxDeltaY, cropDeltaY))
-        
-        newCropX = startCrop.cropX + clampedDeltaX
-        newCropY = startCrop.cropY + clampedDeltaY
-        newCropWidth = startCrop.cropWidth - clampedDeltaX
-        newCropHeight = startCrop.cropHeight - clampedDeltaY
-      } else if (corner === 'tr') {
-        // Top-right: adjust Y, width, height
-        const maxDeltaY = startCrop.cropHeight - 0.1
-        const maxDeltaX = 1 - startCrop.cropX - startCrop.cropWidth
-        const clampedDeltaY = Math.max(-startCrop.cropY, Math.min(maxDeltaY, cropDeltaY))
-        const clampedDeltaX = Math.max(-(startCrop.cropWidth - 0.1), Math.min(maxDeltaX, cropDeltaX))
-        
-        newCropY = startCrop.cropY + clampedDeltaY
-        newCropWidth = startCrop.cropWidth + clampedDeltaX
-        newCropHeight = startCrop.cropHeight - clampedDeltaY
-      } else if (corner === 'bl') {
-        // Bottom-left: adjust X, width, height
-        const maxDeltaX = startCrop.cropWidth - 0.1
-        const maxDeltaY = 1 - startCrop.cropY - startCrop.cropHeight
-        const clampedDeltaX = Math.max(-startCrop.cropX, Math.min(maxDeltaX, cropDeltaX))
-        const clampedDeltaY = Math.max(-(startCrop.cropHeight - 0.1), Math.min(maxDeltaY, cropDeltaY))
-        
-        newCropX = startCrop.cropX + clampedDeltaX
-        newCropWidth = startCrop.cropWidth - clampedDeltaX
-        newCropHeight = startCrop.cropHeight + clampedDeltaY
-      } else if (corner === 'br') {
-        // Bottom-right: adjust width, height
-        const maxDeltaX = 1 - startCrop.cropX - startCrop.cropWidth
-        const maxDeltaY = 1 - startCrop.cropY - startCrop.cropHeight
-        const clampedDeltaX = Math.max(-(startCrop.cropWidth - 0.1), Math.min(maxDeltaX, cropDeltaX))
-        const clampedDeltaY = Math.max(-(startCrop.cropHeight - 0.1), Math.min(maxDeltaY, cropDeltaY))
-        
-        newCropWidth = startCrop.cropWidth + clampedDeltaX
-        newCropHeight = startCrop.cropHeight + clampedDeltaY
-      }
-      
-      updateTraceCustomization(activeSelectedTraceId, {
-        cropX: newCropX,
-        cropY: newCropY,
-        cropWidth: newCropWidth,
-        cropHeight: newCropHeight,
-      })
+      const from: Crop = { x: startCrop.cropX, y: startCrop.cropY, w: startCrop.cropWidth, h: startCrop.cropHeight }
+      const next = dragCrop(from, startPosRef.current.corner, local.x / boxW, local.y / boxH)
+      const crop = { cropX: next.x, cropY: next.y, cropWidth: next.w, cropHeight: next.h }
+      const shift = trace.type === 'shape' ? { x: 0, y: 0 } : (() => {
+        const d = cropShift(from, next)
+        return turn(d.u * boxW, d.v * boxH, start.rotation)
+      })()
+      const position = { x: start.x + shift.x, y: start.y + shift.y }
+      // One undo step for the crop and the move together, from where the
+      // drag began (updates to one trace in a gesture are merged).
+      pushUpdateOp(activeSelectedTraceId, { ...startCrop, x: start.x, y: start.y }, { ...crop, ...position })
+      updateTraceTransform(activeSelectedTraceId, position, { skipUndo: true })
+      updateTraceCustomization(activeSelectedTraceId, { ...crop, ...position }, { skipUndo: true })
     } else if (transformMode === 'scale') {
       // Anchors the handle's OPPOSITE edge/corner in place, so dragging the
       // bottom only grows downward (not also upward from the center), and
@@ -5460,11 +5430,12 @@ const showFilename = trace.showFilename ?? true
 const fontSize = trace.fontSize ?? 'medium'
 const fontFamily = trace.fontFamily ?? 'sans'
 
-// Apply crop to border size
-const cropX = trace.cropX ?? 0
-const cropY = trace.cropY ?? 0
-const cropWidth = trace.cropWidth ?? 1
-const cropHeight = trace.cropHeight ?? 1
+// Apply crop to border size. While it's being cropped, the trace shows its
+// whole content instead, where the whole box sits (boxOffset, below) -- what
+// the crop cuts away is dimmed by the crop frame drawn over it.
+const isCropping = isSelected && isCropMode && canEdit
+const { x: cropX, y: cropY, w: cropWidth, h: cropHeight } = isCropping ? WHOLE : cropOf(trace)
+const shownCrop = isCropping ? { ...trace, cropX, cropY, cropWidth, cropHeight } : trace
 
 // Border container should match the cropped content size
 // For shapes, use their actual width/height properties
@@ -5472,6 +5443,14 @@ const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
 const shapeHeight = trace.type === 'shape' ? (trace.height || 200) : height
 const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * (transform as any).scaleX * zoom
 const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
+// A trace sits centred on its crop window; its whole box sits back from
+// that by the crop. A shape crops in place, in a box that doesn't move.
+const boxOffset = isCropping && trace.type !== 'shape'
+  ? (() => {
+      const b = boxFromWindow(cropOf(trace))
+      return turn(b.u * width * (transform as any).scaleX * zoom, b.v * height * (transform as any).scaleY * zoom, transform.rotation)
+    })()
+  : { x: 0, y: 0 }
 
 // Debug logging for image dimensions
 // Selected trace rendering
@@ -5514,7 +5493,7 @@ return (
         atrium instead.
 
         One below its own trace puts it above everything the trace is
-        above, and below the trace itself: trace z-indexes go up in twos
+        above, and below the trace itself: trace z-indexes go up in threes
         (zOf), leaving that level free. */}
     {trace.illuminate && (
       <div
@@ -5554,8 +5533,8 @@ return (
       data-trace-id={trace.id}
       className="absolute"
       style={{
-        left: `${screenX}px`,
-        top: `${screenY}px`,
+        left: `${screenX + boxOffset.x}px`,
+        top: `${screenY + boxOffset.y}px`,
         // Explicit z-index so ordinary traces and path shapes
         // compare on equal terms. Without this, a path's explicit
         // z-index always painted above every non-path trace
@@ -5569,7 +5548,9 @@ return (
         // a wrapper, because a second transformed element would
         // reintroduce the stacking-context problem the comment above
         // describes.
-        transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scaleX(${(trace.flipHorizontal ? -1 : 1) * (isPressed ? 0.97 : 1)}) scaleY(${(trace.flipVertical ? -1 : 1) * (isPressed ? 0.97 : 1)})`,
+        // No flip here: a flip mirrors only what the trace shows, inside
+        // its frame (lib/traceFlip), never the tag, labels or frame on it.
+        transform: `translate(-50%, -50%) rotate(${transform.rotation}deg) scale(${isPressed ? 0.97 : 1})`,
         // Only transitioned while pressed. A permanent transition here
         // would smear every drag frame, since dragging moves this same
         // element.
@@ -5755,9 +5736,8 @@ return (
             const radiusPercentX = (cornerRadius / (width * shapeScaleX)) * 100
             const radiusPercentY = (cornerRadius / (height * shapeScaleY)) * 100
 
-            const clipPathStyle = trace.cropWidth && trace.cropWidth < 1 
-              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-              : undefined
+            // The shape, flipped within its box, and its crop (lib/traceFlip).
+            const shapeStyle = { clipPath: cropClip(shownCrop), transform: flipInBox(trace) || undefined, transformOrigin: 'top left' }
 
             if (shapeType === 'rectangle') {
               return (
@@ -5765,7 +5745,7 @@ return (
                   className="w-full h-full pointer-events-none select-none"
                   viewBox="0 0 100 100"
                   preserveAspectRatio="none"
-                  style={{ clipPath: clipPathStyle }}
+                  style={shapeStyle}
                 >
                   <rect
                     x={insetX}
@@ -5797,7 +5777,7 @@ return (
                   className="w-full h-full pointer-events-none select-none"
                   viewBox="0 0 100 100"
                   preserveAspectRatio="none"
-                  style={{ clipPath: clipPathStyle }}
+                  style={shapeStyle}
                 >
                   <ellipse
                     cx="50"
@@ -5828,7 +5808,7 @@ return (
                   className="w-full h-full pointer-events-none select-none"
                   viewBox="0 0 100 100"
                   preserveAspectRatio="none"
-                  style={{ clipPath: clipPathStyle }}
+                  style={shapeStyle}
                 >
                   <path
                     d={roundedPolygonPath(
@@ -5946,13 +5926,18 @@ return (
             </>
           )}
           {/* Scaled content wrapper - text traces render at final pixel size to avoid distortion */}
+          {/* What the trace shows, whole, and flipped here if it is: the
+              crop's window (the translate) is then taken from the flipped
+              picture, so it cuts what is seen. */}
           <div
             className="w-full h-full"
             style={trace.type === 'text' ? {
               width: '100%',
               height: '100%',
+              transform: flipInBox(trace) || undefined,
+              transformOrigin: 'top left',
             } : {
-              transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%)`,
+              transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%) ${flipInBox(trace)}`,
               transformOrigin: 'top left',
               width: `${width}px`,
               height: `${height}px`,
@@ -5979,9 +5964,7 @@ return (
           alt=""
           className="w-full h-full object-contain pointer-events-none select-none"
           style={{ 
-            clipPath: trace.cropWidth && trace.cropWidth < 1 
-              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-              : undefined,
+            clipPath: cropClip(shownCrop),
           }}
           onLoad={(e) => {
             const img = e.currentTarget
@@ -6062,9 +6045,7 @@ return (
           controls={false}
           className="w-full h-full pointer-events-none select-none"
           style={{ 
-            clipPath: trace.cropWidth && trace.cropWidth < 1 
-              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-              : undefined,
+            clipPath: cropClip(shownCrop),
           }}
           onLoadedMetadata={(e) => {
             const video = e.currentTarget
@@ -6364,9 +6345,7 @@ return (
               alt=""
               className="w-full h-full object-contain pointer-events-none select-none"
               style={{ 
-                clipPath: trace.cropWidth && trace.cropWidth < 1 
-                  ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                  : undefined,
+                clipPath: cropClip(shownCrop),
               }}
               onLoad={(e) => {
                 const img = e.currentTarget
@@ -6469,9 +6448,7 @@ return (
               pointerEvents: trace.enableInteraction ? 'auto' : 'none',
               overflow: 'hidden',
               border: 'none',
-              clipPath: trace.cropWidth && trace.cropWidth < 1 
-                ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-                : undefined,
+              clipPath: cropClip(shownCrop),
             }}
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -6549,9 +6526,7 @@ return (
         <div
           className={`h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
           style={{
-            clipPath: trace.cropWidth && trace.cropWidth < 1
-              ? `inset(${(trace.cropY ?? 0) * 100}% ${(1 - (trace.cropX ?? 0) - (trace.cropWidth ?? 1)) * 100}% ${(1 - (trace.cropY ?? 0) - (trace.cropHeight ?? 1)) * 100}% ${(trace.cropX ?? 0) * 100}%)`
-              : undefined,
+            clipPath: cropClip(shownCrop),
           }}
         >
         <div
@@ -7009,71 +6984,6 @@ return (
       </div>
     )}
 
-    {/* Crop mode handles (only when crop mode is active) */}
-    {isSelected && isCropMode && canEdit && (
-      <>
-        {/* Crop area overlay - shows the crop boundaries */}
-        <div
-          className="absolute pointer-events-auto cursor-pointer"
-          style={{
-            left: `${screenX - (width * (transform as any).scaleX * zoom / 2)}px`,
-            top: `${screenY - (height * (transform as any).scaleY * zoom / 2)}px`,
-            width: `${width * (transform as any).scaleX * zoom}px`,
-            height: `${height * (transform as any).scaleY * zoom}px`,
-            border: '1px dashed rgba(143, 143, 143, 0.95)',
-            boxShadow: 'inset 0 0 0 9999px rgba(25, 25, 25, 0.4), 0 0 0 1px rgba(203, 203, 203, 0.2)',
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
-            setIsCropMode(false)
-            setTransformMode('none')
-          }}
-        />
-        
-        {/* Crop handles at corners for adjusting crop area */}
-        {['tl', 'tr', 'bl', 'br'].map((corner) => {
-          const cropX = trace.cropX ?? 0
-          const cropY = trace.cropY ?? 0
-          const cropWidth = trace.cropWidth ?? 1
-          const cropHeight = trace.cropHeight ?? 1
-          
-          // Calculate position based on crop values
-          const baseX = screenX - (width * (transform as any).scaleX * zoom / 2)
-          const baseY = screenY - (height * (transform as any).scaleY * zoom / 2)
-          const containerWidth = width * (transform as any).scaleX * zoom
-          const containerHeight = height * (transform as any).scaleY * zoom
-          
-          const cropLeft = baseX + (cropX * containerWidth)
-          const cropTop = baseY + (cropY * containerHeight)
-          const cropRight = baseX + ((cropX + cropWidth) * containerWidth)
-          const cropBottom = baseY + ((cropY + cropHeight) * containerHeight)
-          
-          const handleX = corner.includes('r') ? cropRight : cropLeft
-          const handleY = corner.includes('b') ? cropBottom : cropTop
-          
-          return (
-            <div
-              key={`crop-${corner}`}
-              data-trace-element="true"
-              data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-crop cursor-nwse-resize pointer-events-auto z-10"
-              style={{
-                left: `${handleX}px`,
-                top: `${handleY}px`,
-                transform: 'translate(-50%, -50%)',
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation()
-                on.handleMouseDown(e, trace, 'crop', corner)
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation()
-                on.handleTouchDown(e, trace, 'crop', corner)
-              }}
-            />
-          )
-        })}
-      </>
-    )}
   </div>
 </div>
 )
@@ -7088,11 +6998,10 @@ return (
       <div className={traceFadeEnabled ? 'world-vignette' : undefined} style={{ position: 'absolute', inset: 0 }}>
       <div ref={worldLayerRef} style={{ position: 'absolute', inset: 0, transformOrigin: '0 0' }}>
       {/* Render traces AND player in z-index order */}
-      {/* Connections, under every trace: from centre to centre, so where
-          a thread meets a trace it disappears under it. Arrows sit on the
-          border instead, where they can be seen. Worked out from the traces'
-          positions, not from what's on screen, so a thread to a trace far off
-          (and not drawn) still runs off toward it. */}
+      {/* Connections, each at the level of the lower of its two traces,
+          just under it, and drawn from border to border. Worked out from the
+          traces' positions, not from what's on screen, so a thread to a
+          trace far off (and not drawn) still runs off toward it. */}
       <TraceLinksLayer
         links={links}
         place={placeTrace}
@@ -7383,19 +7292,81 @@ return (
                 )
               })}
 
-              {/* Rotation handle at top */}
-              <div
-                data-trace-element="true"
-                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000000]"
-                style={{
-                  left: `${screenX}px`,
-                  top: `${screenY - (borderHeight / 2 + 20)}px`,
-                  transform: 'translate(-50%, -50%)',
-                }}
+              {/* Rotation, round every corner, turned with the trace. */}
+              <RotateHandles
+                cx={screenX}
+                cy={screenY}
+                halfW={borderWidth / 2}
+                halfH={borderHeight / 2}
+                rotation={transform.rotation}
+                zIndex={1000000}
                 onMouseDown={(e) => handleMouseDown(e, trace, 'rotate')}
                 onTouchStart={(e) => handleTouchDown(e, trace, 'rotate')}
               />
             </>
+          )
+        })()}
+
+        {/* Crop mode: over the whole content -- the trace shows all of it
+            while it's cropped -- the window being kept, with what's cut
+            away dimmed. Above every trace, turned with this one. Each edge
+            and corner has a handle, and dragging the window slides it over
+            the content (lib/traceCrop). */}
+        {selectedTraceId && isCropMode && canEdit && (() => {
+          const trace = traces.find(t => t.id === selectedTraceId)
+          if (!trace || isPathTrace(trace)) return null
+          const tf = localTraceTransforms[trace.id] || getTraceTransform(trace)
+          const { width, height } = getTraceSize(trace)
+          const boxW = (trace.type === 'shape' ? (trace.width || 200) : width) * tf.scaleX * zoom
+          const boxH = (trace.type === 'shape' ? (trace.height || 200) : height) * tf.scaleY * zoom
+          const crop = cropOf(trace)
+          const { screenX, screenY } = getScreenPosition(tf.x, tf.y)
+          const back = trace.type === 'shape' ? { x: 0, y: 0 } : (() => {
+            const b = boxFromWindow(crop)
+            return turn(b.u * boxW, b.v * boxH, tf.rotation)
+          })()
+          const grab = (key: string) => ({
+            onMouseDown: (e: React.MouseEvent) => { e.stopPropagation(); handleMouseDown(e, trace, 'crop', key) },
+            onTouchStart: (e: React.TouchEvent) => { e.stopPropagation(); handleTouchDown(e, trace, 'crop', key) },
+          })
+          const kept = { left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.w * 100}%`, height: `${crop.h * 100}%` }
+          return (
+            <div
+              data-trace-element="true"
+              className="absolute pointer-events-auto z-[1000000]"
+              style={{
+                left: `${screenX + back.x}px`,
+                top: `${screenY + back.y}px`,
+                width: `${boxW}px`,
+                height: `${boxH}px`,
+                transform: `translate(-50%, -50%) rotate(${tf.rotation}deg)`,
+                outline: '1px dashed rgba(203, 203, 203, 0.55)',
+              }}
+              // The cut-away part holds still: pressing it neither moves
+              // the trace nor ends the crop.
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              {/* One shadow round the window, clipped to the box. */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute" style={{ ...kept, boxShadow: '0 0 0 100000px rgba(12, 12, 16, 0.62)' }} />
+              </div>
+              <div
+                className="absolute cursor-move"
+                style={{ ...kept, border: '1px solid rgba(235, 235, 235, 0.95)', boxShadow: '0 0 0 1px rgba(20, 20, 20, 0.6)' }}
+                {...grab('m')}
+              />
+              {CROP_HANDLES.map(({ key, u, v }) => (
+                <div
+                  key={key}
+                  data-trace-element="true"
+                  data-keeps-size=""
+                  className={`absolute trace-nier-handle ${key.length === 2 ? 'trace-nier-handle-crop' : 'trace-nier-handle-edge'} pointer-events-auto`}
+                  style={{ left: `${(crop.x + u * crop.w) * 100}%`, top: `${(crop.y + v * crop.h) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                  {...grab(key)}
+                />
+              ))}
+            </div>
           )
         })()}
 
@@ -7441,14 +7412,13 @@ return (
                   onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale', corner)}
                 />
               ))}
-              <div
-                data-trace-element="true"
-                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-rotate cursor-grab pointer-events-auto z-[1000001]"
-                style={{
-                  left: `${boxLeft + boxWidth / 2}px`,
-                  top: `${boxTop - 20}px`,
-                  transform: 'translate(-50%, -50%)',
-                }}
+              <RotateHandles
+                cx={boxLeft + boxWidth / 2}
+                cy={boxTop + boxHeight / 2}
+                halfW={boxWidth / 2}
+                halfH={boxHeight / 2}
+                rotation={0}
+                zIndex={1000001}
                 onMouseDown={(e) => handleGroupMouseDown(e, 'group-rotate')}
                 onTouchStart={(e) => handleGroupTouchDown(e, 'group-rotate')}
               />
