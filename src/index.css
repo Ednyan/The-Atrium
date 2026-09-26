@@ -15,14 +15,41 @@
 @tailwind utilities;
 
 /* The code history (public/code-history) is the landing page's neighbour to
-   the right, and the two slide into each other. Going there, its page runs the
-   slide; coming back, this one does: that page goes off to the right as this
-   comes in from the left. Where a browser can't, it simply changes page. */
+   the right, and the two slide past each other. From the landing page it opens
+   in a frame over this one (lib/codeHistory), and the slide is this document's
+   own: forward, this page goes off to the left as that one comes in from the
+   right; back, the reverse. Back from the page opened on its own -- a separate
+   document -- is the same slide, where the browser does it across documents,
+   and a plain change of page where it doesn't. */
 @view-transition { navigation: auto; }
 ::view-transition-old(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-off-right; }
 ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-left; }
+:root[data-slide='forward']::view-transition-old(root) { animation-name: slide-off-left; }
+:root[data-slide='forward']::view-transition-new(root) { animation-name: slide-in-right; }
 @keyframes slide-off-right { to { transform: translateX(100%); } }
 @keyframes slide-in-left { from { transform: translateX(-100%); } }
+@keyframes slide-off-left { to { transform: translateX(-100%); } }
+@keyframes slide-in-right { from { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+}
+/* Its band on the landing page: a strip of the page's own ground, a shade
+   deeper, with the graph printed onto it -- lightened over it on the dark
+   theme, and on the light one turned negative and darkened over it -- so the
+   page still shows through, grid and all. The graph fades off toward the link
+   at the right, and softly at top and bottom, where it cuts through. */
+.code-history-band { background: rgb(var(--c-shadow) / 0.3); }
+[data-landing-theme='light'] .code-history-band { background: rgb(var(--c-shadow) / 0.1); }
+.code-history-band img {
+  mix-blend-mode: lighten;
+  -webkit-mask-image: linear-gradient(90deg, #000 35%, transparent 82%), linear-gradient(transparent, #000 14%, #000 86%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(90deg, #000 35%, transparent 82%), linear-gradient(transparent, #000 14%, #000 86%, transparent);
+  mask-composite: intersect;
+}
+[data-landing-theme='light'] .code-history-band img { filter: invert(1) hue-rotate(180deg); mix-blend-mode: darken; }
+.code-history-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 2147483647; visibility: hidden; background: #07070b; }
+.code-history-frame.is-open { visibility: visible; }
 
 /* Things in the atrium's world layer that keep their size on screen whatever
    the zoom -- a trace's name under it, a handle -- anchored to a point in the

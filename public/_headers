@@ -77,3 +77,13 @@
   ! X-Frame-Options
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors tauri: http://tauri.localhost https://tauri.localhost; base-uri 'none'; form-action 'none'
+
+# The code history: the landing page opens it in a frame over itself, loaded
+# ahead so the two can slide past each other (src/lib/codeHistory.ts). Framed
+# by this site alone, then, with a policy of its own -- a static page that runs
+# its own script and draws on a canvas, and needs nothing else.
+/code-history/*
+  ! X-Frame-Options
+  ! Content-Security-Policy
+  X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'

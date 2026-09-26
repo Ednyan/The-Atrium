@@ -23,10 +23,10 @@
   #back b { font-weight: normal; transition: transform .25s ease; }
   #back:hover b { transform: translateX(-3px); }
 
-  /* The landing page and this one slide into each other, as neighbours: it
-     goes off to the left as this comes in from the right. (Back, the landing
-     page's styles do the reverse.) Where a browser can't, it simply changes
-     page. */
+  /* The landing page and this one slide past each other, as neighbours: it
+     goes off to the left as this comes in from the right. From the landing
+     page itself, that slide is the landing page's (this page is framed over
+     it); these are for arriving here as a document, where a browser can. */
   @view-transition { navigation: auto; }
   ::view-transition-old(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-off-left; }
   ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-right; }
@@ -86,6 +86,6 @@
   <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
-<script src="growth.js?v=e7c5a4e6aeb3"></script>
+<script src="growth.js?v=461661b121e1"></script>
 </body>
 </html>

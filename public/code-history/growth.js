@@ -416,7 +416,19 @@ canvas.addEventListener('pointermove', e => {
   tip.style.top = (e.clientY + 14) + 'px'
 })
 
-requestAnimationFrame(t => { prev = t; frame(t) })
+// Opened from the landing page, this page is loaded ahead into a frame over it,
+// unseen (src/lib/codeHistory.ts), and waits there to be shown: only then does
+// it start, as if just opened. Its Back is the landing page's to do -- that
+// slides home, where following the link would load the app all over again.
+const start = () => requestAnimationFrame(t => { prev = t; frame(t) })
+if (window.parent !== window) {
+  let started = false
+  addEventListener('message', e => {
+    if (e.source === parent && e.data === 'code-history:show' && !started) { started = true; start() }
+  })
+  document.getElementById('back').onclick = e => { e.preventDefault(); parent.postMessage('code-history:back', location.origin) }
+  parent.postMessage('code-history:ready', location.origin)
+} else start()
 
 // The opening: the finished graph -- today's -- dimmed under the title and a
 // line on what's to come. They fade in, hold long enough to read, then fade out

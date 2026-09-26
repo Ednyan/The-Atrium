@@ -14,6 +14,7 @@ import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import DesktopAppSection from './DesktopAppSection'
+import { openCodeHistory, preloadCodeHistory, watchCodeHistory } from '../lib/codeHistory'
 import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo } from './LandingDemos'
 
 interface LandingPageProps {
@@ -272,7 +273,7 @@ const sections: Section[] = [
 const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
 
 // The height of the code-history band under the bar.
-const CODE_HISTORY_BAND = 'clamp(52px, 5.5vw, 84px)'
+const CODE_HISTORY_BAND = 'clamp(94px, 9.9vw, 151px)'
 
 // The sticky bar's height (h-14). Both the jump and the scroll-spy measure
 // against it, so it is written once.
@@ -563,6 +564,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       if (frame) window.cancelAnimationFrame(frame)
     }
   }, [])
+
+  // The code history slides in over this page and back (the band below).
+  useEffect(() => watchCodeHistory(), [])
 
   // Reveals each section as it scrolls into view. A long page where everything
   // is simply already there is the main reason it reads as static.
@@ -858,32 +862,40 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
       {/* The code history (public/code-history, a page of its own): a band of the
           finished graph -- every file and connection the code has had -- right
-          under the bar, edge to edge, dark in either theme as the graph is.
-          Its link sits against the screen's right edge because the code
-          history is this page's neighbour to the right: the two slide into
-          each other (@view-transition, here in index.css and in that page). */}
+          under the bar, edge to edge, on a strip of this page's own ground a
+          shade deeper, in either theme (.code-history-band). The link is at the right edge because the
+          code history is this page's neighbour to the right: the two slide
+          past each other (lib/codeHistory), and hovering the band loads it
+          ahead. */}
       <a
         href="/code-history/"
-        className="group relative flex items-stretch overflow-hidden"
-        style={{ height: CODE_HISTORY_BAND, backgroundColor: '#07070b' }}
+        onPointerEnter={preloadCodeHistory}
+        onFocus={preloadCodeHistory}
+        onClick={e => {
+          if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          if (openCodeHistory()) e.preventDefault()
+        }}
+        className="code-history-band group relative flex items-center justify-end overflow-hidden"
+        style={{ height: CODE_HISTORY_BAND }}
       >
         <img
           src="/code-history/banner.webp"
           alt=""
-          className="absolute inset-0 w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity duration-500"
+          className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
         />
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 55%, rgb(7 7 11 / 0.9))' }} />
-        <span className="relative ml-auto flex items-center gap-3 px-5 sm:px-8 border-l border-white/25 bg-black/60 text-white text-[11px] sm:text-xs tracking-[0.22em] uppercase group-hover:bg-white group-hover:text-black transition-colors">
+        <span className="byline-link relative flex items-center gap-3 px-5 sm:px-10 lg:px-16 text-[11px] sm:text-xs tracking-[0.22em] uppercase text-nier-bg/80">
           {t('landing.codeHistory')}
           <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
         </span>
       </a>
 
       {/* SECTION 1: The Digital Atrium -- the title. The first screen still, less
-          the band above it. */}
+          the band above it, and set from the top of it rather than centred, so
+          the name sits up under the band -- with room to breathe there, a
+          share of the screen's height. */}
       <section
         ref={el => sectionRefs.current[0] = el}
-        className="flex items-center px-5 sm:px-10 lg:px-16 pt-10 pb-24 relative overflow-hidden"
+        className="flex items-start px-5 sm:px-10 lg:px-16 pt-[clamp(2.5rem,8vh,5.5rem)] pb-24 relative overflow-hidden"
         style={{ minHeight: `calc(100vh - 3.5rem - ${CODE_HISTORY_BAND})` }}
       >
         {/* Corner brackets */}
@@ -935,48 +947,45 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             so nothing led -- the eye had no entry point. Type anchors the left,
             the product holds the right, and on narrow screens it stacks with
             the product directly under the headline. */}
-        <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-center">
+        <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-start">
 
 
           {/* LEFT: type + actions */}
           <div className="text-left">
-            {/* Status strip, styled like the app's own HUD readouts */}
-            <div className="inline-flex items-center gap-3 border px-3 py-1.5 mb-8" style={{ borderColor: `rgb(var(--c-accent) / 0.25)`, backgroundColor: `rgb(var(--c-accent) / 0.04)` }}>
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: 'rgb(var(--c-accent))' }} />
-                <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: 'rgb(var(--c-accent))' }} />
-              </span>
-              <span className="text-xs tracking-[0.28em] uppercase" style={{ color: `rgb(var(--c-accent) / 0.9)` }}>{t('landing.hero.tagline')}</span>
-            </div>
-
             {/* Oversized and tightly set. The old headline was font-extralight
                 with wide tracking -- elegant, but it read as delicate at exactly
                 the moment the page needed to assert itself. Weight and leading
                 do the work now; the wide tracking stays on the small labels,
-                which is where that NieR texture actually belongs. */}
-            <h1 className="font-light leading-[0.86] tracking-[-0.02em] mb-7">
-              <span className="block text-nier-bg/70 text-[clamp(2rem,5vw,3.5rem)] tracking-[0.12em] font-extralight mb-2">
+                which is where that NieR texture actually belongs.
+
+                THE, then the name on one line, sized against the column (cqi:
+                the h1 is a size container) so it fills it at any width and
+                never breaks between the two words. */}
+            <h1 className="font-light leading-[0.86] tracking-[-0.02em] mb-7" style={{ containerType: 'inline-size' }}>
+              <span className="block text-nier-bg/70 tracking-[0.12em] font-extralight mb-3" style={{ fontSize: 'clamp(1.25rem, 6.2cqi, 3rem)' }}>
                 THE
               </span>
-              <span
-                className="block text-[clamp(3.4rem,9vw,7.5rem)] text-nier-strong"
-                style={{ textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' }}
-              >
-                DIGITAL
-              </span>
-              <span
-                className="block text-[clamp(3.4rem,9vw,7.5rem)]"
-                style={{
-                  backgroundImage: 'var(--metal-title)',
-                  WebkitBackgroundClip: 'text',
-                  backgroundClip: 'text',
-                  color: 'transparent',
-                  // On black this is the metal throwing light. On paper a dark
-                  // halo behind dark letters is just a smudge, so it goes.
-                  filter: 'drop-shadow(0 0 34px rgb(var(--c-shimmer) / 0.22))',
-                }}
-              >
-                ATRIUM
+              <span className="block whitespace-nowrap" style={{ fontSize: 'clamp(2rem, 12.9cqi, 6.5rem)' }}>
+                <span
+                  className="inline-block text-nier-strong"
+                  style={{ textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' }}
+                >
+                  DIGITAL
+                </span>{' '}
+                <span
+                  className="inline-block"
+                  style={{
+                    backgroundImage: 'var(--metal-title)',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                    // On black this is the metal throwing light. On paper a dark
+                    // halo behind dark letters is just a smudge, so it goes.
+                    filter: 'drop-shadow(0 0 34px rgb(var(--c-shimmer) / 0.22))',
+                  }}
+                >
+                  ATRIUM
+                </span>
               </span>
             </h1>
 
@@ -1048,18 +1057,19 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
 
             {/* Three pillars as a rule-separated row rather than floating chips,
-                so they read as one grounded line under the actions. */}
+                so they read as one grounded line under the actions. Each marked
+                by a pulsing diamond, the three pulses a beat apart. */}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-xs tracking-[0.16em] uppercase text-nier-bg/80">
               {([
-                { label: 'Infinite Canvas', key: 'landing.feature.canvas', color: 'rgb(var(--c-accent))' },
-                { label: 'Private Atriums', key: 'landing.feature.atriums', color: 'rgb(var(--c-emerald))' },
-                { label: 'Live Presence', key: 'landing.feature.presence', color: 'rgb(var(--c-sky))' },
-              ] as const).map(({ label, key, color }) => (
-                <div key={label} className="flex items-center gap-2 group/feat">
-                  <div
-                    className="w-1.5 h-1.5 rotate-45 transition-transform duration-300 group-hover/feat:scale-150"
-                    style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}AA` }}
-                  />
+                { key: 'landing.feature.canvas', color: 'rgb(var(--c-accent))' },
+                { key: 'landing.feature.atriums', color: 'rgb(var(--c-emerald))' },
+                { key: 'landing.feature.freedom', color: 'rgb(var(--c-sky))' },
+              ] as const).map(({ key, color }, i) => (
+                <div key={key} className="flex items-center gap-2 group/feat">
+                  <span className="relative flex h-1.5 w-1.5 transition-transform duration-300 group-hover/feat:scale-150">
+                    <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: color, animationDelay: `${i / 3}s` }} />
+                    <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: color }} />
+                  </span>
                   <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{t(key)}</span>
                 </div>
               ))}
@@ -1068,25 +1078,23 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
           {/* RIGHT: the product, and whose it is.
 
-              The credit sits on the frame's top edge rather than under the
-              buttons on the left, where it was a line of small print among
-              other lines of small print. Here it reads the way a plate beside
-              a piece does: the name is the loud part, "made by" is the quiet
-              label above it, and the whole block is the door to the rest of
-              the story. */}
+              The credit sits under the frame rather than under the buttons on
+              the left, where it was a line of small print among other lines
+              of small print. Here it reads the way a plate under a piece
+              does: the name is the loud part, "created by" is the quiet label
+              above it, and the whole block is the door to the rest of the
+              story. */}
           <div className="relative">
+            <ShowcaseFrame />
             <button
               type="button"
               onClick={() => scrollToSection(sectionIndex('creator'))}
               // w-fit rather than the full column: the button was as wide as
               // the row it sat in, so most of its hit area was empty space to
               // the left of the words and the words themselves were only part
-              // of what answered. Now the target is exactly the three lines
-              // that look like a target, and all three of them respond to the
-              // hover together -- a name that stays inert while the arrow
-              // under it moves reads as a caption above a link, not as one
-              // thing you can press.
-              className="group w-fit ml-auto mb-8 lg:mb-12 lg:-mt-10 flex flex-col items-end text-right cursor-pointer"
+              // of what answered. Now the target is exactly the lines that look
+              // like a target, and they respond to the hover together.
+              className="group w-fit ml-auto mt-8 lg:mt-10 flex flex-col items-end text-right cursor-pointer"
             >
               <span className="byline flex items-center gap-2.5 text-[11px] sm:text-xs tracking-[0.3em] uppercase">
                 <span className="byline-mark w-2 h-2 rotate-45" />
@@ -1095,15 +1103,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
               <span className="mt-2.5 text-xl sm:text-2xl tracking-[0.12em] uppercase text-nier-strong leading-none transition-opacity duration-300 opacity-90 group-hover:opacity-100">
                 Eduardo Paranhos
               </span>
-              <span className="byline-link mt-3 flex items-center gap-2 text-xs sm:text-[13px] tracking-[0.18em] uppercase text-nier-bg/70">
-                {t('landing.aboutCreator')}
-                <span className="transition-transform duration-300 group-hover:translate-y-0.5">↓</span>
-              </span>
               {/* The rule draws itself in under the whole thing on hover, the
                   way the name rule on the contributors wall does. */}
               <span className="byline-rule mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
             </button>
-            <ShowcaseFrame />
           </div>
         </div>
 
