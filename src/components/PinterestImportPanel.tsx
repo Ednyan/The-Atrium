@@ -47,7 +47,7 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
       const result = await fetchPinterestBoards()
       setBoards(result)
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to load Pinterest boards')
+      setErrorMessage(err.message || t('atrium.pinterest.errLoadBoards'))
       setStep('error')
     } finally {
       setBoardsLoading(false)

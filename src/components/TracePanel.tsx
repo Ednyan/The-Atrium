@@ -1,11 +1,11 @@
 import PinterestMark from './PinterestMark'
 import type { TranslationKey } from '../locales/en'
-import { useTranslation, pluralCategory } from '../lib/i18n'
+import { tCount, useTranslation } from '../lib/i18n'
 import ShapeStyleControls from './ShapeStyleControls'
 import TraceNameField from './TraceNameField'
 import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
-import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
+import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { uploadTraceFile } from '../lib/traceUpload'
 import { exrFileToPng, isExr } from '../lib/exr'
@@ -278,7 +278,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapeDragArmed, shapeStyle, onShapeDraftChange])
   
-  const { username, userId, position, addTrace, isLobbyFull, getLobbySizeBytes } = useGamePick('username', 'userId', 'position', 'addTrace', 'isLobbyFull', 'getLobbySizeBytes')
+  const { username, userId, position, addTrace, isLobbyFull } = useGamePick('username', 'userId', 'position', 'addTrace', 'isLobbyFull')
   const lobbyFull = isLobbyFull()
   
   // Use trace position if provided, otherwise fall back to character position
@@ -302,8 +302,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     
     // Check lobby size limit
     if (isLobbyFull()) {
-      const sizeMB = (getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-      alert(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+      alert(lobbyFullMessage())
       return
     }
 
@@ -347,7 +346,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         try {
           const { renderPdfPages } = await import('../lib/pdf')
           const pages = await renderPdfPages(pdfBuffer, (done, total) => {
-            setPdfBusy(`Rendering page ${done} of ${total}...`)
+            setPdfBusy(t('atrium.trace.renderingPage', { done, total }))
           })
           setPdfBusy('')
           onCreatePdfPages(pages, pdfColumns)
@@ -510,7 +509,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         
         if (error) {
           console.error('❌ Database insert error:', error)
-          alert(`Failed to save trace: ${error.message}`)
+          alert(t('atrium.error.traceSaveFailed', { message: error.message }))
           return // Don't add to local store if database fails
         } else {
           // Use the database-generated trace. mapRowToTrace is the same
@@ -872,11 +871,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                     autoFocus
                   />
                   <p className={`text-[9px] tracking-wider mt-2 uppercase ${batchOverCap ? '' : 'text-nier-bg/70'}`} style={batchOverCap ? { color: '#FF6161' } : undefined}>
-                    {t(({
-                      one: 'atrium.trace.validLinks.one',
-                      few: 'atrium.trace.validLinks.few',
-                      many: 'atrium.trace.validLinks.many',
-                    } as const)[pluralCategory(batchValidUrls.length)], { count: batchValidUrls.length })}
+                    {tCount('atrium.trace.validLinks', batchValidUrls.length)}
                     {batchOverCap
                       ? t('atrium.trace.overCap', { cap: MAX_BATCH_EMBED_LINKS, excess: batchValidUrls.length - MAX_BATCH_EMBED_LINKS })
                       : t('atrium.trace.eachOwnEmbed')}
@@ -884,11 +879,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   {batchInvalidEntries.length > 0 && (
                     <div className="mt-2 border border-nier-red/40 bg-nier-red/10 px-3 py-2 space-y-1">
                       <p className="text-nier-bg text-[10px] tracking-wider">
-                        ⚠ {t(({
-                          one: 'atrium.trace.invalidLines.one',
-                          few: 'atrium.trace.invalidLines.few',
-                          many: 'atrium.trace.invalidLines.many',
-                        } as const)[pluralCategory(batchInvalidEntries.length)], { count: batchInvalidEntries.length })}
+                        ⚠ {tCount('atrium.trace.invalidLines', batchInvalidEntries.length)}
                       </p>
                       {batchInvalidEntries.slice(0, 5).map((entry) => (
                         <p key={entry.line} className="text-nier-bg/80 text-[9px] tracking-wide font-mono truncate">
@@ -982,11 +973,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                   : (traceType === 'shape' && shapeType === 'path')
                     ? t('atrium.trace.startPath')
                     : (traceType === 'embed' && batchMode)
-                      ? t(({
-                          one: 'atrium.trace.placeEmbeds.one',
-                          few: 'atrium.trace.placeEmbeds.few',
-                          many: 'atrium.trace.placeEmbeds.many',
-                        } as const)[pluralCategory(batchValidUrls.length)], { count: batchValidUrls.length })
+                      ? tCount('atrium.trace.placeEmbeds', batchValidUrls.length)
                       : t('atrium.trace.submit')}
             </button>
           </div>

@@ -5,7 +5,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
-import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
+import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { useLatestHandlers } from '../hooks/useLatestHandlers'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
@@ -2680,8 +2680,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (!userId || sourceTraces.length === 0) return
 
     if (useGameStore.getState().isLobbyFull()) {
-      const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-      showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+      showToast(lobbyFullMessage())
       return
     }
 
@@ -9403,7 +9402,7 @@ return (
                       >
                         {/* Only while they disagree, and it cannot be chosen --
                             picking it would mean "set them all to mixed". */}
-                        {mixed && <option value="" disabled>— mixed —</option>}
+                        {mixed && <option value="" disabled>{t('common.mixed')}</option>}
                         {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
                           <option key={value} value={value}>{label}</option>
                         ))}

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { useTranslation, pluralCategory } from '../lib/i18n'
+import { tCount, useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { keysFromNumbers } from '../lib/order'
@@ -85,7 +85,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
     setError('')
 
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum is 10 MB.`)
+      setError(t('transfer.import.tooLarge', { size: (file.size / (1024 * 1024)).toFixed(1), max: MAX_FILE_SIZE / (1024 * 1024) }))
       return
     }
 
@@ -530,11 +530,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               </div>
               {localOnlyCount > 0 && (
                 <div className="text-[9px] text-nier-red/70 tracking-wider">
-                  {t(({
-                    one: 'transfer.import.localOnly.one',
-                    few: 'transfer.import.localOnly.few',
-                    many: 'transfer.import.localOnly.many',
-                  } as const)[pluralCategory(localOnlyCount)], { count: localOnlyCount })}
+                  {tCount('transfer.import.localOnly', localOnlyCount)}
                 </div>
               )}
             </div>

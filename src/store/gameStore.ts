@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { UserPresence, Trace, Layer } from '../types/database'
 import { isDesktop } from '../lib/supabase'
+import { t } from '../lib/i18n'
 import { recordTraceCreated } from '../lib/supportAppeal'
 import type { TraceLink } from '../lib/traceLinks'
 
@@ -442,6 +443,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     return get().getLobbySizeBytes() >= LOBBY_SIZE_LIMIT
   },
 }))
+
+// What to say when a full atrium turns something away.
+export function lobbyFullMessage(): string {
+  return t('atrium.error.sizeLimit', {
+    limit: (LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0),
+    size: (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1),
+  })
+}
 
 // Just these fields of the store, re-rendering only when one of them changes.
 //
