@@ -31,6 +31,13 @@ const choice = (on: boolean) => `px-3 py-2 text-[10px] tracking-wider uppercase 
     : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
 }`
 
+// A path's kinds of line, named as a connection's are.
+const PATH_LINES: { kind: ShapeStyle['pathCurveType']; glyph: string; key: 'atrium.links.straight' | 'atrium.links.curved' | 'atrium.links.elbow' }[] = [
+  { kind: 'straight', glyph: '━', key: 'atrium.links.straight' },
+  { kind: 'bezier', glyph: '〰', key: 'atrium.links.curved' },
+  { kind: 'elbow', glyph: '┗', key: 'atrium.links.elbow' },
+]
+
 function SectionRule({ label }: { label: string }) {
   return (
     <div className="flex items-baseline gap-3 pt-1">
@@ -241,10 +248,10 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
           />
           <div>
             <label className={LABEL}>{t('atrium.customize.pathStyle')}</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['straight', 'bezier'] as const).map(kind => (
+            <div className="grid grid-cols-3 gap-2">
+              {PATH_LINES.map(({ kind, glyph, key }) => (
                 <button key={kind} type="button" onClick={() => onChange({ pathCurveType: kind })} className={choice(value.pathCurveType === kind)}>
-                  {kind === 'straight' ? '━ Straight' : '〰 Curved'}
+                  {glyph} {t(key)}
                 </button>
               ))}
             </div>

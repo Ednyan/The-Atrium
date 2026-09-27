@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { arrowhead, bend, curveMiddle, restOf, visiblePart, type LinkArrow, type TraceLink } from '../lib/traceLinks'
+import { LABEL_SIZE_RANGE, arrowhead, bend, curveMiddle, restOf, visiblePart, type LinkArrow, type TraceLink } from '../lib/traceLinks'
+import { ELBOW_RADIUS, elbowAtFor, elbowAxis, elbowGrip, elbowRoute, roundedPath, trimEnds } from '../lib/elbow'
 import { Check, ColourField, Slider } from './ShapeStyleControls'
 
 // Where a trace is, in world units: its centre, its box's half-size and turn
@@ -32,7 +33,9 @@ type Parts = {
   headTo?: SVGPolygonElement | null
   headFrom?: SVGPolygonElement | null
   middle?: HTMLDivElement | null
+  grip?: HTMLDivElement | null
 }
+
 
 // The slack: each thread's bend is a point on a spring, in world units, that
 // chases where the bend should be. When a trace at either end moves, the
@@ -52,7 +55,7 @@ const SLACK_DAMPING = 0.45
  * move without re-rendering every trace.
  */
 export default function TraceLinksLayer({
-  links, place, offsets, zoom, worldOffset, selected, primary, preview, canEdit, onPress, onMenu, onDelete, wakeRef,
+  links, place, offsets, zoom, worldOffset, selected, preview, canEdit, onPress, onMenu, onElbowAt, wakeRef,
 }: {
   links: TraceLink[]
   place: (traceId: string) => LinkEnd | null
@@ -62,15 +65,14 @@ export default function TraceLinksLayer({
   zoom: number
   worldOffset: { x: number; y: number }
   selected: Set<string>
-  primary: string | null
   preview: { from: string[]; to: { x: number; y: number } } | null
   canEdit: boolean
   onPress: (id: string, e: React.PointerEvent) => void
   onMenu: (id: string, e: React.MouseEvent) => void
-  onDelete: () => void
+  // An elbow's middle run dragged to `at`; `done` when it's let go.
+  onElbowAt: (id: string, at: number, done: boolean) => void
   wakeRef: React.MutableRefObject<() => void>
 }) {
-  const { t } = useTranslation()
   const [hovered, setHovered] = useState<string | null>(null)
   const parts = useRef(new Map<string, Parts>())
   const springs = useRef(new Map<string, { x: number; y: number; vx: number; vy: number }>())
@@ -115,6 +117,36 @@ export default function TraceLinksLayer({
       if (oa || ob) stirring = true
       const ax = a.x + (oa ? oa.x / zoom : 0), ay = a.y + (oa ? oa.y / zoom : 0)
       const bx = b.x + (ob ? ob.x / zoom : 0), by = b.y + (ob ? ob.y / zoom : 0)
+
+      // An elbow: routed between the two boxes (lib/elbow), border to
+      // border, with no slack to swing.
+      if (link.elbow) {
+        const from = `elbow ${ax} ${ay} ${bx} ${by} ${a.hw} ${a.hh} ${b.hw} ${b.hh} ${zoom} ${worldOffset.x} ${worldOffset.y} ${link.width} ${link.arrow} ${link.elbowAt}`
+        if (drawn.current.get(link.id) === from) continue
+        drawn.current.set(link.id, from)
+        const route = elbowRoute({ x: ax, y: ay, hw: a.hw, hh: a.hh }, { x: bx, y: by, hw: b.hw, hh: b.hh }, link.elbowAt).map(p => screen(p.x, p.y))
+        const size = headSize(link, zoom)
+        const d = roundedPath(trimEnds(route, headsFrom(link) ? size * 0.8 : 0, headsTo(link) ? size * 0.8 : 0), ELBOW_RADIUS * zoom)
+        el.line.setAttribute('d', d)
+        el.glow?.setAttribute('d', d)
+        el.hit?.setAttribute('d', d)
+        const n = route.length
+        const head = (poly: SVGPolygonElement | null | undefined, tip: { x: number; y: number }, behind: { x: number; y: number }) => {
+          if (!poly) return
+          const p = arrowhead(tip.x, tip.y, behind.x, behind.y, size)
+          poly.setAttribute('points', `${p[0]},${p[1]} ${p[2]},${p[3]} ${p[4]},${p[5]}`)
+        }
+        head(el.headTo, route[n - 1], route[n - 2])
+        head(el.headFrom, route[0], route[1])
+        const grip = elbowGrip(route)
+        for (const node of [el.middle, el.grip]) {
+          if (!node) continue
+          node.style.left = `${grip.x}px`
+          node.style.top = `${grip.y}px`
+        }
+        continue
+      }
+
       const rest = restOf(link.straight, ax, ay, bx, by)
       let sp = springs.current.get(link.id)
       if (!sp) springs.current.set(link.id, sp = { x: rest.x, y: rest.y, vx: 0, vy: 0 })
@@ -233,45 +265,97 @@ export default function TraceLinksLayer({
         })}
       </svg>
 
-      {/* At each thread's middle: its label -- always, or for a thread set to
-          show it on hover, while hovered or selected (how touch gets to it) --
-          and on the one last clicked, the delete button. */}
+      {/* An elbow's middle run, selected, has a grip: dragged, the run moves
+          across between its ends (elbowAt). */}
+      {canEdit && links.map(link => {
+        if (!link.elbow || !selected.has(link.id)) return null
+        const a = place(link.from), b = place(link.to)
+        if (!a || !b) return null
+        const across = elbowAxis({ x: a.x, y: a.y, hw: a.hw, hh: a.hh }, { x: b.x, y: b.y, hw: b.hw, hh: b.hh }) === 'x'
+        return (
+          <div
+            key={`grip-${link.id}`}
+            ref={part(link.id, 'grip')}
+            data-link={link.id}
+            data-elbow-grip=""
+            className="absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto"
+            style={{ transform: 'translate(-50%, -50%)', zIndex: 999999, cursor: across ? 'ew-resize' : 'ns-resize' }}
+            onPointerDown={e => {
+              e.stopPropagation()
+              e.preventDefault()
+              const target = e.currentTarget
+              target.setPointerCapture(e.pointerId)
+              const at = (ev: PointerEvent) => {
+                const { zoom, worldOffset, place } = latest.current
+                const from = place(link.from), to = place(link.to)
+                if (!from || !to) return null
+                const world = { x: (ev.clientX - worldOffset.x) / zoom, y: (ev.clientY - worldOffset.y) / zoom }
+                return elbowAtFor({ x: from.x, y: from.y, hw: from.hw, hh: from.hh }, { x: to.x, y: to.y, hw: to.hw, hh: to.hh }, world)
+              }
+              const move = (ev: PointerEvent) => { const value = at(ev); if (value !== null) onElbowAt(link.id, value, false) }
+              const up = (ev: PointerEvent) => {
+                target.removeEventListener('pointermove', move)
+                target.removeEventListener('pointerup', up)
+                target.removeEventListener('pointercancel', up)
+                const value = at(ev)
+                onElbowAt(link.id, value ?? link.elbowAt, true)
+              }
+              target.addEventListener('pointermove', move)
+              target.addEventListener('pointerup', up)
+              target.addEventListener('pointercancel', up)
+            }}
+          />
+        )
+      })}
+
+      {/* At each thread's middle, its label: always, or for a thread set to
+          show it on hover, while hovered or selected (how touch gets to it).
+          No delete button there -- it sat in the way of taking hold of the
+          thread; Delete and the thread's menu delete it. */}
       {links.map(link => {
         const showLabel = !!link.label && (!link.labelOnHover || hovered === link.id || selected.has(link.id))
-        const showDelete = canEdit && primary === link.id
-        if (!showLabel && !showDelete) return null
+        if (!showLabel) return null
+        // An elbow's grip is where the label sits: selected, the label steps
+        // up off it, so the grip can be seen and taken.
+        const gripShown = canEdit && link.elbow && selected.has(link.id)
         return (
           <div
             key={`middle-${link.id}`}
             ref={part(link.id, 'middle')}
             data-link={link.id}
-            className="absolute flex flex-col items-center gap-1.5 pointer-events-none"
-            style={{ transform: 'translate(-50%, -50%)', zIndex: 999998 }}
+            className="absolute pointer-events-none"
+            style={{ transform: gripShown ? 'translate(-50%, calc(-100% - 12px))' : 'translate(-50%, -50%)', zIndex: 999998 }}
           >
-            {showLabel && (
-              <div
-                className="px-2 py-0.5 text-[11px] tracking-wide whitespace-nowrap border font-mono"
-                style={{ color: 'rgb(var(--c-fg))', background: 'rgb(var(--c-ground) / 0.92)', borderColor: link.color || place(link.from)?.colour }}
-              >
-                {link.label}
-              </div>
-            )}
-            {showDelete && (
-              <button
-                className="pointer-events-auto px-2.5 py-1 text-[10px] tracking-[0.18em] uppercase border transition-colors"
-                style={{ color: 'rgb(var(--c-danger))', background: 'rgb(var(--c-ground) / 0.94)', borderColor: 'rgb(var(--c-danger) / 0.55)' }}
-                onPointerDown={e => e.stopPropagation()}
-                onClick={e => { e.stopPropagation(); onDelete() }}
-              >
-                ✕ {selected.size > 1 ? t('atrium.links.deleteMany', { count: selected.size }) : t('atrium.links.delete')}
-              </button>
-            )}
+            <div
+              className="tracking-wide whitespace-nowrap border font-mono"
+              style={{
+                color: 'rgb(var(--c-fg))',
+                background: 'rgb(var(--c-ground) / 0.92)',
+                borderColor: link.color || place(link.from)?.colour,
+                // Its size in the world, like the thread's: the text at its
+                // label size, and the box around it in proportion.
+                fontSize: `${link.labelSize * zoom}px`,
+                lineHeight: 1.35,
+                padding: '0.15em 0.65em',
+              }}
+            >
+              {link.label}
+            </div>
           </div>
         )
       })}
     </>
   )
 }
+
+// How a thread runs: hanging in a curve, straight, or as an elbow.
+type Line = 'curved' | 'straight' | 'elbow'
+const lineOf = (link: TraceLink): Line => (link.elbow ? 'elbow' : link.straight ? 'straight' : 'curved')
+const LINES: { line: Line; key: 'atrium.links.curved' | 'atrium.links.straight' | 'atrium.links.elbow'; patch: Partial<TraceLink> }[] = [
+  { line: 'curved', key: 'atrium.links.curved', patch: { straight: false, elbow: false } },
+  { line: 'straight', key: 'atrium.links.straight', patch: { straight: true, elbow: false } },
+  { line: 'elbow', key: 'atrium.links.elbow', patch: { elbow: true } },
+]
 
 const ARROWS: { arrow: LinkArrow; glyph: string; key: 'atrium.links.arrowNone' | 'atrium.links.arrowForward' | 'atrium.links.arrowBack' | 'atrium.links.arrowBoth' }[] = [
   { arrow: 'none', glyph: '—', key: 'atrium.links.arrowNone' },
@@ -345,26 +429,33 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
         <div className="mt-2.5">
           <Check checked={first.labelOnHover} onChange={labelOnHover => onEdit({ labelOnHover })} label={t('atrium.links.labelOnHover')} />
         </div>
-      </div>
-      <div>
-        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.line')}</label>
-        <div className="grid grid-cols-2 gap-1">
-          {([false, true] as const).map(straight => (
-            <button
-              key={String(straight)}
-              type="button"
-              aria-pressed={first.straight === straight}
-              onClick={() => onEdit({ straight })}
-              className={`h-8 border text-[10px] tracking-[0.15em] uppercase transition-colors ${first.straight === straight
-                ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
-                : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'}`}
-            >
-              {straight ? t('atrium.links.straight') : t('atrium.links.curved')}
-            </button>
-          ))}
+        <div className="mt-3">
+          <Slider label={t('atrium.links.labelSize', { value: first.labelSize })} min={LABEL_SIZE_RANGE.min} max={LABEL_SIZE_RANGE.max} step={1} value={first.labelSize} onChange={labelSize => onEdit({ labelSize })} />
         </div>
       </div>
       <div>
+        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.line')}</label>
+        <div className="grid grid-cols-3 gap-1">
+          {LINES.map(({ line, key, patch }) => {
+            const on = lineOf(first) === line
+            return (
+              <button
+                key={line}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onEdit(patch)}
+                className={`h-8 border text-[10px] tracking-[0.15em] uppercase transition-colors ${on
+                  ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                  : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'}`}
+              >
+                {t(key)}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      {/* An elbow always runs border to border. */}
+      {!first.elbow && <div>
         <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.ends')}</label>
         <div className="grid grid-cols-2 gap-1">
           {([false, true] as const).map(toCenter => (
@@ -381,7 +472,7 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
       <div>
         <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.arrow')}</label>
         <div className="grid grid-cols-4 gap-1">

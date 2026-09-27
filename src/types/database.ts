@@ -96,7 +96,7 @@ export interface Trace {
     cp2x?: number // Control point 2 x
     cp2y?: number // Control point 2 y
   }> // For path shapes
-  pathCurveType?: 'straight' | 'bezier' // For path shapes - line type
+  pathCurveType?: 'straight' | 'bezier' | 'elbow' // For path shapes - line type
   pathArrowStart?: 'none' | 'triangle' | 'diamond' // Arrow at start of path
   pathArrowEnd?: 'none' | 'triangle' | 'diamond' // Arrow at end of path
   width?: number

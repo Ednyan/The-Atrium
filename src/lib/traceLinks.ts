@@ -26,9 +26,19 @@ export interface TraceLink {
   // Runs on under its traces to their centres, rather than stopping at their
   // borders (the default).
   toCenter: boolean
+  // The label's text size, in world units: it scales with the view, like the
+  // thread (it was a fixed size on screen, so it loomed as you zoomed out).
+  labelSize: number
+  // Drawn as an elbow -- straight runs and right-angle turns (elbowRoute) --
+  // over `straight` and the curve. `elbowAt` is where its middle run sits
+  // between its two ends: 0 at the start, 1 at the end.
+  elbow: boolean
+  elbowAt: number
 }
 
 export const DEFAULT_LINK_WIDTH = 2
+export const DEFAULT_LABEL_SIZE = 12
+export const LABEL_SIZE_RANGE = { min: 6, max: 48 }
 const ARROWS: LinkArrow[] = ['none', 'forward', 'back', 'both']
 
 export function mapRowToLink(row: any): TraceLink {
@@ -46,6 +56,9 @@ export function mapRowToLink(row: any): TraceLink {
     labelOnHover: !!row.label_on_hover,
     straight: !!row.straight,
     toCenter: !!row.to_center,
+    labelSize: typeof row.label_size === 'number' && row.label_size > 0 ? Math.min(row.label_size, 200) : DEFAULT_LABEL_SIZE,
+    elbow: !!row.elbow,
+    elbowAt: typeof row.elbow_at === 'number' && Number.isFinite(row.elbow_at) ? Math.max(-5, Math.min(6, row.elbow_at)) : 0.5,
   }
 }
 
@@ -62,6 +75,9 @@ export function linkRow(link: TraceLink) {
     label_on_hover: link.labelOnHover,
     straight: link.straight,
     to_center: link.toCenter,
+    label_size: link.labelSize,
+    elbow: link.elbow,
+    elbow_at: link.elbowAt,
   }
 }
 

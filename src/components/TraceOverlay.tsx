@@ -2,7 +2,7 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
-import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
@@ -34,6 +34,8 @@ import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { mapRowToTrace } from '../hooks/useTraces'
+import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
+import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls from './ShapeStyleControls'
@@ -41,7 +43,7 @@ import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
-import { DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
+import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import { cropClip, flipInBox } from '../lib/traceFlip'
@@ -1324,6 +1326,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [confirmedImageIds, setConfirmedImageIds] = useState<Set<string>>(new Set()) // Track embeds confirmed to be actual images (even without file extension)
   const [pathCreationMode, setPathCreationMode] = useState(false) // Track if we're in path creation mode
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
+  const selectedPointIndexRef = useRef(selectedPointIndex)
+  selectedPointIndexRef.current = selectedPointIndex
+  // Which end of the path a click on the canvas adds to while adding points:
+  // the end, as when drawing one, or the start, once its first point is
+  // clicked.
+  const [pathAddAt, setPathAddAt] = useState<'start' | 'end'>('end')
+  const pathAddAtRef = useRef(pathAddAt)
+  pathAddAtRef.current = pathAddAt
+  // Where the pointer is while adding points, on screen: a dashed run from
+  // the end being added to shows where the next point goes.
+  const [pathPointer, setPathPointer] = useState<{ x: number; y: number } | null>(null)
+  // A path's point dragged with Shift over another trace, onto its border
+  // (lib/pathGeometry): that trace's box, and where on it the point went.
+  const [borderSnap, setBorderSnap] = useState<{ box: TurnedBox; at: { x: number; y: number } } | null>(null)
+  const borderSnapRef = useRef(borderSnap)
+  // Whether the press on a handle has moved past a click's few pixels.
+  const pressMovedRef = useRef(false)
   const [localShapePoints, setLocalShapePoints] = useState<Record<string, any[]>>({}) // Track shape points during drag
   const [colorPickerCallback, setColorPickerCallback] = useState<((color: string) => void) | null>(null) // For fallback color picker
   const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
@@ -1345,7 +1364,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     onMultiSelectionChange?.(Array.from(multiSelectedIds))
   }, [multiSelectedIds, onMultiSelectionChange])
 
-  const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
+  const startPosRef = useRef<{ x: number; y: number; corner: string; initialPoint?: {x: number, y: number}; initialCpx?: number; initialCpy?: number; initialOther?: { x: number; y: number }; initialPoints?: any[] }>({ x: 0, y: 0, corner: '' })
   const startTransformRef = useRef({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
   const startCropRef = useRef({ cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 })
   const centerRef = useRef({ x: 0, y: 0 })
@@ -1382,6 +1401,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const transformModeRef = useRef<TransformMode>(transformMode)
   const selectedTraceIdRef = useRef<string | null>(selectedTraceId)
   const pathCreationModeRef = useRef(pathCreationMode)
+  const worldOffsetRef = useRef(worldOffset)
+  worldOffsetRef.current = worldOffset
 
   // Keep refs updated
   useEffect(() => { tracesRef.current = traces }, [traces])
@@ -1682,6 +1703,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         // was drawn yet), rather than leaving a degenerate stray trace
         // behind. Uses refs (this listener is registered once, not
         // re-bound per render) rather than the render-scoped executeDelete.
+        // A path worth keeping stays selected: this Escape ends the adding,
+        // and the next one lets go of it.
         if (pathCreationModeRef.current) {
           setPathCreationMode(false)
           const currentSelectedId = selectedTraceIdRef.current
@@ -1693,6 +1716,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
               removeTrace(currentSelectedId)
               markTraceDeleted(currentSelectedId)
               knownTraceIdsRef.current?.delete(currentSelectedId)
+            } else {
+              return
             }
           }
         }
@@ -2475,12 +2500,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const connectFromRef = useRef<string[] | null>(null)
   connectFromRef.current = connectFrom
   const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null)
-  // Threads selected -- Shift adds and removes -- and the one clicked last,
-  // which carries the delete button.
+  // Threads selected -- Shift adds and removes. Deleted with Delete or from
+  // their menu: a delete button on the thread itself sat in the way of
+  // taking hold of it.
   const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set())
   const selectedLinksRef = useRef(selectedLinks)
   selectedLinksRef.current = selectedLinks
-  const [primaryLink, setPrimaryLink] = useState<string | null>(null)
   const [linkMenuAt, setLinkMenuAt] = useState<{ x: number; y: number } | null>(null)
   // The drag feel's trail on each moving trace, for the threads to follow, and
   // how to wake the threads' animation when it changes.
@@ -2506,7 +2531,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const clearLinkSelection = () => {
     setSelectedLinks(new Set())
-    setPrimaryLink(null)
     setLinkMenuAt(null)
   }
 
@@ -2534,14 +2558,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       const b = boxes.get(id)
       return b && { left: b.cx - b.halfW, top: b.cy - b.halfH, right: b.cx + b.halfW, bottom: b.cy + b.halfH }
     }
+    const centred = (e: { left: number; top: number; right: number; bottom: number }) =>
+      ({ x: (e.left + e.right) / 2, y: (e.top + e.bottom) / 2, hw: (e.right - e.left) / 2, hh: (e.bottom - e.top) / 2 })
     const crossed = threads.filter(l => {
       const a = edges(l.from), b = edges(l.to)
-      return !!a && !!b && threadCrosses(a, b, area, l.straight)
+      if (!a || !b) return false
+      return l.elbow ? lineCrosses(elbowRoute(centred(a), centred(b), l.elbowAt), area) : threadCrosses(a, b, area, l.straight)
     }).map(l => l.id)
     setMultiSelectedIds(new Set(picked))
     setSelectedTraceId(picked[0] ?? null)
     setSelectedLinks(new Set(crossed))
-    setPrimaryLink(crossed[0] ?? null)
     setLinkMenuAt(null)
   }, [areaSelectRequest])
 
@@ -2561,12 +2587,26 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     pushLinksOp(before, after, true)
   }
 
+  // An elbow's middle run dragged (TraceLinksLayer): shown as it goes, and
+  // one undo step when it's let go.
+  const elbowDragStartRef = useRef<TraceLink | null>(null)
+  const dragElbow = (id: string, at: number, done: boolean) => {
+    const live = useGameStore.getState().links.find(l => l.id === id)
+    if (!live) return
+    if (!elbowDragStartRef.current) elbowDragStartRef.current = live
+    const moved = { ...live, elbowAt: at }
+    putLink(moved)
+    if (!done) return
+    const before = elbowDragStartRef.current
+    elbowDragStartRef.current = null
+    if (before.elbowAt !== at) pushLinksOp([before], [moved])
+  }
+
   // This thread and nothing else.
   const selectOnlyLink = (id: string) => {
     setSelectedTraceId(null)
     setMultiSelectedIds(new Set())
     setSelectedLinks(new Set([id]))
-    setPrimaryLink(id)
   }
 
   const pressLink = (id: string, e: React.PointerEvent) => {
@@ -2579,7 +2619,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       return
     }
     // Shift adds or takes away this one, and leaves the rest, traces included.
-    setPrimaryLink(id)
     setSelectedLinks(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -2606,7 +2645,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     for (const from of sources) {
       // Not to itself, and not twice: one thread per pair, either way round.
       if (from === target || existing.some(l => joins(l, from, target)) || made.some(l => joins(l, from, target))) continue
-      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false, toCenter: false })
+      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false, toCenter: false, labelSize: DEFAULT_LABEL_SIZE, elbow: false, elbowAt: 0.5 })
     }
     if (made.length === 0) return
     for (const link of made) putLink(link)
@@ -3216,6 +3255,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setTransformMode(mode)
     selectedTraceIdRef.current = trace.id
     transformModeRef.current = mode
+    pressMovedRef.current = false
     setCursorState('grabbing') // Change cursor to grabbing while dragging
     
     // Prevent text selection during drag
@@ -3548,6 +3588,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // If mouse has moved more than 3 pixels, consider it a drag
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
       justDraggedRef.current = true
+      pressMovedRef.current = true
       // It's a drag, not a click: let the handles through and drop the
       // pressed styling, so moving a clickable trace looks like moving any
       // other one.
@@ -4006,10 +4047,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // Edit individual points for path shapes using world coordinates
       const pointIndex = parseInt(startPosRef.current.corner)
       if (isNaN(pointIndex)) return
-      
+      // Not moved past a click's few pixels: still a click, which on an end
+      // point starts adding points there (handleMouseUp).
+      if (!pressMovedRef.current) return
+
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
-      
+
       // Use local points if available, otherwise use currentTrace points (which uses editingTrace if available)
       const currentPoints = currentLocalShapePoints[activeSelectedTraceId] || currentTrace.shapePoints || []
       const newPoints = [...currentPoints]
@@ -4018,58 +4062,60 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         if (!startPosRef.current.initialPoint) {
           startPosRef.current.initialPoint = { ...currentPoints[pointIndex] }
         }
-        
-        const initial = startPosRef.current.initialPoint as any
-        
+
+        const initial = startPosRef.current.initialPoint as PathPoint
+        let x = initial.x + worldDeltaX, y = initial.y + worldDeltaY
+        // Shift, over another trace: onto its border.
+        const offset = worldOffsetRef.current
+        const snap = e.shiftKey ? borderSnapAt({ x: (e.clientX - offset.x) / currentZoom, y: (e.clientY - offset.y) / currentZoom }, currentZoom) : null
+        showBorderSnap(snap)
+        if (snap) { x = snap.at.x; y = snap.at.y }
+        const dx = x - initial.x, dy = y - initial.y
+
         // Move point and control handles together
         newPoints[pointIndex] = {
           ...initial,
-          x: initial.x + worldDeltaX,
-          y: initial.y + worldDeltaY,
-          // Move control points with the anchor point
-          cp1x: initial.cp1x !== undefined ? initial.cp1x + worldDeltaX : undefined,
-          cp1y: initial.cp1y !== undefined ? initial.cp1y + worldDeltaY : undefined,
-          cp2x: initial.cp2x !== undefined ? initial.cp2x + worldDeltaX : undefined,
-          cp2y: initial.cp2y !== undefined ? initial.cp2y + worldDeltaY : undefined,
+          x, y,
+          cp1x: initial.cp1x !== undefined ? initial.cp1x + dx : undefined,
+          cp1y: initial.cp1y !== undefined ? initial.cp1y + dy : undefined,
+          cp2x: initial.cp2x !== undefined ? initial.cp2x + dx : undefined,
+          cp2y: initial.cp2y !== undefined ? initial.cp2y + dy : undefined,
         }
         // Update local state for instant feedback, DB update on mouseup
         setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
       }
     } else if (activeTransformMode === 'control-in' || activeTransformMode === 'control-out') {
-      // Edit control points for bezier curves using world coordinates
+      // A curve handle dragged. The point's other handle turns with it, in
+      // line through the point at its own length (an aligned node), so the
+      // curve stays smooth there; with Alt it's left where it is, for a
+      // corner. Both are set from then on.
       const pointIndex = parseInt(startPosRef.current.corner)
       if (isNaN(pointIndex)) return
-      
+
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
-      
-      const currentPoints = currentLocalShapePoints[activeSelectedTraceId] || currentTrace.shapePoints || []
+
+      const currentPoints: PathPoint[] = currentLocalShapePoints[activeSelectedTraceId] || currentTrace.shapePoints || []
       const newPoints = [...currentPoints]
-      if (newPoints[pointIndex]) {
-        // Store initial control points if not already stored
-        if (!startPosRef.current.initialCpx) {
-          const point = currentPoints[pointIndex]
-          if (activeTransformMode === 'control-in') {
-            startPosRef.current.initialCpx = point.cp1x ?? point.x - 20
-            startPosRef.current.initialCpy = point.cp1y ?? point.y
-          } else {
-            startPosRef.current.initialCpx = point.cp2x ?? point.x + 20
-            startPosRef.current.initialCpy = point.cp2y ?? point.y
-          }
+      const point = currentPoints[pointIndex]
+      if (point) {
+        const inward = activeTransformMode === 'control-in'
+        // Where both handles were when the drag began: as set, or where an
+        // unset one is drawn (handlesAt).
+        if (startPosRef.current.initialCpx === undefined) {
+          const { cp1, cp2 } = handlesAt(currentPoints, pointIndex)
+          const [moved, other] = inward ? [cp1, cp2] : [cp2, cp1]
+          startPosRef.current.initialCpx = moved.x
+          startPosRef.current.initialCpy = moved.y
+          startPosRef.current.initialOther = other
         }
-        
-        const cpxKey = activeTransformMode === 'control-in' ? 'cp1x' : 'cp2x'
-        const cpyKey = activeTransformMode === 'control-in' ? 'cp1y' : 'cp2y'
-        
-        if (startPosRef.current.initialCpx !== undefined && startPosRef.current.initialCpy !== undefined) {
-          newPoints[pointIndex] = {
-            ...newPoints[pointIndex],
-            [cpxKey]: startPosRef.current.initialCpx + worldDeltaX,
-            [cpyKey]: startPosRef.current.initialCpy + worldDeltaY
-          }
-          // Update local state for instant feedback, DB update on mouseup
-          setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
-        }
+        const moved = { x: startPosRef.current.initialCpx + worldDeltaX, y: (startPosRef.current.initialCpy ?? 0) + worldDeltaY }
+        const startOther = startPosRef.current.initialOther ?? moved
+        const other = e.altKey ? startOther : alignedHandle(point, moved, startOther)
+        const [cp1, cp2] = inward ? [moved, other] : [other, moved]
+        newPoints[pointIndex] = { ...point, cp1x: cp1.x, cp1y: cp1.y, cp2x: cp2.x, cp2y: cp2.y }
+        // Update local state for instant feedback, DB update on mouseup
+        setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
       }
     } else if (activeTransformMode === 'move-path') {
       // Move all points of a path shape together
@@ -4184,6 +4230,24 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }, 0)
     }
     
+    // Let go of a path's point: any border it was snapped to is let go too.
+    showBorderSnap(null)
+    // A click, not a drag, on a path's point. On an end point, clicks on the
+    // canvas add points beyond that end from then on -- or, already adding
+    // there, it's done. On any other, adding is done.
+    if (activeTransformMode === 'point' && !pressMovedRef.current && activeSelectedTraceId && canEdit) {
+      const index = parseInt(startPosRef.current.corner)
+      const trace = tracesRef.current.find(t => t.id === activeSelectedTraceId)
+      const points = localShapePointsRef.current[activeSelectedTraceId] || trace?.shapePoints || []
+      const end = points.length < 2 ? null : index === 0 ? 'start' : index === points.length - 1 ? 'end' : null
+      if (end && !(pathCreationModeRef.current && pathAddAtRef.current === end)) {
+        setPathAddAt(end)
+        setPathCreationMode(true)
+      } else if (points.length >= 2) {
+        setPathCreationMode(false)
+      }
+    }
+
     // Pressed on a trace of a selected group and let go without moving it:
     // the second click, which picks that trace out of its group.
     const pickedFromGroup = groupClickRef.current
@@ -4293,6 +4357,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (startPosRef.current.initialCpx !== undefined) {
       startPosRef.current.initialCpx = undefined
       startPosRef.current.initialCpy = undefined
+      startPosRef.current.initialOther = undefined
     }
     if (startPosRef.current.initialPoints) {
       startPosRef.current.initialPoints = undefined
@@ -4372,16 +4437,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           const trace = traces.find(t => t.id === selectedTraceId)
           
           if (trace && trace.shapeType === 'path') {
-            const worldX = (e.clientX - worldOffset.x) / zoom
-            const worldY = (e.clientY - worldOffset.y) / zoom
-            
+            let at = { x: (e.clientX - worldOffset.x) / zoom, y: (e.clientY - worldOffset.y) / zoom }
+            // Shift, over another trace: onto its border, as a dragged point.
+            const snap = e.shiftKey ? borderSnapAt(at, zoom) : null
+            if (snap) at = snap.at
+
             // Use editingTrace's points if available (most up-to-date), otherwise use trace's points
             const sourceTrace = (editingTrace && editingTrace.id === selectedTraceId) ? editingTrace : trace
             const currentPoints = sourceTrace.shapePoints || []
-            const newPoints = [...currentPoints, { x: worldX, y: worldY }]
-            
-            const updated = { ...trace, shapePoints: newPoints }
-            setEditingTrace(updated)
+            // Beyond whichever end is being added to; the new point is that
+            // end now, and selected, so Delete takes it back.
+            const atStart = pathAddAt === 'start' && currentPoints.length > 0
+            const newPoints = atStart ? [at, ...currentPoints] : [...currentPoints, at]
+            setSelectedPointIndex(atStart ? 0 : newPoints.length - 1)
+
+            // The Customize panel follows along when it's open on this path;
+            // it isn't opened for it.
+            if (editingTrace && editingTrace.id === selectedTraceId) setEditingTrace({ ...trace, shapePoints: newPoints })
             updateTraceCustomization(selectedTraceId, { shapePoints: newPoints })
           }
         }
@@ -4441,6 +4513,22 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // anything selected to delete, because the navigation is wrong either
       // way.
       const isDeleteKey = e.key === 'Delete' || e.key === 'Backspace'
+      // A path's point selected: that point goes, and the path stays -- while
+      // it has more than two. With two, the path goes as it would unselected.
+      const pointIndex = selectedPointIndexRef.current
+      const pathOfPoint = pointIndex !== null && selectedTraceId && multiSelectedIds.size === 0
+        ? traces.find(t => t.id === selectedTraceId && isPathTrace(t))
+        : undefined
+      if (isDeleteKey && !typingHere && !isDrawingModeRef.current && canEdit && pathOfPoint && pointIndex !== null && (pathOfPoint.shapePoints?.length ?? 0) > 2) {
+        e.preventDefault()
+        const points = pathOfPoint.shapePoints!.filter((_, i) => i !== pointIndex)
+        if (editingTrace && editingTrace.id === pathOfPoint.id) setEditingTrace({ ...editingTrace, shapePoints: points })
+        updateTraceCustomization(pathOfPoint.id, { shapePoints: points })
+        // The one before it is selected next (the new first, for the first),
+        // so points can be taken back one after another.
+        setSelectedPointIndex(Math.max(0, pointIndex - 1))
+        return
+      }
       if (isDeleteKey && !typingHere) {
         if (e.key === 'Backspace') e.preventDefault()
         if (!isDrawingModeRef.current && canEdit && (selectedTraceId || multiSelectedIds.size > 0)) {
@@ -4491,7 +4579,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('mousedown', handleMouseDownCapture, true)
     }
-  }, [selectedTraceId, multiSelectedIds, pathCreationMode, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit, groupSelection])
+  }, [selectedTraceId, multiSelectedIds, pathCreationMode, pathAddAt, worldOffset, zoom, traces, editingTrace, isCropMode, canEdit, groupSelection])
 
   // Auto-pan while dragging a trace toward the edge of the screen, so a trace
   // can be moved somewhere that isn't currently in view without dropping it,
@@ -4620,11 +4708,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Disable path creation mode when selection is cleared
   // Note: We don't check editingTrace here to avoid disabling mode when updating points
   useEffect(() => {
-    if (!selectedTraceId) {
-      setPathCreationMode(false)
-      setSelectedPointIndex(null)
-    }
+    if (!selectedTraceId) setPathCreationMode(false)
+    // A point picked on one path is nothing on the next: left set, Delete
+    // took a point off a path selected afresh rather than the path.
+    setSelectedPointIndex(null)
   }, [selectedTraceId])
+  // Adding points is back to the end each time it stops, as drawing a new
+  // path expects; the pointer it followed is forgotten.
+  useEffect(() => {
+    if (pathCreationMode) return
+    setPathAddAt('end')
+    setPathPointer(null)
+  }, [pathCreationMode])
+  // While adding points, the pointer is followed, for the dashed run to it.
+  useEffect(() => {
+    if (!pathCreationMode) return
+    const move = (e: PointerEvent) => setPathPointer({ x: e.clientX, y: e.clientY })
+    window.addEventListener('pointermove', move)
+    return () => window.removeEventListener('pointermove', move)
+  }, [pathCreationMode])
 
   const getTraceSize = useCallback((trace: Trace) => {
     // For shapes, use their custom dimensions
@@ -4768,6 +4870,35 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       rotated,
     }
   }, [getTraceSize, getTraceTransform])
+
+  // Where a path's point goes, dragged with Shift over another trace: onto
+  // that trace's border (lib/pathGeometry) -- its nearest point, or a corner
+  // or a side's middle when near one. The trace is the topmost drawn one
+  // under the pointer, or within a few pixels of it; paths aren't taken,
+  // the one being edited among them.
+  const borderSnapAt = (pointer: { x: number; y: number }, zoomNow: number): { box: TurnedBox; at: { x: number; y: number } } | null => {
+    const grip = 12 / zoomNow
+    let best: { box: TurnedBox; z: number } | null = null
+    for (const t of visibleTracesRef.current) {
+      if (isPathTrace(t) || t.id === hiddenTraceId) continue
+      const b = traceBoxFor(t)
+      const box: TurnedBox = {
+        cx: b.cx, cy: b.cy, halfW: b.halfW, halfH: b.halfH,
+        rotation: getTraceTransform(t).rotation ?? 0,
+        round: t.type === 'shape' && t.shapeType === 'circle',
+      }
+      if (!boxHolds(box, pointer, grip)) continue
+      const z = zOf(t)
+      if (!best || z > best.z) best = { box, z }
+    }
+    return best ? { box: best.box, at: snapToBorder(best.box, pointer, grip) } : null
+  }
+  const showBorderSnap = (next: { box: TurnedBox; at: { x: number; y: number } } | null) => {
+    const prev = borderSnapRef.current
+    if (prev === next || (prev && next && prev.at.x === next.at.x && prev.at.y === next.at.y && prev.box.cx === next.box.cx && prev.box.cy === next.box.cy)) return
+    borderSnapRef.current = next
+    setBorderSnap(next)
+  }
 
   // ---- Frames (lib/frames) -------------------------------------------------
 
@@ -5317,57 +5448,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       return result
     })
 
-    // Generate SVG path
-    let pathData = ''
-    if (curveType === 'bezier' && screenPoints.length >= 2) {
-      pathData = `M ${screenPoints[0].x} ${screenPoints[0].y}`
-
-      if (screenPoints.length === 2) {
-        const p0 = screenPoints[0]
-        const p1 = screenPoints[1]
-
-        if (p0.cp2x !== undefined && p0.cp2y !== undefined) {
-          const cp1x = p0.cp2x
-          const cp1y = p0.cp2y
-          const cp2x = p1.cp1x !== undefined ? p1.cp1x : cp1x
-          const cp2y = p1.cp1y !== undefined ? p1.cp1y : cp1y
-          pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`
-        } else {
-          const midX = (p0.x + p1.x) / 2
-          const midY = (p0.y + p1.y) / 2
-          pathData += ` Q ${midX} ${midY}, ${p1.x} ${p1.y}`
-        }
-      } else {
-        for (let i = 0; i < screenPoints.length - 1; i++) {
-          const p0 = i > 0 ? screenPoints[i - 1] : screenPoints[i]
-          const p1 = screenPoints[i]
-          const p2 = screenPoints[i + 1]
-          const p3 = i + 2 < screenPoints.length ? screenPoints[i + 2] : p2
-
-          let cp1x, cp1y, cp2x, cp2y
-
-          if (p1.cp2x !== undefined && p1.cp2y !== undefined) {
-            cp1x = p1.cp2x
-            cp1y = p1.cp2y
-          } else {
-            const tension = 0.5
-            cp1x = p1.x + (p2.x - p0.x) / 6 * tension
-            cp1y = p1.y + (p2.y - p0.y) / 6 * tension
-          }
-
-          if (p2.cp1x !== undefined && p2.cp1y !== undefined) {
-            cp2x = p2.cp1x
-            cp2y = p2.cp1y
-          } else {
-            const tension = 0.5
-            cp2x = p2.x - (p3.x - p1.x) / 6 * tension
-            cp2y = p2.y - (p3.y - p1.y) / 6 * tension
-          }
-
-          pathData += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`
-        }
-      }
-    }
+    // The line's outline, whichever way it runs: straight from point to
+    // point, curved on its handles (lib/pathGeometry), or as an elbow --
+    // straight runs and right-angle turns (lib/elbow).
+    const pathData = curveType === 'bezier'
+      ? curvePath(screenPoints)
+      : curveType === 'elbow'
+        ? roundedPath(elbowThrough(screenPoints), ELBOW_RADIUS * zoom)
+        : screenPoints.map((p: { x: number; y: number }, i: number) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
 
     // Show the selection glow whether this path is the single selected
     // trace or part of a multi-selection (previously only multi-select
@@ -5448,185 +5536,96 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             />
           </marker>
         </defs>
-        {curveType === 'bezier' ? (
-          <>
-            {/* Multi-selection glow effect */}
-            {isPathMultiSelected && (
-              <path
-                d={pathData}
-                fill="none"
-                stroke="#86efac"
-                strokeWidth={zoomedOutlineWidth + 8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.75}
-                style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
-              />
-            )}
-            {/* Invisible wider stroke for easier clicking -- floored so a
-                heavily zoomed-out (thus very thin) path stays clickable */}
-            <path
-              d={pathData}
-              fill="none"
-              stroke="transparent"
-              strokeWidth={Math.max(zoomedOutlineWidth + 10, 14)}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              data-trace-element="true"
-              style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (e.shiftKey) {
-                  // Toggle multi-selection - same logic as handleMouseDown
-                  setMultiSelectedIds(prev => {
-                    const next = new Set(prev)
-                    if (next.has(trace.id)) {
-                      next.delete(trace.id)
-                    } else {
-                      next.add(trace.id)
-                    }
-                    // Also add the currently selected trace if not already in selection
-                    if (selectedTraceId && !next.has(selectedTraceId)) {
-                      next.add(selectedTraceId)
-                    }
-                    return next
-                  })
-                  setSelectedTraceId(trace.id)
-                } else {
-                  setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
-                  setSelectedTraceId(trace.id)
-                }
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                const t = traces.find(tr => tr.id === trace.id)
-                if (t) setEditingTrace(t)
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setSelectedTraceId(trace.id)
-                setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
-              }}
-            />
-            {/* Glow along the line -- off by default, toggled via the
-                Customize panel's "Glow" section (see displayTrace.illuminate) */}
-            {glowEnabled && (
-              <path
-                d={pathData}
-                fill="none"
-                stroke={glowColor}
-                strokeWidth={zoomedOutlineWidth + 4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={glowOpacity}
-                style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
-              />
-            )}
-            {/* Visible path */}
-            <path
-              d={pathData}
-              fill="none"
-              stroke={shapeColor}
-              strokeWidth={zoomedOutlineWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={shapeOpacity}
-              markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
-              markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
-              style={{ pointerEvents: 'none' }}
-            />
-          </>
-        ) : (
-          <>
-            {/* Multi-selection glow effect for polyline */}
-            {isPathMultiSelected && (
-              <polyline
-                points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                fill="none"
-                stroke="#86efac"
-                strokeWidth={zoomedOutlineWidth + 8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.75}
-                style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
-              />
-            )}
-            {/* Invisible wider stroke for easier clicking -- floored so a
-                heavily zoomed-out (thus very thin) path stays clickable */}
-            <polyline
-              points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-              fill="none"
-              stroke="transparent"
-              strokeWidth={Math.max(zoomedOutlineWidth + 10, 14)}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              data-trace-element="true"
-              style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (e.shiftKey) {
-                  // Toggle multi-selection - same logic as handleMouseDown
-                  setMultiSelectedIds(prev => {
-                    const next = new Set(prev)
-                    if (next.has(trace.id)) {
-                      next.delete(trace.id)
-                    } else {
-                      next.add(trace.id)
-                    }
-                    // Also add the currently selected trace if not already in selection
-                    if (selectedTraceId && !next.has(selectedTraceId)) {
-                      next.add(selectedTraceId)
-                    }
-                    return next
-                  })
-                  setSelectedTraceId(trace.id)
-                } else {
-                  setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
-                  setSelectedTraceId(trace.id)
-                }
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                const t = traces.find(tr => tr.id === trace.id)
-                if (t) setEditingTrace(t)
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setSelectedTraceId(trace.id)
-                setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
-              }}
-            />
-            {/* Glow along the line -- off by default, toggled via the
-                Customize panel's "Glow" section (see displayTrace.illuminate) */}
-            {glowEnabled && (
-              <polyline
-                points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                fill="none"
-                stroke={glowColor}
-                strokeWidth={zoomedOutlineWidth + 4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={glowOpacity}
-                style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
-              />
-            )}
-            {/* Visible path */}
-            <polyline
-              points={screenPoints.map(p => `${p.x},${p.y}`).join(' ')}
-              fill="none"
-              stroke={shapeColor}
-              strokeWidth={zoomedOutlineWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={shapeOpacity}
-              markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
-              markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
-              style={{ pointerEvents: 'none' }}
-            />
-          </>
+        {/* Selection glow: whether this path is the one selected trace or
+            part of a multi-selection. */}
+        {isPathMultiSelected && (
+          <path
+            d={pathData}
+            fill="none"
+            stroke="#86efac"
+            strokeWidth={zoomedOutlineWidth + 8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={0.75}
+            style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
+          />
         )}
+        {/* Invisible wider stroke for easier clicking -- floored so a
+            heavily zoomed-out (thus very thin) path stays clickable */}
+        <path
+          d={pathData}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={Math.max(zoomedOutlineWidth + 10, 14)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          data-trace-element="true"
+          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation()
+            // The line itself, not one of its points: Delete then takes the
+            // whole path, not a point picked out earlier.
+            setSelectedPointIndex(null)
+            if (e.shiftKey) {
+              // Toggle multi-selection - same logic as handleMouseDown
+              setMultiSelectedIds(prev => {
+                const next = new Set(prev)
+                if (next.has(trace.id)) {
+                  next.delete(trace.id)
+                } else {
+                  next.add(trace.id)
+                }
+                // Also add the currently selected trace if not already in selection
+                if (selectedTraceId && !next.has(selectedTraceId)) {
+                  next.add(selectedTraceId)
+                }
+                return next
+              })
+              setSelectedTraceId(trace.id)
+            } else {
+              setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
+              setSelectedTraceId(trace.id)
+            }
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            const t = traces.find(tr => tr.id === trace.id)
+            if (t) setEditingTrace(t)
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setSelectedTraceId(trace.id)
+            setContextMenu({ x: e.clientX, y: e.clientY, traceId: trace.id })
+          }}
+        />
+        {/* Glow along the line -- off by default, toggled via the
+            Customize panel's "Glow" section (see displayTrace.illuminate) */}
+        {glowEnabled && (
+          <path
+            d={pathData}
+            fill="none"
+            stroke={glowColor}
+            strokeWidth={zoomedOutlineWidth + 4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={glowOpacity}
+            style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+          />
+        )}
+        {/* Visible path */}
+        <path
+          d={pathData}
+          fill="none"
+          stroke={shapeColor}
+          strokeWidth={zoomedOutlineWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={shapeOpacity}
+          markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
+          markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
+          style={{ pointerEvents: 'none' }}
+        />
       </svg>
     )
   }
@@ -7035,214 +7034,6 @@ return (
         gliding -- so only the trace itself is seen moving. */}
     {isSelected && !isCropMode && canEdit && inlineEditingTraceId !== trace.id && !movingIds.has(trace.id) && !glidingIds.has(trace.id) && (
       <>
-        {/* Special handles for path shapes */}
-        {(trace.type === 'shape' && trace.shapeType === 'path') ? (
-          <>
-            {/* Point handles for path - using world coordinates */}
-            {(() => {
-              const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
-              return points.map((point, index) => {
-              // Convert world coordinates to screen coordinates
-              const { screenX, screenY } = getScreenPosition(point.x, point.y)
-              
-              const isPointSelected = selectedPointIndex === index
-              const isBezier = displayTrace.pathCurveType === 'bezier'
-              
-              return (
-                <Fragment key={`point-${index}`}>
-                  {/* Main point handle */}
-                  <div
-                    data-trace-element="true"
-                    className={`absolute w-4 h-4 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform ${
-                      isPointSelected ? 'bg-white' : 'bg-gray-400'
-                    }`}
-                    style={{
-                      left: `${screenX}px`,
-                      top: `${screenY}px`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation() // Prevent background deselection
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      setSelectedPointIndex(index)
-                      on.handleMouseDown(e, trace, 'point', `${index}`)
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      setSelectedPointIndex(index)
-                      on.handleTouchDown(e, trace, 'point', `${index}`)
-                    }}
-                  />
-                  
-                  {/* Control point handles (only in bezier mode and when point is selected) */}
-                  {isBezier && isPointSelected && (
-                    <>
-                      {(() => {
-                        const cp1x = point.cp1x ?? point.x - 20
-                        const cp1y = point.cp1y ?? point.y
-                        const { screenX: cp1ScreenX, screenY: cp1ScreenY } = getScreenPosition(cp1x, cp1y)
-                        
-                        return (
-                          <>
-                            {/* Line from point to control handle */}
-                            <svg
-                              className="absolute pointer-events-none"
-                              style={{
-                                left: 0,
-                                top: 0,
-                                width: '100%',
-                                height: '100%',
-                                overflow: 'visible',
-                                zIndex: 9
-                              }}
-                            >
-                              <line
-                                x1={screenX}
-                                y1={screenY}
-                                x2={cp1ScreenX}
-                                y2={cp1ScreenY}
-                                stroke="#9ca3af"
-                                strokeWidth="1"
-                                strokeDasharray="4 2"
-                              />
-                            </svg>
-                            {/* Control handle */}
-                            <div
-                              data-trace-element="true"
-                              className="absolute w-3 h-3 bg-gray-300 border-2 border-black cursor-move pointer-events-auto z-10 hover:scale-125 transition-transform"
-                              style={{
-                                left: `${cp1ScreenX}px`,
-                                top: `${cp1ScreenY}px`,
-                                transform: 'translate(-50%, -50%)',
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation() // Prevent background deselection
-                              }}
-                              onMouseDown={(e) => {
-                                e.stopPropagation()
-                                e.preventDefault()
-                                setSelectedPointIndex(index) // Preserve point selection
-                                on.handleMouseDown(e, trace, 'control-in', `${index}`)
-                              }}
-                              onTouchStart={(e) => {
-                                e.stopPropagation()
-                                setSelectedPointIndex(index)
-                                on.handleTouchDown(e, trace, 'control-in', `${index}`)
-                              }}
-                            />
-                          </>
-                        )
-                      })()}
-                      
-                      {/* Out-handle (cp2) */}
-                      {(() => {
-                        const cp2x = point.cp2x ?? point.x + 20
-                        const cp2y = point.cp2y ?? point.y
-                        const { screenX: cp2ScreenX, screenY: cp2ScreenY } = getScreenPosition(cp2x, cp2y)
-                        
-                        return (
-                          <>
-                            {/* Line from point to control handle */}
-                            <svg
-                              className="absolute pointer-events-none"
-                              style={{
-                                left: 0,
-                                top: 0,
-                                width: '100%',
-                                height: '100%',
-                                overflow: 'visible',
-                                zIndex: 9
-                              }}
-                            >
-                              <line
-                                x1={screenX}
-                                y1={screenY}
-                                x2={cp2ScreenX}
-                                y2={cp2ScreenY}
-                                stroke="#9ca3af"
-                                strokeWidth="1"
-                                strokeDasharray="4 2"
-                              />
-                            </svg>
-                            {/* Control handle */}
-                            <div
-                              data-trace-element="true"
-                              data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-10"
-                              style={{
-                                left: `${cp2ScreenX}px`,
-                                top: `${cp2ScreenY}px`,
-                                transform: 'translate(-50%, -50%)',
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation() // Prevent background deselection
-                              }}
-                              onMouseDown={(e) => {
-                                e.stopPropagation()
-                                e.preventDefault()
-                                setSelectedPointIndex(index) // Preserve point selection
-                                on.handleMouseDown(e, trace, 'control-out', `${index}`)
-                              }}
-                              onTouchStart={(e) => {
-                                e.stopPropagation()
-                                setSelectedPointIndex(index)
-                                on.handleTouchDown(e, trace, 'control-out', `${index}`)
-                              }}
-                            />
-                          </>
-                        )
-                      })()}
-                    </>
-                  )}
-                </Fragment>
-              )
-            })
-            })()}
-            
-            {/* Move handle for entire path - centered on all points */}
-            {(() => {
-              const points = localShapePoints[trace.id] || trace.shapePoints || []
-              if (points.length === 0) return null
-              
-              // Calculate centroid
-              const sumX = points.reduce((sum, p) => sum + p.x, 0)
-              const sumY = points.reduce((sum, p) => sum + p.y, 0)
-              const centerX = sumX / points.length
-              const centerY = sumY / points.length
-              
-              const { screenX, screenY } = getScreenPosition(centerX, centerY)
-              
-              return (
-                <div
-                  data-trace-element="true"
-                  data-keeps-size="" className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-10"
-                  style={{
-                    left: `${screenX}px`,
-                    top: `${screenY}px`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                    setSelectedPointIndex(null)
-                    on.handleMouseDown(e, trace, 'move-path', 'move-all')
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation()
-                    setSelectedPointIndex(null)
-                    on.handleTouchDown(e, trace, 'move-path', 'move-all')
-                  }}
-                />
-              )
-            })()}
-          </>
-        ) : null}
-
         {/* Crop button for all trace types (not for path).
 
             Colours only in the transition. It was transition-all, and
@@ -7406,149 +7197,179 @@ return (
         zoom={zoom}
         worldOffset={worldOffset}
         selected={selectedLinks}
-        primary={primaryLink}
         preview={connectFrom && connectPointer ? { from: connectFrom, to: connectPointer } : null}
         canEdit={canEdit}
         onPress={pressLink}
         onMenu={openLinkMenu}
-        onDelete={() => deleteLinks(selectedLinksRef.current)}
+        onElbowAt={dragElbow}
         wakeRef={wakeLinksRef}
       />
 
       {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
       {draftTrace && renderTrace(draftTrace)}
 
-        {/* Render path point handles as absolute overlay (only for selected path) */}
-        {selectedTraceId && (() => {
+        {/* The selected path's handles, over everything else of the world:
+            a square on each point, a fainter round one between each two
+            that adds a point there, and on a curve the selected point's two
+            handles. In one wrapper marked as the trace's, so a click that
+            starts on one handle and ends on another -- a point added under
+            the pointer -- lands on the wrapper, not the canvas, and doesn't
+            let go of the path. */}
+        {selectedTraceId && canEdit && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
           if (!trace || trace.type !== 'shape' || trace.shapeType !== 'path') return null
-          
+
           const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
-          const points = localShapePoints[trace.id] || displayTrace.shapePoints || []
-          
+          const points: PathPoint[] = localShapePoints[trace.id] || displayTrace.shapePoints || []
+          const curve: PathCurve = displayTrace.pathCurveType ?? 'straight'
+          const screenOf = (p: { x: number; y: number }) => {
+            const { screenX, screenY } = getScreenPosition(p.x, p.y)
+            return { x: screenX, y: screenY }
+          }
+          const at = (p: { x: number; y: number }) => ({ left: `${p.x}px`, top: `${p.y}px`, transform: 'translate(-50%, -50%)' })
+          const selected = selectedPointIndex !== null ? points[selectedPointIndex] : undefined
+          const last = points.length - 1
+          // The end being added to, while adding.
+          const addingEnd = pathCreationMode ? (pathAddAt === 'start' ? 0 : last) : null
+
+          // A point added between points i and i + 1, where the line runs,
+          // and taken hold of: a drag places it, a click leaves it there.
+          // Put into the drag's working copy (the ref too, which the drag
+          // reads before React has rendered), so letting go saves it with
+          // the move as one step.
+          const addBetween = (i: number, press: () => void) => {
+            const added = pointBetween(points, curve, i)
+            const next = [...points.slice(0, i + 1), { x: added.x, y: added.y }, ...points.slice(i + 1)]
+            localShapePointsRef.current = { ...localShapePointsRef.current, [trace.id]: next }
+            setLocalShapePoints(prev => ({ ...prev, [trace.id]: next }))
+            setSelectedPointIndex(i + 1)
+            press()
+          }
+
+          // A curve handle of the selected point, and its dashed line to it.
+          const curveHandle = (mode: 'control-in' | 'control-out', handle: { x: number; y: number }) => {
+            const h = screenOf(handle)
+            return (
+              <div
+                key={mode}
+                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
+                style={at(h)}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  handleMouseDown(e, trace, mode, `${selectedPointIndex}`)
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation()
+                  handleTouchDown(e, trace, mode, `${selectedPointIndex}`)
+                }}
+              />
+            )
+          }
+          const handles = curve === 'bezier' && selected && selectedPointIndex !== null ? handlesAt(points, selectedPointIndex) : null
+          // An end's outer handle shapes nothing, so it isn't shown.
+          const showIn = handles && selectedPointIndex! > 0
+          const showOut = handles && selectedPointIndex! < last
+          const from = selected ? screenOf(selected) : null
+          const addFrom = addingEnd !== null && points[addingEnd] ? screenOf(points[addingEnd]) : null
+
           return (
-            <>
-              {/* Point handles */}
-              {points.map((point, index) => {
-                const { screenX, screenY } = getScreenPosition(point.x, point.y)
-                const isPointSelected = selectedPointIndex === index
-                const isBezier = displayTrace.pathCurveType === 'bezier'
-                
-                return (
-                  <Fragment key={`handle-${index}`}>
-                    {/* Main point handle */}
-                    <div
-                      data-trace-element="true"
-                      data-keeps-size="" className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[1000000] ${
-                        isPointSelected ? 'trace-nier-handle-active' : ''
-                      }`}
-                      style={{
-                        left: `${screenX}px`,
-                        top: `${screenY}px`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        e.preventDefault()
-                        setSelectedPointIndex(index)
-                        handleMouseDown(e, trace, 'point', `${index}`)
-                      }}
-                      onTouchStart={(e) => {
-                        e.stopPropagation()
-                        setSelectedPointIndex(index)
-                        handleTouchDown(e, trace, 'point', `${index}`)
-                      }}
-                    />
-                    
-                    {/* Bezier control handles (only when point is selected) */}
-                    {isBezier && isPointSelected && (
-                      <>
-                        {/* In-handle (cp1) */}
-                        {(() => {
-                          const cp1x = point.cp1x ?? point.x - 20
-                          const cp1y = point.cp1y ?? point.y
-                          const { screenX: cp1ScreenX, screenY: cp1ScreenY } = getScreenPosition(cp1x, cp1y)
-                          
-                          return (
-                            <>
-                              <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', zIndex: 499 }}>
-                                <line x1={screenX} y1={screenY} x2={cp1ScreenX} y2={cp1ScreenY} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" />
-                              </svg>
-                              <div
-                                data-trace-element="true"
-                                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
-                                style={{ left: `${cp1ScreenX}px`, top: `${cp1ScreenY}px`, transform: 'translate(-50%, -50%)' }}
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => {
-                                  e.stopPropagation()
-                                  e.preventDefault()
-                                  setSelectedPointIndex(index)
-                                  handleMouseDown(e, trace, 'control-in', `${index}`)
-                                }}
-                                onTouchStart={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedPointIndex(index)
-                                  handleTouchDown(e, trace, 'control-in', `${index}`)
-                                }}
-                              />
-                            </>
-                          )
-                        })()}
-                        
-                        {/* Out-handle (cp2) */}
-                        {(() => {
-                          const cp2x = point.cp2x ?? point.x + 20
-                          const cp2y = point.cp2y ?? point.y
-                          const { screenX: cp2ScreenX, screenY: cp2ScreenY } = getScreenPosition(cp2x, cp2y)
-                          
-                          return (
-                            <>
-                              <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', zIndex: 499 }}>
-                                <line x1={screenX} y1={screenY} x2={cp2ScreenX} y2={cp2ScreenY} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" />
-                              </svg>
-                              <div
-                                data-trace-element="true"
-                                data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-control cursor-move pointer-events-auto z-[1000000]"
-                                style={{ left: `${cp2ScreenX}px`, top: `${cp2ScreenY}px`, transform: 'translate(-50%, -50%)' }}
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => {
-                                  e.stopPropagation()
-                                  e.preventDefault()
-                                  setSelectedPointIndex(index)
-                                  handleMouseDown(e, trace, 'control-out', `${index}`)
-                                }}
-                                onTouchStart={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedPointIndex(index)
-                                  handleTouchDown(e, trace, 'control-out', `${index}`)
-                                }}
-                              />
-                            </>
-                          )
-                        })()}
-                      </>
-                    )}
-                  </Fragment>
-                )
-              })}
-              
-              {/* Move handle - centered on all points */}
-              {(() => {
-                if (points.length === 0) return null
-                const sumX = points.reduce((sum, p) => sum + p.x, 0)
-                const sumY = points.reduce((sum, p) => sum + p.y, 0)
-                const centerX = sumX / points.length
-                const centerY = sumY / points.length
-                const { screenX, screenY } = getScreenPosition(centerX, centerY)
-                
+            <div data-trace-element="true" className="contents">
+              <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 999999 }}>
+                {from && showIn && (() => { const h = screenOf(handles!.cp1); return <line x1={from.x} y1={from.y} x2={h.x} y2={h.y} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" /> })()}
+                {from && showOut && (() => { const h = screenOf(handles!.cp2); return <line x1={from.x} y1={from.y} x2={h.x} y2={h.y} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" /> })()}
+                {/* Adding points: a dashed run from the end to the pointer. */}
+                {addFrom && pathPointer && transformMode === 'none' && (
+                  <line x1={addFrom.x} y1={addFrom.y} x2={pathPointer.x} y2={pathPointer.y} stroke="rgb(var(--c-fg))" strokeOpacity={0.6} strokeWidth="1.5" strokeDasharray="6 5" />
+                )}
+                {/* Shift over a trace: its border, the marks on it, and where
+                    the point went. */}
+                {borderSnap && (() => {
+                  const marks = borderMarks(borderSnap.box).map(screenOf)
+                  const hit = screenOf(borderSnap.at)
+                  const c = screenOf({ x: borderSnap.box.cx, y: borderSnap.box.cy })
+                  return (
+                    <g data-border-snap="">
+                      {borderSnap.box.round
+                        ? <ellipse cx={c.x} cy={c.y} rx={borderSnap.box.halfW * zoom} ry={borderSnap.box.halfH * zoom} transform={`rotate(${borderSnap.box.rotation} ${c.x} ${c.y})`} fill="none" stroke="rgb(var(--c-fg))" strokeOpacity={0.55} strokeWidth="1.5" strokeDasharray="5 4" />
+                        : <polygon points={[0, 2, 4, 6].map(i => `${marks[i].x},${marks[i].y}`).join(' ')} fill="none" stroke="rgb(var(--c-fg))" strokeOpacity={0.55} strokeWidth="1.5" strokeDasharray="5 4" />}
+                      {marks.map((m, i) => {
+                        const on = Math.hypot(m.x - hit.x, m.y - hit.y) < 0.5
+                        return <rect key={i} x={m.x - (on ? 4 : 2.5)} y={m.y - (on ? 4 : 2.5)} width={on ? 8 : 5} height={on ? 8 : 5} fill={on ? 'rgb(var(--c-fg))' : 'rgb(var(--c-ground))'} stroke="rgb(var(--c-fg))" strokeWidth="1" />
+                      })}
+                      <circle cx={hit.x} cy={hit.y} r={5} fill="none" stroke="rgb(var(--c-fg))" strokeWidth="1.5" />
+                    </g>
+                  )
+                })()}
+              </svg>
+
+              {/* Between each two points, far enough apart on screen to
+                  leave room for it. */}
+              {points.slice(0, -1).map((point, i) => {
+                const a = screenOf(point), b = screenOf(points[i + 1])
+                if (Math.hypot(b.x - a.x, b.y - a.y) < 36) return null
                 return (
                   <div
-                    data-trace-element="true"
+                    key={`mid-${i}`}
+                    data-path-mid={i}
+                    title={t('atrium.controls.pathMidHint')}
+                    data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-mid cursor-copy pointer-events-auto z-[1000000]"
+                    style={at(screenOf(pointBetween(points, curve, i)))}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      addBetween(i, () => handleMouseDown(e, trace, 'point', `${i + 1}`))
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      addBetween(i, () => handleTouchDown(e, trace, 'point', `${i + 1}`))
+                    }}
+                  />
+                )
+              })}
+
+              {points.map((point, index) => {
+                const isEnd = points.length > 1 && (index === 0 || index === last)
+                return (
+                  <div
+                    key={`handle-${index}`}
+                    data-path-point={index}
+                    title={t(isEnd ? 'atrium.controls.pathEndHint' : 'atrium.controls.pathPointHint')}
+                    data-keeps-size="" className={`absolute trace-nier-handle trace-nier-handle-point cursor-move pointer-events-auto z-[1000000] ${
+                      selectedPointIndex === index || addingEnd === index ? 'trace-nier-handle-active' : ''
+                    }`}
+                    style={at(screenOf(point))}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setSelectedPointIndex(index)
+                      handleMouseDown(e, trace, 'point', `${index}`)
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      setSelectedPointIndex(index)
+                      handleTouchDown(e, trace, 'point', `${index}`)
+                    }}
+                  />
+                )
+              })}
+
+              {showIn && curveHandle('control-in', handles!.cp1)}
+              {showOut && curveHandle('control-out', handles!.cp2)}
+
+              {/* Move handle - centered on all points */}
+              {points.length > 0 && (() => {
+                const centre = screenOf({
+                  x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+                  y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+                })
+                return (
+                  <div
                     data-keeps-size="" className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[1000000]"
-                    style={{ left: `${screenX}px`, top: `${screenY}px`, transform: 'translate(-50%, -50%)' }}
+                    style={at(centre)}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => {
                       e.stopPropagation()
@@ -7564,7 +7385,23 @@ return (
                   />
                 )
               })()}
-            </>
+
+              {/* Adding points: what a click does now, above the pointer
+                  (its name tag is below it), and toward the middle of the
+                  screen so it stays on it. */}
+              {pathCreationMode && pathPointer && (
+                <div
+                  className="fixed pointer-events-none font-mono text-[10px] tracking-wider px-2 py-1 border whitespace-nowrap"
+                  style={{
+                    left: pathPointer.x, top: pathPointer.y - 18, zIndex: 1000001,
+                    transform: pathPointer.x > window.innerWidth / 2 ? 'translate(calc(-100% - 14px), -100%)' : 'translate(14px, -100%)',
+                    color: 'rgb(var(--c-fg))', background: 'rgb(var(--c-ground) / 0.9)', borderColor: 'rgb(var(--c-fg) / 0.3)',
+                  }}
+                >
+                  {t('atrium.controls.addingPointsHint')}
+                </div>
+              )}
+            </div>
           )
         })()}
 
@@ -8737,7 +8574,10 @@ return (
                         onClick={() => {
                           const currentPoints = editingTrace.shapePoints || []
                           if (currentPoints.length > 2) {
-                            const newPoints = currentPoints.slice(0, -1)
+                            // The point selected on the path, or else the last.
+                            const index = selectedPointIndex !== null && selectedPointIndex < currentPoints.length ? selectedPointIndex : currentPoints.length - 1
+                            const newPoints = currentPoints.filter((_, i) => i !== index)
+                            setSelectedPointIndex(null)
                             const updated = { ...editingTrace, shapePoints: newPoints }
                             setEditingTrace(updated)
                             updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
