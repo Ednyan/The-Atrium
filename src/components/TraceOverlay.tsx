@@ -2912,6 +2912,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const groupOf = (trace: Trace) => traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
 
+  // The ids of the traces in a trace's group, when it is in one that exists
+  // and has others in it; null for a trace on its own.
+  const groupMembersOf = (trace: Trace): string[] | null => {
+    if (!trace.layerId || !layers.some(l => l.id === trace.layerId)) return null
+    const members = traces.filter(t => t.layerId === trace.layerId).map(t => t.id)
+    return members.length > 1 ? members : null
+  }
+  // The trace pressed inside an already-selected group; picked out of it if
+  // the press turns out to be a click (handleMouseUp).
+  const groupClickRef = useRef<string | null>(null)
+
   // To the top or bottom of its own group (or of the ungrouped ones) -- the
   // right-click menu's version of dragging it to either end in the Layer panel.
   const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
@@ -3103,11 +3114,30 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       return
     }
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
-    
+
+    // A trace in a group is taken as its group: pressed, the whole group is
+    // selected, and moves. Pressed again without moving -- a second click --
+    // it is the trace alone (see handleMouseUp). Once one of a group's traces
+    // is selected on its own, the group is open: its other traces are taken
+    // on their own too, until something outside it is chosen. Shift-click
+    // still adds or removes a single trace.
+    let selection = multiSelectedIds
+    groupClickRef.current = null
+    const members = mode === 'move' && !e.shiftKey ? groupMembersOf(trace) : null
+    if (members) {
+      if (members.every(id => multiSelectedIds.has(id))) {
+        // Already selected, the group alone: a drag moves it, a click opens it.
+        if (multiSelectedIds.size === members.length) groupClickRef.current = trace.id
+      } else if (!(multiSelectedIds.size === 0 && selectedTraceId && members.includes(selectedTraceId))) {
+        selection = new Set(members)
+        setMultiSelectedIds(selection)
+      }
+    }
+
     // Disable move/rotate/scale for path shapes - they're controlled by point editing
     // EXCEPT when multi-selected, then allow moving
     const isPathWithMultiSelect = trace.type === 'shape' && trace.shapeType === 'path' && mode === 'move'
-    if (isPathWithMultiSelect && multiSelectedIds.size === 0) return
+    if (isPathWithMultiSelect && selection.size === 0) return
     
     e.stopPropagation()
     
@@ -3132,8 +3162,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     
     // If clicking on a trace that's part of multi-selection, keep the selection
     // Otherwise, clear multi-selection
-    if (!multiSelectedIds.has(trace.id)) {
-      setMultiSelectedIds(new Set())
+    if (!selection.has(trace.id)) {
+      selection = new Set()
+      setMultiSelectedIds(selection)
     }
 
     // A plain press on a clickable trace: hold back its handles and show the
@@ -3192,10 +3223,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
     
     // Store starting transforms for all multi-selected traces
-    if (multiSelectedIds.size > 0 && (mode === 'move' || mode === 'move-path')) {
+    if (selection.size > 0 && (mode === 'move' || mode === 'move-path')) {
       const startTransforms: Record<string, { x: number; y: number }> = {}
       const startPathPoints: Record<string, any[]> = {}
-      multiSelectedIds.forEach(id => {
+      selection.forEach(id => {
         const t = traces.find(tr => tr.id === id)
         if (t) {
           const tTransform = getTraceTransform(t)
@@ -4128,6 +4159,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }, 0)
     }
     
+    // Pressed on a trace of a selected group and let go without moving it:
+    // the second click, which picks that trace out of its group.
+    const pickedFromGroup = groupClickRef.current
+    groupClickRef.current = null
+    if (pickedFromGroup && activeTransformMode === 'move' && !justDraggedRef.current) {
+      setMultiSelectedIds(new Set())
+      setSelectedTraceId(pickedFromGroup)
+    }
+
     // If we actually dragged, prevent immediate deselection
     if (justDraggedRef.current) {
       // Clear the flag after a short delay (longer than click event)
