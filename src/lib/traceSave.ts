@@ -2,6 +2,7 @@ import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import { mapRowToTrace, fetchAllLobbyTraces } from '../hooks/useTraces'
 import { showToast } from './toast'
+import { tCount } from './i18n'
 import { linkRow, mapRowToLink } from './traceLinks'
 
 // Fired on window whenever a saveAllChanges() call completes successfully.
@@ -157,6 +158,7 @@ export async function saveAllChanges(): Promise<void> {
         ignore_clicks: trace.ignoreClicks,
         order_key: trace.orderKey ?? null,
         layer_name: trace.layerName ?? null,
+        frame_id: trace.frameId ?? null,
       }
 
       // Add optional fields
@@ -243,7 +245,7 @@ export async function saveAllChanges(): Promise<void> {
       // Deliberately does NOT clear pending changes: they were never written,
       // so discarding them would destroy the user's work to make a failure
       // look tidy. They stay queued and can be retried or discarded.
-      showToast(`${refused} change${refused === 1 ? '' : 's'} refused -- you may not have edit access here`)
+      showToast(tCount('atrium.error.changesRefused', refused))
       return
     }
 

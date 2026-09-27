@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { mkdir, exists } from '@tauri-apps/plugin-fs'
 import { carryLinks } from './traceLinks'
+import { carriedFrameId, freshIds } from './frames'
 
 let db: Database | null = null
 let mediaBasePath: string = ''
@@ -839,6 +840,8 @@ async function writeLobbyVaultSnapshot(lobbyId: string): Promise<void> {
 
   const snapshotPath = await join(lobbyDir, 'atrium.json')
   await writeVaultTextFile(snapshotPath, JSON.stringify(snapshot, null, 2))
+  // Its folder has changed size: the usage figure measures it again (useTraces).
+  window.dispatchEvent(new CustomEvent('atrium:vault-synced', { detail: { lobbyId } }))
 }
 
 function scheduleLobbyVaultSync(lobbyId: string | null | undefined): void {
@@ -1215,6 +1218,7 @@ export async function initLocalDb(): Promise<void> {
       z_index INTEGER DEFAULT 0,
       order_key TEXT,
       layer_name TEXT,
+      frame_id TEXT,
       lobby_id TEXT,
       shape_type TEXT,
       shape_color TEXT,
@@ -1472,6 +1476,12 @@ export async function initLocalDb(): Promise<void> {
   try {
     // Defaults to 1 so existing traces keep their shadow.
     await db.execute('ALTER TABLE traces ADD COLUMN show_shadow INTEGER DEFAULT 1')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    // The frame a trace is in (lib/frames).
+    await db.execute('ALTER TABLE traces ADD COLUMN frame_id TEXT')
   } catch {
     // Column already exists — ignore
   }
@@ -2053,6 +2063,35 @@ async function localRpc(fnName: string, params: any): Promise<{ data: any; error
   try {
     switch (fnName) {
       case 'get_lobby_size_bytes': {
+        // The atrium's folder in the vault, measured: atrium.json (its traces,
+        // groups and connections), its media and its rendered PDF pages --
+        // everything it takes on disk. Plus any file of its still read from
+        // outside the folder, from before media was consolidated there.
+        const lobbyName = await getLobbyNameById(params.p_lobby_id)
+        const lobbyDir = lobbyName ? await getVaultLobbyDirectory(params.p_lobby_id, lobbyName) : null
+        if (lobbyDir && await vaultPathExists(lobbyDir)) {
+          let total = await invoke<number>('get_dir_size', { path: lobbyDir })
+          const mediaRows = await db.select<any[]>(
+            `SELECT media_url FROM traces WHERE lobby_id = ? AND media_url LIKE 'local://%'`,
+            [params.p_lobby_id]
+          )
+          for (const row of mediaRows) {
+            try {
+              const filePath = await resolveLocalMediaFilePath(row.media_url)
+              const inFolder = filePath && (filePath.startsWith(lobbyDir + '/') || filePath.startsWith(lobbyDir + '\\'))
+              if (filePath && !inFolder) {
+                total += await invoke<number>('get_file_size', { path: filePath })
+              }
+            } catch {
+              // Not fatal to a size -- see below.
+            }
+          }
+          return { data: total, error: null }
+        }
+
+        // No folder yet (an atrium not yet mirrored): estimated from its rows,
+        // and its media measured file by file.
+        //
         // Sum the approximate row size of all traces in this lobby...
         const rows = await db.select<any[]>(
           `SELECT SUM(LENGTH(CAST(id AS TEXT)) + LENGTH(COALESCE(content,'')) + LENGTH(COALESCE(image_url,'')) + LENGTH(COALESCE(media_url,'')) + LENGTH(COALESCE(shape_points,'')) + 200) as total_bytes FROM traces WHERE lobby_id = ?`,
@@ -2607,6 +2646,11 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
   let traces = 0
   // Old trace id -> new, for the threads.
   const traceIds = new Map<string, string>()
+  // Made up front, so a frame and what it holds point at each other whatever
+  // order they go in (lib/frames). Restored as itself, a trace keeps its id.
+  const restoredIds = asCopy
+    ? freshIds(snapshot.traces ?? [], uuid)
+    : new Map<string, string>((snapshot.traces ?? []).filter((t: any) => t.id).map((t: any) => [t.id, t.id]))
   for (const trace of snapshot.traces ?? []) {
     // Mirror-only bookkeeping, not columns on the table.
     const { vault_media_path, vault_image_path, ...rest } = trace
@@ -2614,7 +2658,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
     const mediaUrl = await restoreAsset(rest.media_url, vault_media_path)
     const imageUrl = await restoreAsset(rest.image_url, vault_image_path)
 
-    const id = asCopy ? uuid() : rest.id
+    const id = restoredIds.get(rest.id) ?? uuid()
     await putRow('traces', {
       ...rest,
       id,
@@ -2623,6 +2667,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
       media_url: mediaUrl,
       image_url: imageUrl,
       layer_id: rest.layer_id ? layerIdMap.get(rest.layer_id) ?? null : null,
+      frame_id: carriedFrameId(rest.frame_id, restoredIds),
     })
     traceIds.set(rest.id, id)
     traces++

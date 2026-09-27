@@ -108,6 +108,7 @@ export function mapRowToTrace(row: any): Trace {
     layerId: row.layer_id ?? null,
     orderKey: row.order_key ?? null,
     layerName: row.layer_name ?? null,
+    frameId: row.frame_id ?? null,
     lobbyId: row.lobby_id,
     // Shape properties
     shapeType: row.shape_type,
@@ -127,6 +128,10 @@ export function mapRowToTrace(row: any): Trace {
     height: row.height,
   }
 }
+
+// How long after a change the atrium's size is measured again: long enough
+// for a batch of changes to become one measurement.
+const SIZE_REFRESH_DELAY_MS = 1200
 
 export function useTraces(lobbyId: string | null) {
   const { setTraces, addTrace, removeTrace, setServerLobbySize } = useGamePick('setTraces', 'addTrace', 'removeTrace', 'setServerLobbySize')
@@ -308,9 +313,35 @@ export function useTraces(lobbyId: string | null) {
       )
       .subscribe()
 
+    // Measured again once things settle after a change -- a trace added or
+    // removed, a save, and on desktop a media file or the atrium's mirror
+    // written -- rather than only on entry. In between, the store estimates
+    // (getLobbySizeBytes).
+    let refreshTimer: number | undefined
+    const refreshSize = () => {
+      window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        if (!cancelled) void fetchLobbySize(useGameStore.getState().traces.length)
+      }, SIZE_REFRESH_DELAY_MS)
+    }
+    const onVaultChange = (event: Event) => {
+      const changed = (event as CustomEvent).detail?.lobbyId
+      if (!changed || changed === lobbyId) refreshSize()
+    }
+    window.addEventListener('atrium:vault-synced', onVaultChange)
+    window.addEventListener('atrium:vault-write-complete', onVaultChange)
+    const stopWatching = useGameStore.subscribe((state, prev) => {
+      if (state.serverLobbySize === null) return
+      if (state.traces.length !== prev.traces.length || (prev.isSavingChanges && !state.isSavingChanges)) refreshSize()
+    })
+
     return () => {
       cancelled = true
       channel.unsubscribe()
+      window.clearTimeout(refreshTimer)
+      window.removeEventListener('atrium:vault-synced', onVaultChange)
+      window.removeEventListener('atrium:vault-write-complete', onVaultChange)
+      stopWatching()
     }
   }, [lobbyId])
 

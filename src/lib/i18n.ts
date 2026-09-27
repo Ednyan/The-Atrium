@@ -242,6 +242,15 @@ export function pluralCategory(count: number): 'one' | 'few' | 'many' {
   }
 }
 
+// Every key that comes in plural forms, without its .one/.few/.many.
+type PluralKey = TranslationKey extends infer K ? (K extends `${infer Base}.one` ? Base : never) : never
+
+// A string with a count in it, in the form the language wants for that
+// count: the key's .one, .few or .many. {count} is filled in.
+export function tCount(key: PluralKey, count: number, vars?: Record<string, string | number>): string {
+  return t(`${key}.${pluralCategory(count)}` as TranslationKey, { count, ...vars })
+}
+
 // The document's lang picks the font stack for the script (see --font-ui in
 // index.css), so it has to be right from the first paint rather than from
 // whenever the first catalogue finishes loading -- otherwise a Chinese reader

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
-import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
 import { DONATE_CUT } from './DonateButton'
 import { currentTracePreset } from '../lib/tracePresets'
@@ -24,7 +24,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { copyLobbyId } from '../lib/clipboard'
 import { showToast } from '../lib/toast'
-import { useTranslation } from '../lib/i18n'
+import { tCount, useTranslation } from '../lib/i18n'
 import { isEditableTarget } from '../lib/editableTarget'
 import { record, undo as undoHistory, redo as redoHistory, clearHistory, canUndo, canRedo, subscribeToHistory } from '../lib/history'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
@@ -560,6 +560,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [, setOnlineUsersListTick] = useState(0)
   
   const { username, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'pendingChanges', 'deletedTraces', 'isSavingChanges', 'hasPendingChanges')
+  // The usage figure reads the store as it draws; this is what redraws it
+  // when the atrium has been measured again (useTraces).
+  useGamePick('serverLobbySize')
   const [showTracePanel, setShowTracePanel] = useState(false)
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
@@ -677,6 +680,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // reasoning as newPathTraceId -- ids are always fresh, so a useEffect keyed
   // on the value fires once per request without needing to be reset.
   const [newTextTraceId, setNewTextTraceId] = useState<string | null>(null)
+  // A frame for TraceOverlay to make, from the canvas menu.
+  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number } | null>(null)
   // Mirrors TraceOverlay's own multi-selection state (reported up via
   // onMultiSelectionChange) so the Layer panel can highlight every
   // multi-selected trace/group, not just the single selectedTraceId.
@@ -840,8 +845,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const ensureLobbyHasSpace = () => {
     if (!useGameStore.getState().isLobbyFull()) return true
 
-    const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-    showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+    showToast(lobbyFullMessage())
     return false
   }
 
@@ -2044,7 +2048,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // an atrium and the cost is otherwise invisible until it starts feeling
     // slow.
     const totalMB = pages.reduce((sum, p) => sum + p.blob.size, 0) / (1024 * 1024)
-    showToast(`${pages.length} pages placed — ${totalMB.toFixed(1)} MB`)
+    showToast(tCount('atrium.toast.pagesPlaced', pages.length, { size: totalMB.toFixed(1) }))
   }
 
   // Several files chosen at once in the Create Trace panel's picker. Routed
@@ -2201,7 +2205,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (converted > 0) {
         await saveAllChanges()
       }
-      showToast(`Converted ${converted} embed${converted === 1 ? '' : 's'} to images${skipped > 0 ? ` — skipped ${skipped}` : ''}`)
+      const message = tCount('atrium.toast.embedsConverted', converted)
+      showToast(skipped > 0 ? t('atrium.toast.embedsSkipped', { message, count: skipped }) : message)
     } finally {
       setIsConvertingEmbeds(false)
       setConvertEmbedsProgress('')
@@ -3507,7 +3512,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // that once for a batch -- but silently dropping the rest looked like
       // they'd failed to register.
       if (droppedPdfs.length > 1) {
-        showToast(`Opening ${droppedPdfs[0].name} — PDFs are placed one at a time`)
+        showToast(t('atrium.toast.pdfOneAtATime', { name: droppedPdfs[0].name }))
       }
       return
     }
@@ -3574,7 +3579,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // diagnosable without a debugger on the affected machine.
     const offered = Array.from(e.dataTransfer.types || [])
     if (offered.length > 0) {
-      showToast(`Nothing droppable in that (${offered.join(', ')})`)
+      showToast(t('atrium.error.nothingDroppable', { types: offered.join(', ') }))
       return
     }
 
@@ -3589,11 +3594,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // something quite different: data present but unreadable, rather than
     // absent. Worth knowing before anyone tries to fix the wrong thing.
     const itemCount = e.dataTransfer.items?.length ?? 0
-    const detail = itemCount > 0 ? ` (0 formats, ${itemCount} items)` : ''
+    const detail = itemCount > 0 ? t('atrium.error.dragNoDataItems', { count: itemCount }) : ''
     showToast(
       isDesktop
-        ? `That drag carried no data${detail} — copy the image instead, then right-click here and Paste Image`
-        : `That drag carried no data${detail} — try dragging it from its own page, or paste the link instead`,
+        ? t('atrium.error.dragNoData.desktop', { detail, pasteImage: t('atrium.canvas.pasteImage') })
+        : t('atrium.error.dragNoData.web', { detail }),
     )
   }
 
@@ -3952,8 +3957,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (supabase) {
         // Check lobby size limit before saving drawing
         if (useGameStore.getState().isLobbyFull()) {
-          const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-          showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+          showToast(lobbyFullMessage())
           setIsSavingDrawing(false)
           return
         }
@@ -4122,6 +4126,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
+            frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
             hideCursor={isDrawingMode && pointerOnDrawingCanvas}
             onEditDrawing={handleEditDrawing}
@@ -4192,7 +4197,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 />
               </div>
               <p className="text-nier-bg/70 text-[0.7rem] tracking-[0.15em] uppercase font-mono">
-                {importProgress.done} / {importProgress.total} files
+                {t('atrium.hud.importCount', { done: importProgress.done, total: importProgress.total })}
               </p>
             </div>
           </div>
@@ -5113,6 +5118,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               { label: `◇ ${t('atrium.trace.type.embed')}`, type: 'embed' as const, shape: undefined },
               { label: `◇ ${t('atrium.trace.type.shape')}`, type: 'shape' as const, shape: 'rectangle' as const },
               { label: `~ ${t('atrium.trace.shape.path')}`, type: 'shape' as const, shape: 'path' as const },
+              { label: `⬚ ${t('atrium.trace.type.frame')}`, type: 'frame' as const, shape: undefined },
               ...(isDesktop ? [
                 { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
@@ -5135,6 +5141,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   // so filling it in means typing the words somewhere else
                   // first and then watching them appear somewhere else again.
                   // Make it, and put the cursor in it.
+                  // A frame needs nothing either: made where the menu was
+                  // opened, taking in what lies loose there (TraceOverlay).
+                  if (item.type === 'frame') {
+                    setFrameRequest({ x: anchor.x, y: anchor.y })
+                    return
+                  }
+
                   if (item.type === 'text') {
                     if (!ensureLobbyHasSpace()) return
                     const id = await insertDroppedTrace('text', '', undefined, anchor.x, anchor.y)

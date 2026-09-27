@@ -117,7 +117,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
     setNotice('')
     try {
       const result = await work()
-      if (result?.refundError) setError(`Refund failed: ${result.refundError}`)
+      if (result?.refundError) setError(t('names.refundFailed', { message: result.refundError }))
       else if (result?.refunded) setNotice(t('names.rejectedAndRefunded'))
       load()
     } catch (e: any) {

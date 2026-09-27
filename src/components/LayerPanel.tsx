@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore, useGamePick } from '../store/gameStore'
-import { useTranslation, pluralCategory } from '../lib/i18n'
+import { tCount, useTranslation } from '../lib/i18n'
 import type { Layer, Trace } from '../types/database'
 import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, type Ordered } from '../lib/order'
 import { feelSpring, feelStep } from '../lib/dragFeel'
@@ -16,7 +16,7 @@ import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
 
 // Each trace type's mark in the list.
-const TYPE_GLYPH: Record<string, string> = { text: '◇', image: '◻', audio: '♪', video: '▷', embed: '⬡' }
+const TYPE_GLYPH: Record<string, string> = { text: '◇', image: '◻', audio: '♪', video: '▷', embed: '⬡', frame: '⬚' }
 
 // Something lifted off the list -- a row being dragged, or the card of a trace
 // carried in from the canvas. It follows a point on the drag spring (lib/
@@ -332,7 +332,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     try {
       await insertGroup(lobbyId, name.trim(), userId)
     } catch (err) {
-      alert(`Failed to create group: ${(err as Error).message}`)
+      alert(t('atrium.layers.groupCreateFailed', { message: (err as Error).message }))
     }
   }
 
@@ -1808,11 +1808,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   hint={t('atrium.layers.deleteGroupOnlyHint')}
                 />
                 <MenuItem
-                  label={t(({
-                    one: 'atrium.layers.deleteWithTraces.one',
-                    few: 'atrium.layers.deleteWithTraces.few',
-                    many: 'atrium.layers.deleteWithTraces.many',
-                  } as const)[pluralCategory(groupTraces.length)], { count: groupTraces.length })}
+                  label={tCount('atrium.layers.deleteWithTraces', groupTraces.length)}
                   onClick={() => deleteGroup(rowMenu.id)}
                   danger
                   hint={t('atrium.layers.deleteWithTracesHint')}

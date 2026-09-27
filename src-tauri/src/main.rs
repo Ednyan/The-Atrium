@@ -489,6 +489,33 @@ fn get_file_size(path: String) -> Result<u64, String> {
     }
 }
 
+// Every file under a folder, added up: an atrium's folder in the vault holds
+// all it takes on disk -- atrium.json, its media, its rendered PDF pages -- so
+// this is its real size (get_lobby_size_bytes in localDb.ts). Links are not
+// followed, and whatever can't be read counts as nothing, as in get_file_size:
+// a size is worth having even if one file is locked.
+#[tauri::command]
+fn get_dir_size(path: String) -> Result<u64, String> {
+    Ok(dir_size(&PathBuf::from(path)))
+}
+
+fn dir_size(root: &PathBuf) -> u64 {
+    let mut total = 0;
+    let mut pending = vec![root.clone()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else { continue };
+            if file_type.is_dir() {
+                pending.push(entry.path());
+            } else if file_type.is_file() {
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    total
+}
+
 #[tauri::command]
 fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
     let file_path = PathBuf::from(path);
@@ -1416,6 +1443,7 @@ fn main() {
             vault_path_exists,
             list_vault_atrium_mirrors,
             get_file_size,
+            get_dir_size,
             write_vault_text_file,
             write_binary_file,
             append_binary_file,

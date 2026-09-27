@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
-import { useTranslation, pluralCategory } from '../lib/i18n'
+import { tCount, useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
+import { carriedFrameId, freshIds } from '../lib/frames'
 import { keysFromNumbers } from '../lib/order'
 import { firstFreeName } from '../lib/traceNames'
 
@@ -85,7 +86,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
     setError('')
 
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum is 10 MB.`)
+      setError(t('transfer.import.tooLarge', { size: (file.size / (1024 * 1024)).toFixed(1), max: MAX_FILE_SIZE / (1024 * 1024) }))
       return
     }
 
@@ -275,6 +276,9 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         return 'Too many rejected columns'
       }
 
+      // New ids made up front, so a frame and what it holds point at each
+      // other whatever order they go in (lib/frames).
+      const newTraceIds = freshIds(parsed.traces, () => crypto.randomUUID())
       for (const trace of parsed.traces) {
         // Traces referencing desktop-local vault storage (not embeds, not
         // data: URLs, not remote http(s) links) can't be resolved outside
@@ -370,10 +374,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         const traceData: Record<string, any> = {
           ...rest,
-          id: crypto.randomUUID(),
+          id: (_id && newTraceIds.get(_id)) || crypto.randomUUID(),
           user_id: user.id,
           lobby_id: lobbyId,
           layer_id: mappedLayerId,
+          frame_id: carriedFrameId(trace.frame_id, newTraceIds),
           order_key: trace.order_key ?? traceKeys.get(trace) ?? null,
           ...(trace.type === 'text' ? { layer_name: trace.layer_name ?? textNames.get(trace) ?? null } : {}),
           media_url: mediaUrl || null,
@@ -530,11 +535,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
               </div>
               {localOnlyCount > 0 && (
                 <div className="text-[9px] text-nier-red/70 tracking-wider">
-                  {t(({
-                    one: 'transfer.import.localOnly.one',
-                    few: 'transfer.import.localOnly.few',
-                    many: 'transfer.import.localOnly.many',
-                  } as const)[pluralCategory(localOnlyCount)], { count: localOnlyCount })}
+                  {tCount('transfer.import.localOnly', localOnlyCount)}
                 </div>
               )}
             </div>

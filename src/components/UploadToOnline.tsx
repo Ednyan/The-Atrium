@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { localClient } from '../lib/localDb'
 import { carryLinks } from '../lib/traceLinks'
+import { carriedFrameId, freshIds } from '../lib/frames'
 import { useTranslation } from '../lib/i18n'
 
 interface UploadToOnlineProps {
@@ -123,6 +124,9 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
 
       if (localTraces?.length) {
         let uploaded = 0
+        // Online ids made up front, so a frame and what it holds point at
+        // each other whatever order they go in (lib/frames).
+        const onlineIds = freshIds(localTraces, () => crypto.randomUUID())
         for (const trace of localTraces) {
           const mappedLobbyId = trace.lobby_id ? lobbyIdMap[trace.lobby_id] : null
           if (!mappedLobbyId && trace.lobby_id) {
@@ -141,7 +145,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
           }
 
           const traceData: Record<string, any> = {
-            id: crypto.randomUUID(),
+            id: onlineIds.get(trace.id) ?? crypto.randomUUID(),
             user_id: remoteUserId,
             username: trace.username,
             type: trace.type,
@@ -188,6 +192,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             enable_interaction: trace.enable_interaction,
             ignore_clicks: trace.ignore_clicks,
             layer_id: trace.layer_id ? layerIdMap[trace.layer_id] || null : null,
+            frame_id: carriedFrameId(trace.frame_id, onlineIds),
             z_index: trace.z_index,
             order_key: trace.order_key ?? null,
             layer_name: trace.layer_name ?? null,

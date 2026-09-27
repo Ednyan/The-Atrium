@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase'
 import { showToast } from './toast'
+import { t } from './i18n'
 import { isDesktop } from './supabase'
 import {
   callPinterestApiAsLinkedDesktop,
@@ -226,7 +227,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
     }
 
     if (error || data?.error) {
-      return { handled: true, success: false, error: data?.error || error?.message || 'Failed to connect Pinterest.' }
+      return { handled: true, success: false, error: data?.error || error?.message || t('profile.errPinterestConnect') }
     }
 
     // A desktop connection belongs to no account, so there is nothing here to
@@ -242,7 +243,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
 
     return { handled: true, success: true, username: data?.username ?? null, desktop: desktopMode }
   } catch (err: any) {
-    return { handled: true, success: false, error: err?.message || 'Failed to connect Pinterest.' }
+    return { handled: true, success: false, error: err?.message || t('profile.errPinterestConnect') }
   }
 }
 

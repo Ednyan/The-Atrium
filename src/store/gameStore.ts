@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { UserPresence, Trace, Layer } from '../types/database'
 import { isDesktop } from '../lib/supabase'
+import { t } from '../lib/i18n'
 import { recordTraceCreated } from '../lib/supportAppeal'
 import type { TraceLink } from '../lib/traceLinks'
 
@@ -418,6 +419,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   getLobbySizeBytes: () => {
     const state = get()
+    // Desktop measures the atrium's folder again after every change
+    // (useTraces), in moments, so the measurement stands on its own. An
+    // average per trace would add a few hundred kB for a video of hundreds of
+    // MB, and take as much off for deleting one.
+    if (isDesktop && state.serverLobbySize !== null) return state.serverLobbySize
     // If we have a server-reported size, use it as baseline and add delta for new traces
     if (state.serverLobbySize !== null) {
       const traceDelta = state.traces.length - state.serverLobbySizeTraceCount
@@ -442,6 +448,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     return get().getLobbySizeBytes() >= LOBBY_SIZE_LIMIT
   },
 }))
+
+// What to say when a full atrium turns something away.
+export function lobbyFullMessage(): string {
+  return t('atrium.error.sizeLimit', {
+    limit: (LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0),
+    size: (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1),
+  })
+}
 
 // Just these fields of the store, re-rendering only when one of them changes.
 //

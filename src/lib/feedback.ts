@@ -6,6 +6,7 @@
 // the caller (LobbyScene) falls back to a mailto: link instead.
 
 import { supabase, isDesktop } from './supabase'
+import { t } from './i18n'
 
 export interface FeedbackReport {
   motive: 'bug' | 'feature' | 'other'
@@ -32,10 +33,10 @@ export async function sendFeedbackReport(report: FeedbackReport): Promise<{ succ
       body: { ...report, platform: isDesktop ? 'Desktop' : 'Web' },
     })
     if (error || data?.error) {
-      return { success: false, error: data?.error || error?.message || 'Failed to send report.' }
+      return { success: false, error: data?.error || error?.message || t('report.sendFailed') }
     }
     return { success: true }
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to send report.' }
+    return { success: false, error: err?.message || t('report.sendFailed') }
   }
 }

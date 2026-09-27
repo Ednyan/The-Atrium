@@ -70,6 +70,7 @@ export function buildTraceInsertRow(
   if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
   if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
   if (trace.layerId) newTrace.layer_id = trace.layerId
+  if (trace.frameId) newTrace.frame_id = trace.frameId
   if (lobbyId) newTrace.lobby_id = lobbyId
   // Applies to every resizable type (text, image, embed, video, shape) --
   // this used to be gated to shape only, so duplicating a text/image/embed/

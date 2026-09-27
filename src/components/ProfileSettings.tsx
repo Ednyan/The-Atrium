@@ -352,7 +352,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             ? t('profile.errCodeExpired')
             : result.code === 'code_required'
               ? t('profile.errEnterCode')
-              : result.error || 'Failed to delete account.',
+              : result.error || t('profile.errDeleteAccount'),
       )
       // An expired or spent code cannot be retyped into working, so the panel
       // goes back to offering a new one instead of leaving a dead box.

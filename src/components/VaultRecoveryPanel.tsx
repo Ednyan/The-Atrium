@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useTranslation } from '../lib/i18n'
+import { t, useTranslation } from '../lib/i18n'
 import {
   getDatabaseIntegrityError,
   listVaultMirrors,
@@ -20,7 +20,9 @@ function formatMissingList(names: string[]): string {
   if (names.length === 0) return ''
   const shown = names.slice(0, MISSING_NAMES_SHOWN)
   const rest = names.length - shown.length
-  return `Not found: ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. Those traces kept their place and are empty.`
+  return t('desktop.vault.notFound', {
+    names: shown.join(', ') + (rest > 0 ? t('desktop.vault.andMore', { count: rest }) : ''),
+  })
 }
 
 // Rebuilds atriums from the per-atrium mirrors in the vault.
@@ -53,8 +55,8 @@ export default function VaultRecoveryPanel({ onClose, onRestored }: VaultRecover
     try {
       const r = await restoreAtriumFromMirror(mirror.snapshotPath)
       setResult(
-        `Restored "${r.lobbyName}" — ${r.traces} traces, ${r.layers} layers, ${r.mediaFiles} files` +
-        (r.mediaMissing > 0 ? `, ${r.mediaMissing} files missing` : ''),
+        t('desktop.vault.restored', { name: r.lobbyName, traces: r.traces, layers: r.layers, files: r.mediaFiles }) +
+        (r.mediaMissing > 0 ? t('desktop.vault.filesMissing', { count: r.mediaMissing }) : ''),
       )
       // Named, not just counted, and capped so one bad folder doesn't push the
       // rest of the result off the panel. Those traces are still there, holding

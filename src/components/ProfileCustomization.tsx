@@ -136,7 +136,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     // Validate display name if attempting to change it (web only)
     const nameChanged = displayName !== username
     if (!isDesktop && nameChanged && !canChangeName) {
-      setError(`You can change your display name in ${daysUntilChange} days`)
+      setError(t('profile.canChangeIn', { days: daysUntilChange }))
       setLoading(false)
       return
     }

@@ -11,6 +11,7 @@
 // transport.
 
 import { supabase } from './supabase'
+import { t } from './i18n'
 
 // A non-2xx arrives as a FunctionsHttpError whose `context` is the raw
 // Response, with `data` null -- so on the 401 a wrong code returns, the
@@ -80,13 +81,13 @@ export async function deleteMyAccount(code: string): Promise<DeleteAccountResult
       return {
         success: false,
         code: await reasonFrom(error, data),
-        error: error?.message || 'Failed to delete account.',
+        error: error?.message || t('profile.errDeleteAccount'),
       }
     }
 
     await supabase.auth.signOut()
     return { success: true }
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to delete account.' }
+    return { success: false, error: err?.message || t('profile.errDeleteAccount') }
   }
 }

@@ -5,7 +5,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, Fragment, useCallback } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
-import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
+import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { useLatestHandlers } from '../hooks/useLatestHandlers'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
@@ -23,7 +23,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
-import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
+import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
@@ -32,6 +32,8 @@ import { throughRelay, toEmbedUrl } from '../lib/embedUrl'
 import { drawRanks, inOrder, keyAt, keysBetween, keysOnTop, keysOnTopOfGroup, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
+import { boxContains, frameAround, heldBy, isFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
+import { mapRowToTrace } from '../hooks/useTraces'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls from './ShapeStyleControls'
@@ -214,6 +216,9 @@ interface TraceOverlayProps {
   // selected and opened for typing. See newPathRequest above for why a plain
   // value works as a signal here.
   newTextRequest?: string | null
+  // A frame to make, from the canvas menu: where, and a fresh object each
+  // time so asking twice at one point still makes two.
+  frameRequest?: { x: number; y: number } | null
   // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
   // undo (see LobbyScene) instead of this file's trace undo/redo history.
   isDrawingMode?: boolean
@@ -335,8 +340,28 @@ const CROP_HANDLES = [
 
 // The shape being placed (TraceOverlay's shapeDraft), drawn as a trace: its
 // id, and its level -- over every trace and thread, under the handles.
+// A trace's transform as the store holds it, whatever is being drawn over it.
+const storedTransformOf = (trace: Trace) => ({
+  x: trace.x ?? 0,
+  y: trace.y ?? 0,
+  scaleX: trace.scaleX ?? trace.scale ?? 1.0,
+  scaleY: trace.scaleY ?? trace.scale ?? 1.0,
+  rotation: trace.rotation ?? 0.0,
+})
+
+// The types whose frame -- border colour and thickness -- the Customize panel
+// offers.
+const BORDERED_TYPES = new Set<string>(['text', 'embed', 'image', 'document', 'frame'])
+
 const SHAPE_DRAFT_ID = '__shape-draft__'
 const SHAPE_DRAFT_Z = 999_999
+// A frame placed from the canvas menu, until it's resized to what it holds.
+const FRAME_DEFAULT = { width: 480, height: 320 }
+// Room left around a selection wrapped in a frame, in world units.
+const FRAME_PADDING = 40
+// How far either side of its border a press takes a frame, in screen pixels.
+// Its inside is left to what it holds, and to the canvas under it.
+const FRAME_GRIP_PX = 6
 
 // Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
 const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
@@ -671,7 +696,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, frameRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1830,17 +1855,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const getTraceTransform = useCallback((trace: Trace) => {
     const local = localTraceTransforms[trace.id]
     if (local) return local
-    
-    // Ensure trace has valid transform data
-    const transform = {
-      x: trace.x ?? 0,
-      y: trace.y ?? 0,
-      scaleX: trace.scaleX ?? trace.scale ?? 1.0,
-      scaleY: trace.scaleY ?? trace.scale ?? 1.0,
-      rotation: trace.rotation ?? 0.0,
-    }
-
-    return transform
+    return storedTransformOf(trace)
   }, [localTraceTransforms])
 
   // --- Undo/redo history ---------------------------------------------------
@@ -1958,6 +1973,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // moving/resizing/rotating a trace fires many updates per second) into a
     // single undo step, keeping the original "before" and the latest "after".
     if (last && last.kind === 'update' && last.traceId === traceId && (now - last.ts) < UNDO_COALESCE_WINDOW_MS) {
+      // A key this gesture hasn't touched yet -- a drag's frameId, set as it
+      // ends -- keeps the value it had before, or undo would leave it changed.
+      last.before = { ...before, ...last.before }
       last.after = { ...last.after, ...after }
       last.ts = now
       return
@@ -2267,27 +2285,28 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const stopGlide = () => glideRef.current?.finish()
 
-  const startGlide = (ids: string[]) => {
+  // Whether it glides; `onRest` is called when it stops, however it stops.
+  const startGlide = (ids: string[], onRest?: () => void): boolean => {
     const strength = traceMomentumRef.current / 100
     const samples = dragSamplesRef.current
     dragSamplesRef.current = []
     // Not after lining up with Shift: gliding on would undo the alignment.
-    if (!strength || dragShiftRef.current || ids.length === 0) return
+    if (!strength || dragShiftRef.current || ids.length === 0) return false
 
     const now = performance.now()
     const recent = samples.filter(p => now - p.t < 100)
     // Stopped before letting go: set down, not thrown.
-    if (recent.length < 2 || now - recent[recent.length - 1].t > 60) return
+    if (recent.length < 2 || now - recent[recent.length - 1].t > 60) return false
     const first = recent[0], latest = recent[recent.length - 1]
     const span = latest.t - first.t
-    if (span <= 0) return
+    if (span <= 0) return false
     const screenVX = (latest.x - first.x) / span, screenVY = (latest.y - first.y) / span
-    if (Math.hypot(screenVX, screenVY) < 0.15) return
+    if (Math.hypot(screenVX, screenVY) < 0.15) return false
 
     const moving = ids.map(id => useGameStore.getState().traces.find(t => t.id === id))
     // A path moves by its points, not by a position, so a selection with one
     // in it is simply set down.
-    if (moving.some(t => !t || isPathTrace(t))) return
+    if (moving.some(t => !t || isPathTrace(t))) return false
     const origins = moving.map(t => ({ id: t!.id, x: t!.x, y: t!.y }))
 
     // Where it comes to rest: carried on at the speed it was let go at, and
@@ -2322,6 +2341,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       } else if (top?.kind === 'batch') {
         for (const op of top.ops) if (ends[op.traceId]) op.after = { ...op.after, ...ends[op.traceId] }
       }
+      onRest?.()
     }
     const tick = (t: number) => {
       let dt = Math.min(t - last, 48)
@@ -2350,6 +2370,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     glideRef.current = { finish }
     setGlidingIds(new Set(ids))
     raf = requestAnimationFrame(tick)
+    return true
   }
 
   // ---- Drag feel: a held trace trails, leans and settles --------------------
@@ -2503,6 +2524,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const boxes = new Map(all.map(t => [t.id, traceBoxFor(t)]))
     const picked = all.filter(t => {
       const b = boxes.get(t.id)!
+      // A frame only when all of it is in the area: one drawn inside a frame,
+      // to take some of what's in it, shouldn't take the frame too.
+      if (isFrame(t)) return b.cx - b.halfW >= area.left && b.cx + b.halfW <= area.right && b.cy - b.halfH >= area.top && b.cy + b.halfH <= area.bottom
       const turn = isPathTrace(t) ? 0 : ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
       return boxCrosses(b.cx, b.cy, b.halfW, b.halfH, turn, area)
     }).map(t => t.id)
@@ -2680,8 +2704,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (!userId || sourceTraces.length === 0) return
 
     if (useGameStore.getState().isLobbyFull()) {
-      const sizeMB = (useGameStore.getState().getLobbySizeBytes() / (1024 * 1024)).toFixed(1)
-      showToast(`This atrium has reached its ${(LOBBY_SIZE_LIMIT / (1024 * 1024)).toFixed(0)}MB size limit (currently ${sizeMB}MB). Delete some traces to free up space.`)
+      showToast(lobbyFullMessage())
       return
     }
 
@@ -2913,6 +2936,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   const groupOf = (trace: Trace) => traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
 
+  // The ids of the traces in a trace's group, when it is in one that exists
+  // and has others in it; null for a trace on its own.
+  const groupMembersOf = (trace: Trace): string[] | null => {
+    if (!trace.layerId || !layers.some(l => l.id === trace.layerId)) return null
+    const members = traces.filter(t => t.layerId === trace.layerId).map(t => t.id)
+    return members.length > 1 ? members : null
+  }
+  // The trace pressed inside an already-selected group; picked out of it if
+  // the press turns out to be a click (handleMouseUp).
+  const groupClickRef = useRef<string | null>(null)
+
   // To the top or bottom of its own group (or of the ungrouped ones) -- the
   // right-click menu's version of dragging it to either end in the Layer panel.
   const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
@@ -3104,11 +3138,30 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       return
     }
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
-    
+
+    // A trace in a group is taken as its group: pressed, the whole group is
+    // selected, and moves. Pressed again without moving -- a second click --
+    // it is the trace alone (see handleMouseUp). Once one of a group's traces
+    // is selected on its own, the group is open: its other traces are taken
+    // on their own too, until something outside it is chosen. Shift-click
+    // still adds or removes a single trace.
+    let selection = multiSelectedIds
+    groupClickRef.current = null
+    const members = mode === 'move' && !e.shiftKey ? groupMembersOf(trace) : null
+    if (members) {
+      if (members.every(id => multiSelectedIds.has(id))) {
+        // Already selected, the group alone: a drag moves it, a click opens it.
+        if (multiSelectedIds.size === members.length) groupClickRef.current = trace.id
+      } else if (!(multiSelectedIds.size === 0 && selectedTraceId && members.includes(selectedTraceId))) {
+        selection = new Set(members)
+        setMultiSelectedIds(selection)
+      }
+    }
+
     // Disable move/rotate/scale for path shapes - they're controlled by point editing
     // EXCEPT when multi-selected, then allow moving
     const isPathWithMultiSelect = trace.type === 'shape' && trace.shapeType === 'path' && mode === 'move'
-    if (isPathWithMultiSelect && multiSelectedIds.size === 0) return
+    if (isPathWithMultiSelect && selection.size === 0) return
     
     e.stopPropagation()
     
@@ -3133,8 +3186,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     
     // If clicking on a trace that's part of multi-selection, keep the selection
     // Otherwise, clear multi-selection
-    if (!multiSelectedIds.has(trace.id)) {
-      setMultiSelectedIds(new Set())
+    if (!selection.has(trace.id)) {
+      selection = new Set()
+      setMultiSelectedIds(selection)
     }
 
     // A plain press on a clickable trace: hold back its handles and show the
@@ -3192,11 +3246,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       cropHeight: trace.cropHeight ?? 1,
     }
     
+    // What moves: the selection, or the trace alone -- and what any frame
+    // among them holds (lib/frames), selected or not.
+    const taken = selection.size > 0 ? [...selection] : [trace.id]
+    const takenFrames = new Set(taken.filter(id => traces.some(t => t.id === id && isFrame(t))))
+    const carriedByFrames = mode === 'move' ? heldBy(takenFrames, traces).map(t => t.id) : []
+    const dragIds = new Set([...selection, ...carriedByFrames])
+
     // Store starting transforms for all multi-selected traces
-    if (multiSelectedIds.size > 0 && (mode === 'move' || mode === 'move-path')) {
+    if (dragIds.size > 0 && (mode === 'move' || mode === 'move-path')) {
       const startTransforms: Record<string, { x: number; y: number }> = {}
       const startPathPoints: Record<string, any[]> = {}
-      multiSelectedIds.forEach(id => {
+      dragIds.forEach(id => {
         const t = traces.find(tr => tr.id === id)
         if (t) {
           const tTransform = getTraceTransform(t)
@@ -3548,7 +3609,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           // Everything except the traces travelling with the cursor. Aligning
           // to something being dragged alongside would be aligning to a
           // moving target.
-          const held = multiSelectedIdsRef.current
+          const held = isMultiDragActiveRef.current ? new Set(Object.keys(multiStartTransformsRef.current)) : multiSelectedIdsRef.current
           const candidates = visibleTracesRef.current.filter((t: Trace) =>
             t.id !== activeSelectedTraceId && !held.has(t.id))
 
@@ -3599,11 +3660,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         setAlignGuides(null)
       }
       
-      // Check if we have multi-selected traces to move together
-      const currentMultiSelected = multiSelectedIdsRef.current
-      if (currentMultiSelected.size > 0 && Object.keys(multiStartTransformsRef.current).length > 0) {
-        // Move all multi-selected traces together
-        currentMultiSelected.forEach(id => {
+      // Everything taken hold of together: the selection with the trace
+      // pressed, and what any frame among them holds.
+      const takenIds = Object.keys(multiStartTransformsRef.current)
+      if (isMultiDragActiveRef.current && takenIds.length > 0) {
+        takenIds.forEach(id => {
           const t = tracesRef.current.find(tr => tr.id === id)
           // For path shapes, move all points instead of transform
           if (t && t.type === 'shape' && t.shapeType === 'path') {
@@ -3633,13 +3694,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
             }
           }
         })
-        // Also move the main selected trace if not in multi-select
-        if (!currentMultiSelected.has(activeSelectedTraceId)) {
-          updateTraceTransform(activeSelectedTraceId, {
-            x: startTransformRef.current.x + worldDeltaX,
-            y: startTransformRef.current.y + worldDeltaY,
-          }, { skipUndo: true })
-        }
       } else {
         // Single trace move
         updateTraceTransform(activeSelectedTraceId, {
@@ -4084,6 +4138,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const handleMouseUp = async () => {
     const activeTransformMode = transformModeRef.current
     const activeSelectedTraceId = selectedTraceIdRef.current
+    const dragged = justDraggedRef.current
     transformModeRef.current = 'none'
     // What was being moved, taken now: the refs that say so are cleared below.
     const carried = isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : activeSelectedTraceId ? [activeSelectedTraceId] : []
@@ -4129,6 +4184,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }, 0)
     }
     
+    // Pressed on a trace of a selected group and let go without moving it:
+    // the second click, which picks that trace out of its group.
+    const pickedFromGroup = groupClickRef.current
+    groupClickRef.current = null
+    if (pickedFromGroup && activeTransformMode === 'move' && !justDraggedRef.current) {
+      setMultiSelectedIds(new Set())
+      setSelectedTraceId(pickedFromGroup)
+    }
+
     // If we actually dragged, prevent immediate deselection
     if (justDraggedRef.current) {
       // Clear the flag after a short delay (longer than click event)
@@ -4252,8 +4316,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // Note: selectedPointIndex remains set so control handles stay visible
     }
 
-    // After the move's undo entry exists, so the glide can finish it.
-    if (thrown.length > 0) startGlide(thrown)
+    // Where what moved belongs now, frame-wise (lib/frames), once it's at
+    // rest: where a glide ends, or here. After the move's undo entry exists,
+    // so the glide can finish it and the frames fold into it.
+    const settle = () => {
+      if (activeTransformMode === 'move' && dragged && !releasedInPanel) settleInFrames(carried)
+      else if (activeTransformMode === 'scale' && dragged && activeSelectedTraceId) settleFrameResize(activeSelectedTraceId)
+    }
+    if (!(thrown.length > 0 && startGlide(thrown, settle))) settle()
   }
 
   // Click outside to deselect
@@ -4612,6 +4682,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         }
         // Default 16:9 aspect ratio
         return { width: 300, height: 169 }
+      case 'frame':
+        return { width: trace.width || FRAME_DEFAULT.width, height: trace.height || FRAME_DEFAULT.height }
       case 'document':
         // Without this a PDF fell through to the 120x80 default below, which
         // ignored the width/height stored at creation -- so it rendered small
@@ -4630,7 +4702,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // looks like it ends -- the eye lines things up against the edges it can
   // see. A rotated trace is aligned by its centre, which is the one point
   // rotation does not move.
-  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, _zoom = 1) => {
+  const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, _zoom = 1, stored = false) => {
     // A path is where its points are, not where it was drawn.
     //
     // Every other trace keeps its extent in x/y/width/height. A path keeps
@@ -4659,7 +4731,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
 
     const size = getTraceSize(trace)
-    const transform = getTraceTransform(trace)
+    // `stored`: as the store holds it, not as it's drawn -- for a drag's own
+    // handlers, which see what is drawn as it was when the drag began.
+    const transform = stored ? storedTransformOf(trace) : getTraceTransform(trace)
     const w = (trace.type === 'shape' ? (trace.width || 200) : size.width * (trace.cropWidth ?? 1))
       * ((transform as any).scaleX ?? 1)
     const h = (trace.type === 'shape' ? (trace.height || 200) : size.height * (trace.cropHeight ?? 1))
@@ -4694,6 +4768,177 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       rotated,
     }
   }, [getTraceSize, getTraceTransform])
+
+  // ---- Frames (lib/frames) -------------------------------------------------
+
+  // Boxes as the store holds them now (traceBoxFor's `stored`): these run in a
+  // drag's own handlers, and after it.
+  const storedBox = (trace: Trace): FrameBox => traceBoxFor(trace, undefined, 1, true)
+  const framesNow = (all: Trace[]) => all.filter(isFrame).map(f => ({ id: f.id, box: storedBox(f) }))
+  const groupIdsNow = () => new Set(useGameStore.getState().layers.map(l => l.id))
+
+  // Changes added to the undo step just recorded, so one Ctrl+Z takes them
+  // back with it: the frame a moved trace ends up in, with the move.
+  const foldIntoLastUndo = (ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[]) => {
+    if (ops.length === 0) return
+    const stack = undoStackRef.current
+    const last = stack[stack.length - 1]
+    if (last?.kind === 'update' && ops.every(op => op.traceId === last.traceId)) {
+      for (const op of ops) {
+        last.before = { ...op.before, ...last.before }
+        last.after = { ...last.after, ...op.after }
+      }
+      return
+    }
+    if (last?.kind !== 'update' && last?.kind !== 'batch') {
+      pushBatchUpdateOp(ops)
+      return
+    }
+    const all = last.kind === 'batch' ? last.ops : [{ traceId: last.traceId, before: last.before, after: last.after }]
+    for (const op of ops) {
+      const same = all.find(o => o.traceId === op.traceId)
+      if (same) {
+        same.before = { ...op.before, ...same.before }
+        same.after = { ...same.after, ...op.after }
+      } else {
+        all.push(op)
+      }
+    }
+    stack[stack.length - 1] = { kind: 'batch', ops: all, ts: Date.now() }
+  }
+
+  // Traces' frames written to the store as it is now, and queued to save.
+  // Folded into the last undo step, or, for a frame just made -- whose undo
+  // takes the frame itself away -- into none.
+  const applyFrameChanges = (changes: Map<string, string | null>, undo: 'fold' | 'none') => {
+    const ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+    for (const [id, frameId] of changes) {
+      const live = useGameStore.getState().traces.find(t => t.id === id)
+      if (!live) continue
+      ops.push({ traceId: id, before: { frameId: live.frameId ?? null }, after: { frameId } })
+      addTrace({ ...live, frameId })
+      markTraceChanged(id)
+    }
+    if (undo === 'fold') foldIntoLastUndo(ops)
+  }
+
+  // Put down after a move: what was moved belongs to the frame its middle is
+  // in now -- a group by the middle of all of it -- and what a frame carried
+  // stays in the frame that carried it.
+  const settleInFrames = (movedIds: string[]) => {
+    const all = useGameStore.getState().traces
+    const moved = all.filter(t => movedIds.includes(t.id))
+    const movedFrames = new Set(moved.filter(isFrame).map(f => f.id))
+    const loose = new Set(moved.filter(t => !isFrame(t) && !(t.frameId && movedFrames.has(t.frameId))).map(t => t.id))
+    if (loose.size === 0) return
+    applyFrameChanges(placeUnits(unitsOf(all, groupIdsNow(), loose), framesNow(all), storedBox), 'fold')
+  }
+
+  // A frame resized: what it no longer covers leaves it, and what lies loose
+  // in it now -- in no frame -- joins it.
+  const settleFrameResize = (frameId: string) => {
+    const all = useGameStore.getState().traces
+    const frames = framesNow(all)
+    const frame = frames.find(f => f.id === frameId)
+    if (!frame) return
+    const known = new Set(frames.map(f => f.id))
+    const units = unitsOf(all, groupIdsNow()).filter(unit => {
+      const current = unit[0].frameId && known.has(unit[0].frameId) ? unit[0].frameId : null
+      if (current) return current === frameId
+      const middle = unitMiddle(unit, storedBox)
+      return boxContains(frame.box, middle.x, middle.y)
+    })
+    applyFrameChanges(placeUnits(units, frames, storedBox), 'fold')
+  }
+
+  // A new frame over `box`, named Frame N, drawn under everything (the bottom
+  // of the ungrouped traces) so what it holds is over it. It takes in the
+  // traces in `wrap`, whole groups with them, from whatever frame they were
+  // in; without `wrap`, what lies loose inside it. Then it's selected.
+  const createFrame = async (box: FrameBox, wrap?: string[]) => {
+    if (!lobbyId || !canEdit) return
+    if (useGameStore.getState().isLobbyFull()) {
+      showToast(lobbyFullMessage())
+      return
+    }
+    const store = useGameStore.getState()
+    const groups = new Set(store.layers.map(l => l.id))
+    const ungrouped = store.traces.filter(tr => !tr.layerId || !groups.has(tr.layerId))
+    const preset = currentTracePreset(lobbyId)
+    const draft: Trace = {
+      id: '',
+      userId,
+      username,
+      type: 'frame',
+      content: firstFreeName(store.traces.filter(isFrame).map(f => f.content), n => t('atrium.frame.numbered', { n })),
+      x: box.cx,
+      y: box.cy,
+      width: Math.round(box.halfW * 2),
+      height: Math.round(box.halfH * 2),
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      createdAt: '',
+      showBorder: true,
+      showBackground: false,
+      showShadow: false,
+      showFilename: false,
+      borderColor: preset.border,
+      fillColor: preset.fill,
+      borderWidth: 2,
+      borderRadius: 8,
+      orderKey: keyAt(ungrouped, 0) ?? keysOnTopOfGroup(store.traces, null)[0],
+    }
+    let frame: Trace
+    if (supabase) {
+      const { data, error } = await (supabase.from('traces') as any)
+        .insert(buildTraceInsertRow(draft, userId, username, lobbyId, 0, 0))
+        .select()
+      if (error || !data?.[0]) {
+        showToast(t('atrium.error.frameFailed', { message: error?.message ?? '' }))
+        return
+      }
+      frame = mapRowToTrace(data[0])
+    } else {
+      // No database (a development build): in the store alone, as traces
+      // made any other way are then.
+      frame = { ...draft, id: `trace_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`, createdAt: new Date().toISOString() }
+    }
+    addTrace(frame)
+    const all = useGameStore.getState().traces
+    const units = wrap
+      ? unitsOf(all, groups, new Set(wrap))
+      : unitsOf(all, groups).filter(unit => {
+          if (unit.some(tr => tr.frameId && all.some(f => f.id === tr.frameId))) return false
+          const middle = unitMiddle(unit, storedBox)
+          return boxContains(box, middle.x, middle.y)
+        })
+    applyFrameChanges(putInFrame(units, frame.id), 'none')
+    setMultiSelectedIds(new Set())
+    setSelectedTraceId(frame.id)
+  }
+
+  // The selection in a frame of its own, just big enough to hold it.
+  const wrapInFrame = (ids: string[]) => {
+    const traces = unitsOf(useGameStore.getState().traces, groupIdsNow(), new Set(ids)).flat()
+    if (traces.length === 0) return
+    void createFrame(frameAround(traces.map(storedBox), FRAME_PADDING), traces.map(tr => tr.id))
+  }
+
+  // A frame's title, as typed. Left as it was if emptied.
+  const renameFrame = (id: string, name: string) => {
+    const live = useGameStore.getState().traces.find(tr => tr.id === id)
+    const trimmed = name.trim()
+    if (!live || !trimmed || trimmed === live.content) return
+    updateTraceCustomization(id, { content: trimmed })
+  }
+
+  // A frame asked for from the canvas menu, at the point it was opened on.
+  useEffect(() => {
+    if (!frameRequest) return
+    void createFrame({ cx: frameRequest.x, cy: frameRequest.y, halfW: FRAME_DEFAULT.width / 2, halfH: FRAME_DEFAULT.height / 2 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameRequest])
 
   // Finds the closest edge or centre alignment against the traces nearby.
   //
@@ -4854,6 +5099,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         return t('atrium.trace.type.embed')
       case 'shape':
         return t('atrium.trace.type.shape')
+      case 'frame':
+        return t('atrium.trace.type.frame')
       default:
         return t('atrium.controls.trace')
     }
@@ -5388,7 +5635,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // always the latest version. TraceSlot can keep a trace's drawing -- handlers
   // and all -- for many renders, and a plain handler would act on the state of
   // the render it was made in.
-  const on = useLatestHandlers({ handleMouseDown, handleTouchDown, endTextEdit, fitTextLive, isClickThrough, updateTraceCustomization })
+  const on = useLatestHandlers({ handleMouseDown, handleTouchDown, endTextEdit, fitTextLive, isClickThrough, updateTraceCustomization, renameFrame })
 
   // Everything renderTrace reads while drawing `trace`, narrowed to this trace
   // wherever it only ever asks about this one: while none of it changes, the
@@ -5637,7 +5884,9 @@ return (
           ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px`,
         } : {}),
         cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
-        pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+        // A frame is taken hold of by its edge and title (below); its inside
+        // is left to what it holds, and to the canvas under it.
+        pointerEvents: trace.ignoreClicks || isFrame(trace) ? 'none' : 'auto',
       }}
       onMouseEnter={() => setCursorState('pointer')}
       onMouseLeave={() => setCursorState('default')}
@@ -5678,6 +5927,8 @@ return (
       }}
       onDoubleClick={(e) => {
         e.stopPropagation()
+        // A frame has nothing to preview; its title renames it (above).
+        if (isFrame(trace)) return
         // Text traces edit in place on double-click -- the preview
         // modal was a detour nobody used for text (it exists for
         // media, where "see it big" means something). Falls back to
@@ -5944,7 +6195,9 @@ return (
               })()
             } : {}),
             padding: '0px',
-            pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+            // A frame is taken hold of by its edge and title (below); its inside
+            // is left to what it holds, and to the canvas under it.
+            pointerEvents: trace.ignoreClicks || isFrame(trace) ? 'none' : 'auto',
             // No backgroundImage scanline texture here -- a fine 2-3px
             // repeating-linear-gradient on a container whose pixel size
             // varies continuously with zoom caused visible moire/
@@ -5964,7 +6217,7 @@ return (
             overflow: 'hidden',
           }}
         >
-          {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && (
+          {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && !isFrame(trace) && (
             <div
               className="trace-nier-type-badge"
               // Its font size, padding and inset all come from CSS in
@@ -5980,7 +6233,7 @@ return (
               {getTraceTypeLabel(trace.type)}
             </div>
           )}
-          {showBorder && (
+          {showBorder && !isFrame(trace) && (
             <>
               <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
               <span className="absolute top-0 right-0 w-2 h-2 border-r border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
@@ -6668,7 +6921,82 @@ return (
           The same size at any zoom, and during one: see data-keeps-size in
           index.css. Its anchor, the top middle, is at its own 0 0 once the
           translate has centred it. */}
-      {showFilename && trace.type !== 'shape' && (
+      {/* A frame: its edge, a few pixels either side of the border, is where
+          it's taken hold of -- presses there reach the handlers above -- and
+          its title sits over its top-left corner, the same size at any zoom.
+          Double-click the title to rename it. */}
+      {isFrame(trace) && (() => {
+        const band = ((displayTrace.borderWidth ?? 2) * zoom) + FRAME_GRIP_PX * 2
+        const edges: React.CSSProperties[] = [
+          { left: -FRAME_GRIP_PX, right: -FRAME_GRIP_PX, top: -FRAME_GRIP_PX, height: band },
+          { left: -FRAME_GRIP_PX, right: -FRAME_GRIP_PX, bottom: -FRAME_GRIP_PX, height: band },
+          { top: -FRAME_GRIP_PX, bottom: -FRAME_GRIP_PX, left: -FRAME_GRIP_PX, width: band },
+          { top: -FRAME_GRIP_PX, bottom: -FRAME_GRIP_PX, right: -FRAME_GRIP_PX, width: band },
+        ]
+        const renaming = inlineEditingTraceId === trace.id
+        return (
+          <>
+            {edges.map((edge, i) => (
+              <div key={i} data-frame-edge="" className="absolute pointer-events-auto cursor-move" style={edge} />
+            ))}
+            <div
+              data-keeps-size=""
+              data-frame-title=""
+              className="absolute pointer-events-auto cursor-move text-xs font-semibold whitespace-nowrap select-none"
+              style={{
+                left: 0,
+                top: 0,
+                // Its anchor, the bottom left, at its own 0 0: the corner.
+                transform: 'translateY(-100%)',
+                paddingBottom: '4px',
+                color: isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor,
+              }}
+              title={canEdit ? t('atrium.frame.renameHint') : undefined}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                if (!canEdit || trace.isLocked) return
+                setSelectedTraceId(trace.id)
+                setInlineEditingTraceId(trace.id)
+                setInlineEditText(trace.content ?? '')
+              }}
+            >
+              {renaming ? (
+                <input
+                  autoFocus
+                  value={inlineEditText}
+                  size={Math.max(6, inlineEditText.length + 1)}
+                  onChange={(e) => setInlineEditText(e.target.value)}
+                  onBlur={() => {
+                    on.renameFrame(trace.id, inlineEditText)
+                    setInlineEditingTraceId(null)
+                    setInlineEditText('')
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      on.renameFrame(trace.id, inlineEditText)
+                      setInlineEditingTraceId(null)
+                      setInlineEditText('')
+                    } else if (e.key === 'Escape') {
+                      setInlineEditingTraceId(null)
+                      setInlineEditText('')
+                    }
+                    e.stopPropagation()
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-transparent border-0 border-b p-0 outline-none font-semibold text-xs"
+                  style={{ color: 'inherit', borderColor: 'currentColor' }}
+                />
+              ) : (
+                trace.content
+              )}
+            </div>
+          </>
+        )
+      })()}
+
+      {showFilename && trace.type !== 'shape' && !isFrame(trace) && (
         <div
           data-keeps-size=""
           className="absolute text-xs font-semibold text-center pointer-events-none"
@@ -6922,7 +7250,7 @@ return (
             150ms glide, so the button trailed behind a dragged trace.
             (Its hover:scale-105 never worked either -- the inline
             transform below overrides it.) */}
-        {trace.type !== 'shape' || trace.shapeType !== 'path' ? (
+        {(trace.type !== 'shape' || trace.shapeType !== 'path') && !isFrame(trace) ? (
         <button
           data-trace-element="true"
           className="absolute text-[10px] font-semibold px-3 py-1.5 border pointer-events-auto z-10 transition-colors tracking-[0.18em] uppercase"
@@ -7362,7 +7690,9 @@ return (
                 )
               })}
 
-              {/* Rotation, round every corner, turned with the trace. */}
+              {/* Rotation, round every corner, turned with the trace. A frame
+                  doesn't turn: what it holds would have to turn with it. */}
+              {!isFrame(trace) && (
               <RotateHandles
                 cx={screenX}
                 cy={screenY}
@@ -7373,6 +7703,7 @@ return (
                 onMouseDown={(e) => handleMouseDown(e, trace, 'rotate')}
                 onTouchStart={(e) => handleTouchDown(e, trace, 'rotate')}
               />
+              )}
             </>
           )
         })()}
@@ -7778,6 +8109,24 @@ return (
                 <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.connectTo')}
               </button>
             )}
+            {/* The selection -- or this trace -- in a frame of its own. */}
+            {canEdit && (() => {
+              const ids = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+                ? Array.from(multiSelectedIds)
+                : [contextMenu.traceId]
+              if (!ids.some(id => traces.some(tr => tr.id === id && !isFrame(tr)))) return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    setContextMenu(null)
+                    wrapInFrame(ids)
+                  }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">⬚</span> {t('atrium.menu.wrapInFrame')}
+                </button>
+              )
+            })()}
             {editingWholeSelection && (
               <button
                 className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
@@ -7921,6 +8270,7 @@ return (
             {/* Transformations submenu -- opens as a side flyout on hover,
                 grouping the crop/rotate/flip resets that used to each take
                 their own row in this menu. */}
+            {!isFrame(traces.find(tr => tr.id === contextMenu.traceId) ?? { type: '' }) && (
             <div
               className="relative"
               onMouseEnter={openTransformFlyout}
@@ -8019,6 +8369,7 @@ return (
                 </div>
               )}
             </div>
+            )}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!isDesktop || !trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
@@ -8407,10 +8758,12 @@ return (
                 />
               )}
 
+              {!isFrame(editingTrace) && (
               <div className="flex items-baseline gap-3 pt-1">
                 <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.content')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
+              )}
 
               {editingTrace.type === 'text' && (
                 <div>
@@ -8717,7 +9070,7 @@ return (
                 </>
               )}
               {/* Border & Fill Color Controls (for text and embed traces) */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (
+              {BORDERED_TYPES.has(editingTrace.type) && (
                 <>
 
                   <div className="flex items-baseline gap-3 pt-1">
@@ -8931,6 +9284,7 @@ return (
                   <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBackground')}</span>
                 </label>
 
+                {!isFrame(editingTrace) && (
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
@@ -8947,7 +9301,9 @@ return (
                   />
                   <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showUsername')}</span>
                 </label>
+                )}
 
+                {!isFrame(editingTrace) && (
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
                     {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
@@ -8964,6 +9320,7 @@ return (
                   />
                   <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showDescription')}</span>
                 </label>
+                )}
 
                 <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                   <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
@@ -9009,7 +9366,7 @@ return (
               {/* Border thickness. Its own block above the colour controls so
                   it also reaches PDF traces, where a frame is what separates a
                   white page from a light background. */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'image' || editingTrace.type === 'document') && (editingTrace.showBorder ?? true) && (
+              {BORDERED_TYPES.has(editingTrace.type) && (editingTrace.showBorder ?? true) && (
                 <div>
                   <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
                     {t('atrium.customize.borderThickness', { value: editingTrace.borderWidth ?? 2 })}
@@ -9403,7 +9760,7 @@ return (
                       >
                         {/* Only while they disagree, and it cannot be chosen --
                             picking it would mean "set them all to mixed". */}
-                        {mixed && <option value="" disabled>— mixed —</option>}
+                        {mixed && <option value="" disabled>{t('common.mixed')}</option>}
                         {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
                           <option key={value} value={value}>{label}</option>
                         ))}
