@@ -419,6 +419,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   getLobbySizeBytes: () => {
     const state = get()
+    // Desktop measures the atrium's folder again after every change
+    // (useTraces), in moments, so the measurement stands on its own. An
+    // average per trace would add a few hundred kB for a video of hundreds of
+    // MB, and take as much off for deleting one.
+    if (isDesktop && state.serverLobbySize !== null) return state.serverLobbySize
     // If we have a server-reported size, use it as baseline and add delta for new traces
     if (state.serverLobbySize !== null) {
       const traceDelta = state.traces.length - state.serverLobbySizeTraceCount

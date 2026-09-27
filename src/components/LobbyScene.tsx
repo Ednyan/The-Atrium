@@ -560,6 +560,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [, setOnlineUsersListTick] = useState(0)
   
   const { username, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'pendingChanges', 'deletedTraces', 'isSavingChanges', 'hasPendingChanges')
+  // The usage figure reads the store as it draws; this is what redraws it
+  // when the atrium has been measured again (useTraces).
+  useGamePick('serverLobbySize')
   const [showTracePanel, setShowTracePanel] = useState(false)
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)

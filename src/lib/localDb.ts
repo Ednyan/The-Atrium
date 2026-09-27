@@ -839,6 +839,8 @@ async function writeLobbyVaultSnapshot(lobbyId: string): Promise<void> {
 
   const snapshotPath = await join(lobbyDir, 'atrium.json')
   await writeVaultTextFile(snapshotPath, JSON.stringify(snapshot, null, 2))
+  // Its folder has changed size: the usage figure measures it again (useTraces).
+  window.dispatchEvent(new CustomEvent('atrium:vault-synced', { detail: { lobbyId } }))
 }
 
 function scheduleLobbyVaultSync(lobbyId: string | null | undefined): void {
@@ -2053,6 +2055,35 @@ async function localRpc(fnName: string, params: any): Promise<{ data: any; error
   try {
     switch (fnName) {
       case 'get_lobby_size_bytes': {
+        // The atrium's folder in the vault, measured: atrium.json (its traces,
+        // groups and connections), its media and its rendered PDF pages --
+        // everything it takes on disk. Plus any file of its still read from
+        // outside the folder, from before media was consolidated there.
+        const lobbyName = await getLobbyNameById(params.p_lobby_id)
+        const lobbyDir = lobbyName ? await getVaultLobbyDirectory(params.p_lobby_id, lobbyName) : null
+        if (lobbyDir && await vaultPathExists(lobbyDir)) {
+          let total = await invoke<number>('get_dir_size', { path: lobbyDir })
+          const mediaRows = await db.select<any[]>(
+            `SELECT media_url FROM traces WHERE lobby_id = ? AND media_url LIKE 'local://%'`,
+            [params.p_lobby_id]
+          )
+          for (const row of mediaRows) {
+            try {
+              const filePath = await resolveLocalMediaFilePath(row.media_url)
+              const inFolder = filePath && (filePath.startsWith(lobbyDir + '/') || filePath.startsWith(lobbyDir + '\\'))
+              if (filePath && !inFolder) {
+                total += await invoke<number>('get_file_size', { path: filePath })
+              }
+            } catch {
+              // Not fatal to a size -- see below.
+            }
+          }
+          return { data: total, error: null }
+        }
+
+        // No folder yet (an atrium not yet mirrored): estimated from its rows,
+        // and its media measured file by file.
+        //
         // Sum the approximate row size of all traces in this lobby...
         const rows = await db.select<any[]>(
           `SELECT SUM(LENGTH(CAST(id AS TEXT)) + LENGTH(COALESCE(content,'')) + LENGTH(COALESCE(image_url,'')) + LENGTH(COALESCE(media_url,'')) + LENGTH(COALESCE(shape_points,'')) + 200) as total_bytes FROM traces WHERE lobby_id = ?`,
