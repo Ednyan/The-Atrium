@@ -738,6 +738,7 @@ const fr: Catalogue = {
   'atrium.error.embedsFailed': 'Impossible de placer ces embeds : {message}',
   'atrium.error.clipboardUnreadable': 'Impossible de lire le presse-papiers — essayez Ctrl+V',
   'atrium.error.vaultSaveFailed': 'Impossible d’enregistrer {name} dans le coffre — il apparaîtra comme fichier manquant',
+  'atrium.error.exrUnreadable': 'Impossible de lire {name} — il est peut-être endommagé, ou d’un type d’EXR qui ne s’ouvre pas ici',
   'atrium.error.linkPinterestFirst': 'Connectez d’abord Pinterest — {entry}, sur l’écran d’accueil',
   'atrium.trace.gridLayout': 'Grille — {columns} × {rows}',
   'atrium.trace.gridFits': 'Cela contient {fits} sur {total} — le reste continue sur d’autres rangées.',

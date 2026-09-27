@@ -642,6 +642,7 @@ export const en = {
   'atrium.error.embedsFailed': 'Could not place those embeds: {message}',
   'atrium.error.clipboardUnreadable': "Couldn't read the clipboard — try Ctrl+V instead",
   'atrium.error.vaultSaveFailed': "Couldn't save {name} to the vault — it will show as a missing file",
+  'atrium.error.exrUnreadable': "Couldn't read {name} — it may be damaged, or a kind of EXR that can't be opened here",
   'atrium.error.linkPinterestFirst': 'Connect Pinterest first — {entry}, on the welcome screen',
   'atrium.trace.gridLayout': 'Grid — {columns} × {rows}',
   'atrium.trace.gridFits': 'That fits {fits} of {total} — the rest continue in further rows.',

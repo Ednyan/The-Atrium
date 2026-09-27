@@ -670,6 +670,7 @@ const ja: Catalogue = {
   'atrium.error.embedsFailed': 'それらの埋め込みを配置できませんでした：{message}',
   'atrium.error.clipboardUnreadable': 'クリップボードを読めませんでした——Ctrl+V を試してください',
   'atrium.error.vaultSaveFailed': '{name} を保管庫に保存できませんでした——ファイルなしの trace として表示されます',
+  'atrium.error.exrUnreadable': '{name} を読み込めませんでした——ファイルが壊れているか、ここでは開けない種類の EXR です',
   'atrium.error.linkPinterestFirst': '先に Pinterest に接続してください——ようこそ画面の{entry}から',
 
   // ------------------------------------------- batch links and grids

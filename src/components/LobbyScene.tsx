@@ -37,6 +37,7 @@ import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probe
 import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
+import { isExr, withExrAsPng } from '../lib/exr'
 import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
@@ -3341,6 +3342,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // picker, so selecting six images in the picker lands them exactly as
   // dragging the same six in would.
   const placeFilesAsTraces = async (files: File[], worldX: number, worldY: number) => {
+    // EXRs become PNGs before anything else sees them: no browser can show
+    // one, and left as they are they would be classified as text and read as
+    // such. The import count is up while they convert -- a large one takes
+    // seconds.
+    if (files.some(isExr)) {
+      setImportProgress({ done: 0, total: files.length })
+      files = await withExrAsPng(files, (file, error) => {
+        console.error('EXR conversion failed:', file.name, error)
+        showToast(t('atrium.error.exrUnreadable', { name: file.name }))
+      })
+      if (files.length === 0) {
+        setImportProgress(null)
+        return
+      }
+    }
+
     // Phase 1: classify every file and estimate its box size without uploading
     // or inserting anything yet, so the whole batch can be bin-packed into one
     // layout instead of just cascading diagonally from the drop point. Real

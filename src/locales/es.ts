@@ -736,6 +736,7 @@ const es: Catalogue = {
   'atrium.error.embedsFailed': 'No se pudieron colocar esos embeds: {message}',
   'atrium.error.clipboardUnreadable': 'No se pudo leer el portapapeles — prueba con Ctrl+V',
   'atrium.error.vaultSaveFailed': 'No se pudo guardar {name} en la bóveda — aparecerá como archivo ausente',
+  'atrium.error.exrUnreadable': 'No se pudo leer {name} — puede estar dañado o ser un tipo de EXR que aquí no se abre',
   'atrium.error.linkPinterestFirst': 'Conecta Pinterest primero — {entry}, en la pantalla de bienvenida',
   'atrium.trace.gridLayout': 'Cuadrícula — {columns} × {rows}',
   'atrium.trace.gridFits': 'Eso cabe {fits} de {total} — el resto continúa en más filas.',

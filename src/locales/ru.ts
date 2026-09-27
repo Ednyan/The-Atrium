@@ -742,6 +742,7 @@ const ru: Catalogue = {
   'atrium.error.embedsFailed': 'Не удалось разместить эти embeds: {message}',
   'atrium.error.clipboardUnreadable': 'Не удалось прочитать буфер обмена — попробуйте Ctrl+V',
   'atrium.error.vaultSaveFailed': 'Не удалось сохранить {name} в хранилище — файл будет показан как отсутствующий',
+  'atrium.error.exrUnreadable': 'Не удалось прочитать {name} — файл может быть повреждён или это вид EXR, который здесь не открывается',
   'atrium.error.linkPinterestFirst': 'Сначала подключите Pinterest — {entry}, на приветственном экране',
   'atrium.trace.gridLayout': 'Сетка — {columns} × {rows}',
   'atrium.trace.gridFits': 'Помещается {fits} из {total} — остальные продолжатся в следующих рядах.',

@@ -28,10 +28,12 @@ export const isExr = (file: { name: string }) => /\.exr$/i.test(file.name)
 const PREFERRED_LAYER = /(^|\.)(combined|beauty|rgba|color|colour|diffuse)$/i
 
 export async function decodeExr(buffer: ArrayBuffer): Promise<DecodedExr> {
-  const [{ EXRLoader }, { FloatType, RedFormat }] = await Promise.all([
-    import('./vendor/EXRLoader.js'),
-    import('three'),
-  ])
+  // Each import destructured where it is awaited, the form a bundler can see
+  // through: it then keeps only the parts of three the loader uses, not all
+  // of it (in a Promise.all, it kept everything -- 740 kB).
+  const loading = import('./vendor/EXRLoader.js')
+  const { FloatType, RedFormat } = await import('three')
+  const { EXRLoader } = await loading
   const parse = (bytes: ArrayBuffer, part = 0) => new EXRLoader().setDataType(FloatType).setPart(part).parse(bytes)
   let result
   try {
@@ -199,13 +201,50 @@ function srgb(linear: number): number {
 // ---- Files -----------------------------------------------------------------------
 
 // An EXR file as a PNG file of the same name, for the image import.
+//
+// Converted in a worker (exr.worker.ts) when one can be started: a 1080p
+// render takes a couple of seconds to decode and a 4K map several, and on the
+// thread that draws the atrium that is a frozen canvas and an import count
+// that never moves. On this thread only when no worker would start.
 export async function exrFileToPng(file: File): Promise<File> {
+  const png = (await pngInWorker(file)) ?? (await exrToPngBlob(file, file.name))
+  return new File([png], file.name.replace(/\.exr$/i, '.png'), { type: 'image/png' })
+}
+
+// Decoded, tone-mapped and encoded. The work itself, wherever it runs.
+export async function exrToPngBlob(file: Blob, fileName: string): Promise<Blob> {
   const exr = await decodeExr(await file.arrayBuffer())
-  const pixels = new ImageData(toneMap(exr, file.name) as Uint8ClampedArray<ArrayBuffer>, exr.width, exr.height)
+  const pixels = new ImageData(toneMap(exr, fileName) as Uint8ClampedArray<ArrayBuffer>, exr.width, exr.height)
   const canvas = new OffscreenCanvas(exr.width, exr.height)
   canvas.getContext('2d')!.putImageData(pixels, 0, 0)
-  const png = await canvas.convertToBlob({ type: 'image/png' })
-  return new File([png], file.name.replace(/\.exr$/i, '.png'), { type: 'image/png' })
+  return canvas.convertToBlob({ type: 'image/png' })
+}
+
+// The PNG from a worker; null if the worker itself failed -- not started, or
+// its script not loaded -- so the caller does the work here instead. A file
+// the worker could not read rejects, as it would here.
+async function pngInWorker(file: File): Promise<Blob | null> {
+  let worker: Worker
+  try {
+    worker = new Worker(new URL('./exr.worker.ts', import.meta.url), { type: 'module' })
+  } catch {
+    return null
+  }
+  try {
+    return await new Promise<Blob | null>((resolve, reject) => {
+      worker.onerror = event => {
+        event.preventDefault()
+        resolve(null)
+      }
+      worker.onmessage = event => {
+        if (event.data?.png) resolve(event.data.png)
+        else reject(new Error(event.data?.error || 'EXR conversion failed'))
+      }
+      worker.postMessage({ file, fileName: file.name })
+    })
+  } finally {
+    worker.terminate()
+  }
 }
 
 // A batch of files with every EXR among them made a PNG. One that can't be

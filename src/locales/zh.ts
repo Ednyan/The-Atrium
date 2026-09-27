@@ -673,6 +673,7 @@ const zh: Catalogue = {
   'atrium.error.embedsFailed': '无法放置这些嵌入内容：{message}',
   'atrium.error.clipboardUnreadable': '读不到剪贴板——试试直接按 Ctrl+V',
   'atrium.error.vaultSaveFailed': '无法把 {name} 存进保险库——它会显示为缺失的文件',
+  'atrium.error.exrUnreadable': '无法读取 {name}——文件可能已损坏，或是这里打不开的 EXR 类型',
   'atrium.error.linkPinterestFirst': '请先连接 Pinterest——在欢迎界面的{entry}',
 
   // ------------------------------------------------- batch links and grids

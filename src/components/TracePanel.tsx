@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { uploadTraceFile } from '../lib/traceUpload'
+import { exrFileToPng, isExr } from '../lib/exr'
 import { newTraceOrderFields } from '../lib/order'
 import { nextTextName } from '../lib/traceNames'
 import { mapRowToTrace } from '../hooks/useTraces'
@@ -373,14 +374,26 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setIsSubmitting(true)
 
     try {
+      // An EXR is placed as the PNG it converts to -- see lib/exr.
+      let media = file
+      if (media && traceType === 'image' && isExr(media)) {
+        try {
+          media = await exrFileToPng(media)
+        } catch (error) {
+          console.error('EXR conversion failed:', media.name, error)
+          alert(t('atrium.error.exrUnreadable', { name: media.name }))
+          return
+        }
+      }
+
       let uploadedUrl = mediaUrl
       const initialPathPoints = shapeType === 'path' ? getDefaultPathPoints(finalPosition) : undefined
       const textSize = traceType === 'text' ? computeAutoFitTextSize(content, DEFAULT_TEXT_FONT_SIZE) : null
       
       // Upload file if provided. 'document' rides the same path: the PDF is
       // stored exactly like any other media file, and the trace keeps its URL.
-      if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video' || traceType === 'document')) {
-        uploadedUrl = await uploadTraceFile(file, lobbyId, userId)
+      if (media && (traceType === 'image' || traceType === 'audio' || traceType === 'video' || traceType === 'document')) {
+        uploadedUrl = await uploadTraceFile(media, lobbyId, userId)
       }
 
       // Born in the house style. Whatever preset was last chosen in this
@@ -392,8 +405,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       // A picture with a see-through background arrives without the
       // background and border that would fill it in. A link already known to
       // be a page (a video, a Doc) isn't asked.
-      const seeThrough = (traceType === 'image' && file)
-        ? await hasTransparency(file)
+      const seeThrough = (traceType === 'image' && media)
+        ? await hasTransparency(media)
         : traceType === 'embed' && mediaUrl && !defaultEmbedBox(mediaUrl)
           ? await hasTransparency(mediaUrl, isDesktop ? undefined : `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`)
           : false
@@ -792,7 +805,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 type="file"
                 multiple={!!onCreateFileBatch}
                 accept={
-                  traceType === 'image' ? 'image/*' :
+                  traceType === 'image' ? 'image/*,.exr' :
                   traceType === 'audio' ? 'audio/*' :
                   'video/*'
                 }
