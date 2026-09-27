@@ -24,6 +24,12 @@ export default defineConfig({
       },
     },
   },
+  // Workers as ES modules, as they are started ({ type: 'module' }). The
+  // default, one self-contained script, can't split: the EXR worker carried
+  // all of three (775 kB) where the parts its loader uses are a tenth of that.
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     include: ['pixi.js', '@supabase/supabase-js'],
     exclude: ['@tauri-apps/api', '@tauri-apps/plugin-sql', '@tauri-apps/plugin-fs', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-shell'],

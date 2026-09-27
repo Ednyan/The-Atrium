@@ -31,11 +31,13 @@ import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { newTraceOrderFields } from '../lib/order'
+import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
 import { fileTitle, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
+import { isExr, withExrAsPng } from '../lib/exr'
 import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
@@ -148,33 +150,6 @@ const formatTimeInAtrium = (joinedAt: number | undefined) => {
 }
 
 const clampAutosaveInterval = (value: number) => Math.max(10, Math.min(600, value))
-
-const inferFileExtension = (file: File) => {
-  const fromName = file.name.split('.').pop()?.trim().toLowerCase()
-  if (fromName) return fromName
-
-  const mimeToExtension: Record<string, string> = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'image/bmp': 'bmp',
-    'image/svg+xml': 'svg',
-    'image/x-icon': 'ico',
-    'audio/mpeg': 'mp3',
-    'audio/wav': 'wav',
-    'audio/x-wav': 'wav',
-    'audio/ogg': 'ogg',
-    'audio/mp4': 'm4a',
-    'video/mp4': 'mp4',
-    'video/webm': 'webm',
-    'video/ogg': 'ogv',
-    'video/quicktime': 'mov',
-  }
-
-  return mimeToExtension[file.type] || 'bin'
-}
 
 const IMAGE_FILE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico', 'avif'])
 const AUDIO_FILE_EXTENSIONS = new Set(['mp3', 'wav', 'flac', 'aac', 'm4a'])
@@ -3367,6 +3342,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // picker, so selecting six images in the picker lands them exactly as
   // dragging the same six in would.
   const placeFilesAsTraces = async (files: File[], worldX: number, worldY: number) => {
+    // EXRs become PNGs before anything else sees them: no browser can show
+    // one, and left as they are they would be classified as text and read as
+    // such. The import count is up while they convert -- a large one takes
+    // seconds.
+    if (files.some(isExr)) {
+      setImportProgress({ done: 0, total: files.length })
+      files = await withExrAsPng(files, (file, error) => {
+        console.error('EXR conversion failed:', file.name, error)
+        showToast(t('atrium.error.exrUnreadable', { name: file.name }))
+      })
+      if (files.length === 0) {
+        setImportProgress(null)
+        return
+      }
+    }
+
     // Phase 1: classify every file and estimate its box size without uploading
     // or inserting anything yet, so the whole batch can be bin-packed into one
     // layout instead of just cascading diagonally from the drop point. Real
@@ -3647,83 +3638,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('paste', handlePaste)
   }, [lobbyId, userId, username])
 
-  const uploadFile = async (file: File): Promise<string | undefined> => {
-    const fileExt = inferFileExtension(file)
-    const fileName = `${userId}_${Date.now()}.${fileExt}`
-    const storagePath = `${lobbyId}/${fileName}`
-
-    if (isDesktop && supabase) {
-      const localUrl = `local://traces/${storagePath}`
-
-      // Shown from the file the user dropped -- complete, and nothing is
-      // writing to it -- until the vault copy exists (see preCacheLocalUrl).
-      // Awaited so it is in place before the trace that will read it.
-      ;(await import('../lib/localDb')).preCacheLocalUrl(localUrl, URL.createObjectURL(file))
-      // Written in the background so the trace can appear immediately -- but
-      // not ignored.
-      //
-      // This used to be a bare unawaited call. The trace row is inserted
-      // straight afterwards pointing at local://, so when the write failed
-      // there was a trace on the canvas referring to a file that had never
-      // been created: fine for the rest of the session, because the blob URL
-      // is cached in memory, and "Missing file" the next time the atrium was
-      // opened. Nothing anywhere said a word. A background write may be
-      // invisible while it works; it must not be invisible when it does not.
-      void supabase.storage.from('traces').upload(storagePath, file)
-        .then(({ error }: { error: any }) => {
-          if (error) {
-            console.error('[vault] failed to write media file:', storagePath, error)
-            showToast(t('atrium.error.vaultSaveFailed', { name: file.name }))
-            // Still announced as finished. It is not pending any more, and
-            // leaving it pending would strand the trace saying "Preparing"
-            // for the rest of the session rather than showing it is missing.
-            window.dispatchEvent(new CustomEvent('atrium:vault-write-complete', {
-              detail: { localUrl },
-            }))
-            return
-          }
-          // Hand the trace the real file now that there is one.
-          //
-          // Until this point it has been reading through a blob URL over the
-          // file the user dropped, which is what let it appear instantly. That
-          // blob is also being read, chunk by chunk, by the write that just
-          // finished -- and a video asked to load while that was happening
-          // could fail outright, with no retry and nothing to say so. It
-          // stayed broken until the atrium was left and re-entered, which
-          // remounts the trace and resolves the URL again from disk.
-          //
-          // Doing that swap here means the element gets a fresh, quiet source
-          // the moment one exists, rather than only on the next visit.
-          void import('../lib/localDb')
-            .then(m => m.refreshLocalUrl(localUrl))
-            .then(() => {
-              window.dispatchEvent(new CustomEvent('atrium:vault-write-complete', {
-                detail: { localUrl },
-              }))
-            })
-            .catch(() => {})
-        })
-        .catch((err: any) => {
-          console.error('[vault] failed to write media file:', storagePath, err)
-          showToast(t('atrium.error.vaultSaveFailed', { name: file.name }))
-        })
-      return localUrl
-    }
-
-    if (supabase) {
-      const { error } = await supabase.storage.from('traces').upload(fileName, file)
-      if (!error) {
-        const { data: { publicUrl } } = supabase.storage.from('traces').getPublicUrl(fileName)
-        return publicUrl
-      }
-    }
-    // Fallback to data URL
-    return new Promise<string>((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result as string)
-      reader.readAsDataURL(file)
-    })
-  }
+  const uploadFile = (file: File) => uploadTraceFile(file, lobbyId, userId)
 
   const insertDroppedTrace = async (
     traceType: string,

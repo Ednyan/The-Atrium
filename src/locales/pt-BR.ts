@@ -740,6 +740,7 @@ const ptBR: Catalogue = {
   'atrium.error.embedsFailed': 'Não foi possível colocar esses embeds: {message}',
   'atrium.error.clipboardUnreadable': 'Não foi possível ler a área de transferência — tente Ctrl+V',
   'atrium.error.vaultSaveFailed': 'Não foi possível salvar {name} no cofre — vai aparecer como arquivo ausente',
+  'atrium.error.exrUnreadable': 'Não foi possível ler {name} — o arquivo pode estar danificado ou ser um tipo de EXR que não abre aqui',
   'atrium.error.linkPinterestFirst': 'Conecte o Pinterest primeiro — {entry}, na tela de boas-vindas',
   'atrium.trace.gridLayout': 'Grade — {columns} × {rows}',
   'atrium.trace.gridFits': 'Isso acomoda {fits} de {total} — os restantes continuam em mais linhas.',

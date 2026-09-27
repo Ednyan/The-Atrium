@@ -7,6 +7,8 @@ import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, ty
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, LOBBY_SIZE_LIMIT, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
+import { uploadTraceFile } from '../lib/traceUpload'
+import { exrFileToPng, isExr } from '../lib/exr'
 import { newTraceOrderFields } from '../lib/order'
 import { nextTextName } from '../lib/traceNames'
 import { mapRowToTrace } from '../hooks/useTraces'
@@ -372,71 +374,26 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     setIsSubmitting(true)
 
     try {
+      // An EXR is placed as the PNG it converts to -- see lib/exr.
+      let media = file
+      if (media && traceType === 'image' && isExr(media)) {
+        try {
+          media = await exrFileToPng(media)
+        } catch (error) {
+          console.error('EXR conversion failed:', media.name, error)
+          alert(t('atrium.error.exrUnreadable', { name: media.name }))
+          return
+        }
+      }
+
       let uploadedUrl = mediaUrl
       const initialPathPoints = shapeType === 'path' ? getDefaultPathPoints(finalPosition) : undefined
       const textSize = traceType === 'text' ? computeAutoFitTextSize(content, DEFAULT_TEXT_FONT_SIZE) : null
       
-      // Upload file if provided. 'document' rides the same desktop path: the
-      // PDF is written into the vault exactly like any other media file, and
-      // the trace stores its local:// URL.
-      if (file && (traceType === 'image' || traceType === 'audio' || traceType === 'video' || traceType === 'document')) {
-        if (isDesktop && supabase) {
-          // Desktop: create blob URL instantly, write to disk in background
-          const fileExt = file.name.split('.').pop()
-          const fileName = `${userId}_${Date.now()}.${fileExt}`
-          const storagePath = `${lobbyId}/${fileName}`
-          const blobUrl = URL.createObjectURL(file)
-          const localUrl = `local://traces/${storagePath}`
-          // Awaited, not fire-and-forget. The cache entry has to exist before
-          // the trace is inserted: a PDF trace reads its own file straight
-          // back to render a page, and if the cache miss lands before the
-          // (unawaited) disk write finishes, resolveLocalUrl returns the
-          // local:// URL unchanged and the fetch fails -- which is exactly
-          // what made "single with arrows" report an unreadable PDF while
-          // page-per-trace, which never reads back, worked fine.
-          const { preCacheLocalUrl } = await import('../lib/localDb')
-          preCacheLocalUrl(localUrl, blobUrl)
-          // Background, but not ignored -- see the matching write in
-          // LobbyScene's uploadFile. An unwatched failure here leaves a trace
-          // pointing at a file that was never created, which only shows up as
-          // "Missing file" the next time the atrium is opened.
-          void supabase.storage.from('traces').upload(storagePath, file)
-            .then(({ error }: { error: any }) => {
-              if (error) console.error('[vault] failed to write media file:', storagePath, error)
-            })
-            .catch((err: any) => console.error('[vault] failed to write media file:', storagePath, err))
-          uploadedUrl = localUrl
-        } else if (supabase) {
-          // Web: Upload to Supabase Storage
-          const fileExt = file.name.split('.').pop()
-          const fileName = `${userId}_${Date.now()}.${fileExt}`
-          const { error } = await supabase.storage
-            .from('traces')
-            .upload(fileName, file)
-          
-          if (error) {
-            console.error('Supabase upload error:', error)
-            // Fall back to local data URL
-            uploadedUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader()
-              reader.onloadend = () => resolve(reader.result as string)
-              reader.readAsDataURL(file)
-            })
-          } else {
-            const { data: { publicUrl } } = supabase.storage
-              .from('traces')
-              .getPublicUrl(fileName)
-            
-            uploadedUrl = publicUrl
-          }
-        } else {
-          // No Supabase - use local data URL
-          uploadedUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader()
-            reader.onloadend = () => resolve(reader.result as string)
-            reader.readAsDataURL(file)
-          })
-        }
+      // Upload file if provided. 'document' rides the same path: the PDF is
+      // stored exactly like any other media file, and the trace keeps its URL.
+      if (media && (traceType === 'image' || traceType === 'audio' || traceType === 'video' || traceType === 'document')) {
+        uploadedUrl = await uploadTraceFile(media, lobbyId, userId)
       }
 
       // Born in the house style. Whatever preset was last chosen in this
@@ -448,8 +405,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       // A picture with a see-through background arrives without the
       // background and border that would fill it in. A link already known to
       // be a page (a video, a Doc) isn't asked.
-      const seeThrough = (traceType === 'image' && file)
-        ? await hasTransparency(file)
+      const seeThrough = (traceType === 'image' && media)
+        ? await hasTransparency(media)
         : traceType === 'embed' && mediaUrl && !defaultEmbedBox(mediaUrl)
           ? await hasTransparency(mediaUrl, isDesktop ? undefined : `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`)
           : false
@@ -848,7 +805,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 type="file"
                 multiple={!!onCreateFileBatch}
                 accept={
-                  traceType === 'image' ? 'image/*' :
+                  traceType === 'image' ? 'image/*,.exr' :
                   traceType === 'audio' ? 'audio/*' :
                   'video/*'
                 }

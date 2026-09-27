@@ -739,6 +739,7 @@ const de: Catalogue = {
   'atrium.error.embedsFailed': 'Diese Embeds konnten nicht platziert werden: {message}',
   'atrium.error.clipboardUnreadable': 'Zwischenablage konnte nicht gelesen werden — versuche Strg+V',
   'atrium.error.vaultSaveFailed': '{name} konnte nicht im Tresor gespeichert werden — die Datei erscheint als fehlend',
+  'atrium.error.exrUnreadable': '{name} konnte nicht gelesen werden — die Datei ist vielleicht beschädigt oder eine EXR-Art, die sich hier nicht öffnen lässt',
   'atrium.error.linkPinterestFirst': 'Verbinde zuerst Pinterest — {entry}, im Willkommensbildschirm',
   'atrium.trace.gridLayout': 'Raster — {columns} × {rows}',
   'atrium.trace.gridFits': 'Das fasst {fits} von {total} — der Rest folgt in weiteren Reihen.',

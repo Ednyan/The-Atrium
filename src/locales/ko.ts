@@ -674,6 +674,7 @@ const ko: Catalogue = {
   'atrium.error.embedsFailed': '그 임베드들을 놓지 못했어요: {message}',
   'atrium.error.clipboardUnreadable': '클립보드를 읽지 못했어요 — Ctrl+V를 눌러 보세요',
   'atrium.error.vaultSaveFailed': '{name} 을(를) 보관함에 저장하지 못했어요 — 파일 없는 trace로 보여요',
+  'atrium.error.exrUnreadable': '{name} 을(를) 읽지 못했어요 — 파일이 손상되었거나 여기서 열 수 없는 종류의 EXR이에요',
   'atrium.error.linkPinterestFirst': 'Pinterest를 먼저 연결해 주세요 — 시작 화면의 {entry}에서',
 
   // ------------------------------------------- batch links and grids
