@@ -662,6 +662,17 @@ body.dragging * {
   background: rgb(var(--c-fg) / 0.35) !important;
 }
 
+/* Between two of a path's points: smaller, round and fainter than a point,
+   and adds one there when taken. */
+.trace-nier-handle-mid {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  border-color: rgba(181, 181, 181, 0.6);
+  background: rgba(40, 40, 40, 0.6);
+  box-shadow: 0 0 0 1px rgba(25, 25, 25, 0.6);
+}
+
 /* Title-screen menu rows on the welcome screen.
    Replaces a stack of full-width bordered buttons: six of those plus the
    title, portal and hints needed more height than a laptop screen has, which

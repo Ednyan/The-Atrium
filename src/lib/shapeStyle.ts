@@ -24,7 +24,7 @@ export interface ShapeStyle {
   shapeOutlineWidth: number
   shapeOutlineOpacity: number
   cornerRadius: number
-  pathCurveType: 'straight' | 'bezier'
+  pathCurveType: 'straight' | 'bezier' | 'elbow'
   pathArrowStart: ArrowKind
   pathArrowEnd: ArrowKind
 }

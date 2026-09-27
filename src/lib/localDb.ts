@@ -1280,7 +1280,10 @@ export async function initLocalDb(): Promise<void> {
       label TEXT,
       label_on_hover INTEGER NOT NULL DEFAULT 0,
       straight INTEGER NOT NULL DEFAULT 0,
-      to_center INTEGER NOT NULL DEFAULT 0
+      to_center INTEGER NOT NULL DEFAULT 0,
+      label_size REAL NOT NULL DEFAULT 12,
+      elbow INTEGER NOT NULL DEFAULT 0,
+      elbow_at REAL NOT NULL DEFAULT 0.5
     )
   `)
   try {
@@ -1297,6 +1300,13 @@ export async function initLocalDb(): Promise<void> {
     await db.execute('ALTER TABLE trace_links ADD COLUMN to_center INTEGER NOT NULL DEFAULT 0')
   } catch {
     // Column already exists — ignore
+  }
+  for (const column of ['label_size REAL NOT NULL DEFAULT 12', 'elbow INTEGER NOT NULL DEFAULT 0', 'elbow_at REAL NOT NULL DEFAULT 0.5']) {
+    try {
+      await db.execute(`ALTER TABLE trace_links ADD COLUMN ${column}`)
+    } catch {
+      // Column already exists — ignore
+    }
   }
 
   // Order keys (lib/order; the web's add_order_keys.sql, which keys existing
@@ -1938,7 +1948,7 @@ const BOOL_COLUMNS: Record<string, string[]> = {
   profiles: [],
   lobby_access_lists: [],
   lobby_locations: ['is_locked'],
-  trace_links: ['label_on_hover', 'straight', 'to_center'],
+  trace_links: ['label_on_hover', 'straight', 'to_center', 'elbow'],
 }
 
 function convertRowFromSql(table: string, row: any): any {
