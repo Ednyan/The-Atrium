@@ -218,9 +218,10 @@ interface TraceOverlayProps {
   // selected and opened for typing. See newPathRequest above for why a plain
   // value works as a signal here.
   newTextRequest?: string | null
-  // A frame to make, from the canvas menu: where, and a fresh object each
-  // time so asking twice at one point still makes two.
-  frameRequest?: { x: number; y: number } | null
+  // A frame to make, from the canvas menu or the quick bar: where, its size
+  // when a box was dragged out for it (else its default), and a fresh object
+  // each time so asking twice at one point still makes two.
+  frameRequest?: { x: number; y: number; width?: number; height?: number } | null
   // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
   // undo (see LobbyScene) instead of this file's trace undo/redo history.
   isDrawingMode?: boolean
@@ -5064,10 +5065,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     updateTraceCustomization(id, { content: trimmed })
   }
 
-  // A frame asked for from the canvas menu, at the point it was opened on.
+  // A frame asked for from the canvas menu, at the point it was opened on,
+  // or dragged out with the quick bar.
   useEffect(() => {
     if (!frameRequest) return
-    void createFrame({ cx: frameRequest.x, cy: frameRequest.y, halfW: FRAME_DEFAULT.width / 2, halfH: FRAME_DEFAULT.height / 2 })
+    const { x, y, width = FRAME_DEFAULT.width, height = FRAME_DEFAULT.height } = frameRequest
+    void createFrame({ cx: x, cy: y, halfW: width / 2, halfH: height / 2 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameRequest])
 
@@ -7281,7 +7284,7 @@ return (
                 {from && showOut && (() => { const h = screenOf(handles!.cp2); return <line x1={from.x} y1={from.y} x2={h.x} y2={h.y} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" /> })()}
                 {/* Adding points: a dashed run from the end to the pointer. */}
                 {addFrom && pathPointer && transformMode === 'none' && (
-                  <line x1={addFrom.x} y1={addFrom.y} x2={pathPointer.x} y2={pathPointer.y} stroke="rgb(var(--c-fg))" strokeOpacity={0.6} strokeWidth="1.5" strokeDasharray="6 5" />
+                  <line x1={addFrom.x} y1={addFrom.y} x2={pathPointer.x} y2={pathPointer.y} strokeOpacity={0.6} strokeWidth="1.5" strokeDasharray="6 5" style={{ stroke: 'rgb(var(--c-fg))' }} />
                 )}
                 {/* Shift over a trace: its border, the marks on it, and where
                     the point went. */}
@@ -7292,13 +7295,13 @@ return (
                   return (
                     <g data-border-snap="">
                       {borderSnap.box.round
-                        ? <ellipse cx={c.x} cy={c.y} rx={borderSnap.box.halfW * zoom} ry={borderSnap.box.halfH * zoom} transform={`rotate(${borderSnap.box.rotation} ${c.x} ${c.y})`} fill="none" stroke="rgb(var(--c-fg))" strokeOpacity={0.55} strokeWidth="1.5" strokeDasharray="5 4" />
-                        : <polygon points={[0, 2, 4, 6].map(i => `${marks[i].x},${marks[i].y}`).join(' ')} fill="none" stroke="rgb(var(--c-fg))" strokeOpacity={0.55} strokeWidth="1.5" strokeDasharray="5 4" />}
+                        ? <ellipse cx={c.x} cy={c.y} rx={borderSnap.box.halfW * zoom} ry={borderSnap.box.halfH * zoom} transform={`rotate(${borderSnap.box.rotation} ${c.x} ${c.y})`} fill="none" strokeOpacity={0.55} strokeWidth="1.5" strokeDasharray="5 4" style={{ stroke: 'rgb(var(--c-fg))' }} />
+                        : <polygon points={[0, 2, 4, 6].map(i => `${marks[i].x},${marks[i].y}`).join(' ')} fill="none" strokeOpacity={0.55} strokeWidth="1.5" strokeDasharray="5 4" style={{ stroke: 'rgb(var(--c-fg))' }} />}
                       {marks.map((m, i) => {
                         const on = Math.hypot(m.x - hit.x, m.y - hit.y) < 0.5
-                        return <rect key={i} x={m.x - (on ? 4 : 2.5)} y={m.y - (on ? 4 : 2.5)} width={on ? 8 : 5} height={on ? 8 : 5} fill={on ? 'rgb(var(--c-fg))' : 'rgb(var(--c-ground))'} stroke="rgb(var(--c-fg))" strokeWidth="1" />
+                        return <rect key={i} x={m.x - (on ? 4 : 2.5)} y={m.y - (on ? 4 : 2.5)} width={on ? 8 : 5} height={on ? 8 : 5} strokeWidth="1" style={{ fill: on ? 'rgb(var(--c-fg))' : 'rgb(var(--c-ground))', stroke: 'rgb(var(--c-fg))' }} />
                       })}
-                      <circle cx={hit.x} cy={hit.y} r={5} fill="none" stroke="rgb(var(--c-fg))" strokeWidth="1.5" />
+                      <circle cx={hit.x} cy={hit.y} r={5} fill="none" strokeWidth="1.5" style={{ stroke: 'rgb(var(--c-fg))' }} />
                     </g>
                   )
                 })()}

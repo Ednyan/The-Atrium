@@ -44,6 +44,7 @@ import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/p
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
+import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -681,7 +682,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // on the value fires once per request without needing to be reset.
   const [newTextTraceId, setNewTextTraceId] = useState<string | null>(null)
   // A frame for TraceOverlay to make, from the canvas menu.
-  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number } | null>(null)
+  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number; width?: number; height?: number } | null>(null)
+  // The quick bar's armed tool (QuickBar): the next press on the canvas
+  // places one of these, rather than panning or selecting.
+  const [placeTool, setPlaceTool] = useState<PlaceTool | null>(null)
+  const placeToolRef = useRef(placeTool)
+  placeToolRef.current = placeTool
+  // A placement under way: where it was pressed, on screen and in the world.
+  const placeStartRef = useRef<{ sx: number; sy: number; wx: number; wy: number; pointerId: number } | null>(null)
+  // The preview of what's being dragged out: drawn straight to the element,
+  // as the area select's box is, so a drag doesn't re-render the scene.
+  const placePreviewRef = useRef<SVGSVGElement>(null)
   // Mirrors TraceOverlay's own multi-selection state (reported up via
   // onMultiSelectionChange) so the Layer panel can highlight every
   // multi-selected trace/group, not just the single selectedTraceId.
@@ -1548,6 +1559,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         return
       }
 
+      // The quick bar's keys: 1 to 9 pick its first nine tools, in the order
+      // shown; Esc lets go of an armed one. While drawing, only Draw's.
+      if (e.key === 'Escape' && placeToolRef.current) {
+        setPlaceTool(null)
+        placeStartRef.current = null
+        if (placePreviewRef.current) placePreviewRef.current.style.display = 'none'
+      }
+      if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && canEditRef.current) {
+        const action = QUICK_ORDER[Number(e.key) - 1]
+        if (action && (!isDrawingModeRef.current || action === 'draw')) {
+          e.preventDefault()
+          quickActionRef.current(action)
+        }
+        return
+      }
+
       if (e.key === 't' || e.key === 'T') {
         if (!canEditRef.current) return
         e.preventDefault()
@@ -1687,20 +1714,65 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The whole style from the create panel, not only its colour: thickness,
   // curve and arrows used to be settable only after the path existed.
   const handleCreatePath = async (style: ShapeStyle) => {
-    if (!supabase || !userId) return
-    if (!ensureLobbyHasSpace()) return
-
     const startPosition = clickedTracePosition || positionRef.current
+    const id = await insertShapeTrace({ ...style, shapeType: 'path' }, startPosition, [startPosition])
+    if (!id) return
+    handleCloseTracePanel()
+    setNewPathTraceId(id)
+  }
+
+  // A shape made straight away, with no panel: from the create panel's Path,
+  // and from the quick bar's Rectangle, Circle and Path. Centred on `at`, at a
+  // size when one is given (a path's is its points'). Its id, once it exists.
+  const insertShapeTrace = async (
+    style: ShapeStyle,
+    at: { x: number; y: number },
+    points?: { x: number; y: number }[],
+    size?: { width: number; height: number },
+  ) => {
+    if (!userId) return null
+    if (!ensureLobbyHasSpace()) return null
 
     const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
+    const sized = size ? { width: Math.max(1, Math.round(size.width)), height: Math.max(1, Math.round(size.height)) } : {}
+
+    if (!supabase) {
+      // No database (a development build): in the store alone, as
+      // insertDroppedTrace does.
+      const trace: Trace = {
+        id: `trace_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+        userId,
+        username,
+        type: 'shape',
+        content: 'shape content',
+        x: at.x,
+        y: at.y,
+        createdAt: new Date().toISOString(),
+        scale: 1,
+        scaleX: 1,
+        scaleY: 1,
+        rotation: 0,
+        borderRadius: 0,
+        showBorder: false,
+        showBackground: false,
+        showFilename: false,
+        ...style,
+        ...sized,
+        ...(points ? { shapePoints: points } : {}),
+        orderKey: layerFields.order_key,
+        ...(activeLayerId ? { layerId: activeLayerId } : {}),
+      }
+      useGameStore.getState().addTrace(trace)
+      return trace.id
+    }
 
     const { data, error } = await supabase.from('traces').insert({
       user_id: userId,
       username,
       type: 'shape',
       content: 'shape content',
-      position_x: startPosition.x,
-      position_y: startPosition.y,
+      position_x: at.x,
+      position_y: at.y,
       media_url: null,
       scale: 1.0,
       rotation: 0.0,
@@ -1708,31 +1780,249 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       lobby_id: lobbyId,
       show_description: false,
       show_filename: false,
-      ...shapeStyleColumns({ ...style, shapeType: 'path' }),
+      ...shapeStyleColumns(style),
       show_border: false,
       show_background: false,
-      shape_points: [{ x: startPosition.x, y: startPosition.y }],
+      ...sized,
+      ...(points ? { shape_points: points } : {}),
       ...layerFields,
     } as any).select()
 
-    if (error) {
-      console.error('Failed to create path:', error)
-      showToast(t('atrium.error.pathFailed', { message: error.message }))
-      return
+    if (error || !data?.[0]) {
+      console.error('Failed to create shape:', error)
+      showToast(style.shapeType === 'path'
+        ? t('atrium.error.pathFailed', { message: error?.message ?? '' })
+        : t('atrium.error.traceSaveFailed', { message: error?.message ?? '' }))
+      return null
     }
 
-    if (data && data[0]) {
-      const dbTrace = data[0] as any
-      const trace = {
-        ...mapRowToTrace(dbTrace),
-        shapePoints: dbTrace.shape_points,
-        pathCurveType: dbTrace.path_curve_type,
-      }
-      useGameStore.getState().addTrace(trace)
-      handleCloseTracePanel()
-      setNewPathTraceId(trace.id)
+    const dbTrace = data[0] as any
+    const trace = {
+      ...mapRowToTrace(dbTrace),
+      shapePoints: dbTrace.shape_points ?? points,
+      pathCurveType: dbTrace.path_curve_type,
+    }
+    useGameStore.getState().addTrace(trace)
+    return trace.id as string
+  }
+
+  // ---- The quick bar (QuickBar) ---------------------------------------------
+
+  const screenToWorld = (sx: number, sy: number) => {
+    const c = worldContainerRef.current
+    return c ? { x: (sx - c.x) / zoomRef.current, y: (sy - c.y) / zoomRef.current } : { x: sx, y: sy }
+  }
+
+  // Drawing on or off, as the Draw button has it: leaving throws away what
+  // wasn't saved.
+  const toggleDrawing = () => {
+    if (isDrawingMode) {
+      setCompletedStrokes([])
+      currentStrokeRef.current = []
+      setIsEraserMode(false)
+    }
+    setIsDrawingMode(!isDrawingMode)
+  }
+
+  // Pinterest's board import, placing at `anchor` -- or, not linked yet, the
+  // way to link it.
+  const openPinterestImport = (anchor: { x: number; y: number } | null) => {
+    if (pinterestConnected) {
+      setPinterestImportAnchor(anchor)
+      setShowPinterestImport(true)
+    } else if (isDesktop) {
+      // Sending the webview to Pinterest would strand it there:
+      // there is no address bar to come back from, and no https
+      // origin for Pinterest to return to. Linking happens in
+      // its own row on the welcome screen, so say where rather
+      // than doing nothing.
+      showToast(t('atrium.error.linkPinterestFirst', { entry: t('welcome.pinterest') }))
+    } else {
+      initiatePinterestConnect()
     }
   }
+
+  const quickAction = (action: QuickAction) => {
+    if (!canEdit) return
+    if (action === 'select') {
+      setPlaceTool(null)
+      return
+    }
+    if (action === 'text' || action === 'rectangle' || action === 'circle' || action === 'path' || action === 'frame') {
+      // One way of making a trace at a time: the panel's shape drag would
+      // take the same press.
+      if (showTracePanel) handleCloseTracePanel()
+      setMapContextMenu(null)
+      setPlaceTool(prev => (prev === action ? null : action))
+      return
+    }
+    setPlaceTool(null)
+    // What's made from here goes in the middle of the view.
+    const centre = screenToWorld(window.innerWidth / 2, window.innerHeight / 2)
+    if (action === 'draw') {
+      toggleDrawing()
+    } else if (action === 'pinterest') {
+      openPinterestImport(centre)
+    } else if (action === 'image' && !isDesktop) {
+      // The web app can't take files from the computer yet: said, as a
+      // dropped file has it.
+      setShowLocalFileBlockedDialog(true)
+    } else {
+      setClickedTracePosition(centre)
+      setTracePanelInitialType(action)
+      setTracePanelInitialShapeType(undefined)
+      setShowTracePanel(true)
+    }
+  }
+  const quickActionRef = useRef(quickAction)
+  quickActionRef.current = quickAction
+
+  // An armed tool let go of on the canvas: pressed at `start`, released at
+  // `end`, both on screen. A drag gives a box its size (from corner to
+  // corner; `even`, as big each way) and a path its two ends; a click puts
+  // the trace there at its usual size, or starts a path to click on from.
+  const finishPlacing = async (tool: PlaceTool, start: { sx: number; sy: number; wx: number; wy: number }, end: { sx: number; sy: number }, even: boolean) => {
+    setPlaceTool(null)
+    const a = { x: start.wx, y: start.wy }
+    const b = screenToWorld(end.sx, end.sy)
+    const dragged = Math.hypot(end.sx - start.sx, end.sy - start.sy) >= 6
+    const least = 10
+    let width = Math.max(least, Math.abs(b.x - a.x)), height = Math.max(least, Math.abs(b.y - a.y))
+    if (even) width = height = Math.max(width, height)
+    const centre = { x: a.x + (b.x >= a.x ? width : -width) / 2, y: a.y + (b.y >= a.y ? height : -height) / 2 }
+
+    if (tool === 'text') {
+      if (!ensureLobbyHasSpace()) return
+      const id = await insertDroppedTrace('text', '', undefined, a.x, a.y)
+      if (id) setNewTextTraceId(id)
+      return
+    }
+    if (tool === 'frame') {
+      setFrameRequest(dragged ? { x: centre.x, y: centre.y, width, height } : { x: a.x, y: a.y })
+      return
+    }
+    if (tool === 'path') {
+      const style = shapeStyleOf({ shapeType: 'path' })
+      if (dragged) {
+        const id = await insertShapeTrace(style, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [a, b])
+        if (id) setSelectedTraceId(id)
+      } else {
+        // One point, and on into adding more, as the panel's Path does.
+        const id = await insertShapeTrace(style, a, [a])
+        if (id) setNewPathTraceId(id)
+      }
+      return
+    }
+    const id = await insertShapeTrace(
+      shapeStyleOf({ shapeType: tool }),
+      dragged ? centre : a,
+      undefined,
+      dragged ? { width, height } : { width: 200, height: 200 },
+    )
+    if (id) setSelectedTraceId(id)
+  }
+  const finishPlacingRef = useRef(finishPlacing)
+  finishPlacingRef.current = finishPlacing
+
+  // What an armed tool is dragging out, from press to pointer on screen: the
+  // box of a rectangle or frame (dashed), the ellipse of a circle, the line of
+  // a path. `even`: Shift, a box as big each way. Hidden with no drag.
+  const drawPlacePreview = (tool: PlaceTool | null, drag: { x1: number; y1: number; x2: number; y2: number; even: boolean } | null) => {
+    const svg = placePreviewRef.current
+    if (!svg) return
+    if (!tool || !drag || tool === 'text') {
+      svg.style.display = 'none'
+      return
+    }
+    let { x2, y2 } = drag
+    const { x1, y1 } = drag
+    if (drag.even && tool !== 'path') {
+      const side = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1))
+      x2 = x1 + (x2 >= x1 ? side : -side)
+      y2 = y1 + (y2 >= y1 ? side : -side)
+    }
+    const left = Math.min(x1, x2), top = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1)
+    const [line, ellipse, rect] = Array.from(svg.children) as SVGElement[]
+    const set = (el: SVGElement, shown: boolean, attrs: Record<string, number | string>) => {
+      el.style.display = shown ? '' : 'none'
+      if (shown) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+    }
+    set(line, tool === 'path', { x1, y1, x2, y2 })
+    set(ellipse, tool === 'circle', { cx: left + w / 2, cy: top + h / 2, rx: w / 2, ry: h / 2 })
+    set(rect, tool === 'rectangle' || tool === 'frame', { x: left, y: top, width: w, height: h, 'stroke-dasharray': tool === 'frame' ? '6 4' : 'none' })
+    svg.style.display = 'block'
+  }
+
+  // An armed tool takes the next press on the canvas -- or on a trace, which
+  // a frame is often drawn around -- ahead of everything that would
+  // otherwise take it (panning, selecting, dragging a trace). Not a press on
+  // the interface: the bar itself, the panels, the buttons.
+  useEffect(() => {
+    const onCanvas = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null
+      if (!el?.closest) return false
+      if (el.closest('[data-trace-element]')) return true
+      return !el.closest('[data-ui-element], [data-hud], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
+    }
+    const down = (e: PointerEvent) => {
+      if (!placeToolRef.current || !canEditRef.current || isDrawingModeRef.current) return
+      if (e.button !== 0 || !e.isPrimary || !onCanvas(e.target)) return
+      const c = worldContainerRef.current
+      if (!c) return
+      e.preventDefault()
+      e.stopPropagation()
+      cameraFlyToRef.current = null
+      placeStartRef.current = {
+        sx: e.clientX, sy: e.clientY,
+        wx: (e.clientX - c.x) / zoomRef.current, wy: (e.clientY - c.y) / zoomRef.current,
+        pointerId: e.pointerId,
+      }
+    }
+    const move = (e: PointerEvent) => {
+      const start = placeStartRef.current
+      if (!start || e.pointerId !== start.pointerId) return
+      drawPlacePreview(placeToolRef.current, { x1: start.sx, y1: start.sy, x2: e.clientX, y2: e.clientY, even: e.shiftKey })
+    }
+    const up = (e: PointerEvent) => {
+      const start = placeStartRef.current
+      if (!start || e.pointerId !== start.pointerId) return
+      placeStartRef.current = null
+      drawPlacePreview(null, null)
+      // The click that ends this press is the placement's: on the canvas it
+      // would let go of what's just been made.
+      const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault() }
+      window.addEventListener('click', swallow, { capture: true, once: true })
+      window.setTimeout(() => window.removeEventListener('click', swallow, true), 400)
+      const tool = placeToolRef.current
+      if (tool && e.type === 'pointerup') void finishPlacingRef.current(tool, start, { sx: e.clientX, sy: e.clientY }, e.shiftKey)
+    }
+    // The press's own mouse and touch events, which the canvas and the
+    // traces listen for, are kept from them while it's a placement's.
+    const hold = (e: Event) => {
+      if (!placeStartRef.current) return
+      e.stopPropagation()
+      if (e.cancelable) e.preventDefault()
+    }
+    window.addEventListener('pointerdown', down, true)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    window.addEventListener('mousedown', hold, true)
+    window.addEventListener('touchstart', hold, { capture: true, passive: false })
+    return () => {
+      window.removeEventListener('pointerdown', down, true)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      window.removeEventListener('mousedown', hold, true)
+      window.removeEventListener('touchstart', hold, true)
+    }
+  }, [])
+
+  // Drawing, or losing the right to edit, lets go of an armed tool.
+  useEffect(() => {
+    if (isDrawingMode || !canEdit) setPlaceTool(null)
+  }, [isDrawingMode, canEdit])
 
   // Camera helpers for the Locations panel: read the live camera view, and
   // smoothly fly to a saved one (the ticker eases cameraPositionRef + zoom
@@ -4158,6 +4448,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           style={{ display: 'none', zIndex: 1_500_000 }}
         />
 
+        {/* What an armed quick-bar tool is dragging out (drawPlacePreview).
+            Over the traces, as the area select is. */}
+        <svg ref={placePreviewRef} data-place-preview="" className="fixed inset-0 w-full h-full pointer-events-none" style={{ display: 'none', zIndex: 1_500_000 }}>
+          <line strokeWidth={2} style={{ stroke: 'rgb(var(--c-fg) / 0.8)' }} />
+          <ellipse strokeWidth={1.5} style={{ fill: 'rgb(var(--c-fg) / 0.08)', stroke: 'rgb(var(--c-fg) / 0.8)' }} />
+          <rect strokeWidth={1.5} style={{ fill: 'rgb(var(--c-fg) / 0.08)', stroke: 'rgb(var(--c-fg) / 0.8)' }} />
+        </svg>
+
         {/* Drop Zone Indicator */}
         {/* Importing: cover the atrium and say how far along it is.
 
@@ -4641,17 +4939,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {showLocationsPanel ? t('common.close') : t('atrium.locations.title')}
       </button>
 
+      {/* The quick bar, down the left edge: a tool for each kind of trace. */}
+      {canEdit && <QuickBar armed={placeTool} drawing={isDrawingMode} onAction={quickAction} />}
+
       {/* Draw Button */}
       {canEdit && (
       <button
-        onClick={() => {
-          if (isDrawingMode) {
-            setCompletedStrokes([])
-            currentStrokeRef.current = []
-            setIsEraserMode(false)
-          }
-          setIsDrawingMode(!isDrawingMode)
-        }}
+        onClick={toggleDrawing}
         data-hud="true"
         className="atrium-btn fixed bottom-52 right-4 font-mono z-[9999] pointer-events-auto"
         data-active={isDrawingMode}
@@ -5174,19 +5468,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 onClick={() => {
                   const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
                   setMapContextMenu(null)
-                  if (pinterestConnected) {
-                    setPinterestImportAnchor(anchor)
-                    setShowPinterestImport(true)
-                  } else if (isDesktop) {
-                    // Sending the webview to Pinterest would strand it there:
-                    // there is no address bar to come back from, and no https
-                    // origin for Pinterest to return to. Linking happens in
-                    // its own row on the welcome screen, so say where rather
-                    // than doing nothing.
-                    showToast(t('atrium.error.linkPinterestFirst', { entry: t('welcome.pinterest') }))
-                  } else {
-                    initiatePinterestConnect()
-                  }
+                  openPinterestImport(anchor)
                 }}
               >
                 ◇ {t('atrium.canvas.pinterestBoards')}
@@ -5357,12 +5639,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </div>
         {!controlsMinimized && (
           <div className="panel-in space-y-1 mt-2">
-            {/* One row per shortcut, from a list, because eight copies of the
+            {/* One row per shortcut, from a list, because nine copies of the
                 same paragraph differing only in their text is eight places to
                 get the class list slightly wrong. */}
             {([
               'atrium.controls.leaveTrace',
               'atrium.controls.draw',
+              'atrium.controls.quickBar',
               'atrium.controls.editTrace',
               'atrium.controls.multiSelect',
               'atrium.controls.undoRedo',
