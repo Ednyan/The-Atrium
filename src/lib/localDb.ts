@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { mkdir, exists } from '@tauri-apps/plugin-fs'
 import { carryLinks } from './traceLinks'
+import { carriedFrameId, freshIds } from './frames'
 
 let db: Database | null = null
 let mediaBasePath: string = ''
@@ -1217,6 +1218,7 @@ export async function initLocalDb(): Promise<void> {
       z_index INTEGER DEFAULT 0,
       order_key TEXT,
       layer_name TEXT,
+      frame_id TEXT,
       lobby_id TEXT,
       shape_type TEXT,
       shape_color TEXT,
@@ -1474,6 +1476,12 @@ export async function initLocalDb(): Promise<void> {
   try {
     // Defaults to 1 so existing traces keep their shadow.
     await db.execute('ALTER TABLE traces ADD COLUMN show_shadow INTEGER DEFAULT 1')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    // The frame a trace is in (lib/frames).
+    await db.execute('ALTER TABLE traces ADD COLUMN frame_id TEXT')
   } catch {
     // Column already exists — ignore
   }
@@ -2638,6 +2646,11 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
   let traces = 0
   // Old trace id -> new, for the threads.
   const traceIds = new Map<string, string>()
+  // Made up front, so a frame and what it holds point at each other whatever
+  // order they go in (lib/frames). Restored as itself, a trace keeps its id.
+  const restoredIds = asCopy
+    ? freshIds(snapshot.traces ?? [], uuid)
+    : new Map<string, string>((snapshot.traces ?? []).filter((t: any) => t.id).map((t: any) => [t.id, t.id]))
   for (const trace of snapshot.traces ?? []) {
     // Mirror-only bookkeeping, not columns on the table.
     const { vault_media_path, vault_image_path, ...rest } = trace
@@ -2645,7 +2658,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
     const mediaUrl = await restoreAsset(rest.media_url, vault_media_path)
     const imageUrl = await restoreAsset(rest.image_url, vault_image_path)
 
-    const id = asCopy ? uuid() : rest.id
+    const id = restoredIds.get(rest.id) ?? uuid()
     await putRow('traces', {
       ...rest,
       id,
@@ -2654,6 +2667,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
       media_url: mediaUrl,
       image_url: imageUrl,
       layer_id: rest.layer_id ? layerIdMap.get(rest.layer_id) ?? null : null,
+      frame_id: carriedFrameId(rest.frame_id, restoredIds),
     })
     traceIds.set(rest.id, id)
     traces++

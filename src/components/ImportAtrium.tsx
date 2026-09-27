@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { tCount, useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
+import { carriedFrameId, freshIds } from '../lib/frames'
 import { keysFromNumbers } from '../lib/order'
 import { firstFreeName } from '../lib/traceNames'
 
@@ -275,6 +276,9 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         return 'Too many rejected columns'
       }
 
+      // New ids made up front, so a frame and what it holds point at each
+      // other whatever order they go in (lib/frames).
+      const newTraceIds = freshIds(parsed.traces, () => crypto.randomUUID())
       for (const trace of parsed.traces) {
         // Traces referencing desktop-local vault storage (not embeds, not
         // data: URLs, not remote http(s) links) can't be resolved outside
@@ -370,10 +374,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
         const traceData: Record<string, any> = {
           ...rest,
-          id: crypto.randomUUID(),
+          id: (_id && newTraceIds.get(_id)) || crypto.randomUUID(),
           user_id: user.id,
           lobby_id: lobbyId,
           layer_id: mappedLayerId,
+          frame_id: carriedFrameId(trace.frame_id, newTraceIds),
           order_key: trace.order_key ?? traceKeys.get(trace) ?? null,
           ...(trace.type === 'text' ? { layer_name: trace.layer_name ?? textNames.get(trace) ?? null } : {}),
           media_url: mediaUrl || null,

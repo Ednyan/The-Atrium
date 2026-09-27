@@ -7,7 +7,7 @@ export interface Database {
           created_at: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
           content: string
           position_x: number
           position_y: number
@@ -21,7 +21,7 @@ export interface Database {
           created_at?: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
           content: string
           position_x: number
           position_y: number
@@ -35,7 +35,7 @@ export interface Database {
           created_at?: string
           user_id?: string
           username?: string
-          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
+          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
           content?: string
           position_x?: number
           position_y?: number
@@ -66,7 +66,7 @@ export interface Trace {
   id: string
   userId: string
   username: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
+  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
   content: string
   x: number
   y: number
@@ -165,6 +165,9 @@ export interface Trace {
   // A text trace's name in the Layer panel (Text 1, ...). Other traces are
   // named by their content, their title.
   layerName?: string | null
+  // The frame this trace is in (lib/frames); null in none. A frame's title
+  // is its content.
+  frameId?: string | null
   // Lobby association
   lobbyId?: string
 }

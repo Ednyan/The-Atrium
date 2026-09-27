@@ -16,7 +16,7 @@ import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 const UNGROUPED_DROP_TARGET = '__ungrouped__'
 
 // Each trace type's mark in the list.
-const TYPE_GLYPH: Record<string, string> = { text: '◇', image: '◻', audio: '♪', video: '▷', embed: '⬡' }
+const TYPE_GLYPH: Record<string, string> = { text: '◇', image: '◻', audio: '♪', video: '▷', embed: '⬡', frame: '⬚' }
 
 // Something lifted off the list -- a row being dragged, or the card of a trace
 // carried in from the canvas. It follows a point on the drag spring (lib/

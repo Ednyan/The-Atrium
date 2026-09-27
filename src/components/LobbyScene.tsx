@@ -680,6 +680,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // reasoning as newPathTraceId -- ids are always fresh, so a useEffect keyed
   // on the value fires once per request without needing to be reset.
   const [newTextTraceId, setNewTextTraceId] = useState<string | null>(null)
+  // A frame for TraceOverlay to make, from the canvas menu.
+  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number } | null>(null)
   // Mirrors TraceOverlay's own multi-selection state (reported up via
   // onMultiSelectionChange) so the Layer panel can highlight every
   // multi-selected trace/group, not just the single selectedTraceId.
@@ -4124,6 +4126,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
+            frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
             hideCursor={isDrawingMode && pointerOnDrawingCanvas}
             onEditDrawing={handleEditDrawing}
@@ -5115,6 +5118,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               { label: `◇ ${t('atrium.trace.type.embed')}`, type: 'embed' as const, shape: undefined },
               { label: `◇ ${t('atrium.trace.type.shape')}`, type: 'shape' as const, shape: 'rectangle' as const },
               { label: `~ ${t('atrium.trace.shape.path')}`, type: 'shape' as const, shape: 'path' as const },
+              { label: `⬚ ${t('atrium.trace.type.frame')}`, type: 'frame' as const, shape: undefined },
               ...(isDesktop ? [
                 { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
@@ -5137,6 +5141,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   // so filling it in means typing the words somewhere else
                   // first and then watching them appear somewhere else again.
                   // Make it, and put the cursor in it.
+                  // A frame needs nothing either: made where the menu was
+                  // opened, taking in what lies loose there (TraceOverlay).
+                  if (item.type === 'frame') {
+                    setFrameRequest({ x: anchor.x, y: anchor.y })
+                    return
+                  }
+
                   if (item.type === 'text') {
                     if (!ensureLobbyHasSpace()) return
                     const id = await insertDroppedTrace('text', '', undefined, anchor.x, anchor.y)
