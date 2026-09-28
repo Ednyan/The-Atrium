@@ -34,7 +34,7 @@ import { newTraceOrderFields } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
 import { fileTitle, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
@@ -700,6 +700,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The quick bar's Direct select: a click takes the trace itself, even in a
   // group or a frame, rather than its group whole.
   const [directSelect, setDirectSelect] = useState(false)
+  // The quick bar's Text makes plain text -- no box: border, background or
+  // shadow -- rather than text in a box.
+  const [plainText, setPlainText] = useState(false)
   const placeToolRef = useRef(placeTool)
   placeToolRef.current = placeTool
   // A placement under way: where it was pressed, on screen and in the world.
@@ -1949,9 +1952,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // a click), then straight into typing in it. It keeps that size until
       // the text outgrows it (TraceOverlay's fitTextLive).
       if (!ensureLobbyHasSpace()) return
+      // Plain text: just the words, in whichever of black and white stands
+      // out from the atrium's background as it is now.
+      const look = plainText
+        ? { showBorder: false, showBackground: false, showShadow: false, textColor: textColourOn(currentLobby?.themeSettings?.backgroundColor) }
+        : undefined
       const id = dragged
-        ? await insertDroppedTrace('text', '', undefined, centre.x, centre.y, undefined, { width, height })
-        : await insertDroppedTrace('text', '', undefined, a.x, a.y)
+        ? await insertDroppedTrace('text', '', undefined, centre.x, centre.y, undefined, { width, height }, look)
+        : await insertDroppedTrace('text', '', undefined, a.x, a.y, undefined, undefined, look)
       if (id) setNewTextTraceId({ id, drawn: dragged })
       return
     }
@@ -4054,6 +4062,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // A size to make it at, when one was dragged out for it (the quick bar's
     // Text); otherwise its type's own.
     size?: { width: number; height: number },
+    // How it looks, where not the atrium's house style: the quick bar's plain
+    // text has no border, background or shadow, and a colour of its own.
+    look?: { showBorder?: boolean; showBackground?: boolean; showShadow?: boolean; textColor?: string },
   ) => {
     const sized = size ? { width: Math.round(size.width), height: Math.round(size.height) } : {}
     if (supabase) {
@@ -4097,10 +4108,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
         border_color: preset.border,
         fill_color: preset.fill,
-        show_border: !seeThrough,
-        show_background: !seeThrough,
+        show_border: look?.showBorder ?? !seeThrough,
+        show_background: look?.showBackground ?? !seeThrough,
+        ...(look?.showShadow !== undefined ? { show_shadow: look.showShadow } : {}),
         font_family: 'mono',
-        ...(preset.text ? { text_color: preset.text } : {}),
+        ...(look?.textColor ? { text_color: look.textColor } : preset.text ? { text_color: preset.text } : {}),
         content,
         position_x: x,
         position_y: y,
@@ -4149,10 +4161,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         type: traceType as any,
         borderColor: preset.border,
         fillColor: preset.fill,
-        showBorder: true,
-        showBackground: true,
+        showBorder: look?.showBorder ?? true,
+        showBackground: look?.showBackground ?? true,
+        // As the database insert above has it.
+        showFilename: false,
+        ...(look?.showShadow !== undefined ? { showShadow: look.showShadow } : {}),
         fontFamily: 'mono',
-        ...(preset.text ? { textColor: preset.text } : {}),
+        ...(look?.textColor ? { textColor: look.textColor } : preset.text ? { textColor: preset.text } : {}),
         content,
         x,
         y,
@@ -5065,7 +5080,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </button>
 
       {/* The quick bar, down the left edge: a tool for each kind of trace. */}
-      {canEdit && <QuickBar armed={placeTool} drawing={isDrawingMode} direct={directSelect} onAction={quickAction} onDirect={setDirectSelect} />}
+      {canEdit && (
+        <QuickBar
+          armed={placeTool}
+          drawing={isDrawingMode}
+          kinds={{ select: directSelect, text: plainText }}
+          onAction={quickAction}
+          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
+        />
+      )}
 
       {/* Draw Button */}
       {canEdit && (
