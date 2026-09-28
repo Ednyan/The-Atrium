@@ -265,6 +265,7 @@ export const en = {
   'atrium.controls.title': 'Controls',
   'atrium.controls.leaveTrace': 'Leave Trace : "T"',
   'atrium.controls.draw': 'Freehand Draw : "D"',
+  'atrium.controls.pan': 'Move View : Drag Empty Canvas / Middle Mouse',
   'atrium.controls.quickBar': 'Quick Bar Tools : "1" – "9"',
   'atrium.controls.editTrace': 'Edit Trace : Right Click It',
   'atrium.controls.multiSelect': 'Multi-select : Shift + Click Traces',

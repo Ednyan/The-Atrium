@@ -276,6 +276,7 @@ const zh: Catalogue = {
   'atrium.controls.title': '操作方式',
   'atrium.controls.leaveTrace': '留下 Trace：「T」',
   'atrium.controls.draw': '自由绘制：「D」',
+  'atrium.controls.pan': '移动视图：拖动空白画布 / 鼠标中键',
   'atrium.controls.quickBar': '快捷栏工具：「1」–「9」',
   'atrium.controls.editTrace': '编辑 Trace：在它上面右键',
   'atrium.controls.multiSelect': '多选：Shift ＋ 点击 trace',

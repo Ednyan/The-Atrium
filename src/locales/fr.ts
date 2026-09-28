@@ -361,6 +361,7 @@ const fr: Catalogue = {
   'atrium.controls.title': 'Commandes',
   'atrium.controls.leaveTrace': 'Laisser un Trace : "T"',
   'atrium.controls.draw': 'Dessin libre : "D"',
+  'atrium.controls.pan': 'Déplacer la vue : Faire glisser le canevas vide / Bouton du milieu',
   'atrium.controls.quickBar': 'Outils de la barre rapide : « 1 » – « 9 »',
   'atrium.controls.editTrace': 'Modifier un Trace : clic droit',
   'atrium.controls.multiSelect': 'Sélection multiple : Maj + clic sur les traces',

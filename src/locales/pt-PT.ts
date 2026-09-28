@@ -366,6 +366,7 @@ const ptPT: Catalogue = {
   'atrium.controls.title': 'Controlos',
   'atrium.controls.leaveTrace': 'Deixar Trace : "T"',
   'atrium.controls.draw': 'Desenho livre : "D"',
+  'atrium.controls.pan': 'Mover a vista : Arrastar a tela vazia / Botão do meio',
   'atrium.controls.quickBar': 'Ferramentas da barra rápida : "1" – "9"',
   'atrium.controls.editTrace': 'Editar Trace : clique com o botão direito',
   'atrium.controls.multiSelect': 'Seleção múltipla : Shift + clique nos traces',

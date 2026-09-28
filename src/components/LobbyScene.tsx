@@ -2014,6 +2014,44 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     svg.style.display = 'block'
   }
 
+  // The middle button pans the view, a second way to the left drag on empty
+  // canvas -- and from anywhere, over traces too, since it does nothing else
+  // there. Not over a panel, where it keeps its own use. Caught first, so
+  // nothing under it takes the press; its default, the browser's autoscroll,
+  // is kept from starting, and a middle click on a link doesn't open it.
+  useEffect(() => {
+    let panning = false
+    const down = (e: MouseEvent) => {
+      if (e.button !== 1) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-ui-element], [data-hud], .customize-menu, .layer-panel, [role="dialog"], input, textarea, select')) return
+      e.preventDefault()
+      e.stopPropagation()
+      panning = true
+      isPanningRef.current = true
+      cameraFlyToRef.current = null
+      lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
+    }
+    const up = (e: MouseEvent) => {
+      if (e.button !== 1 || !panning) return
+      panning = false
+      isPanningRef.current = false
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const aux = (e: MouseEvent) => {
+      if (e.button === 1 && isPanningRef.current === false && !(e.target as HTMLElement | null)?.closest?.('[data-ui-element], [data-hud], .customize-menu, .layer-panel, [role="dialog"]')) e.preventDefault()
+    }
+    window.addEventListener('mousedown', down, true)
+    window.addEventListener('mouseup', up, true)
+    window.addEventListener('auxclick', aux, true)
+    return () => {
+      window.removeEventListener('mousedown', down, true)
+      window.removeEventListener('mouseup', up, true)
+      window.removeEventListener('auxclick', aux, true)
+    }
+  }, [])
+
   // An armed tool takes the next press on the canvas -- or on a trace, which
   // a frame is often drawn around -- ahead of everything that would
   // otherwise take it (panning, selecting, dragging a trace). Not a press on
@@ -5744,10 +5782,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </div>
         {!controlsMinimized && (
           <div className="panel-in space-y-1 mt-2">
-            {/* One row per shortcut, from a list, because eleven copies of the
+            {/* One row per shortcut, from a list, because twelve copies of the
                 same paragraph differing only in their text is eight places to
                 get the class list slightly wrong. */}
             {([
+              'atrium.controls.pan',
               'atrium.controls.leaveTrace',
               'atrium.controls.draw',
               'atrium.controls.quickBar',

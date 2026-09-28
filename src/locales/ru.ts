@@ -365,6 +365,7 @@ const ru: Catalogue = {
   'atrium.controls.title': 'Управление',
   'atrium.controls.leaveTrace': 'Оставить Trace : "T"',
   'atrium.controls.draw': 'Свободное рисование : "D"',
+  'atrium.controls.pan': 'Двигать вид : Тянуть пустой холст / Средняя кнопка мыши',
   'atrium.controls.quickBar': 'Инструменты панели : "1" – "9"',
   'atrium.controls.editTrace': 'Изменить Trace : правый клик',
   'atrium.controls.multiSelect': 'Множественный выбор : Shift + клик по traces',

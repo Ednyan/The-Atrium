@@ -362,6 +362,7 @@ const de: Catalogue = {
   'atrium.controls.title': 'Steuerung',
   'atrium.controls.leaveTrace': 'Trace hinterlassen : "T"',
   'atrium.controls.draw': 'Freihandzeichnen : "D"',
+  'atrium.controls.pan': 'Ansicht bewegen : Leere Leinwand ziehen / Mittlere Maustaste',
   'atrium.controls.quickBar': 'Werkzeuge der Schnellleiste : "1" – "9"',
   'atrium.controls.editTrace': 'Trace bearbeiten : Rechtsklick',
   'atrium.controls.multiSelect': 'Mehrfachauswahl : Umschalt + Klick auf Traces',

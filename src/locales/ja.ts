@@ -273,6 +273,7 @@ const ja: Catalogue = {
   'atrium.controls.title': '操作方法',
   'atrium.controls.leaveTrace': 'Trace を置く：「T」',
   'atrium.controls.draw': 'フリーハンドで描く：「D」',
+  'atrium.controls.pan': '表示を動かす：何もないキャンバスをドラッグ / 中ボタン',
   'atrium.controls.quickBar': 'クイックバーのツール：「1」〜「9」',
   'atrium.controls.editTrace': 'Trace を編集：右クリック',
   'atrium.controls.multiSelect': '複数選択：Shift ＋ trace をクリック',

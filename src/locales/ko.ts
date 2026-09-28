@@ -277,6 +277,7 @@ const ko: Catalogue = {
   'atrium.controls.title': '조작 방법',
   'atrium.controls.leaveTrace': 'Trace 놓기 : 「T」',
   'atrium.controls.draw': '자유롭게 그리기 : 「D」',
+  'atrium.controls.pan': '화면 이동 : 빈 캔버스 끌기 / 가운데 버튼',
   'atrium.controls.quickBar': '빠른 막대 도구 : 「1」–「9」',
   'atrium.controls.editTrace': 'Trace 편집 : 오른쪽 클릭',
   'atrium.controls.multiSelect': '여러 개 선택 : Shift + trace 클릭',
