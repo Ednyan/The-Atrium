@@ -214,14 +214,16 @@ interface TraceOverlayProps {
   // freshly generated, so a plain useEffect keyed on this value fires
   // correctly for every new path without needing to be reset back to null.
   newPathRequest?: string | null
-  // One-shot request: a text trace just created from the canvas menu, to be
-  // selected and opened for typing. See newPathRequest above for why a plain
-  // value works as a signal here.
-  newTextRequest?: string | null
+  // One-shot request: a text trace just created from the canvas menu or the
+  // quick bar, to be selected and opened for typing -- `drawn` when its box
+  // was dragged out, so the box keeps that size (fitTextLive). A fresh object
+  // each time, so a plain effect keyed on it fires for every one.
+  newTextRequest?: { id: string; drawn?: boolean } | null
   // A frame to make, from the canvas menu or the quick bar: where, its size
-  // when a box was dragged out for it (else its default), and a fresh object
-  // each time so asking twice at one point still makes two.
-  frameRequest?: { x: number; y: number; width?: number; height?: number } | null
+  // when a box was dragged out for it (else its default), whether to open its
+  // Customize panel, and a fresh object each time so asking twice at one
+  // point still makes two.
+  frameRequest?: { x: number; y: number; width?: number; height?: number; customize?: boolean } | null
   // While true, Ctrl+Z/Ctrl+Shift+Z are owned by the drawing-mode stroke
   // undo (see LobbyScene) instead of this file's trace undo/redo history.
   isDrawingMode?: boolean
@@ -1311,7 +1313,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
-  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceIds: string[] } | null>(null)
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceIds: string[]; linkIds: string[] } | null>(null)
   // "New group" from the Move to Group flyout: which traces are going into it,
   // and the name being typed. Kept here rather than in the Layer panel because
   // the panel is not necessarily open -- the whole point of the flyout is to
@@ -1483,8 +1485,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // and the textarea autoFocuses once inlineEditingTraceId names the trace.
   useEffect(() => {
     if (!newTextRequest) return
-    const trace = tracesRef.current.find(t => t.id === newTextRequest)
+    const trace = tracesRef.current.find(t => t.id === newTextRequest.id)
     if (!trace) return
+    if (newTextRequest.drawn) drawnTextIdRef.current = trace.id
     setSelectedTraceId(trace.id)
     setInlineEditingTraceId(trace.id)
     setInlineEditText(trace.content ?? '')
@@ -1901,6 +1904,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     | { kind: 'add'; traceId: string; trace: Trace }
     // A trace's connections go with it, and come back with it on undo.
     | { kind: 'delete'; trace: Trace; links?: TraceLink[] }
+    // Traces deleted together -- a group, a selection -- as one step, each
+    // with the connections that went with it.
+    | { kind: 'batchDelete'; items: { trace: Trace; links: TraceLink[] }[] }
     // Connections made, removed or changed: the ones there before and after.
     | { kind: 'links'; before: TraceLink[]; after: TraceLink[]; ts: number }
     | { kind: 'update'; traceId: string; before: Partial<Trace>; after: Partial<Trace>; ts: number }
@@ -1991,7 +1997,21 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return () => window.removeEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
   }, [])
 
+  // One action, one undo step: while `inOneStep` runs an action, the trace
+  // updates it makes are gathered here instead of each pushing its own step,
+  // and become a single step when it ends. For anything done to several
+  // traces at once -- the batch-edit panel, a font set across a selection, a
+  // group re-keyed to make room.
+  const gatheringRef = useRef<Map<string, { before: Partial<Trace>; after: Partial<Trace> }> | null>(null)
   const pushUpdateOp = useCallback((traceId: string, before: Partial<Trace>, after: Partial<Trace>) => {
+    const gathering = gatheringRef.current
+    if (gathering) {
+      const had = gathering.get(traceId)
+      gathering.set(traceId, had
+        ? { before: { ...before, ...had.before }, after: { ...had.after, ...after } }
+        : { before, after: { ...after } })
+      return
+    }
     const stack = undoStackRef.current
     const last = stack[stack.length - 1]
     const now = Date.now()
@@ -2014,8 +2034,21 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Pushes every trace moved together in a multi-select drag as ONE undo
   // step (see the 'batch' UndoOp comment above). Falls back to a plain
   // 'update' push for the trivial single-trace case.
-  const pushBatchUpdateOp = useCallback((ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[]) => {
+  const pushBatchUpdateOp = useCallback((ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[], coalesce = false) => {
     if (ops.length === 0) return
+    // The same traces changed again straight after (a colour picker dragged
+    // across a selection): still the one step, as pushUpdateOp does for one.
+    const last = undoStackRef.current[undoStackRef.current.length - 1]
+    if (coalesce && ops.length > 1 && last?.kind === 'batch' && Date.now() - last.ts < UNDO_COALESCE_WINDOW_MS
+      && last.ops.length === ops.length && ops.every(op => last.ops.some(o => o.traceId === op.traceId))) {
+      for (const op of ops) {
+        const had = last.ops.find(o => o.traceId === op.traceId)!
+        had.before = { ...op.before, ...had.before }
+        had.after = { ...had.after, ...op.after }
+      }
+      last.ts = Date.now()
+      return
+    }
     if (ops.length === 1) {
       const stack = undoStackRef.current
       stack.push({ kind: 'update', traceId: ops[0].traceId, before: ops[0].before, after: { ...ops[0].after }, ts: Date.now() })
@@ -2028,6 +2061,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (stack.length > maxUndoDepthRef.current) stack.shift()
     redoStackRef.current = []
   }, [])
+
+  const inOneStep = (action: () => void) => {
+    if (gatheringRef.current) {
+      action()
+      return
+    }
+    const gathering = new Map<string, { before: Partial<Trace>; after: Partial<Trace> }>()
+    gatheringRef.current = gathering
+    try {
+      action()
+    } finally {
+      gatheringRef.current = null
+      const ops = [...gathering].map(([traceId, change]) => ({ traceId, ...change }))
+      if (ops.length === 1) pushUpdateOp(ops[0].traceId, ops[0].before, ops[0].after)
+      else pushBatchUpdateOp(ops, true)
+    }
+  }
 
   // Pushes every trace that appeared together (in the same traces-prop
   // update) as ONE undo step. Falls back to a plain 'add' for the trivial
@@ -2045,8 +2095,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     redoStackRef.current = []
   }, [])
 
-  const pushDeleteOp = useCallback((trace: Trace, links: TraceLink[] = []) => {
-    undoStackRef.current.push({ kind: 'delete', trace: cloneTraceSnapshot(trace), links })
+  // One undo step for everything deleted at once: a single trace as a plain
+  // 'delete', several as a 'batchDelete'. Each used to be its own step, so
+  // deleting a selected group of twelve took twelve Ctrl+Z to bring back.
+  const pushDeleteOp = useCallback((items: { trace: Trace; links: TraceLink[] }[]) => {
+    if (items.length === 0) return
+    undoStackRef.current.push(items.length === 1
+      ? { kind: 'delete', trace: cloneTraceSnapshot(items[0].trace), links: items[0].links }
+      : { kind: 'batchDelete', items: items.map(item => ({ trace: cloneTraceSnapshot(item.trace), links: item.links })) })
     if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
     redoStackRef.current = []
   }, [])
@@ -2171,6 +2227,27 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         knownTraceIdsRef.current?.delete(op.trace.id)
         if (editingTraceRef.current?.id === op.trace.id) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.trace.id) setSelectedTraceId(null)
+      }
+    } else if (op.kind === 'batchDelete') {
+      if (direction === 'undo') {
+        // Every trace back before any connection, so a connection between
+        // two of them has both its ends when it returns.
+        for (const { trace } of op.items) {
+          store.addTrace(cloneTraceSnapshot(trace))
+          store.unmarkTraceDeleted(trace.id)
+          store.markTraceChanged(trace.id)
+          knownTraceIdsRef.current?.add(trace.id)
+        }
+        for (const { links } of op.items) for (const link of links) store.putLink(link)
+      } else {
+        for (const { links } of op.items) for (const link of links) store.dropLink(link.id)
+        for (const { trace } of op.items) {
+          store.removeTrace(trace.id)
+          store.markTraceDeleted(trace.id)
+          knownTraceIdsRef.current?.delete(trace.id)
+          if (editingTraceRef.current?.id === trace.id) setEditingTrace(null)
+          if (selectedTraceIdRef.current === trace.id) setSelectedTraceId(null)
+        }
       }
     } else if (op.kind === 'batch') {
       for (const subOp of op.ops) {
@@ -2906,28 +2983,40 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [duplicateTraces, getSelectedTraceSnapshots, lobbyId, canEdit])
 
-  const deleteTraces = (traceIds: string[]) => {
+  // `linkIds`: connections selected along with the traces (an area select
+  // takes both), deleted with them as the same one step.
+  const deleteTraces = (traceIds: string[], linkIds: string[] = []) => {
     if (traceIds.length === 0) return
     const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
 
     if (!dontAskAgain) {
       // Show custom confirmation dialog
-      setDeleteConfirmDialog({ traceIds })
+      setDeleteConfirmDialog({ traceIds, linkIds })
       return
     }
 
     // Execute deletion
-    executeDelete(traceIds)
+    executeDelete(traceIds, linkIds)
   }
 
-  const executeDelete = (traceIds: string[]) => {
+  const executeDelete = (traceIds: string[], linkIds: string[] = []) => {
     setContextMenu(null)
     setDeleteConfirmDialog(null)
     setMultiSelectedIds(new Set())
 
-    // Each connection goes with the first of its traces to be deleted, and is
-    // restored by that one's undo -- by which time the other end is back too.
+    // Each connection goes with the first of its traces to be deleted. All of
+    // it is one undo step (pushDeleteOp), which brings every trace back before
+    // any connection.
     const takenLinks = new Set<string>()
+    const deleted: { trace: Trace; links: TraceLink[] }[] = []
+    // Selected connections first, whatever they join.
+    const wanted = new Set(linkIds)
+    const loose = useGameStore.getState().links.filter(l => wanted.has(l.id))
+    for (const link of loose) {
+      takenLinks.add(link.id)
+      dropLink(link.id)
+    }
+    if (loose.length > 0) clearLinkSelection()
     for (const traceId of traceIds) {
       const traceBeingDeleted = traces.find(t => t.id === traceId)
       const itsLinks = useGameStore.getState().links.filter(l =>
@@ -2949,8 +3038,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // branches for the full explanation.
       knownTraceIdsRef.current?.delete(traceId)
 
-      if (traceBeingDeleted) pushDeleteOp(traceBeingDeleted, itsLinks)
+      if (traceBeingDeleted) deleted.push({ trace: traceBeingDeleted, links: itsLinks })
     }
+    if (deleted.length === 0) {
+      if (loose.length > 0) pushLinksOp(loose, [])
+      return
+    }
+    // The selected connections ride on the first trace's entry: undo brings
+    // them back with the rest.
+    deleted[0].links = [...loose, ...deleted[0].links]
+    pushDeleteOp(deleted)
   }
 
   const duplicateTrace = async (traceId: string) => {
@@ -2963,7 +3060,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // Puts a trace at `index` among the others of its group (bottom to top):
   // one new key, saved with the rest. Should two of them share a key there is
   // no room between, and the group is re-keyed in its order first -- rare.
-  const placeInGroup = (trace: Trace, others: Trace[], index: number) => {
+  const placeInGroup = (trace: Trace, others: Trace[], index: number) => inOneStep(() => {
     let key = keyAt(others, index)
     if (key === null) {
       const sorted = inOrder(others)
@@ -2972,7 +3069,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       key = keyAt(sorted.map((t, i) => ({ ...t, orderKey: fresh[i] })), index)
     }
     if (key !== null) updateTraceCustomization(trace.id, { orderKey: key })
-  }
+  })
 
   const groupOf = (trace: Trace) => traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
 
@@ -3119,11 +3216,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // edit as a whole becomes one entry when it ends, measured from how the
   // trace was before the first keystroke.
   const textEditStartRef = useRef<{ id: string; content: string; width?: number; height?: number } | null>(null)
+  // The text box last dragged out for new text, whose size its typing keeps.
+  const drawnTextIdRef = useRef<string | null>(null)
   const fitTextLive = (trace: Trace, content: string, fontSize: number, fontFamily: string) => {
     if (textEditStartRef.current?.id !== trace.id) {
       textEditStartRef.current = { id: trace.id, content: trace.content ?? '', width: trace.width, height: trace.height }
     }
-    const size = computeAutoFitTextSize(content, fontSize, { fontFamily })
+    // A new box dragged out for its text (the quick bar's Text) keeps its
+    // size, and grows from it only once the text outgrows it. Any other box
+    // fits its text from the usual size.
+    const start = textEditStartRef.current
+    const drawn = drawnTextIdRef.current === trace.id && !!start.width && !!start.height
+    const size = computeAutoFitTextSize(content, fontSize, drawn ? { fontFamily, baseWidth: start.width, baseHeight: start.height } : { fontFamily })
     updateTraceCustomization(trace.id, { content, width: size.width, height: size.height }, { skipUndo: true })
   }
   // cancel puts the text and box back as they were (Escape).
@@ -3143,14 +3247,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   }
 
   // Applies the same property updates to every trace in a set at once (used
-  // by the batch-edit panel). Each trace still gets its own undo entry via
-  // updateTraceCustomization -- undoing a batch edit takes one Ctrl+Z per
-  // trace rather than a single combined step, which keeps this on the
-  // existing per-trace undo model instead of adding a new "batch" op kind.
+  // by the batch-edit panel), as one undo step (inOneStep). It was one per
+  // trace, so undoing a batch edit took a Ctrl+Z for every trace.
   const updateTraceCustomizationForMany = (traceIds: Iterable<string>, updates: Partial<Trace>) => {
-    for (const traceId of traceIds) {
-      updateTraceCustomization(traceId, updates)
-    }
+    inOneStep(() => {
+      for (const traceId of traceIds) {
+        updateTraceCustomization(traceId, updates)
+      }
+    })
   }
 
   // Touch adapter: converts a TouchEvent into a fake React.MouseEvent for handleMouseDown
@@ -3198,11 +3302,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }
     }
 
-    // Disable move/rotate/scale for path shapes - they're controlled by point editing
-    // EXCEPT when multi-selected, then allow moving
-    const isPathWithMultiSelect = trace.type === 'shape' && trace.shapeType === 'path' && mode === 'move'
-    if (isPathWithMultiSelect && selection.size === 0) return
-    
     e.stopPropagation()
     
     // Handle multi-select with Shift key
@@ -3230,6 +3329,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       selection = new Set()
       setMultiSelectedIds(selection)
     }
+
+    // A path is where its points are, so on its own it moves by them
+    // ('move-path'): a 'move' would shift its x/y, which nothing draws from.
+    // With others -- its group, a selection -- it moves with them as usual.
+    if (mode === 'move' && isPathTrace(trace) && selection.size === 0) mode = 'move-path'
 
     // A plain press on a clickable trace: hold back its handles and show the
     // pressed state until we know whether this is a click or a drag.
@@ -4119,7 +4223,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
       }
     } else if (activeTransformMode === 'move-path') {
-      // Move all points of a path shape together
+      // Move all points of a path shape together -- once the press is a
+      // drag: a click on the line only selects it.
+      if (!pressMovedRef.current) return
       const worldDeltaX = deltaX / currentZoom
       const worldDeltaY = deltaY / currentZoom
       
@@ -4498,10 +4604,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         setConnectPointer(null)
         return
       }
-      if (selectedLinksRef.current.size > 0 && (e.key === 'Delete' || e.key === 'Backspace') && !typingHere && canEdit) {
+      // Connections alone go here; with traces selected too, they go with
+      // the traces below, as one undo step.
+      if (selectedLinksRef.current.size > 0 && (e.key === 'Delete' || e.key === 'Backspace') && !typingHere && canEdit
+        && !selectedTraceId && multiSelectedIds.size === 0) {
         e.preventDefault()
         deleteLinks(selectedLinksRef.current)
-        if (!selectedTraceId && multiSelectedIds.size === 0) return
+        return
       }
       // Backspace as well as Delete, because on a Mac keyboard the key marked
       // "delete" IS Backspace -- most of them have no Delete key at all, so the
@@ -4534,7 +4643,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         if (e.key === 'Backspace') e.preventDefault()
         if (!isDrawingModeRef.current && canEdit && (selectedTraceId || multiSelectedIds.size > 0)) {
           e.preventDefault()
-          deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!])
+          deleteTraces(multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : [selectedTraceId!], [...selectedLinksRef.current])
         }
       }
 
@@ -4987,7 +5096,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // of the ungrouped traces) so what it holds is over it. It takes in the
   // traces in `wrap`, whole groups with them, from whatever frame they were
   // in; without `wrap`, what lies loose inside it. Then it's selected.
-  const createFrame = async (box: FrameBox, wrap?: string[]) => {
+  const createFrame = async (box: FrameBox, wrap?: string[], customize = false) => {
     if (!lobbyId || !canEdit) return
     if (useGameStore.getState().isLobbyFull()) {
       showToast(lobbyFullMessage())
@@ -5048,6 +5157,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     applyFrameChanges(putInFrame(units, frame.id), 'none')
     setMultiSelectedIds(new Set())
     setSelectedTraceId(frame.id)
+    if (customize) setEditingTrace(frame)
   }
 
   // The selection in a frame of its own, just big enough to hold it.
@@ -5069,8 +5179,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // or dragged out with the quick bar.
   useEffect(() => {
     if (!frameRequest) return
-    const { x, y, width = FRAME_DEFAULT.width, height = FRAME_DEFAULT.height } = frameRequest
-    void createFrame({ cx: x, cy: y, halfW: width / 2, halfH: height / 2 })
+    const { x, y, width = FRAME_DEFAULT.width, height = FRAME_DEFAULT.height, customize } = frameRequest
+    void createFrame({ cx: x, cy: y, halfW: width / 2, halfH: height / 2 }, undefined, customize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameRequest])
 
@@ -5563,33 +5673,23 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           strokeLinecap="round"
           strokeLinejoin="round"
           data-trace-element="true"
-          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-          onClick={(e) => {
-            e.stopPropagation()
+          style={{ pointerEvents: 'stroke', cursor: 'move' }}
+          // Pressed, the line is taken as any trace is (handleMouseDown):
+          // selected -- with its group, or added to the selection with
+          // Shift -- and dragged, the whole path moves. Its points and
+          // handles are the only other places to take hold of it.
+          onMouseDown={(e) => {
+            if (e.button !== 0) return
             // The line itself, not one of its points: Delete then takes the
             // whole path, not a point picked out earlier.
             setSelectedPointIndex(null)
-            if (e.shiftKey) {
-              // Toggle multi-selection - same logic as handleMouseDown
-              setMultiSelectedIds(prev => {
-                const next = new Set(prev)
-                if (next.has(trace.id)) {
-                  next.delete(trace.id)
-                } else {
-                  next.add(trace.id)
-                }
-                // Also add the currently selected trace if not already in selection
-                if (selectedTraceId && !next.has(selectedTraceId)) {
-                  next.add(selectedTraceId)
-                }
-                return next
-              })
-              setSelectedTraceId(trace.id)
-            } else {
-              setMultiSelectedIds(new Set()) // Clear multi-selection on non-shift click
-              setSelectedTraceId(trace.id)
-            }
+            on.handleMouseDown(e, trace, 'move')
           }}
+          onTouchStart={(e) => {
+            setSelectedPointIndex(null)
+            on.handleTouchDown(e, trace, 'move')
+          }}
+          onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => {
             e.stopPropagation()
             const t = traces.find(tr => tr.id === trace.id)
@@ -7363,31 +7463,6 @@ return (
               {showIn && curveHandle('control-in', handles!.cp1)}
               {showOut && curveHandle('control-out', handles!.cp2)}
 
-              {/* Move handle - centered on all points */}
-              {points.length > 0 && (() => {
-                const centre = screenOf({
-                  x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
-                  y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
-                })
-                return (
-                  <div
-                    data-keeps-size="" className="absolute trace-nier-handle-center cursor-move pointer-events-auto z-[1000000]"
-                    style={at(centre)}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      setSelectedPointIndex(null)
-                      handleMouseDown(e, trace, 'move-path', 'move-all')
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      setSelectedPointIndex(null)
-                      handleTouchDown(e, trace, 'move-path', 'move-all')
-                    }}
-                  />
-                )
-              })()}
 
               {/* Adding points: what a click does now, above the pointer
                   (its name tag is below it), and toward the middle of the
@@ -8454,7 +8529,7 @@ return (
               className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
               onClick={() => {
                 const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
-                deleteTraces(inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId])
+                deleteTraces(inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId], inMultiSelect ? [...selectedLinksRef.current] : [])
               }}
             >
               <span className="text-red-500 text-[10px]">◇</span>
@@ -9472,8 +9547,11 @@ return (
             </div>
           </div>
 
-          {/* Backdrop */}
+          {/* Backdrop. Marked, so an armed quick-bar tool treats a press on
+              it as one on the canvas behind (LobbyScene): placing shapes one
+              after another keeps each one's panel open in turn. */}
           <div
+            data-canvas-backdrop=""
             className="fixed inset-0 bg-transparent pointer-events-auto"
             style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
             onClick={() => setEditingTrace(null)}
@@ -9583,7 +9661,7 @@ return (
                         onChange={e => {
                           const next = e.target.value
                           if (!next) return
-                          for (const trace of textTraces) {
+                          inOneStep(() => { for (const trace of textTraces) {
                             const effectiveFontSize = typeof trace.fontSize === 'number'
                               ? trace.fontSize
                               : (trace.fontSize === 'small' ? 10 : trace.fontSize === 'large' ? 14 : 12)
@@ -9597,7 +9675,7 @@ return (
                               width: textSize.width,
                               height: textSize.height,
                             })
-                          }
+                          } })
                         }}
                         className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                       >
@@ -10369,7 +10447,7 @@ return (
             <div className="flex items-center gap-3 mb-4">
               <div className="w-1.5 h-1.5 rotate-45 border border-red-500/60" />
               <h2 className="text-lg text-red-400 tracking-[0.15em] uppercase">
-                {deleteConfirmDialog.traceIds.length > 1 ? `Delete ${deleteConfirmDialog.traceIds.length} Traces` : 'Delete Trace'}
+                {deleteConfirmDialog.traceIds.length > 1 ? t('atrium.menu.deleteSelected', { count: deleteConfirmDialog.traceIds.length }) : t('atrium.layers.deleteTrace')}
               </h2>
             </div>
             <p className="text-nier-strong mb-6 text-sm tracking-wide">
@@ -10404,7 +10482,7 @@ return (
               </button>
               <button
                 className="flex-1 py-3 border border-red-500/40 bg-red-500/20 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
-                onClick={() => executeDelete(deleteConfirmDialog.traceIds)}
+                onClick={() => executeDelete(deleteConfirmDialog.traceIds, deleteConfirmDialog.linkIds)}
               >
                 {t('common.delete')}
               </button>

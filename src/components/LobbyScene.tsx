@@ -680,9 +680,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // should be selected and dropped straight into typing. Same shape and same
   // reasoning as newPathTraceId -- ids are always fresh, so a useEffect keyed
   // on the value fires once per request without needing to be reset.
-  const [newTextTraceId, setNewTextTraceId] = useState<string | null>(null)
+  const [newTextTraceId, setNewTextTraceId] = useState<{ id: string; drawn?: boolean } | null>(null)
   // A frame for TraceOverlay to make, from the canvas menu.
-  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number; width?: number; height?: number } | null>(null)
+  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number; width?: number; height?: number; customize?: boolean } | null>(null)
   // The quick bar's armed tool (QuickBar): the next press on the canvas
   // places one of these, rather than panning or selecting.
   const [placeTool, setPlaceTool] = useState<PlaceTool | null>(null)
@@ -1882,32 +1882,42 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // corner; `even`, as big each way) and a path its two ends; a click puts
   // the trace there at its usual size, or starts a path to click on from.
   const finishPlacing = async (tool: PlaceTool, start: { sx: number; sy: number; wx: number; wy: number }, end: { sx: number; sy: number }, even: boolean) => {
-    setPlaceTool(null)
+    // The tool stays in hand, to place another straight away, as Excalidraw
+    // does -- all but Text, whose next click ends the typing it starts.
+    if (tool === 'text') setPlaceTool(null)
     const a = { x: start.wx, y: start.wy }
     const b = screenToWorld(end.sx, end.sy)
     const dragged = Math.hypot(end.sx - start.sx, end.sy - start.sy) >= 6
-    const least = 10
+    const least = tool === 'text' ? 24 : 10
     let width = Math.max(least, Math.abs(b.x - a.x)), height = Math.max(least, Math.abs(b.y - a.y))
     if (even) width = height = Math.max(width, height)
     const centre = { x: a.x + (b.x >= a.x ? width : -width) / 2, y: a.y + (b.y >= a.y ? height : -height) / 2 }
+    // What's made is selected, with its Customize panel open.
+    const customize = (id: string) => setCustomizeRequest([id])
 
     if (tool === 'text') {
+      // The box first, dragged out like a rectangle (or the usual size, for
+      // a click), then straight into typing in it. It keeps that size until
+      // the text outgrows it (TraceOverlay's fitTextLive).
       if (!ensureLobbyHasSpace()) return
-      const id = await insertDroppedTrace('text', '', undefined, a.x, a.y)
-      if (id) setNewTextTraceId(id)
+      const id = dragged
+        ? await insertDroppedTrace('text', '', undefined, centre.x, centre.y, undefined, { width, height })
+        : await insertDroppedTrace('text', '', undefined, a.x, a.y)
+      if (id) setNewTextTraceId({ id, drawn: dragged })
       return
     }
     if (tool === 'frame') {
-      setFrameRequest(dragged ? { x: centre.x, y: centre.y, width, height } : { x: a.x, y: a.y })
+      setFrameRequest(dragged ? { x: centre.x, y: centre.y, width, height, customize: true } : { x: a.x, y: a.y, customize: true })
       return
     }
     if (tool === 'path') {
       const style = shapeStyleOf({ shapeType: 'path' })
       if (dragged) {
         const id = await insertShapeTrace(style, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [a, b])
-        if (id) setSelectedTraceId(id)
+        if (id) customize(id)
       } else {
-        // One point, and on into adding more, as the panel's Path does.
+        // One point, and on into adding more, as the panel's Path does (its
+        // Customize panel opens with it).
         const id = await insertShapeTrace(style, a, [a])
         if (id) setNewPathTraceId(id)
       }
@@ -1919,18 +1929,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       undefined,
       dragged ? { width, height } : { width: 200, height: 200 },
     )
-    if (id) setSelectedTraceId(id)
+    if (id) customize(id)
   }
   const finishPlacingRef = useRef(finishPlacing)
   finishPlacingRef.current = finishPlacing
 
   // What an armed tool is dragging out, from press to pointer on screen: the
-  // box of a rectangle or frame (dashed), the ellipse of a circle, the line of
-  // a path. `even`: Shift, a box as big each way. Hidden with no drag.
+  // box of a rectangle, or of a frame or text box (dashed), the ellipse of a
+  // circle, the line of a path. `even`: Shift, a box as big each way. Hidden with no drag.
   const drawPlacePreview = (tool: PlaceTool | null, drag: { x1: number; y1: number; x2: number; y2: number; even: boolean } | null) => {
     const svg = placePreviewRef.current
     if (!svg) return
-    if (!tool || !drag || tool === 'text') {
+    if (!tool || !drag) {
       svg.style.display = 'none'
       return
     }
@@ -1949,7 +1959,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
     set(line, tool === 'path', { x1, y1, x2, y2 })
     set(ellipse, tool === 'circle', { cx: left + w / 2, cy: top + h / 2, rx: w / 2, ry: h / 2 })
-    set(rect, tool === 'rectangle' || tool === 'frame', { x: left, y: top, width: w, height: h, 'stroke-dasharray': tool === 'frame' ? '6 4' : 'none' })
+    set(rect, tool === 'rectangle' || tool === 'frame' || tool === 'text', { x: left, y: top, width: w, height: h, 'stroke-dasharray': tool === 'rectangle' ? 'none' : '6 4' })
     svg.style.display = 'block'
   }
 
@@ -1961,7 +1971,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const onCanvas = (target: EventTarget | null) => {
       const el = target as HTMLElement | null
       if (!el?.closest) return false
-      if (el.closest('[data-trace-element]')) return true
+      // A selected trace's handles stay its own, so what was just placed can
+      // be sized and turned with the tool still in hand.
+      if (el.closest('.trace-nier-handle, .trace-nier-handle-center, .trace-rotate-handle, [data-elbow-grip], [data-frame-title]')) return false
+      if (el.closest('[data-trace-element], [data-canvas-backdrop]')) return true
       return !el.closest('[data-ui-element], [data-hud], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
     }
     const down = (e: PointerEvent) => {
@@ -3944,7 +3957,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // The dropped or pasted file itself, when there is one: read locally,
     // which is quicker and surer than reading it back from where it went.
     file?: Blob,
+    // A size to make it at, when one was dragged out for it (the quick bar's
+    // Text); otherwise its type's own.
+    size?: { width: number; height: number },
   ) => {
+    const sized = size ? { width: Math.round(size.width), height: Math.round(size.height) } : {}
     if (supabase) {
       // The live store, not the render-time `traces`, so a multi-file drop --
       // which adds each inserted row back before the next -- stacks each one
@@ -4010,6 +4027,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         show_description: false,
         show_filename: false,
         ...(embedBox ?? {}),
+        ...sized,
         ...layerFields,
       } as any).select()
 
@@ -4051,6 +4069,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         scaleY: 1.0,
         rotation: 0.0,
         borderRadius: 0,
+        ...sized,
       }
       useGameStore.getState().addTrace(trace)
       return trace.id
@@ -5445,7 +5464,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   if (item.type === 'text') {
                     if (!ensureLobbyHasSpace()) return
                     const id = await insertDroppedTrace('text', '', undefined, anchor.x, anchor.y)
-                    if (id) setNewTextTraceId(id)
+                    if (id) setNewTextTraceId({ id })
                     return
                   }
 
