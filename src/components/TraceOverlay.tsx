@@ -49,6 +49,8 @@ import RotateHandles from './RotateHandles'
 import { cropClip, flipInBox } from '../lib/traceFlip'
 import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
+import { setActionRecorder, type ActionEntry } from '../lib/actionHistory'
+import { layerChangeAdopts, withLayerUndo } from '../lib/layerUndo'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
@@ -1261,21 +1263,49 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   //
   // A second Ctrl+G while a layer change is under way is ignored: queued, it
   // would make another group and move everything into that one.
+  //
+  // Each group change is one undoable step (lib/layerUndo).
   const groupSelection = useCallback(async (traceIds: string[]) => {
     if (!supabase || !lobbyId || !canEdit || traceIds.length === 0 || layerChangeUnderWay()) return
-    await queueLayerChange(async () => {
+    await queueLayerChange(() => withLayerUndo('group', async () => {
       const { data } = await (supabase!.from('layers') as any).select('name').eq('lobby_id', lobbyId)
       const taken = ((data ?? []) as { name: string | null }[]).map(l => l.name)
       await makeGroupWith(traceIds, firstFreeName(taken, n => t('atrium.layers.numberedGroup', { n })))
-    })
+    }))
   }, [lobbyId, canEdit, makeGroupWith])
 
   // The same two from the menus and the New Group dialog, through the layer
   // queue (lib/layerQueue); the unqueued ones above are for inside a change.
   const moveTracesToGroup = (traceIds: string[], targetLayerId: string | null) =>
-    queueLayerChange(() => moveIntoGroup(traceIds, targetLayerId))
+    queueLayerChange(() => withLayerUndo('move to group', () => moveIntoGroup(traceIds, targetLayerId)))
   const createGroupAndMove = (traceIds: string[], name: string) =>
-    queueLayerChange(() => makeGroupWith(traceIds, name))
+    queueLayerChange(() => withLayerUndo('new group', () => makeGroupWith(traceIds, name)))
+
+  // Ungroup (the canvas menu, Ctrl+Shift+G): each group's traces out to the
+  // ungrouped ones, and the group gone -- as the Layer panel's Ungroup does.
+  // One step, for all the groups at once.
+  const ungroupGroups = (layerIds: string[]) => {
+    if (!supabase || !canEdit || layerIds.length === 0) return
+    return queueLayerChange(() => withLayerUndo('ungroup', async () => {
+      for (const layerId of layerIds) {
+        const members = useGameStore.getState().traces.filter(tr => tr.layerId === layerId).map(tr => tr.id)
+        await moveIntoGroup(members, null)
+        const { error } = await (supabase!.from('layers') as any).delete().eq('id', layerId)
+        if (error) {
+          console.error('[layers] could not remove the group:', error)
+          continue
+        }
+        useGameStore.getState().forgetLayer(layerId)
+      }
+      window.dispatchEvent(new Event('atrium:layers-changed'))
+    }))
+  }
+  // The groups some traces are in.
+  const groupsOf = (traceIds: string[]) => {
+    const all = useGameStore.getState()
+    const ids = new Set(traceIds)
+    return [...new Set(all.traces.filter(tr => ids.has(tr.id) && tr.layerId && all.layers.some(l => l.id === tr.layerId)).map(tr => tr.layerId!))]
+  }
 
   // A vault write finished, so the file it was copying now exists on disk and
   // the trace should read from there rather than through the blob URL it was
@@ -1923,6 +1953,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // drop/paste, etc.) is one atomic undo step instead of N separate 'add'
     // ops -- see the "detect new traces" effect below.
     | { kind: 'batchAdd'; traces: Trace[] }
+    // Done elsewhere and recorded here (lib/actionHistory) -- a layer change,
+    // which writes to the database, so its undo and redo are writes too.
+    | { kind: 'action'; entry: ActionEntry }
 
   const undoStackRef = useRef<UndoOp[]>([])
   const redoStackRef = useRef<UndoOp[]>([])
@@ -2131,7 +2164,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     for (const trace of traces) {
       if (!known.has(trace.id)) {
         known.add(trace.id)
-        newlyDiscovered.push(trace)
+        // One a layer change brought in (a duplicated group, a deleted one
+        // restored) is that change's step, not an addition of its own.
+        if (!layerChangeAdopts(trace.id)) newlyDiscovered.push(trace)
       }
     }
     if (newlyDiscovered.length > 0) {
@@ -2231,6 +2266,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         if (editingTraceRef.current?.id === op.trace.id) setEditingTrace(null)
         if (selectedTraceIdRef.current === op.trace.id) setSelectedTraceId(null)
       }
+    } else if (op.kind === 'action') {
+      void (direction === 'undo' ? op.entry.undo() : op.entry.redo())
     } else if (op.kind === 'batchDelete') {
       if (direction === 'undo') {
         // Every trace back before any connection, so a connection between
@@ -2277,6 +2314,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       applyUpdateTarget(store, op.traceId, target)
     }
   }, [])
+
+  // Actions done elsewhere -- the Layer panel's, the group changes below --
+  // take their place in this history as they happen.
+  useEffect(() => setActionRecorder(entry => {
+    undoStackRef.current.push({ kind: 'action', entry })
+    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
+    redoStackRef.current = []
+  }), [])
 
   const undo = useCallback(() => {
     const op = undoStackRef.current.pop()
@@ -3282,6 +3327,22 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       e.stopPropagation()
       e.preventDefault()
       finishConnect(trace.id)
+      return
+    }
+    // A right press is the menu's (onContextMenu). It ran as a left press
+    // did, so a group selected whole was taken apart by its release (the
+    // "second click" below) and the menu came up for one trace of it. Now it
+    // only settles what the menu is for: a selection this trace is in stays
+    // as it is; otherwise what a left click would take -- its group, unless
+    // picking directly, or unless one of the group is already picked out.
+    if (e.button === 2) {
+      e.stopPropagation()
+      if (!multiSelectedIds.has(trace.id)) {
+        const members = directSelect || e.ctrlKey || e.metaKey ? null : groupMembersOf(trace)
+        const opened = multiSelectedIds.size === 0 && !!selectedTraceId && !!members?.includes(selectedTraceId)
+        setMultiSelectedIds(new Set(members && !opened ? members : []))
+      }
+      setSelectedTraceId(trace.id)
       return
     }
     if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
@@ -4680,6 +4741,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         }
       }
 
+      // Ctrl+Shift+G: the selection's groups undone -- their traces left
+      // where they are, ungrouped.
+      if ((e.key === 'g' || e.key === 'G') && (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && !typingHere && !e.repeat && !isDrawingModeRef.current && canEdit) {
+        const ids = multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : selectedTraceId ? [selectedTraceId] : []
+        const groups = groupsOf(ids)
+        e.preventDefault()
+        if (groups.length > 0) void ungroupGroups(groups)
+        return
+      }
       // Ctrl+G (Cmd+G): group the selection. Also keeps the webview's own
       // Ctrl+G, find-next, from opening over the atrium.
       if ((e.key === 'g' || e.key === 'G') && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !typingHere && !e.repeat && !isDrawingModeRef.current && canEdit) {
@@ -8426,6 +8496,25 @@ return (
                     </div>
                   )}
                 </div>
+              )
+            })()}
+            {/* Ungroup: the groups of what's right-clicked (the selection,
+                when it's in one), each undone -- traces left where they are. */}
+            {canEdit && (() => {
+              const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+              const groups = groupsOf(inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId])
+              if (groups.length === 0) return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-6 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    setContextMenu(null)
+                    void ungroupGroups(groups)
+                  }}
+                >
+                  <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.ungroup')}</span>
+                  <span className="text-nier-bg/50 text-[10px] tracking-normal">Ctrl+Shift+G</span>
+                </button>
               )
             })()}
             {/* Move Layer submenu -- same side-flyout pattern, groups the

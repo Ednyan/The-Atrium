@@ -10,6 +10,7 @@ import { cleanTitle, nextTextName } from '../lib/traceNames'
 import { createGroup as insertGroup, mapRowToLayer, reloadLayers } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
+import { withLayerUndo } from '../lib/layerUndo'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
@@ -597,6 +598,10 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  // Several at once -- a group's Lock All -- as one change, so one undo.
+  const setTracesLockedNow = async (traceIds: string[], locked: boolean) => {
+    for (const traceId of traceIds) await setTraceLockedNow(traceId, locked)
+  }
   const setTraceLockedNow = async (traceId: string, locked: boolean) => {
     if (!supabase || !canEdit) return
     const { error } = await (supabase.from('traces') as any)
@@ -1080,8 +1085,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // What the buttons, menus, drops and dialogs call: each change through the
   // queue, so one never starts while another is part-way through. The ...Now
   // versions above run directly, for use inside a change.
-  const queued = <A extends unknown[]>(change: (...args: A) => Promise<unknown>) =>
-    (...args: A) => queueLayerChange(() => change(...args))
+  // Each one also a step in the atrium's undo history (lib/layerUndo): these
+  // write to the database at once, and used to be the one kind of change
+  // Ctrl+Z couldn't take back.
+  const queued = <A extends unknown[]>(change: (...args: A) => Promise<unknown>, label = 'layers') =>
+    (...args: A) => queueLayerChange(() => withLayerUndo(label, () => change(...args)))
   const doCreateGroup = queued(doCreateGroupNow)
   const doDeleteGroup = queued(doDeleteGroupNow)
   const doDeleteTrace = queued(doDeleteTraceNow)
@@ -1091,6 +1099,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const duplicateGroup = queued(duplicateGroupNow)
   const duplicateSingleTrace = queued(duplicateSingleTraceNow)
   const setTraceLocked = queued(setTraceLockedNow)
+  const setTracesLocked = queued(setTracesLockedNow)
   const setTracesIgnoreClicks = queued(setTracesIgnoreClicksNow)
   const setTracesEnableInteraction = queued(setTracesEnableInteractionNow)
   const moveTraceToLayer = queued(moveTraceToLayerNow)
@@ -1792,17 +1801,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 />
                 <MenuItem
                   label={t('atrium.layers.lockAll')}
-                  onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, true)) }}
+                  onClick={() => { void setTracesLocked(groupTraces.map(t => t.id), true) }}
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem
                   label={t('atrium.layers.unlockAll')}
-                  onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, false)) }}
+                  onClick={() => { void setTracesLocked(groupTraces.map(t => t.id), false) }}
                   disabled={groupTraces.length === 0}
                 />
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
-                  label={t('atrium.layers.deleteGroupOnly')}
+                  label={t('atrium.menu.ungroup')}
                   onClick={() => doDeleteGroupKeepTraces(rowMenu.id)}
                   danger
                   hint={t('atrium.layers.deleteGroupOnlyHint')}

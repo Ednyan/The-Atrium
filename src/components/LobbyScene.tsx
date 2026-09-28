@@ -669,6 +669,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The layer group new traces are created into (null = ungrouped). Set by
   // clicking a group/Ungrouped header in the Layer panel.
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
+  // A group that's gone -- ungrouped, deleted, undone -- is nowhere to put
+  // new traces: they'd be made in a group that doesn't exist.
+  useEffect(() => {
+    if (!activeLayerId) return
+    return useGameStore.subscribe(state => {
+      if (!state.layers.some(l => l.id === activeLayerId)) setActiveLayerId(null)
+    })
+  }, [activeLayerId])
   // One-shot request for TraceOverlay to multi-select a set of trace ids,
   // fired when the user clicks a group in the Layer panel. TraceOverlay owns
   // its own selection state internally, so this is passed down rather than
@@ -5736,7 +5744,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </div>
         {!controlsMinimized && (
           <div className="panel-in space-y-1 mt-2">
-            {/* One row per shortcut, from a list, because ten copies of the
+            {/* One row per shortcut, from a list, because eleven copies of the
                 same paragraph differing only in their text is eight places to
                 get the class list slightly wrong. */}
             {([
@@ -5746,6 +5754,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               'atrium.controls.editTrace',
               'atrium.controls.multiSelect',
               'atrium.controls.directSelect',
+              'atrium.controls.groupUngroup',
               'atrium.controls.undoRedo',
               'atrium.controls.copyPaste',
               'atrium.controls.deleteSelected',
