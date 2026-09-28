@@ -418,8 +418,6 @@ const zh: Catalogue = {
   'atrium.trace.type.sound': '声音',
   'atrium.menu.lock': '锁定',
   'atrium.menu.unlock': '解锁',
-  'atrium.menu.ignoreClicks': '忽略点击',
-  'atrium.menu.enableClicks': '允许点击',
 
   // ------------------------------------------------------------------ HUD
   'atrium.hud.fullscreen': '全屏',
@@ -1106,7 +1104,7 @@ const zh: Catalogue = {
   'atrium.layers.selectAllTraces': '选中所有 trace',
   'atrium.layers.goToGroup': '跳到这个组',
   'atrium.layers.goToGroupHint': '把镜头框到这个组里的所有东西上',
-  'atrium.layers.ungroupAll': '全部取消分组',
+  'atrium.layers.ungroupAll': '清空分组',
   'atrium.layers.ungroupAllHint': '把每个 trace 都移到「未分组」，但保留这个组',
   'atrium.layers.lockAll': '全部锁定',
   'atrium.layers.unlockAll': '全部解锁',

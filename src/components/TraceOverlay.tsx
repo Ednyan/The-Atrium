@@ -51,6 +51,7 @@ import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } fr
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
 import { setActionRecorder, type ActionEntry } from '../lib/actionHistory'
 import { layerChangeAdopts, withLayerUndo } from '../lib/layerUndo'
+import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
@@ -1793,62 +1794,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [colorPickerCallback])
 
-  // Global right-click handler for ignoreClicks traces
-  // Since pointer-events: none blocks all events, we need to manually detect right-clicks
-  useEffect(() => {
-    const handleGlobalContextMenu = (e: MouseEvent) => {
-      // Allow native browser context menu inside selectable text areas (modal preview)
-      const target = e.target as HTMLElement
-      if (target.closest('.selectable-text')) {
-        return // Let browser show native Copy/Paste menu
-      }
-      // Only handle if not clicking on an existing trace element
-      if (target.closest('[data-trace-element="true"]')) {
-        return // Let normal handler take care of it
-      }
-      
-      // Check if click position overlaps with any ignoreClicks trace
-      const clickX = e.clientX
-      const clickY = e.clientY
-      
-      // Find ignoreClicks traces that contain this point
-      for (const trace of traces) {
-        if (!trace.ignoreClicks) continue
-        
-        // Calculate trace bounds in screen coordinates
-        const traceX = trace.x * zoom + worldOffset.x
-        const traceY = trace.y * zoom + worldOffset.y
-        const scaleX = trace.scaleX ?? trace.scale ?? 1
-        const scaleY = trace.scaleY ?? trace.scale ?? 1
-        
-        // Get trace dimensions
-        const traceDims = getTraceSize(trace)
-        let width = traceDims.width, height = traceDims.height
-        if (trace.type === 'shape') {
-          width = trace.width || 200
-          height = trace.height || 200
-        } else if (trace.type !== 'text' && imageDimensions[trace.id]) {
-          width = imageDimensions[trace.id].width
-          height = imageDimensions[trace.id].height
-        }
-        
-        const halfWidth = (width * scaleX * zoom) / 2
-        const halfHeight = (height * scaleY * zoom) / 2
-        
-        // Check if click is within trace bounds
-        if (clickX >= traceX - halfWidth && clickX <= traceX + halfWidth &&
-            clickY >= traceY - halfHeight && clickY <= traceY + halfHeight) {
-          e.preventDefault()
-          setContextMenu({ x: clickX, y: clickY, traceId: trace.id })
-          setSelectedTraceId(trace.id)
-          return
-        }
-      }
-    }
-    
-    window.addEventListener('contextmenu', handleGlobalContextMenu)
-    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu)
-  }, [traces, zoom, worldOffset, imageDimensions])
 
   // Fallback color picker - capture canvas and sample color on click
   useEffect(() => {
@@ -3345,7 +3290,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       setSelectedTraceId(trace.id)
       return
     }
-    if (trace.isLocked && mode !== 'crop') return // Allow crop even on locked traces
+    // Locked: selected by a click -- where its lock button is, to unlock it --
+    // and not moved, sized or turned. Crop still works on it.
+    if (isLockedTrace(trace) && mode !== 'crop') {
+      if (mode === 'move') {
+        e.stopPropagation()
+        setMultiSelectedIds(new Set())
+        setSelectedTraceId(trace.id)
+      }
+      return
+    }
 
     // A trace in a group is taken as its group: pressed, the whole group is
     // selected, and moves. Pressed again without moving -- a second click --
@@ -6091,7 +6045,7 @@ return (
         cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
         // A frame is taken hold of by its edge and title (below); its inside
         // is left to what it holds, and to the canvas under it.
-        pointerEvents: trace.ignoreClicks || isFrame(trace) ? 'none' : 'auto',
+        pointerEvents: trace.id === SHAPE_DRAFT_ID || isFrame(trace) ? 'none' : 'auto',
       }}
       onMouseEnter={() => setCursorState('pointer')}
       onMouseLeave={() => setCursorState('default')}
@@ -6139,7 +6093,7 @@ return (
         // media, where "see it big" means something). Falls back to
         // the modal when editing isn't possible (view-only atrium or
         // a locked trace), where it still serves reading/copying.
-        if (trace.type === 'text' && canEdit && !trace.isLocked) {
+        if (trace.type === 'text' && canEdit && !isLockedTrace(trace)) {
           setSelectedTraceId(trace.id)
           setInlineEditingTraceId(trace.id)
           setInlineEditText(trace.content ?? '')
@@ -6160,7 +6114,7 @@ return (
           style={{
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
-            pointerEvents: trace.ignoreClicks ? 'none' : 'auto',
+            pointerEvents: trace.id === SHAPE_DRAFT_ID ? 'none' : 'auto',
             // Not clipped, nor its SVG (shapeStyle): the shape is drawn
             // inside its box already, stroke and all (the insets below), and
             // on a turned shape a clip is the edge you see -- one the
@@ -6402,7 +6356,7 @@ return (
             padding: '0px',
             // A frame is taken hold of by its edge and title (below); its inside
             // is left to what it holds, and to the canvas under it.
-            pointerEvents: trace.ignoreClicks || isFrame(trace) ? 'none' : 'auto',
+            pointerEvents: trace.id === SHAPE_DRAFT_ID || isFrame(trace) ? 'none' : 'auto',
             // No backgroundImage scanline texture here -- a fine 2-3px
             // repeating-linear-gradient on a container whose pixel size
             // varies continuously with zoom caused visible moire/
@@ -7159,7 +7113,7 @@ return (
               title={canEdit ? t('atrium.frame.renameHint') : undefined}
               onDoubleClick={(e) => {
                 e.stopPropagation()
-                if (!canEdit || trace.isLocked) return
+                if (!canEdit || isLockedTrace(trace)) return
                 setSelectedTraceId(trace.id)
                 setInlineEditingTraceId(trace.id)
                 setInlineEditText(trace.content ?? '')
@@ -7372,6 +7326,40 @@ return (
       </div>
     )}
 
+    {/* Locked and selected: a lock at its top right corner, which unlocks
+        it -- as Excalidraw shows one. Only while selected; otherwise a
+        locked trace looks like any other. */}
+    {isSelected && canEdit && isLockedTrace(trace) && !movingIds.has(trace.id) && (
+      <button
+        data-trace-element="true"
+        data-lock-button=""
+        title={t('atrium.menu.unlock')}
+        aria-label={t('atrium.menu.unlock')}
+        className="absolute z-10 pointer-events-auto flex items-center justify-center w-7 h-7 border transition-colors hover:brightness-125"
+        style={{
+          left: `${screenX + borderWidth / 2}px`,
+          top: `${screenY - borderHeight / 2 - 8 * zoom}px`,
+          transform: `translate(-100%, -100%) scale(${zoom})`,
+          transformOrigin: 'bottom right',
+          color: 'rgb(var(--c-fg) / 0.9)',
+          background: 'rgb(var(--c-ground) / 0.94)',
+          borderColor: 'rgb(var(--c-line) / 0.7)',
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          on.updateTraceCustomization(trace.id, UNLOCKED)
+          if (editingTraceRef.current?.id === trace.id) setEditingTrace({ ...editingTraceRef.current, ...UNLOCKED })
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+          <rect x="3" y="7" width="10" height="7" />
+          <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+        </svg>
+      </button>
+    )}
+
   </div>
 </div>
 )
@@ -7423,7 +7411,7 @@ return (
             let go of the path. */}
         {selectedTraceId && canEdit && (() => {
           const trace = traces.find(t => t.id === selectedTraceId)
-          if (!trace || trace.type !== 'shape' || trace.shapeType !== 'path') return null
+          if (!trace || trace.type !== 'shape' || trace.shapeType !== 'path' || isLockedTrace(trace)) return null
 
           const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
           const points: PathPoint[] = localShapePoints[trace.id] || displayTrace.shapePoints || []
@@ -7600,6 +7588,8 @@ return (
           // zoom-visibility fix) whenever the user simply had some OTHER,
           // unrelated multi-selection active, which looked like a random
           // "empty box" appearing around freshly-selected paths.
+          // A locked trace can't be sized or turned: no handles to suggest it.
+          if (trace && isLockedTrace(trace)) return null
           const isPathInMultiSelect = trace?.type === 'shape' && trace?.shapeType === 'path' && multiSelectedIds.has(trace.id)
           // Hide for paths unless they're in a multi-selection
           if (!trace || (trace.type === 'shape' && trace.shapeType === 'path' && !isPathInMultiSelect)) return null
@@ -8248,24 +8238,12 @@ return (
               onClick={() => {
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
-                  updateTraceCustomization(trace.id, { isLocked: !trace.isLocked })
+                  updateTraceCustomization(trace.id, isLockedTrace(trace) ? UNLOCKED : { isLocked: true })
                 }
                 setContextMenu(null)
               }}
             >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.isLocked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
-            </button>
-            <button
-              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
-              onClick={() => {
-                const trace = traces.find(t => t.id === contextMenu.traceId)
-                if (trace) {
-                  updateTraceCustomization(trace.id, { ignoreClicks: !trace.ignoreClicks })
-                }
-                setContextMenu(null)
-              }}
-            >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {traces.find(t => t.id === contextMenu.traceId)?.ignoreClicks ? t('atrium.menu.enableClicks') : t('atrium.menu.ignoreClicks')}
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {isLockedTrace(traces.find(t => t.id === contextMenu.traceId) ?? {}) ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
             </button>
             {/* The same switch as the Customize checkbox, one right-click away:
                 an embed is where a video or page you can use lives. */}
@@ -8713,7 +8691,6 @@ return (
                 value={editingTrace.content ?? ''}
                 placeholder={t('atrium.layers.untitled')}
                 // A shape's name is drawn on the shape, and was capped at 50 for that.
-                maxLength={editingTrace.type === 'shape' ? 50 : 256}
                 onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
                 onCommit={(value) => updateTraceCustomization(editingTrace.id, { content: value })}
               />
@@ -8821,7 +8798,6 @@ return (
                     className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     placeholder={t('atrium.customize.messagePlaceholder')}
                     rows={4}
-                    maxLength={256}
                   />
                 </div>
               )}

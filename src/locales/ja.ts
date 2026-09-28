@@ -415,8 +415,6 @@ const ja: Catalogue = {
   'atrium.trace.type.sound': '音',
   'atrium.menu.lock': 'ロック',
   'atrium.menu.unlock': 'ロック解除',
-  'atrium.menu.ignoreClicks': 'クリックを無視',
-  'atrium.menu.enableClicks': 'クリックを受け付ける',
 
   // ------------------------------------------------------------------ HUD
   'atrium.hud.fullscreen': '全画面',
@@ -1103,7 +1101,7 @@ const ja: Catalogue = {
   'atrium.layers.selectAllTraces': 'すべての trace を選ぶ',
   'atrium.layers.goToGroup': 'このグループへ移動',
   'atrium.layers.goToGroupHint': 'このグループの中身がすべて入るようにカメラを合わせます',
-  'atrium.layers.ungroupAll': 'すべてグループから外す',
+  'atrium.layers.ungroupAll': 'グループを空にする',
   'atrium.layers.ungroupAllHint': 'グループは残したまま、trace をすべて「グループなし」へ移します',
   'atrium.layers.lockAll': 'すべてロック',
   'atrium.layers.unlockAll': 'すべて解除',

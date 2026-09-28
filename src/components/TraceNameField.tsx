@@ -15,7 +15,7 @@ export default function TraceNameField({ label, value, placeholder, maxLength, r
   label: string
   value: string
   placeholder: string
-  maxLength: number
+  maxLength?: number
   readOnly?: boolean
   onChange: (value: string) => void
   onCommit: (value: string) => void

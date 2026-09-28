@@ -3760,7 +3760,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           continue
         }
 
-        pending.push({ traceType: 'text', content: text.slice(0, 5000), size: getDefaultTraceBoxSize('text') })
+        pending.push({ traceType: 'text', content: text, size: getDefaultTraceBoxSize('text') })
         continue
       }
 
@@ -4176,7 +4176,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The same three shapes a drop makes, so an extension trace is not a
       // different kind of thing once it has landed.
       if (data.kind === 'text') {
-        void insertDroppedTraceRef.current('text', data.text.slice(0, 5000), undefined, worldX, worldY)
+        void insertDroppedTraceRef.current('text', data.text, undefined, worldX, worldY)
       } else if (data.kind === 'embed') {
         void insertDroppedTraceRef.current('embed', data.url, data.url, worldX, worldY)
       } else {

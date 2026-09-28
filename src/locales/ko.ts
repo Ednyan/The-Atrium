@@ -419,8 +419,6 @@ const ko: Catalogue = {
   'atrium.trace.type.sound': '소리',
   'atrium.menu.lock': '잠금',
   'atrium.menu.unlock': '잠금 해제',
-  'atrium.menu.ignoreClicks': '클릭 무시',
-  'atrium.menu.enableClicks': '클릭 받기',
 
   // ------------------------------------------------------------------ HUD
   'atrium.hud.fullscreen': '전체 화면',
@@ -1107,7 +1105,7 @@ const ko: Catalogue = {
   'atrium.layers.selectAllTraces': 'trace 모두 선택',
   'atrium.layers.goToGroup': '이 그룹으로 가기',
   'atrium.layers.goToGroupHint': '이 그룹 안의 모든 것이 담기도록 화면을 맞춰요',
-  'atrium.layers.ungroupAll': '모두 그룹에서 빼기',
+  'atrium.layers.ungroupAll': '그룹 비우기',
   'atrium.layers.ungroupAllHint': '그룹은 남기고 trace를 모두 「그룹 없음」으로 옮겨요',
   'atrium.layers.lockAll': '모두 잠금',
   'atrium.layers.unlockAll': '모두 잠금 해제',
