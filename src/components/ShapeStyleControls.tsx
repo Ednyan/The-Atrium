@@ -264,17 +264,23 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
 
       <SectionRule label={t('atrium.customize.colour')} />
 
-      <ColourField label={t('atrium.customize.fillColour')} value={value.shapeColor} onChange={c => onChange({ shapeColor: c })} />
+      {/* A path is a line: its colour and how opaque it is (arrows and
+          all), with nothing to fill. */}
+      <ColourField label={isPath ? t('atrium.customize.lineColour') : t('atrium.customize.fillColour')} value={value.shapeColor} onChange={c => onChange({ shapeColor: c })} />
 
       <Slider
-        label={t('atrium.customize.fillOpacity', { value: (value.shapeOpacity * 100).toFixed(0) })}
+        label={isPath
+          ? t('atrium.customize.opacity', { value: (value.shapeOpacity * 100).toFixed(0) })
+          : t('atrium.customize.fillOpacity', { value: (value.shapeOpacity * 100).toFixed(0) })}
         min={0} max={1} step={0.01} value={value.shapeOpacity}
         onChange={v => onChange({ shapeOpacity: v })}
       />
 
-      <div className="space-y-2">
-        <Check checked={value.shapeNoFill} onChange={v => onChange({ shapeNoFill: v })} label={t('atrium.customize.noFill')} />
-      </div>
+      {!isPath && (
+        <div className="space-y-2">
+          <Check checked={value.shapeNoFill} onChange={v => onChange({ shapeNoFill: v })} label={t('atrium.customize.noFill')} />
+        </div>
+      )}
 
       {/* A path is only ever its outline, so it has no switch for one. */}
       {!isPath && (

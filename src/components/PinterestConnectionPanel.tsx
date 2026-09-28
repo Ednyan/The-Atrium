@@ -18,8 +18,16 @@ import PinterestMark from './PinterestMark'
 // It used to be a section inside Profile Settings, several scrolls down among
 // the username and the cursor colour -- which is a reasonable place for a
 // setting and a poor one for a feature nobody knows exists yet. It has its own
-// row on the welcome screen now.
-export default function PinterestConnectionPanel({ onClose }: { onClose: () => void }) {
+// row on the welcome screen, and opens inside an atrium too, when its boards
+// are asked for before there's a connection.
+//
+// onConnected: the desktop app linked, here and now. onConnectStart: the web
+// is about to leave for Pinterest, and will come back to where it was.
+export default function PinterestConnectionPanel({ onClose, onConnected, onConnectStart }: {
+  onClose: () => void
+  onConnected?: () => void
+  onConnectStart?: () => void
+}) {
   const { t } = useTranslation()
   const [checking, setChecking] = useState(true)
   const [connected, setConnected] = useState(false)
@@ -49,6 +57,7 @@ export default function PinterestConnectionPanel({ onClose }: { onClose: () => v
       setCodeInput('')
       await loadStatus()
       showToast(t('profile.pinterestLinkedToast'))
+      onConnected?.()
     } catch (error: any) {
       setLinkError(error?.message || t('profile.pinterestCodeFailed'))
     } finally {
@@ -155,7 +164,10 @@ export default function PinterestConnectionPanel({ onClose }: { onClose: () => v
           ) : (
             <button
               type="button"
-              onClick={initiatePinterestConnect}
+              onClick={() => {
+                onConnectStart?.()
+                initiatePinterestConnect()
+              }}
               disabled={!isPinterestConfigured()}
               className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >

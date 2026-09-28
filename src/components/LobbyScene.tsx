@@ -34,17 +34,20 @@ import { newTraceOrderFields } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
 import { fileTitle, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
 import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
-import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
+import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
+import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
+import { placementInWorld, placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
+import type { View } from '../lib/worldCamera'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -666,6 +669,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The layer group new traces are created into (null = ungrouped). Set by
   // clicking a group/Ungrouped header in the Layer panel.
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
+  // A group that's gone -- ungrouped, deleted, undone -- is nowhere to put
+  // new traces: they'd be made in a group that doesn't exist.
+  useEffect(() => {
+    if (!activeLayerId) return
+    return useGameStore.subscribe(state => {
+      if (!state.layers.some(l => l.id === activeLayerId)) setActiveLayerId(null)
+    })
+  }, [activeLayerId])
   // One-shot request for TraceOverlay to multi-select a set of trace ids,
   // fired when the user clicks a group in the Layer panel. TraceOverlay owns
   // its own selection state internally, so this is passed down rather than
@@ -680,12 +691,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // should be selected and dropped straight into typing. Same shape and same
   // reasoning as newPathTraceId -- ids are always fresh, so a useEffect keyed
   // on the value fires once per request without needing to be reset.
-  const [newTextTraceId, setNewTextTraceId] = useState<string | null>(null)
+  const [newTextTraceId, setNewTextTraceId] = useState<{ id: string; drawn?: boolean } | null>(null)
   // A frame for TraceOverlay to make, from the canvas menu.
-  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number; width?: number; height?: number } | null>(null)
+  const [frameRequest, setFrameRequest] = useState<{ x: number; y: number; width?: number; height?: number; customize?: boolean } | null>(null)
   // The quick bar's armed tool (QuickBar): the next press on the canvas
   // places one of these, rather than panning or selecting.
   const [placeTool, setPlaceTool] = useState<PlaceTool | null>(null)
+  // The quick bar's Direct select: a click takes the trace itself, even in a
+  // group or a frame, rather than its group whole.
+  const [directSelect, setDirectSelect] = useState(false)
+  // The quick bar's Text makes plain text -- no box: border, background or
+  // shadow -- rather than text in a box.
+  const [plainText, setPlainText] = useState(false)
   const placeToolRef = useRef(placeTool)
   placeToolRef.current = placeTool
   // A placement under way: where it was pressed, on screen and in the world.
@@ -815,6 +832,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
   const [pinterestConnected, setPinterestConnected] = useState(false)
   const [showPinterestImport, setShowPinterestImport] = useState(false)
+  // Connecting Pinterest, from inside the atrium, when its boards are asked
+  // for before there's a connection (openPinterestImport).
+  const [showPinterestConnect, setShowPinterestConnect] = useState(false)
   const [pinterestImportAnchor, setPinterestImportAnchor] = useState<{ x: number; y: number } | null>(null)
   const [showLocalFileBlockedDialog, setShowLocalFileBlockedDialog] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -916,7 +936,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // them all on every pointer move was fine for plain lines, but a stamped
   // brush is hundreds of stamps a stroke; now only the stroke in progress is
   // painted per move.
-  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null } | null>(null)
+  // Painted at a view, and painted again when the view moves: the strokes are
+  // kept in world units (lib/drawingView), so a drawing stays where it was
+  // drawn while the view pans and zooms around it.
+  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null; view: View | null } | null>(null)
   // The saved drawing being edited: its trace, and its picture where the trace
   // shows it, which sits under the new strokes as where they start from.
   const editingDrawingRef = useRef<{ traceId: string; img: HTMLImageElement; placement: TracePlacement } | null>(null)
@@ -930,6 +953,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [pointerOnDrawingCanvas, setPointerOnDrawingCanvas] = useState(false)
   const [isSavingDrawing, setIsSavingDrawing] = useState(false)
   const currentStrokeRef = useRef<StrokePoint[]>([])
+  // The stroke in progress's width, in world units: the brush's size on
+  // screen at the zoom it was begun at.
+  const strokeWidthRef = useRef(3)
+  // The closest any stroke of this drawing was drawn from, so saving keeps
+  // the detail it was drawn with even when saved from further out.
+  const drawnZoomRef = useRef(0)
   const isDrawingModeRef = useRef(false)
   const isEraserModeRef = useRef(false)
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -995,6 +1024,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const resetDrawing = useCallback(() => {
     setCompletedStrokes([])
     currentStrokeRef.current = []
+    drawnZoomRef.current = 0
     // The way back to a drawing that no longer exists is not a way back to
     // anything, so the timeline goes with it.
     clearHistory()
@@ -1123,7 +1153,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       commitDrawing(prev => [...prev, {
         points: [...rawPoints],
         color: drawingColorRef.current,
-        width: drawingWidthRef.current,
+        width: strokeWidthRef.current,
         isEraser: isEraserModeRef.current,
         brush: drawingBrushRef.current,
         seed: currentSeedRef.current,
@@ -1151,51 +1181,61 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }
 
+  // The view the drawing is seen through: the world container's, which the
+  // camera moves every frame.
+  const drawView = (): View => ({ x: worldContainerRef.current?.x ?? 0, y: worldContainerRef.current?.y ?? 0, zoom: zoomRef.current })
+
   const renderDrawingCanvas = () => {
     const canvas = drawingCanvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const strokes = completedStrokesRef.current
-    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), strokes: null }
+    const view = drawView()
+    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), strokes: null, view: null }
     if (layer.canvas.width !== canvas.width || layer.canvas.height !== canvas.height) {
       layer.canvas.width = canvas.width
       layer.canvas.height = canvas.height
       layer.strokes = null
     }
-    if (layer.strokes !== strokes) {
+    const sameViewAsLayer = sameView(layer.view, view)
+    if (layer.strokes !== strokes || !sameViewAsLayer) {
       const layerCtx = layer.canvas.getContext('2d')
       if (!layerCtx) return
       const previous = layer.strokes
       // A stroke added to the end -- the usual case -- is painted on top of
-      // what is there. Anything else (undo, clear, redo) repaints them all.
-      const appended = previous !== null
+      // what is there. Anything else (undo, clear, redo, the view moving)
+      // repaints them all.
+      const appended = sameViewAsLayer && previous !== null
         && strokes.length === previous.length + 1
         && strokes[previous.length - 1] === previous[previous.length - 1]
       if (!appended) {
         layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
         // An edited drawing's picture goes in first, so the eraser reaches it.
         const editing = editingDrawingRef.current
-        if (editing) drawPlacedPicture(layerCtx, editing.img, editing.placement)
+        if (editing) drawPlacedPicture(layerCtx, editing.img, placementOnScreen(editing.placement, view))
       }
-      for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, stroke)
+      for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, strokeOnScreen(stroke, view))
       layer.strokes = strokes
+      layer.view = view
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(layer.canvas, 0, 0)
     // Draw current active stroke
     if (currentStrokeRef.current.length >= 1) {
-      drawStroke(ctx, {
+      drawStroke(ctx, strokeOnScreen({
         points: currentStrokeRef.current,
         color: drawingColorRef.current,
-        width: drawingWidthRef.current,
+        width: strokeWidthRef.current,
         isEraser: isEraserModeRef.current,
         brush: drawingBrushRef.current,
         seed: currentSeedRef.current,
         hardness: drawingHardnessRef.current / 100,
-      })
+      }, view))
     }
   }
+  const renderDrawingCanvasRef = useRef(renderDrawingCanvas)
+  renderDrawingCanvasRef.current = renderDrawingCanvas
 
   // Canvas resize effect
   useEffect(() => {
@@ -1388,8 +1428,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Check the Pinterest connection once per atrium visit, to decide whether to
   // show the import button. Asked on both platforms now: on desktop the answer
   // comes from whether this install is linked to a web account that has one.
+  // Connected on the web from in here, the page came back to the atrium and
+  // the import it was for opens now -- whether the connection was already
+  // made when the atrium loaded, or lands a moment after (App announces it).
   useEffect(() => {
-    getPinterestConnectionStatus().then(({ connected }) => setPinterestConnected(connected))
+    const openImportIfWanted = () => {
+      if (!takeImportAfterPinterestConnect()) return
+      setPinterestImportAnchor(null)
+      setShowPinterestImport(true)
+    }
+    getPinterestConnectionStatus().then(({ connected }) => {
+      setPinterestConnected(connected)
+      if (connected) openImportIfWanted()
+    })
+    const onConnected = () => {
+      setPinterestConnected(true)
+      setShowPinterestConnect(false)
+      openImportIfWanted()
+    }
+    window.addEventListener(PINTEREST_CONNECTED_EVENT, onConnected)
+    return () => window.removeEventListener(PINTEREST_CONNECTED_EVENT, onConnected)
   }, [])
 
   // Listen for zoom sensitivity changes from profile settings and keep value in sync
@@ -1824,22 +1882,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setIsDrawingMode(!isDrawingMode)
   }
 
-  // Pinterest's board import, placing at `anchor` -- or, not linked yet, the
-  // way to link it.
+  // Pinterest's board import, placing at `anchor` -- or, not connected yet,
+  // connecting it first, right here: the same panel the welcome screen opens
+  // (desktop links with a code from the browser; the web goes to Pinterest and
+  // comes back to this atrium), and on into the import once it's done. It
+  // used to send you out to the welcome screen to do it.
   const openPinterestImport = (anchor: { x: number; y: number } | null) => {
-    if (pinterestConnected) {
-      setPinterestImportAnchor(anchor)
-      setShowPinterestImport(true)
-    } else if (isDesktop) {
-      // Sending the webview to Pinterest would strand it there:
-      // there is no address bar to come back from, and no https
-      // origin for Pinterest to return to. Linking happens in
-      // its own row on the welcome screen, so say where rather
-      // than doing nothing.
-      showToast(t('atrium.error.linkPinterestFirst', { entry: t('welcome.pinterest') }))
-    } else {
-      initiatePinterestConnect()
-    }
+    setPinterestImportAnchor(anchor)
+    if (pinterestConnected) setShowPinterestImport(true)
+    else setShowPinterestConnect(true)
   }
 
   const quickAction = (action: QuickAction) => {
@@ -1882,32 +1933,50 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // corner; `even`, as big each way) and a path its two ends; a click puts
   // the trace there at its usual size, or starts a path to click on from.
   const finishPlacing = async (tool: PlaceTool, start: { sx: number; sy: number; wx: number; wy: number }, end: { sx: number; sy: number }, even: boolean) => {
-    setPlaceTool(null)
+    // The tool stays in hand, to place another straight away, as Excalidraw
+    // does -- all but Text, whose next click ends the typing it starts (and a
+    // clicked Path's, below, for the same reason).
+    if (tool === 'text') setPlaceTool(null)
     const a = { x: start.wx, y: start.wy }
     const b = screenToWorld(end.sx, end.sy)
     const dragged = Math.hypot(end.sx - start.sx, end.sy - start.sy) >= 6
-    const least = 10
+    const least = tool === 'text' ? 24 : 10
     let width = Math.max(least, Math.abs(b.x - a.x)), height = Math.max(least, Math.abs(b.y - a.y))
     if (even) width = height = Math.max(width, height)
     const centre = { x: a.x + (b.x >= a.x ? width : -width) / 2, y: a.y + (b.y >= a.y ? height : -height) / 2 }
+    // What's made is selected, with its Customize panel open.
+    const customize = (id: string) => setCustomizeRequest([id])
 
     if (tool === 'text') {
+      // The box first, dragged out like a rectangle (or the usual size, for
+      // a click), then straight into typing in it. It keeps that size until
+      // the text outgrows it (TraceOverlay's fitTextLive).
       if (!ensureLobbyHasSpace()) return
-      const id = await insertDroppedTrace('text', '', undefined, a.x, a.y)
-      if (id) setNewTextTraceId(id)
+      // Plain text: just the words, in whichever of black and white stands
+      // out from the atrium's background as it is now.
+      const look = plainText
+        ? { showBorder: false, showBackground: false, showShadow: false, textColor: textColourOn(currentLobby?.themeSettings?.backgroundColor) }
+        : undefined
+      const id = dragged
+        ? await insertDroppedTrace('text', '', undefined, centre.x, centre.y, undefined, { width, height }, look)
+        : await insertDroppedTrace('text', '', undefined, a.x, a.y, undefined, undefined, look)
+      if (id) setNewTextTraceId({ id, drawn: dragged })
       return
     }
     if (tool === 'frame') {
-      setFrameRequest(dragged ? { x: centre.x, y: centre.y, width, height } : { x: a.x, y: a.y })
+      setFrameRequest(dragged ? { x: centre.x, y: centre.y, width, height, customize: true } : { x: a.x, y: a.y, customize: true })
       return
     }
     if (tool === 'path') {
       const style = shapeStyleOf({ shapeType: 'path' })
       if (dragged) {
         const id = await insertShapeTrace(style, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [a, b])
-        if (id) setSelectedTraceId(id)
+        if (id) customize(id)
       } else {
-        // One point, and on into adding more, as the panel's Path does.
+        // One point, and on into adding more, as the panel's Path does (its
+        // Customize panel opens with it). The clicks that follow are that
+        // path's points, so the tool is let go of, as Text's is.
+        setPlaceTool(null)
         const id = await insertShapeTrace(style, a, [a])
         if (id) setNewPathTraceId(id)
       }
@@ -1919,18 +1988,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       undefined,
       dragged ? { width, height } : { width: 200, height: 200 },
     )
-    if (id) setSelectedTraceId(id)
+    if (id) customize(id)
   }
   const finishPlacingRef = useRef(finishPlacing)
   finishPlacingRef.current = finishPlacing
 
   // What an armed tool is dragging out, from press to pointer on screen: the
-  // box of a rectangle or frame (dashed), the ellipse of a circle, the line of
-  // a path. `even`: Shift, a box as big each way. Hidden with no drag.
+  // box of a rectangle, or of a frame or text box (dashed), the ellipse of a
+  // circle, the line of a path. `even`: Shift, a box as big each way. Hidden with no drag.
   const drawPlacePreview = (tool: PlaceTool | null, drag: { x1: number; y1: number; x2: number; y2: number; even: boolean } | null) => {
     const svg = placePreviewRef.current
     if (!svg) return
-    if (!tool || !drag || tool === 'text') {
+    if (!tool || !drag) {
       svg.style.display = 'none'
       return
     }
@@ -1949,9 +2018,47 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
     set(line, tool === 'path', { x1, y1, x2, y2 })
     set(ellipse, tool === 'circle', { cx: left + w / 2, cy: top + h / 2, rx: w / 2, ry: h / 2 })
-    set(rect, tool === 'rectangle' || tool === 'frame', { x: left, y: top, width: w, height: h, 'stroke-dasharray': tool === 'frame' ? '6 4' : 'none' })
+    set(rect, tool === 'rectangle' || tool === 'frame' || tool === 'text', { x: left, y: top, width: w, height: h, 'stroke-dasharray': tool === 'rectangle' ? 'none' : '6 4' })
     svg.style.display = 'block'
   }
+
+  // The middle button pans the view, a second way to the left drag on empty
+  // canvas -- and from anywhere, over traces too, since it does nothing else
+  // there. Not over a panel, where it keeps its own use. Caught first, so
+  // nothing under it takes the press; its default, the browser's autoscroll,
+  // is kept from starting, and a middle click on a link doesn't open it.
+  useEffect(() => {
+    let panning = false
+    const down = (e: MouseEvent) => {
+      if (e.button !== 1) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-ui-element], [data-hud], .customize-menu, .layer-panel, [role="dialog"], input, textarea, select')) return
+      e.preventDefault()
+      e.stopPropagation()
+      panning = true
+      isPanningRef.current = true
+      cameraFlyToRef.current = null
+      lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
+    }
+    const up = (e: MouseEvent) => {
+      if (e.button !== 1 || !panning) return
+      panning = false
+      isPanningRef.current = false
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const aux = (e: MouseEvent) => {
+      if (e.button === 1 && isPanningRef.current === false && !(e.target as HTMLElement | null)?.closest?.('[data-ui-element], [data-hud], .customize-menu, .layer-panel, [role="dialog"]')) e.preventDefault()
+    }
+    window.addEventListener('mousedown', down, true)
+    window.addEventListener('mouseup', up, true)
+    window.addEventListener('auxclick', aux, true)
+    return () => {
+      window.removeEventListener('mousedown', down, true)
+      window.removeEventListener('mouseup', up, true)
+      window.removeEventListener('auxclick', aux, true)
+    }
+  }, [])
 
   // An armed tool takes the next press on the canvas -- or on a trace, which
   // a frame is often drawn around -- ahead of everything that would
@@ -1961,7 +2068,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const onCanvas = (target: EventTarget | null) => {
       const el = target as HTMLElement | null
       if (!el?.closest) return false
-      if (el.closest('[data-trace-element]')) return true
+      // A selected trace's handles stay its own, so what was just placed can
+      // be sized and turned with the tool still in hand.
+      if (el.closest('.trace-nier-handle, .trace-nier-handle-center, .trace-rotate-handle, [data-elbow-grip], [data-frame-title]')) return false
+      if (el.closest('[data-trace-element], [data-canvas-backdrop]')) return true
       return !el.closest('[data-ui-element], [data-hud], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
     }
     const down = (e: PointerEvent) => {
@@ -3166,6 +3276,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // The grid is in screen space (drawGrid), so it's redrawn on every
         // frame the view moves, and not otherwise.
         if (viewMoved) updateGridRef.current?.()
+        // A drawing in progress is in the world, and is painted through the
+        // view (renderDrawingCanvas), so it moves with it.
+        if (isDrawingModeRef.current && !sameView(committedLayerRef.current?.view ?? null, { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current })) {
+          renderDrawingCanvasRef.current()
+        }
         
         // Floating particles, which drift every frame.
         themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)
@@ -3691,7 +3806,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           continue
         }
 
-        pending.push({ traceType: 'text', content: text.slice(0, 5000), size: getDefaultTraceBoxSize('text') })
+        pending.push({ traceType: 'text', content: text, size: getDefaultTraceBoxSize('text') })
         continue
       }
 
@@ -3944,7 +4059,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // The dropped or pasted file itself, when there is one: read locally,
     // which is quicker and surer than reading it back from where it went.
     file?: Blob,
+    // A size to make it at, when one was dragged out for it (the quick bar's
+    // Text); otherwise its type's own.
+    size?: { width: number; height: number },
+    // How it looks, where not the atrium's house style: the quick bar's plain
+    // text has no border, background or shadow, and a colour of its own.
+    look?: { showBorder?: boolean; showBackground?: boolean; showShadow?: boolean; textColor?: string },
   ) => {
+    const sized = size ? { width: Math.round(size.width), height: Math.round(size.height) } : {}
     if (supabase) {
       // The live store, not the render-time `traces`, so a multi-file drop --
       // which adds each inserted row back before the next -- stacks each one
@@ -3986,10 +4108,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
         border_color: preset.border,
         fill_color: preset.fill,
-        show_border: !seeThrough,
-        show_background: !seeThrough,
+        show_border: look?.showBorder ?? !seeThrough,
+        show_background: look?.showBackground ?? !seeThrough,
+        ...(look?.showShadow !== undefined ? { show_shadow: look.showShadow } : {}),
         font_family: 'mono',
-        ...(preset.text ? { text_color: preset.text } : {}),
+        ...(look?.textColor ? { text_color: look.textColor } : preset.text ? { text_color: preset.text } : {}),
         content,
         position_x: x,
         position_y: y,
@@ -4010,6 +4133,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         show_description: false,
         show_filename: false,
         ...(embedBox ?? {}),
+        ...sized,
         ...layerFields,
       } as any).select()
 
@@ -4037,10 +4161,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         type: traceType as any,
         borderColor: preset.border,
         fillColor: preset.fill,
-        showBorder: true,
-        showBackground: true,
+        showBorder: look?.showBorder ?? true,
+        showBackground: look?.showBackground ?? true,
+        // As the database insert above has it.
+        showFilename: false,
+        ...(look?.showShadow !== undefined ? { showShadow: look.showShadow } : {}),
         fontFamily: 'mono',
-        ...(preset.text ? { textColor: preset.text } : {}),
+        ...(look?.textColor ? { textColor: look.textColor } : preset.text ? { textColor: preset.text } : {}),
         content,
         x,
         y,
@@ -4051,6 +4178,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         scaleY: 1.0,
         rotation: 0.0,
         borderRadius: 0,
+        ...sized,
       }
       useGameStore.getState().addTrace(trace)
       return trace.id
@@ -4101,7 +4229,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The same three shapes a drop makes, so an extension trace is not a
       // different kind of thing once it has landed.
       if (data.kind === 'text') {
-        void insertDroppedTraceRef.current('text', data.text.slice(0, 5000), undefined, worldX, worldY)
+        void insertDroppedTraceRef.current('text', data.text, undefined, worldX, worldY)
       } else if (data.kind === 'embed') {
         void insertDroppedTraceRef.current('embed', data.url, data.url, worldX, worldY)
       } else {
@@ -4122,8 +4250,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     let editSaved = false
     setIsSavingDrawing(true)
     try {
+      // The strokes are kept in the world (lib/drawingView); they're saved as
+      // they're seen at the current view, which is also the one the box they
+      // end up in is placed back into the world with, below.
+      const view = drawView()
+      const strokes = completedStrokes.map(stroke => strokeOnScreen(stroke, view))
+      const editPlacement = editing ? placementOnScreen(editing.placement, view) : null
       // Render all strokes to find tight bounding box
-      const allPoints = completedStrokes.flatMap(s => s.points)
+      const allPoints = strokes.flatMap(s => s.points)
       // Returning from inside the try skips the cleanup after it, so this one
       // has to undo the flag itself or the button stays disabled for good.
       if (allPoints.length === 0) { setIsSavingDrawing(false); return }
@@ -4131,19 +4265,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Room for the widest stroke's edge beyond its centre line, or a
       // thick one came out with its sides sliced off -- and past that, room
       // for a soft stroke's fade, up to three quarters of a width further out.
-      const padding = Math.max(20, Math.ceil(Math.max(...completedStrokes.map(s => s.width)) * 1.3) + 4)
+      const padding = Math.max(20, Math.ceil(Math.max(...strokes.map(s => s.width)) * 1.3) + 4)
       let minSX = Math.min(...allPoints.map(p => p.x)) - padding
       let maxSX = Math.max(...allPoints.map(p => p.x)) + padding
       let minSY = Math.min(...allPoints.map(p => p.y)) - padding
       let maxSY = Math.max(...allPoints.map(p => p.y)) + padding
 
-      // Pixels per screen pixel. 1 for a new drawing, which is drawn at the
-      // screen's resolution. An edited one keeps its picture's own resolution
-      // where that is finer -- edited while zoomed out, it would otherwise come
-      // back blurrier every time -- up to 4x.
-      let k = 1
-      if (editing) {
-        const { img, placement } = editing
+      // Pixels per screen pixel: the screen's resolution, or finer where any
+      // of it was drawn from closer in than it's saved from, so zooming out
+      // to save doesn't blur it. An edited one keeps its picture's own
+      // resolution where that is finer still -- edited while zoomed out, it
+      // would otherwise come back blurrier every time. Up to 4x either way.
+      let k = Math.min(4, Math.max(1, drawnZoomRef.current / view.zoom))
+      if (editing && editPlacement) {
+        const { img } = editing
+        const placement = editPlacement
         // The picture counts toward the box: it may reach past anything drawn.
         const b = placementBounds(placement, img.naturalWidth, img.naturalHeight)
         minSX = Math.min(minSX, Math.floor(b.minX))
@@ -4151,7 +4287,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         minSY = Math.min(minSY, Math.floor(b.minY))
         maxSY = Math.max(maxSY, Math.ceil(b.maxY))
         const shown = placePicture(placement, img.naturalWidth, img.naturalHeight)
-        k = Math.min(4, Math.max(1, img.naturalWidth / Math.max(1, Math.abs(shown.w))))
+        k = Math.max(k, Math.min(4, Math.max(1, img.naturalWidth / Math.max(1, Math.abs(shown.w)))))
       }
       const cropW = Math.max(1, maxSX - minSX)
       const cropH = Math.max(1, maxSY - minSY)
@@ -4164,15 +4300,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       offscreen.height = Math.ceil(cropH * k)
       const offCtx = offscreen.getContext('2d')!
 
-      if (editing) {
+      if (editing && editPlacement) {
         offCtx.setTransform(k, 0, 0, k, -minSX * k, -minSY * k)
-        drawPlacedPicture(offCtx, editing.img, editing.placement)
+        drawPlacedPicture(offCtx, editing.img, editPlacement)
         offCtx.setTransform(1, 0, 0, 1, 0, 0)
       }
 
       // Draw strokes shifted so bounding box starts at (0,0)
       // The spread keeps each point's pressure, which a bare {x, y} dropped.
-      for (const stroke of completedStrokes) {
+      for (const stroke of strokes) {
         drawStroke(offCtx, {
           ...stroke,
           width: stroke.width * k,
@@ -4233,10 +4369,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         imageUrl = publicUrl
       }
 
-      // Convert screen-space bounds to world coordinates
-      const panX = worldContainerRef.current?.x ?? 0
-      const panY = worldContainerRef.current?.y ?? 0
-      const zoom = zoomRef.current
+      // Convert screen-space bounds to world coordinates, through the view
+      // they were laid out at -- the upload above takes time, and the view
+      // may have moved since.
+      const panX = view.x
+      const panY = view.y
+      const zoom = view.zoom
       const worldMinX = (outMinX - panX) / zoom
       const worldMinY = (outMinY - panY) / zoom
       const worldW = outW / zoom
@@ -4367,7 +4505,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
     resetDrawing()
-    editingDrawingRef.current = { traceId, img, placement }
+    // Where its picture sits in the world, to be drawn over as the view moves.
+    editingDrawingRef.current = { traceId, img, placement: placementInWorld(placement, drawView()) }
     if (committedLayerRef.current) committedLayerRef.current.strokes = null
     setEditingDrawingId(traceId)
     setIsEraserMode(false)
@@ -4416,6 +4555,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
+            directSelect={directSelect}
             frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
             hideCursor={isDrawingMode && pointerOnDrawingCanvas}
@@ -4940,7 +5080,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </button>
 
       {/* The quick bar, down the left edge: a tool for each kind of trace. */}
-      {canEdit && <QuickBar armed={placeTool} drawing={isDrawingMode} onAction={quickAction} />}
+      {canEdit && (
+        <QuickBar
+          armed={placeTool}
+          drawing={isDrawingMode}
+          kinds={{ select: directSelect, text: plainText }}
+          onAction={quickAction}
+          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
+        />
+      )}
 
       {/* Draw Button */}
       {canEdit && (
@@ -5292,7 +5440,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 // Keeps the stroke's events coming to the canvas even if the pen
                 // strays over a panel mid-line.
                 e.currentTarget.setPointerCapture(e.pointerId)
-                const point = strokePoint(e.clientX, e.clientY, e.pointerType, e.pressure)
+                // In the world, so it stays where it's drawn as the view moves.
+                const at = pointToWorld(e.clientX, e.clientY, drawView())
+                const point = strokePoint(at.x, at.y, e.pointerType, e.pressure)
+                strokeWidthRef.current = drawingWidthRef.current / zoomRef.current
+                drawnZoomRef.current = Math.max(drawnZoomRef.current, zoomRef.current)
                 currentStrokeRef.current = [point]
                 currentSeedRef.current = newStrokeSeed()
                 smoothedPointRef.current = { x: point.x, y: point.y }
@@ -5317,8 +5469,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               // reports far faster than the screen redraws, and dropping the
               // in-between points is what makes a fast pen stroke angular.
               const coalesced = e.nativeEvent.getCoalescedEvents?.() ?? []
+              const view = drawView()
               for (const sample of coalesced.length ? coalesced : [e.nativeEvent]) {
-                addStrokeSample(strokePoint(sample.clientX, sample.clientY, sample.pointerType, sample.pressure))
+                const at = pointToWorld(sample.clientX, sample.clientY, view)
+                addStrokeSample(strokePoint(at.x, at.y, sample.pointerType, sample.pressure))
               }
               renderDrawingCanvas()
             }}
@@ -5445,7 +5599,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   if (item.type === 'text') {
                     if (!ensureLobbyHasSpace()) return
                     const id = await insertDroppedTrace('text', '', undefined, anchor.x, anchor.y)
-                    if (id) setNewTextTraceId(id)
+                    if (id) setNewTextTraceId({ id })
                     return
                   }
 
@@ -5504,6 +5658,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           shapeDraftSize={shapeDraftSize}
           onShapeDraftChange={handleShapeDraftChange}
           onShapeModeChange={handleShapeModeChange}
+        />
+      )}
+
+      {showPinterestConnect && (
+        <PinterestConnectionPanel
+          onClose={() => setShowPinterestConnect(false)}
+          onConnected={() => {
+            setPinterestConnected(true)
+            setShowPinterestConnect(false)
+            setShowPinterestImport(true)
+          }}
+          onConnectStart={importAfterPinterestConnect}
         />
       )}
 
@@ -5639,15 +5805,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </div>
         {!controlsMinimized && (
           <div className="panel-in space-y-1 mt-2">
-            {/* One row per shortcut, from a list, because nine copies of the
+            {/* One row per shortcut, from a list, because twelve copies of the
                 same paragraph differing only in their text is eight places to
                 get the class list slightly wrong. */}
             {([
+              'atrium.controls.pan',
               'atrium.controls.leaveTrace',
               'atrium.controls.draw',
               'atrium.controls.quickBar',
               'atrium.controls.editTrace',
               'atrium.controls.multiSelect',
+              'atrium.controls.directSelect',
+              'atrium.controls.groupUngroup',
               'atrium.controls.undoRedo',
               'atrium.controls.copyPaste',
               'atrium.controls.deleteSelected',

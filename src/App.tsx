@@ -26,7 +26,7 @@ import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
 import { useLayers } from './hooks/useLayers'
 import { saveAllChanges } from './lib/traceSave'
-import { handlePinterestCallback, hasPendingDesktopPinterestFlow } from './lib/pinterest'
+import { PINTEREST_CONNECTED_EVENT, handlePinterestCallback, hasPendingDesktopPinterestFlow } from './lib/pinterest'
 import { isGhostEntry } from './lib/operatorGhost'
 import { noteAppStarted, noteVersionSeen, recordAppealResponse } from './lib/supportAppeal'
 import { useLandingTheme } from './lib/useLandingTheme'
@@ -1101,7 +1101,11 @@ function AppInner() {
       // end of a flow that has just returned the user to their atrium -- the
       // last moment to put a grey box over it.
       if (result.success) {
-        showToast(result.username ? `Pinterest connected as @${result.username}` : 'Pinterest connected')
+        showToast(result.username
+          ? `${t('profile.pinterest')}: ${t('profile.pinterestConnectedAs', { name: result.username })}`
+          : t('profile.pinterestLinkedToast'))
+        // For an atrium that was waiting on it to import (lib/pinterest).
+        window.dispatchEvent(new Event(PINTEREST_CONNECTED_EVENT))
       } else if (result.error) {
         showToast(result.error)
       }

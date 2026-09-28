@@ -104,6 +104,10 @@ export const PREVIEW_OPACITY = 0.6
  * Rec. 709 luminance -- green dominates perceived brightness, so a plain
  * average would call a saturated green background dark.
  */
+// Plain text on the atrium's background: black on a light one, white on a
+// dark one -- decided as it's made, on the background there then.
+export const textColourOn = (background: string | undefined) => (previewFrameColour(background) === 0xffffff ? '#ffffff' : '#000000')
+
 export function previewFrameColour(background: string | undefined): number {
   const value = colourToNumber(background ?? '#0a0a0f')
   const r = (value >> 16) & 255

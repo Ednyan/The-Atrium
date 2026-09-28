@@ -229,9 +229,11 @@ export default function TraceLinksLayer({
         return (
           <svg key={link.id} style={{ ...SHEET, zIndex: Math.min(a.z, b.z) - 2 }}>
             {isSelected && <path ref={part(link.id, 'glow')} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
-            <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeOpacity={isSelected ? 1 : 0.75} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
-            {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} />}
-            {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} />}
+            {/* Line and heads at the thread's one opacity -- as set, selected
+                or not: a selection shows in its glow and weight. */}
+            <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeOpacity={link.opacity} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
+            {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} fillOpacity={link.opacity} />}
+            {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} fillOpacity={link.opacity} />}
             {/* Wider than it looks, and invisible, so a thin thread can still
                 be hovered and clicked. Where a trace above covers it, the
                 trace gets the click. */}
@@ -416,6 +418,7 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
         </button>
       )}
       <Slider label={t('atrium.links.thickness', { value: first.width })} min={0.5} max={12} step={0.5} value={first.width} onChange={width => onEdit({ width })} />
+      <Slider label={t('atrium.customize.opacity', { value: Math.round(first.opacity * 100) })} min={0.05} max={1} step={0.05} value={first.opacity} onChange={opacity => onEdit({ opacity })} />
       <div>
         <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.label')}</label>
         <input

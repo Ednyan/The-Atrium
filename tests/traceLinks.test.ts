@@ -97,14 +97,14 @@ test('a pair is joined whichever way round, and rows round-trip', () => {
 test('carried threads follow their traces to new ids, and nothing else comes', () => {
   const ids = new Map([['a', 'A'], ['b', 'B'], ['c', 'C']])
   const rows = carryLinks([
-    { id: 'x', lobby_id: 'L', from_trace: 'a', to_trace: 'b', arrow: 'forward', color: '#fff', width: 99, label: 'hi', label_size: 20, elbow: true, elbow_at: 0.7 },
+    { id: 'x', lobby_id: 'L', from_trace: 'a', to_trace: 'b', arrow: 'forward', color: '#fff', width: 99, label: 'hi', label_size: 20, elbow: true, elbow_at: 0.7, opacity: 0.4 },
     { from_trace: 'b', to_trace: 'a' }, // the same two traces again
     { from_trace: 'a', to_trace: 'gone' }, // its other end didn't arrive
     { from_trace: 'c', to_trace: 'b', arrow: 'sideways', label: 7 },
   ], ids)
   assert.deepEqual(rows, [
-    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false, straight: false, to_center: false, label_size: 20, elbow: true, elbow_at: 0.7 },
-    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false, straight: false, to_center: false, label_size: 12, elbow: false, elbow_at: 0.5 },
+    { lobby_id: 'L', from_trace: 'A', to_trace: 'B', arrow: 'forward', color: '#fff', width: 40, label: 'hi', label_on_hover: false, straight: false, to_center: false, label_size: 20, elbow: true, elbow_at: 0.7, opacity: 0.4 },
+    { lobby_id: undefined, from_trace: 'C', to_trace: 'B', arrow: 'none', color: null, width: 2, label: null, label_on_hover: false, straight: false, to_center: false, label_size: 12, elbow: false, elbow_at: 0.5, opacity: 0.75 },
   ])
   assert.deepEqual(carryLinks(undefined, ids), [])
 })

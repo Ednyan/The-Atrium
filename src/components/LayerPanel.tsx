@@ -10,6 +10,8 @@ import { cleanTitle, nextTextName } from '../lib/traceNames'
 import { createGroup as insertGroup, mapRowToLayer, reloadLayers } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
+import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
+import { withLayerUndo } from '../lib/layerUndo'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
@@ -597,10 +599,16 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
+  // Several at once -- a group's Lock All -- as one change, so one undo.
+  const setTracesLockedNow = async (traceIds: string[], locked: boolean) => {
+    for (const traceId of traceIds) await setTraceLockedNow(traceId, locked)
+  }
   const setTraceLockedNow = async (traceId: string, locked: boolean) => {
     if (!supabase || !canEdit) return
+    // Unlocking clears "ignore clicks" too, which now counts as locked
+    // (lib/traceLock).
     const { error } = await (supabase.from('traces') as any)
-      .update({ is_locked: locked })
+      .update(locked ? { is_locked: true } : { is_locked: false, ignore_clicks: false })
       .eq('id', traceId)
     if (error) {
       console.error('Error updating lock:', error)
@@ -609,30 +617,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const trace = useGameStore.getState().traces.find(t => t.id === traceId)
     if (trace) {
       removeTrace(traceId)
-      addTrace({ ...trace, isLocked: locked })
-    }
-  }
-
-  // Whether a trace can be clicked at all.
-  //
-  // Reachable from the canvas menu already, but not from the list -- which is
-  // the awkward way round, because the traces people want to make
-  // click-through are backgrounds, and a background is precisely the thing
-  // that is hard to right-click on the canvas without hitting something in
-  // front of it. From here it can be done to a whole group at once.
-  const setTracesIgnoreClicksNow = async (traceIds: string[], ignore: boolean) => {
-    if (!supabase || !canEdit || traceIds.length === 0) return
-
-    for (const traceId of traceIds) {
-      const { error } = await (supabase.from('traces') as any)
-        .update({ ignore_clicks: ignore })
-        .eq('id', traceId)
-      if (error) {
-        console.error('Error updating clicks:', error)
-        continue
-      }
-      const trace = useGameStore.getState().traces.find(t => t.id === traceId)
-      if (trace) addTrace({ ...trace, ignoreClicks: ignore })
+      addTrace({ ...trace, ...(locked ? { isLocked: true } : UNLOCKED) })
     }
   }
 
@@ -1080,8 +1065,11 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // What the buttons, menus, drops and dialogs call: each change through the
   // queue, so one never starts while another is part-way through. The ...Now
   // versions above run directly, for use inside a change.
-  const queued = <A extends unknown[]>(change: (...args: A) => Promise<unknown>) =>
-    (...args: A) => queueLayerChange(() => change(...args))
+  // Each one also a step in the atrium's undo history (lib/layerUndo): these
+  // write to the database at once, and used to be the one kind of change
+  // Ctrl+Z couldn't take back.
+  const queued = <A extends unknown[]>(change: (...args: A) => Promise<unknown>, label = 'layers') =>
+    (...args: A) => queueLayerChange(() => withLayerUndo(label, () => change(...args)))
   const doCreateGroup = queued(doCreateGroupNow)
   const doDeleteGroup = queued(doDeleteGroupNow)
   const doDeleteTrace = queued(doDeleteTraceNow)
@@ -1091,7 +1079,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const duplicateGroup = queued(duplicateGroupNow)
   const duplicateSingleTrace = queued(duplicateSingleTraceNow)
   const setTraceLocked = queued(setTraceLockedNow)
-  const setTracesIgnoreClicks = queued(setTracesIgnoreClicksNow)
+  const setTracesLocked = queued(setTracesLockedNow)
   const setTracesEnableInteraction = queued(setTracesEnableInteractionNow)
   const moveTraceToLayer = queued(moveTraceToLayerNow)
   const moveTracesToLayer = queued(moveTracesToLayerNow)
@@ -1745,24 +1733,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={() => onCustomize?.(groupTraces.map(gt => gt.id))}
                   disabled={groupTraces.length === 0}
                 />
-                {/* Ignoring clicks, for the whole group.
-                    Offered as whichever direction is not already true of all of
-                    them: a group where anything is still clickable offers to
-                    stop it, and only a group that is entirely click-through
-                    offers to undo that. Mixed groups therefore settle in one
-                    press rather than toggling half of them each time. */}
-                <MenuItem
-                  label={
-                    groupTraces.some(gt => !gt.ignoreClicks)
-                      ? t('atrium.menu.ignoreClicks')
-                      : t('atrium.menu.enableClicks')
-                  }
-                  onClick={() => setTracesIgnoreClicks(
-                    groupTraces.map(gt => gt.id),
-                    groupTraces.some(gt => !gt.ignoreClicks),
-                  )}
-                  disabled={groupTraces.length === 0}
-                />
                 <MenuItem label={t('atrium.layers.duplicateGroup')} onClick={() => duplicateGroup(rowMenu.id)} busy={isBusy} />
                 <MenuItem label={t('common.rename')} onClick={() => startRename(rowMenu.id, layer!.name)} />
                 <MenuItem
@@ -1792,17 +1762,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 />
                 <MenuItem
                   label={t('atrium.layers.lockAll')}
-                  onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, true)) }}
+                  onClick={() => { void setTracesLocked(groupTraces.map(t => t.id), true) }}
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem
                   label={t('atrium.layers.unlockAll')}
-                  onClick={() => { groupTraces.forEach(t => setTraceLocked(t.id, false)) }}
+                  onClick={() => { void setTracesLocked(groupTraces.map(t => t.id), false) }}
                   disabled={groupTraces.length === 0}
                 />
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
-                  label={t('atrium.layers.deleteGroupOnly')}
+                  label={t('atrium.menu.ungroup')}
                   onClick={() => doDeleteGroupKeepTraces(rowMenu.id)}
                   danger
                   hint={t('atrium.layers.deleteGroupOnlyHint')}
@@ -1832,13 +1802,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   onClick={() => onCustomize?.(menuTargets)}
                 />
                 <MenuItem
-                  label={trace!.isLocked ? t('atrium.layers.unlock') : t('atrium.layers.lock')}
-                  onClick={() => setTraceLocked(rowMenu.id, !trace!.isLocked)}
-                  hint={trace!.isLocked ? t('atrium.layers.allowInteract') : t('atrium.layers.preventInteract')}
-                />
-                <MenuItem
-                  label={trace!.ignoreClicks ? t('atrium.menu.enableClicks') : t('atrium.menu.ignoreClicks')}
-                  onClick={() => setTracesIgnoreClicks(menuTargets, !trace!.ignoreClicks)}
+                  label={isLockedTrace(trace!) ? t('atrium.layers.unlock') : t('atrium.layers.lock')}
+                  onClick={() => setTraceLocked(rowMenu.id, !isLockedTrace(trace!))}
+                  hint={isLockedTrace(trace!) ? t('atrium.layers.allowInteract') : t('atrium.layers.preventInteract')}
                 />
                 {/* Embeds only: nothing else has a page inside it to interact
                     with, and offering the toggle on an image would be a

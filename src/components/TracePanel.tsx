@@ -591,7 +591,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           label={t('atrium.customize.layerName')}
           value={content}
           placeholder={t('atrium.layers.untitled')}
-          maxLength={traceType === 'shape' ? 50 : 256}
           readOnly={traceType === 'text'}
           onChange={setContent}
           onCommit={setContent}
@@ -657,7 +656,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder={t('atrium.trace.messagePlaceholder')}
-                maxLength={256}
                 rows={4}
                 className="w-full px-4 py-3 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors resize-none"
                 autoFocus
