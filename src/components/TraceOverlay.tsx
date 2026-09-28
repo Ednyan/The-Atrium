@@ -43,7 +43,7 @@ import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
-import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
+import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import { cropClip, flipInBox } from '../lib/traceFlip'
@@ -2716,7 +2716,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     for (const from of sources) {
       // Not to itself, and not twice: one thread per pair, either way round.
       if (from === target || existing.some(l => joins(l, from, target)) || made.some(l => joins(l, from, target))) continue
-      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false, toCenter: false, labelSize: DEFAULT_LABEL_SIZE, elbow: false, elbowAt: 0.5 })
+      made.push({ id: crypto.randomUUID(), lobbyId, from, to: target, arrow: 'none', color: null, width: DEFAULT_LINK_WIDTH, label: '', labelOnHover: false, straight: false, toCenter: false, labelSize: DEFAULT_LABEL_SIZE, elbow: false, elbowAt: 0.5, opacity: DEFAULT_LINK_OPACITY })
     }
     if (made.length === 0) return
     for (const link of made) putLink(link)

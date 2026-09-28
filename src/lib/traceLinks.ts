@@ -34,10 +34,15 @@ export interface TraceLink {
   // between its two ends: 0 at the start, 1 at the end.
   elbow: boolean
   elbowAt: number
+  // How opaque the thread is, line and arrowheads alike (the heads were
+  // drawn solid while the line was at three quarters).
+  opacity: number
 }
 
 export const DEFAULT_LINK_WIDTH = 2
 export const DEFAULT_LABEL_SIZE = 12
+// Three quarters, as threads have always been drawn.
+export const DEFAULT_LINK_OPACITY = 0.75
 export const LABEL_SIZE_RANGE = { min: 6, max: 48 }
 const ARROWS: LinkArrow[] = ['none', 'forward', 'back', 'both']
 
@@ -59,6 +64,7 @@ export function mapRowToLink(row: any): TraceLink {
     labelSize: typeof row.label_size === 'number' && row.label_size > 0 ? Math.min(row.label_size, 200) : DEFAULT_LABEL_SIZE,
     elbow: !!row.elbow,
     elbowAt: typeof row.elbow_at === 'number' && Number.isFinite(row.elbow_at) ? Math.max(-5, Math.min(6, row.elbow_at)) : 0.5,
+    opacity: typeof row.opacity === 'number' && Number.isFinite(row.opacity) ? Math.max(0, Math.min(1, row.opacity)) : DEFAULT_LINK_OPACITY,
   }
 }
 
@@ -78,6 +84,7 @@ export function linkRow(link: TraceLink) {
     label_size: link.labelSize,
     elbow: link.elbow,
     elbow_at: link.elbowAt,
+    opacity: link.opacity,
   }
 }
 

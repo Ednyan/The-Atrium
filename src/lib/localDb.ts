@@ -1283,7 +1283,8 @@ export async function initLocalDb(): Promise<void> {
       to_center INTEGER NOT NULL DEFAULT 0,
       label_size REAL NOT NULL DEFAULT 12,
       elbow INTEGER NOT NULL DEFAULT 0,
-      elbow_at REAL NOT NULL DEFAULT 0.5
+      elbow_at REAL NOT NULL DEFAULT 0.5,
+      opacity REAL NOT NULL DEFAULT 0.75
     )
   `)
   try {
@@ -1301,7 +1302,7 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
-  for (const column of ['label_size REAL NOT NULL DEFAULT 12', 'elbow INTEGER NOT NULL DEFAULT 0', 'elbow_at REAL NOT NULL DEFAULT 0.5']) {
+  for (const column of ['label_size REAL NOT NULL DEFAULT 12', 'elbow INTEGER NOT NULL DEFAULT 0', 'elbow_at REAL NOT NULL DEFAULT 0.5', 'opacity REAL NOT NULL DEFAULT 0.75']) {
     try {
       await db.execute(`ALTER TABLE trace_links ADD COLUMN ${column}`)
     } catch {

@@ -741,6 +741,8 @@ const de: Catalogue = {
   'atrium.customize.pathThicknessLabel': 'Pfadstärke: {value}px',
   'atrium.customize.pathPoints': 'Pfadpunkte ({count})',
   'atrium.customize.fillOpacity': 'Füll-Deckkraft: {value}%',
+  'atrium.customize.opacity': 'Deckkraft: {value}%',
+  'atrium.customize.lineColour': 'Linienfarbe',
   'atrium.customize.outlineWidth': 'Konturstärke: {value}px',
   'atrium.customize.outlineOpacity': 'Kontur-Deckkraft: {value}%',
   'atrium.customize.borderOpacity': 'Rahmen-Deckkraft: {value}%',

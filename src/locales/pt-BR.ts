@@ -742,6 +742,8 @@ const ptBR: Catalogue = {
   'atrium.customize.pathThicknessLabel': 'Espessura do caminho: {value}px',
   'atrium.customize.pathPoints': 'Pontos do caminho ({count})',
   'atrium.customize.fillOpacity': 'Opacidade do preenchimento: {value}%',
+  'atrium.customize.opacity': 'Opacidade: {value}%',
+  'atrium.customize.lineColour': 'Cor da linha',
   'atrium.customize.outlineWidth': 'Espessura do contorno: {value}px',
   'atrium.customize.outlineOpacity': 'Opacidade do contorno: {value}%',
   'atrium.customize.borderOpacity': 'Opacidade da borda: {value}%',

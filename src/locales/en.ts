@@ -644,6 +644,8 @@ export const en = {
   'atrium.customize.pathThicknessLabel': 'Path Thickness: {value}px',
   'atrium.customize.pathPoints': 'Path Points ({count})',
   'atrium.customize.fillOpacity': 'Fill Opacity: {value}%',
+  'atrium.customize.opacity': 'Opacity: {value}%',
+  'atrium.customize.lineColour': 'Line Colour',
   'atrium.customize.outlineWidth': 'Outline Width: {value}px',
   'atrium.customize.outlineOpacity': 'Outline Opacity: {value}%',
   'atrium.customize.borderOpacity': 'Border Opacity: {value}%',

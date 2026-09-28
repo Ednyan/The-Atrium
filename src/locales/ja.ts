@@ -672,6 +672,8 @@ const ja: Catalogue = {
   'atrium.customize.pathThicknessLabel': 'パスの太さ：{value}px',
   'atrium.customize.pathPoints': 'パスの点（{count}）',
   'atrium.customize.fillOpacity': '塗りの不透明度：{value}%',
+  'atrium.customize.opacity': '不透明度：{value}%',
+  'atrium.customize.lineColour': '線の色',
   'atrium.customize.outlineWidth': '輪郭の太さ：{value}px',
   'atrium.customize.outlineOpacity': '輪郭の不透明度：{value}%',
   'atrium.customize.borderOpacity': '枠線の不透明度：{value}%',

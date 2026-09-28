@@ -675,6 +675,8 @@ const zh: Catalogue = {
   'atrium.customize.pathThicknessLabel': '路径粗细：{value}px',
   'atrium.customize.pathPoints': '路径锚点（{count}）',
   'atrium.customize.fillOpacity': '填充不透明度：{value}%',
+  'atrium.customize.opacity': '不透明度：{value}%',
+  'atrium.customize.lineColour': '线条颜色',
   'atrium.customize.outlineWidth': '描边粗细：{value}px',
   'atrium.customize.outlineOpacity': '描边不透明度：{value}%',
   'atrium.customize.borderOpacity': '边框不透明度：{value}%',

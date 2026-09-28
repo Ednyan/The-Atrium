@@ -742,6 +742,8 @@ const it: Catalogue = {
   'atrium.customize.pathThicknessLabel': 'Spessore del percorso: {value}px',
   'atrium.customize.pathPoints': 'Punti del percorso ({count})',
   'atrium.customize.fillOpacity': 'Opacità del riempimento: {value}%',
+  'atrium.customize.opacity': 'Opacità: {value}%',
+  'atrium.customize.lineColour': 'Colore della linea',
   'atrium.customize.outlineWidth': 'Spessore del contorno: {value}px',
   'atrium.customize.outlineOpacity': 'Opacità del contorno: {value}%',
   'atrium.customize.borderOpacity': 'Opacità del bordo: {value}%',

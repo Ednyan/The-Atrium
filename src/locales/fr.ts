@@ -740,6 +740,8 @@ const fr: Catalogue = {
   'atrium.customize.pathThicknessLabel': 'Épaisseur du tracé : {value}px',
   'atrium.customize.pathPoints': 'Points du tracé ({count})',
   'atrium.customize.fillOpacity': 'Opacité du remplissage : {value}%',
+  'atrium.customize.opacity': 'Opacité : {value}%',
+  'atrium.customize.lineColour': 'Couleur de la ligne',
   'atrium.customize.outlineWidth': 'Épaisseur du contour : {value}px',
   'atrium.customize.outlineOpacity': 'Opacité du contour : {value}%',
   'atrium.customize.borderOpacity': 'Opacité de la bordure : {value}%',

@@ -744,6 +744,8 @@ const ru: Catalogue = {
   'atrium.customize.pathThicknessLabel': 'Толщина пути: {value}px',
   'atrium.customize.pathPoints': 'Точки пути ({count})',
   'atrium.customize.fillOpacity': 'Непрозрачность заливки: {value}%',
+  'atrium.customize.opacity': 'Непрозрачность: {value}%',
+  'atrium.customize.lineColour': 'Цвет линии',
   'atrium.customize.outlineWidth': 'Толщина контура: {value}px',
   'atrium.customize.outlineOpacity': 'Непрозрачность контура: {value}%',
   'atrium.customize.borderOpacity': 'Непрозрачность рамки: {value}%',

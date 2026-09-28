@@ -676,6 +676,8 @@ const ko: Catalogue = {
   'atrium.customize.pathThicknessLabel': '패스 굵기: {value}px',
   'atrium.customize.pathPoints': '패스의 점 ({count})',
   'atrium.customize.fillOpacity': '채움 불투명도: {value}%',
+  'atrium.customize.opacity': '불투명도: {value}%',
+  'atrium.customize.lineColour': '선 색',
   'atrium.customize.outlineWidth': '윤곽선 굵기: {value}px',
   'atrium.customize.outlineOpacity': '윤곽선 불투명도: {value}%',
   'atrium.customize.borderOpacity': '테두리 불투명도: {value}%',
