@@ -689,6 +689,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The quick bar's armed tool (QuickBar): the next press on the canvas
   // places one of these, rather than panning or selecting.
   const [placeTool, setPlaceTool] = useState<PlaceTool | null>(null)
+  // The quick bar's Direct select: a click takes the trace itself, even in a
+  // group or a frame, rather than its group whole.
+  const [directSelect, setDirectSelect] = useState(false)
   const placeToolRef = useRef(placeTool)
   placeToolRef.current = placeTool
   // A placement under way: where it was pressed, on screen and in the world.
@@ -1920,7 +1923,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // the trace there at its usual size, or starts a path to click on from.
   const finishPlacing = async (tool: PlaceTool, start: { sx: number; sy: number; wx: number; wy: number }, end: { sx: number; sy: number }, even: boolean) => {
     // The tool stays in hand, to place another straight away, as Excalidraw
-    // does -- all but Text, whose next click ends the typing it starts.
+    // does -- all but Text, whose next click ends the typing it starts (and a
+    // clicked Path's, below, for the same reason).
     if (tool === 'text') setPlaceTool(null)
     const a = { x: start.wx, y: start.wy }
     const b = screenToWorld(end.sx, end.sy)
@@ -1954,7 +1958,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         if (id) customize(id)
       } else {
         // One point, and on into adding more, as the panel's Path does (its
-        // Customize panel opens with it).
+        // Customize panel opens with it). The clicks that follow are that
+        // path's points, so the tool is let go of, as Text's is.
+        setPlaceTool(null)
         const id = await insertShapeTrace(style, a, [a])
         if (id) setNewPathTraceId(id)
       }
@@ -4488,6 +4494,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
+            directSelect={directSelect}
             frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
             hideCursor={isDrawingMode && pointerOnDrawingCanvas}
@@ -5012,7 +5019,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </button>
 
       {/* The quick bar, down the left edge: a tool for each kind of trace. */}
-      {canEdit && <QuickBar armed={placeTool} drawing={isDrawingMode} onAction={quickAction} />}
+      {canEdit && <QuickBar armed={placeTool} drawing={isDrawingMode} direct={directSelect} onAction={quickAction} onDirect={setDirectSelect} />}
 
       {/* Draw Button */}
       {canEdit && (
@@ -5729,7 +5736,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </div>
         {!controlsMinimized && (
           <div className="panel-in space-y-1 mt-2">
-            {/* One row per shortcut, from a list, because nine copies of the
+            {/* One row per shortcut, from a list, because ten copies of the
                 same paragraph differing only in their text is eight places to
                 get the class list slightly wrong. */}
             {([
@@ -5738,6 +5745,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               'atrium.controls.quickBar',
               'atrium.controls.editTrace',
               'atrium.controls.multiSelect',
+              'atrium.controls.directSelect',
               'atrium.controls.undoRedo',
               'atrium.controls.copyPaste',
               'atrium.controls.deleteSelected',

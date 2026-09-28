@@ -219,6 +219,9 @@ interface TraceOverlayProps {
   // was dragged out, so the box keeps that size (fitTextLive). A fresh object
   // each time, so a plain effect keyed on it fires for every one.
   newTextRequest?: { id: string; drawn?: boolean } | null
+  // The quick bar's Direct select: a click picks the trace itself, even in a
+  // group (which a click otherwise takes whole) -- or in a frame.
+  directSelect?: boolean
   // A frame to make, from the canvas menu or the quick bar: where, its size
   // when a box was dragged out for it (else its default), whether to open its
   // Customize panel, and a fresh object each time so asking twice at one
@@ -701,7 +704,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, frameRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -3291,13 +3294,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // still adds or removes a single trace.
     let selection = multiSelectedIds
     groupClickRef.current = null
-    const members = mode === 'move' && !e.shiftKey ? groupMembersOf(trace) : null
+    // Direct select (the quick bar's, or Ctrl/Cmd for one click) takes the
+    // trace itself, as if it were in no group.
+    const direct = directSelect || e.ctrlKey || e.metaKey
+    const members = mode === 'move' && !e.shiftKey && !direct ? groupMembersOf(trace) : null
     if (members) {
       if (members.every(id => multiSelectedIds.has(id))) {
         // Already selected, the group alone: a drag moves it, a click opens it.
         if (multiSelectedIds.size === members.length) groupClickRef.current = trace.id
       } else if (!(multiSelectedIds.size === 0 && selectedTraceId && members.includes(selectedTraceId))) {
         selection = new Set(members)
+        setMultiSelectedIds(selection)
+      }
+    }
+    // Direct, on a trace of a group selected whole: that trace alone. A
+    // selection made any other way -- an area, Shift -- still moves together.
+    if (direct && mode === 'move' && !e.shiftKey && selection.has(trace.id)) {
+      const group = groupMembersOf(trace)
+      if (group && selection.size === group.length && group.every(id => selection.has(id))) {
+        selection = new Set()
         setMultiSelectedIds(selection)
       }
     }
@@ -4498,12 +4513,30 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (!(thrown.length > 0 && startGlide(thrown, settle))) settle()
   }
 
+  // Whether the press now under way began on a trace (handleClickOutside).
+  // In the capture phase, ahead of anything the press might change.
+  const pressBeganOnTraceRef = useRef(false)
+  useEffect(() => {
+    const note = (e: MouseEvent) => {
+      pressBeganOnTraceRef.current = !!(e.target as HTMLElement | null)?.closest?.('[data-trace-element="true"]')
+    }
+    window.addEventListener('mousedown', note, true)
+    return () => window.removeEventListener('mousedown', note, true)
+  }, [])
+
   // Click outside to deselect
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       // If a trace element was clicked, don't deselect
       const target = e.target as HTMLElement
       if (target.closest('[data-trace-element="true"]')) {
+        return
+      }
+      // Nor if the press began on one. A press can put something new under
+      // the pointer -- selecting a path shows its handles, one of them maybe
+      // right there -- and a click that starts on one element and ends on
+      // another goes to what they share, which is no trace at all.
+      if (pressBeganOnTraceRef.current) {
         return
       }
       

@@ -10,8 +10,13 @@
 // opens the board import.
 //
 // Keys 1 to 9 pick the first nine, in the order shown.
+//
+// Select has two kinds, in a flyout at its side (as the canvas menu's
+// Transformations has): Select, which takes a group whole, and Direct
+// select, which takes the trace itself wherever it is -- in a group, in a
+// frame. The button shows the kind in use.
 
-import type { ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
 
 export type PlaceTool = 'text' | 'rectangle' | 'circle' | 'path' | 'frame'
@@ -47,17 +52,41 @@ const ICONS: Record<QuickAction, ReactNode> = {
   ),
 }
 
+// Direct select: the pointer, into a dashed box.
+const DIRECT_ICON = (
+  <>
+    <rect x="3.5" y="3.5" width="11" height="11" strokeDasharray="2 2" />
+    <path d="M10 9 L19 15.5 L15 16.3 L17 20.6 L15.4 21.3 L13.4 17 L10 19.6 Z" strokeLinejoin="round" />
+  </>
+)
+
 // In the order shown; the first nine have number keys.
 export const QUICK_ORDER: QuickAction[] = ['select', 'text', 'rectangle', 'circle', 'path', 'draw', 'image', 'embed', 'frame', 'pinterest']
 
-export default function QuickBar({ armed, drawing, onAction }: {
+export default function QuickBar({ armed, drawing, direct, onAction, onDirect }: {
   armed: PlaceTool | null
   drawing: boolean
+  // Direct select is the kind of Select in use.
+  direct: boolean
   onAction: (action: QuickAction) => void
+  onDirect: (direct: boolean) => void
 }) {
   const { t } = useTranslation()
+  // Select's flyout: open while the pointer is over it or its button, with a
+  // moment's grace for the gap between them.
+  const [flyout, setFlyout] = useState(false)
+  const closeTimer = useRef<number | null>(null)
+  const keepFlyout = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current)
+    closeTimer.current = null
+    setFlyout(true)
+  }
+  const letFlyoutGo = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current)
+    closeTimer.current = window.setTimeout(() => setFlyout(false), 250)
+  }
   const label: Record<QuickAction, string> = {
-    select: t('atrium.tools.select'),
+    select: direct ? t('atrium.tools.directSelect') : t('atrium.tools.select'),
     text: t('atrium.trace.type.text'),
     rectangle: t('atrium.trace.shape.rectangle'),
     circle: t('atrium.trace.shape.circle'),
@@ -92,15 +121,27 @@ export default function QuickBar({ armed, drawing, onAction }: {
         const off = drawing && action !== 'draw'
         const key = i < 9 ? String(i + 1) : null
         return (
-          <div key={action} className="relative">
+          <div
+            key={action}
+            className="relative"
+            onMouseEnter={action === 'select' && !off ? keepFlyout : undefined}
+            onMouseLeave={action === 'select' ? letFlyoutGo : undefined}
+          >
             {action === 'pinterest' && <div className="h-px mx-1 mb-1 bg-nier-border/30" />}
             <button
               type="button"
               data-quick={action}
               aria-pressed={on}
+              aria-haspopup={action === 'select' ? 'true' : undefined}
+              aria-expanded={action === 'select' ? flyout : undefined}
               disabled={off}
               title={key ? `${label[action]} — ${key}` : label[action]}
-              onClick={() => onAction(action)}
+              onClick={() => {
+                // Select pressed while it's already in hand opens its kinds --
+                // the way to them without hovering (touch).
+                if (action === 'select' && on) setFlyout(open => !open)
+                onAction(action)
+              }}
               className={`relative w-9 h-9 flex items-center justify-center border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                 on
                   ? 'bg-nier-bg text-nier-black border-nier-bg'
@@ -108,10 +149,45 @@ export default function QuickBar({ armed, drawing, onAction }: {
               }`}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                {ICONS[action]}
+                {action === 'select' && direct ? DIRECT_ICON : ICONS[action]}
               </svg>
               {key && <span className="absolute right-0.5 bottom-0 text-[8px] leading-none font-mono opacity-50">{key}</span>}
+              {/* More kinds, to the side. */}
+              {action === 'select' && (
+                <span aria-hidden="true" className="absolute right-0.5 top-0.5 w-0 h-0 opacity-60" style={{ borderTop: '4px solid currentColor', borderLeft: '4px solid transparent' }} />
+              )}
             </button>
+            {action === 'select' && flyout && !off && (
+              <div
+                data-quick-flyout=""
+                className="absolute left-full top-0 ml-2 flex gap-1 p-1 border border-nier-border/40"
+                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
+              >
+                {[false, true].map(kind => (
+                  <button
+                    key={String(kind)}
+                    type="button"
+                    data-select-kind={kind ? 'direct' : 'group'}
+                    aria-pressed={direct === kind}
+                    title={kind ? t('atrium.tools.directSelectHint') : t('atrium.tools.selectHint')}
+                    onClick={() => {
+                      onDirect(kind)
+                      onAction('select')
+                      setFlyout(false)
+                    }}
+                    className={`w-9 h-9 flex items-center justify-center border transition-colors ${
+                      direct === kind
+                        ? 'bg-nier-bg text-nier-black border-nier-bg'
+                        : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg'
+                    }`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                      {kind ? DIRECT_ICON : ICONS.select}
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
             {armed === action && hint && (
               <div
                 className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2 py-1 border font-mono text-[10px] tracking-wider whitespace-nowrap pointer-events-none"
