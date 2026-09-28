@@ -45,6 +45,8 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
+import { placementInWorld, placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
+import type { View } from '../lib/worldCamera'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -916,7 +918,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // them all on every pointer move was fine for plain lines, but a stamped
   // brush is hundreds of stamps a stroke; now only the stroke in progress is
   // painted per move.
-  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null } | null>(null)
+  // Painted at a view, and painted again when the view moves: the strokes are
+  // kept in world units (lib/drawingView), so a drawing stays where it was
+  // drawn while the view pans and zooms around it.
+  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null; view: View | null } | null>(null)
   // The saved drawing being edited: its trace, and its picture where the trace
   // shows it, which sits under the new strokes as where they start from.
   const editingDrawingRef = useRef<{ traceId: string; img: HTMLImageElement; placement: TracePlacement } | null>(null)
@@ -930,6 +935,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [pointerOnDrawingCanvas, setPointerOnDrawingCanvas] = useState(false)
   const [isSavingDrawing, setIsSavingDrawing] = useState(false)
   const currentStrokeRef = useRef<StrokePoint[]>([])
+  // The stroke in progress's width, in world units: the brush's size on
+  // screen at the zoom it was begun at.
+  const strokeWidthRef = useRef(3)
+  // The closest any stroke of this drawing was drawn from, so saving keeps
+  // the detail it was drawn with even when saved from further out.
+  const drawnZoomRef = useRef(0)
   const isDrawingModeRef = useRef(false)
   const isEraserModeRef = useRef(false)
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -995,6 +1006,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const resetDrawing = useCallback(() => {
     setCompletedStrokes([])
     currentStrokeRef.current = []
+    drawnZoomRef.current = 0
     // The way back to a drawing that no longer exists is not a way back to
     // anything, so the timeline goes with it.
     clearHistory()
@@ -1123,7 +1135,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       commitDrawing(prev => [...prev, {
         points: [...rawPoints],
         color: drawingColorRef.current,
-        width: drawingWidthRef.current,
+        width: strokeWidthRef.current,
         isEraser: isEraserModeRef.current,
         brush: drawingBrushRef.current,
         seed: currentSeedRef.current,
@@ -1151,51 +1163,61 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }
 
+  // The view the drawing is seen through: the world container's, which the
+  // camera moves every frame.
+  const drawView = (): View => ({ x: worldContainerRef.current?.x ?? 0, y: worldContainerRef.current?.y ?? 0, zoom: zoomRef.current })
+
   const renderDrawingCanvas = () => {
     const canvas = drawingCanvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const strokes = completedStrokesRef.current
-    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), strokes: null }
+    const view = drawView()
+    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), strokes: null, view: null }
     if (layer.canvas.width !== canvas.width || layer.canvas.height !== canvas.height) {
       layer.canvas.width = canvas.width
       layer.canvas.height = canvas.height
       layer.strokes = null
     }
-    if (layer.strokes !== strokes) {
+    const sameViewAsLayer = sameView(layer.view, view)
+    if (layer.strokes !== strokes || !sameViewAsLayer) {
       const layerCtx = layer.canvas.getContext('2d')
       if (!layerCtx) return
       const previous = layer.strokes
       // A stroke added to the end -- the usual case -- is painted on top of
-      // what is there. Anything else (undo, clear, redo) repaints them all.
-      const appended = previous !== null
+      // what is there. Anything else (undo, clear, redo, the view moving)
+      // repaints them all.
+      const appended = sameViewAsLayer && previous !== null
         && strokes.length === previous.length + 1
         && strokes[previous.length - 1] === previous[previous.length - 1]
       if (!appended) {
         layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
         // An edited drawing's picture goes in first, so the eraser reaches it.
         const editing = editingDrawingRef.current
-        if (editing) drawPlacedPicture(layerCtx, editing.img, editing.placement)
+        if (editing) drawPlacedPicture(layerCtx, editing.img, placementOnScreen(editing.placement, view))
       }
-      for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, stroke)
+      for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, strokeOnScreen(stroke, view))
       layer.strokes = strokes
+      layer.view = view
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(layer.canvas, 0, 0)
     // Draw current active stroke
     if (currentStrokeRef.current.length >= 1) {
-      drawStroke(ctx, {
+      drawStroke(ctx, strokeOnScreen({
         points: currentStrokeRef.current,
         color: drawingColorRef.current,
-        width: drawingWidthRef.current,
+        width: strokeWidthRef.current,
         isEraser: isEraserModeRef.current,
         brush: drawingBrushRef.current,
         seed: currentSeedRef.current,
         hardness: drawingHardnessRef.current / 100,
-      })
+      }, view))
     }
   }
+  const renderDrawingCanvasRef = useRef(renderDrawingCanvas)
+  renderDrawingCanvasRef.current = renderDrawingCanvas
 
   // Canvas resize effect
   useEffect(() => {
@@ -3179,6 +3201,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // The grid is in screen space (drawGrid), so it's redrawn on every
         // frame the view moves, and not otherwise.
         if (viewMoved) updateGridRef.current?.()
+        // A drawing in progress is in the world, and is painted through the
+        // view (renderDrawingCanvas), so it moves with it.
+        if (isDrawingModeRef.current && !sameView(committedLayerRef.current?.view ?? null, { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current })) {
+          renderDrawingCanvasRef.current()
+        }
         
         // Floating particles, which drift every frame.
         themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)
@@ -4141,8 +4168,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     let editSaved = false
     setIsSavingDrawing(true)
     try {
+      // The strokes are kept in the world (lib/drawingView); they're saved as
+      // they're seen at the current view, which is also the one the box they
+      // end up in is placed back into the world with, below.
+      const view = drawView()
+      const strokes = completedStrokes.map(stroke => strokeOnScreen(stroke, view))
+      const editPlacement = editing ? placementOnScreen(editing.placement, view) : null
       // Render all strokes to find tight bounding box
-      const allPoints = completedStrokes.flatMap(s => s.points)
+      const allPoints = strokes.flatMap(s => s.points)
       // Returning from inside the try skips the cleanup after it, so this one
       // has to undo the flag itself or the button stays disabled for good.
       if (allPoints.length === 0) { setIsSavingDrawing(false); return }
@@ -4150,19 +4183,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Room for the widest stroke's edge beyond its centre line, or a
       // thick one came out with its sides sliced off -- and past that, room
       // for a soft stroke's fade, up to three quarters of a width further out.
-      const padding = Math.max(20, Math.ceil(Math.max(...completedStrokes.map(s => s.width)) * 1.3) + 4)
+      const padding = Math.max(20, Math.ceil(Math.max(...strokes.map(s => s.width)) * 1.3) + 4)
       let minSX = Math.min(...allPoints.map(p => p.x)) - padding
       let maxSX = Math.max(...allPoints.map(p => p.x)) + padding
       let minSY = Math.min(...allPoints.map(p => p.y)) - padding
       let maxSY = Math.max(...allPoints.map(p => p.y)) + padding
 
-      // Pixels per screen pixel. 1 for a new drawing, which is drawn at the
-      // screen's resolution. An edited one keeps its picture's own resolution
-      // where that is finer -- edited while zoomed out, it would otherwise come
-      // back blurrier every time -- up to 4x.
-      let k = 1
-      if (editing) {
-        const { img, placement } = editing
+      // Pixels per screen pixel: the screen's resolution, or finer where any
+      // of it was drawn from closer in than it's saved from, so zooming out
+      // to save doesn't blur it. An edited one keeps its picture's own
+      // resolution where that is finer still -- edited while zoomed out, it
+      // would otherwise come back blurrier every time. Up to 4x either way.
+      let k = Math.min(4, Math.max(1, drawnZoomRef.current / view.zoom))
+      if (editing && editPlacement) {
+        const { img } = editing
+        const placement = editPlacement
         // The picture counts toward the box: it may reach past anything drawn.
         const b = placementBounds(placement, img.naturalWidth, img.naturalHeight)
         minSX = Math.min(minSX, Math.floor(b.minX))
@@ -4170,7 +4205,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         minSY = Math.min(minSY, Math.floor(b.minY))
         maxSY = Math.max(maxSY, Math.ceil(b.maxY))
         const shown = placePicture(placement, img.naturalWidth, img.naturalHeight)
-        k = Math.min(4, Math.max(1, img.naturalWidth / Math.max(1, Math.abs(shown.w))))
+        k = Math.max(k, Math.min(4, Math.max(1, img.naturalWidth / Math.max(1, Math.abs(shown.w)))))
       }
       const cropW = Math.max(1, maxSX - minSX)
       const cropH = Math.max(1, maxSY - minSY)
@@ -4183,15 +4218,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       offscreen.height = Math.ceil(cropH * k)
       const offCtx = offscreen.getContext('2d')!
 
-      if (editing) {
+      if (editing && editPlacement) {
         offCtx.setTransform(k, 0, 0, k, -minSX * k, -minSY * k)
-        drawPlacedPicture(offCtx, editing.img, editing.placement)
+        drawPlacedPicture(offCtx, editing.img, editPlacement)
         offCtx.setTransform(1, 0, 0, 1, 0, 0)
       }
 
       // Draw strokes shifted so bounding box starts at (0,0)
       // The spread keeps each point's pressure, which a bare {x, y} dropped.
-      for (const stroke of completedStrokes) {
+      for (const stroke of strokes) {
         drawStroke(offCtx, {
           ...stroke,
           width: stroke.width * k,
@@ -4252,10 +4287,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         imageUrl = publicUrl
       }
 
-      // Convert screen-space bounds to world coordinates
-      const panX = worldContainerRef.current?.x ?? 0
-      const panY = worldContainerRef.current?.y ?? 0
-      const zoom = zoomRef.current
+      // Convert screen-space bounds to world coordinates, through the view
+      // they were laid out at -- the upload above takes time, and the view
+      // may have moved since.
+      const panX = view.x
+      const panY = view.y
+      const zoom = view.zoom
       const worldMinX = (outMinX - panX) / zoom
       const worldMinY = (outMinY - panY) / zoom
       const worldW = outW / zoom
@@ -4386,7 +4423,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
     resetDrawing()
-    editingDrawingRef.current = { traceId, img, placement }
+    // Where its picture sits in the world, to be drawn over as the view moves.
+    editingDrawingRef.current = { traceId, img, placement: placementInWorld(placement, drawView()) }
     if (committedLayerRef.current) committedLayerRef.current.strokes = null
     setEditingDrawingId(traceId)
     setIsEraserMode(false)
@@ -5311,7 +5349,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 // Keeps the stroke's events coming to the canvas even if the pen
                 // strays over a panel mid-line.
                 e.currentTarget.setPointerCapture(e.pointerId)
-                const point = strokePoint(e.clientX, e.clientY, e.pointerType, e.pressure)
+                // In the world, so it stays where it's drawn as the view moves.
+                const at = pointToWorld(e.clientX, e.clientY, drawView())
+                const point = strokePoint(at.x, at.y, e.pointerType, e.pressure)
+                strokeWidthRef.current = drawingWidthRef.current / zoomRef.current
+                drawnZoomRef.current = Math.max(drawnZoomRef.current, zoomRef.current)
                 currentStrokeRef.current = [point]
                 currentSeedRef.current = newStrokeSeed()
                 smoothedPointRef.current = { x: point.x, y: point.y }
@@ -5336,8 +5378,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               // reports far faster than the screen redraws, and dropping the
               // in-between points is what makes a fast pen stroke angular.
               const coalesced = e.nativeEvent.getCoalescedEvents?.() ?? []
+              const view = drawView()
               for (const sample of coalesced.length ? coalesced : [e.nativeEvent]) {
-                addStrokeSample(strokePoint(sample.clientX, sample.clientY, sample.pointerType, sample.pressure))
+                const at = pointToWorld(sample.clientX, sample.clientY, view)
+                addStrokeSample(strokePoint(at.x, at.y, sample.pointerType, sample.pressure))
               }
               renderDrawingCanvas()
             }}
