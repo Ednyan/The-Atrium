@@ -770,7 +770,6 @@ const es: Catalogue = {
   'atrium.toast.embedsConverted.many': '{count} embeds convertidos en imágenes',
   'atrium.toast.embedsSkipped': '{message} — {count} omitidos',
   'atrium.toast.pdfOneAtATime': 'Abriendo {name} — los PDF se colocan de uno en uno',
-  'atrium.error.linkPinterestFirst': 'Conecta Pinterest primero — {entry}, en la pantalla de bienvenida',
   'atrium.trace.gridLayout': 'Cuadrícula — {columns} × {rows}',
   'atrium.trace.gridFits': 'Eso cabe {fits} de {total} — el resto continúa en más filas.',
   'atrium.trace.filesGrouped': '{count} archivos — colocados juntos como un grupo',

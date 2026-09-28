@@ -707,7 +707,6 @@ const zh: Catalogue = {
   'atrium.toast.embedsConverted.many': '已将 {count} 个嵌入转换为图片',
   'atrium.toast.embedsSkipped': '{message}——跳过了 {count} 个',
   'atrium.toast.pdfOneAtATime': '正在打开 {name}——PDF 一次只能放一个',
-  'atrium.error.linkPinterestFirst': '请先连接 Pinterest——在欢迎界面的{entry}',
 
   // ------------------------------------------------- batch links and grids
   'atrium.trace.gridLayout': '网格 —— {columns} × {rows}',

@@ -40,7 +40,8 @@ import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
 import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
-import { getPinterestConnectionStatus, initiatePinterestConnect } from '../lib/pinterest'
+import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
+import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
@@ -817,6 +818,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [convertEmbedsProgress, setConvertEmbedsProgress] = useState('')
   const [pinterestConnected, setPinterestConnected] = useState(false)
   const [showPinterestImport, setShowPinterestImport] = useState(false)
+  // Connecting Pinterest, from inside the atrium, when its boards are asked
+  // for before there's a connection (openPinterestImport).
+  const [showPinterestConnect, setShowPinterestConnect] = useState(false)
   const [pinterestImportAnchor, setPinterestImportAnchor] = useState<{ x: number; y: number } | null>(null)
   const [showLocalFileBlockedDialog, setShowLocalFileBlockedDialog] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -1410,8 +1414,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Check the Pinterest connection once per atrium visit, to decide whether to
   // show the import button. Asked on both platforms now: on desktop the answer
   // comes from whether this install is linked to a web account that has one.
+  // Connected on the web from in here, the page came back to the atrium and
+  // the import it was for opens now -- whether the connection was already
+  // made when the atrium loaded, or lands a moment after (App announces it).
   useEffect(() => {
-    getPinterestConnectionStatus().then(({ connected }) => setPinterestConnected(connected))
+    const openImportIfWanted = () => {
+      if (!takeImportAfterPinterestConnect()) return
+      setPinterestImportAnchor(null)
+      setShowPinterestImport(true)
+    }
+    getPinterestConnectionStatus().then(({ connected }) => {
+      setPinterestConnected(connected)
+      if (connected) openImportIfWanted()
+    })
+    const onConnected = () => {
+      setPinterestConnected(true)
+      setShowPinterestConnect(false)
+      openImportIfWanted()
+    }
+    window.addEventListener(PINTEREST_CONNECTED_EVENT, onConnected)
+    return () => window.removeEventListener(PINTEREST_CONNECTED_EVENT, onConnected)
   }, [])
 
   // Listen for zoom sensitivity changes from profile settings and keep value in sync
@@ -1846,22 +1868,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setIsDrawingMode(!isDrawingMode)
   }
 
-  // Pinterest's board import, placing at `anchor` -- or, not linked yet, the
-  // way to link it.
+  // Pinterest's board import, placing at `anchor` -- or, not connected yet,
+  // connecting it first, right here: the same panel the welcome screen opens
+  // (desktop links with a code from the browser; the web goes to Pinterest and
+  // comes back to this atrium), and on into the import once it's done. It
+  // used to send you out to the welcome screen to do it.
   const openPinterestImport = (anchor: { x: number; y: number } | null) => {
-    if (pinterestConnected) {
-      setPinterestImportAnchor(anchor)
-      setShowPinterestImport(true)
-    } else if (isDesktop) {
-      // Sending the webview to Pinterest would strand it there:
-      // there is no address bar to come back from, and no https
-      // origin for Pinterest to return to. Linking happens in
-      // its own row on the welcome screen, so say where rather
-      // than doing nothing.
-      showToast(t('atrium.error.linkPinterestFirst', { entry: t('welcome.pinterest') }))
-    } else {
-      initiatePinterestConnect()
-    }
+    setPinterestImportAnchor(anchor)
+    if (pinterestConnected) setShowPinterestImport(true)
+    else setShowPinterestConnect(true)
   }
 
   const quickAction = (action: QuickAction) => {
@@ -5567,6 +5582,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           shapeDraftSize={shapeDraftSize}
           onShapeDraftChange={handleShapeDraftChange}
           onShapeModeChange={handleShapeModeChange}
+        />
+      )}
+
+      {showPinterestConnect && (
+        <PinterestConnectionPanel
+          onClose={() => setShowPinterestConnect(false)}
+          onConnected={() => {
+            setPinterestConnected(true)
+            setShowPinterestConnect(false)
+            setShowPinterestImport(true)
+          }}
+          onConnectStart={importAfterPinterestConnect}
         />
       )}
 

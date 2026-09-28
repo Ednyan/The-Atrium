@@ -774,7 +774,6 @@ const it: Catalogue = {
   'atrium.toast.embedsConverted.many': '{count} embed convertiti in immagini',
   'atrium.toast.embedsSkipped': '{message} — {count} saltati',
   'atrium.toast.pdfOneAtATime': 'Apro {name} — i PDF si posizionano uno alla volta',
-  'atrium.error.linkPinterestFirst': 'Collega prima Pinterest — {entry}, nella schermata di benvenuto',
   'atrium.trace.gridLayout': 'Griglia — {columns} × {rows}',
   'atrium.trace.gridFits': 'Ne stanno {fits} di {total} — gli altri continuano in altre righe.',
   'atrium.trace.filesGrouped': '{count} file — posizionati insieme come gruppo',

@@ -776,7 +776,6 @@ const ru: Catalogue = {
   'atrium.toast.embedsConverted.many': '{count} embed преобразовано в изображения',
   'atrium.toast.embedsSkipped': '{message} — пропущено: {count}',
   'atrium.toast.pdfOneAtATime': 'Открываю {name} — PDF размещаются по одному',
-  'atrium.error.linkPinterestFirst': 'Сначала подключите Pinterest — {entry}, на приветственном экране',
   'atrium.trace.gridLayout': 'Сетка — {columns} × {rows}',
   'atrium.trace.gridFits': 'Помещается {fits} из {total} — остальные продолжатся в следующих рядах.',
   'atrium.trace.filesGrouped': 'Файлов: {count} — размещаются вместе как группа',

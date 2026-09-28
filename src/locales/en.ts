@@ -676,7 +676,6 @@ export const en = {
   'atrium.toast.embedsConverted.many': 'Converted {count} embeds to images',
   'atrium.toast.embedsSkipped': '{message} — skipped {count}',
   'atrium.toast.pdfOneAtATime': 'Opening {name} — PDFs are placed one at a time',
-  'atrium.error.linkPinterestFirst': 'Connect Pinterest first — {entry}, on the welcome screen',
   'atrium.trace.gridLayout': 'Grid — {columns} × {rows}',
   'atrium.trace.gridFits': 'That fits {fits} of {total} — the rest continue in further rows.',
   'atrium.trace.filesGrouped': '{count} files — placed together as a group',

@@ -91,6 +91,33 @@ function restorePinterestReturn() {
   }
 }
 
+// Connecting from inside an atrium, to import boards straight after. On the
+// web connecting leaves the page for Pinterest and comes back to the atrium
+// (above), so what was being done is remembered across the trip, and the
+// atrium opens the import when the connection lands.
+const IMPORT_AFTER_KEY = 'atrium_pinterest_then_import'
+// Announced by App when a web connection has been made, for an atrium already
+// on screen: the page is put back before the exchange finishes.
+export const PINTEREST_CONNECTED_EVENT = 'atrium-pinterest-connected'
+
+export function importAfterPinterestConnect() {
+  try {
+    sessionStorage.setItem(IMPORT_AFTER_KEY, '1')
+  } catch {
+    // Without storage the import just isn't opened afterwards.
+  }
+}
+
+export function takeImportAfterPinterestConnect(): boolean {
+  try {
+    const wanted = sessionStorage.getItem(IMPORT_AFTER_KEY) === '1'
+    sessionStorage.removeItem(IMPORT_AFTER_KEY)
+    return wanted
+  } catch {
+    return false
+  }
+}
+
 export function getPinterestRedirectUri(): string {
   return window.location.origin + '/'
 }

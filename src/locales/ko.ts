@@ -708,7 +708,6 @@ const ko: Catalogue = {
   'atrium.toast.embedsConverted.many': '임베드 {count}개를 이미지로 바꿨어요',
   'atrium.toast.embedsSkipped': '{message} — {count}개는 건너뜀',
   'atrium.toast.pdfOneAtATime': '{name} 열기 — PDF는 한 번에 하나씩 놓여요',
-  'atrium.error.linkPinterestFirst': 'Pinterest를 먼저 연결해 주세요 — 시작 화면의 {entry}에서',
 
   // ------------------------------------------- batch links and grids
   'atrium.trace.gridLayout': '격자 — {columns} × {rows}',

@@ -704,7 +704,6 @@ const ja: Catalogue = {
   'atrium.toast.embedsConverted.many': '埋め込み {count} 件を画像に変換しました',
   'atrium.toast.embedsSkipped': '{message}——{count} 件はスキップ',
   'atrium.toast.pdfOneAtATime': '{name} を開きます——PDF は一度に一つずつ配置します',
-  'atrium.error.linkPinterestFirst': '先に Pinterest に接続してください——ようこそ画面の{entry}から',
 
   // ------------------------------------------- batch links and grids
   'atrium.trace.gridLayout': 'グリッド —— {columns} × {rows}',
