@@ -313,6 +313,7 @@ const ja: Catalogue = {
   'atrium.draw.exit': '描画をやめる',
   'atrium.draw.hint': 'ドラッグで描く（ひと筆ごとに自動保存） • E 消しゴム • Ctrl+Z 取り消し、Ctrl+Shift+Z やり直し • Esc で終了',
   'atrium.draw.strokeSaveFailed': 'ひと筆を保存できませんでした：{message}',
+  'atrium.draw.strokeColour': '線の色',
   'common.create': '作成',
   'common.rename': '名前を変更',
   'common.dragReorder': 'ドラッグで並べ替え',

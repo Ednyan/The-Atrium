@@ -397,6 +397,7 @@ const es: Catalogue = {
   'atrium.draw.exit': 'Salir del dibujo',
   'atrium.draw.hint': 'Haz clic y arrastra para dibujar — cada trazo se guarda solo • E borrador • Ctrl+Z deshacer, Ctrl+Shift+Z rehacer • Esc sale',
   'atrium.draw.strokeSaveFailed': 'No se pudo guardar un trazo: {message}',
+  'atrium.draw.strokeColour': 'Color del trazo',
   'common.create': 'Crear',
   'common.rename': 'Renombrar',
   'common.dragReorder': 'Arrastra para reordenar',

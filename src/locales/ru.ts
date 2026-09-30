@@ -403,6 +403,7 @@ const ru: Catalogue = {
   'atrium.draw.exit': 'Выйти из рисования',
   'atrium.draw.hint': 'Нажмите и ведите, чтобы рисовать — каждый штрих сохраняется сам • E ластик • Ctrl+Z отменить, Ctrl+Shift+Z вернуть • Esc выходит',
   'atrium.draw.strokeSaveFailed': 'Не удалось сохранить штрих: {message}',
+  'atrium.draw.strokeColour': 'Цвет штриха',
   'common.create': 'Создать',
   'common.rename': 'Переименовать',
   'common.dragReorder': 'Перетащите, чтобы изменить порядок',

@@ -1660,7 +1660,7 @@ interface QueryFilter {
 
 interface QueryOptions {
   table: string
-  operation: 'select' | 'insert' | 'update' | 'delete'
+  operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert'
   filters: QueryFilter[]
   data?: any
   selectColumns?: string
@@ -1690,7 +1690,7 @@ class QueryBuilder {
    */
   private unsupported: string | null = null
 
-  constructor(table: string, operation: 'select' | 'insert' | 'update' | 'delete', data?: any, selectColumns?: string) {
+  constructor(table: string, operation: QueryOptions['operation'], data?: any, selectColumns?: string) {
     this.opts = {
       table,
       operation,
@@ -1741,7 +1741,7 @@ class QueryBuilder {
   }
 
   select(columns?: string, options?: { count?: string; head?: boolean }): QueryBuilder {
-    if (this.opts.operation === 'insert' || this.opts.operation === 'update') {
+    if (this.opts.operation === 'insert' || this.opts.operation === 'update' || this.opts.operation === 'upsert') {
       // .insert({}).select() or .update({}).select() — return the data after mutation
       this.opts.selectColumns = columns || '*'
       if (options?.count) this.opts.isCount = true
@@ -1883,6 +1883,21 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
 
         if (opts.isSingle) return { data: normalizedRows[0] || null, error: null }
         return { data: Array.isArray(opts.data) ? normalizedRows : normalizedRows[0], error: null }
+      }
+
+      case 'upsert': {
+        const rows = Array.isArray(opts.data) ? opts.data : [opts.data]
+        const written: any[] = []
+        for (const row of rows) {
+          const there = row?.id ? await db!.select<any[]>(`SELECT id FROM ${opts.table} WHERE id = ?`, [row.id]) : []
+          const result = there.length > 0
+            ? await executeQuery({ table: opts.table, operation: 'update', data: row, filters: [{ column: 'id', op: 'eq', value: row.id }], selectColumns: '*' })
+            : await executeQuery({ table: opts.table, operation: 'insert', data: row, filters: [], selectColumns: '*' })
+          if (result.error) return result
+          written.push(...(Array.isArray(result.data) ? result.data : result.data ? [result.data] : []))
+        }
+        if (opts.isSingle) return { data: written[0] ?? null, error: null }
+        return { data: opts.selectColumns ? written : null, error: null }
       }
 
       case 'update': {
@@ -2363,11 +2378,14 @@ export const localClient = {
       delete(): QueryBuilder {
         return new QueryBuilder(table, 'delete')
       },
-      // Not implemented, but present: see the note on QueryBuilder.unsupported.
-      // Reaching this returns an error rather than throwing on `undefined`.
-      upsert(data: any): QueryBuilder {
-        const builder = new QueryBuilder(table, 'insert', data)
-        ;(builder as any).unsupported = 'upsert'
+      // Each row inserted -- or, one with its id there already, updated with
+      // the columns given and no others -- as PostgREST's upsert on the
+      // primary key is. Undoing a group deleted with its traces puts them back
+      // this way (lib/layerDelta), which on desktop simply didn't happen. Only
+      // on `id`: another conflict target is refused (QueryBuilder.unsupported).
+      upsert(data: any, options?: { onConflict?: string }): QueryBuilder {
+        const builder = new QueryBuilder(table, 'upsert', data)
+        if (options?.onConflict && options.onConflict !== 'id') (builder as any).unsupported = 'upsert'
         return builder
       },
     }

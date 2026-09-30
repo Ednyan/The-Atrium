@@ -696,6 +696,45 @@ export function erasePicture(picture: Picture, placement: TracePlacement, eraser
   return trimToInk(canvas, box.minX, box.minY, ppw)
 }
 
+// A stroke's picture in another colour: every pixel that colour, as opaque
+// as it was -- a brush's grain, a soft edge and what the eraser took all kept.
+// A drawing from before strokes were saved one by one comes out one colour.
+// With no colour, a copy as it is, on a canvas.
+export function tintPicture(picture: Picture, colour: string | null): HTMLCanvasElement {
+  const { width, height } = pictureSize(picture)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(picture, 0, 0)
+  if (colour) {
+    ctx.globalCompositeOperation = 'source-in'
+    ctx.fillStyle = colour
+    ctx.fillRect(0, 0, width, height)
+  }
+  return canvas
+}
+
+// The colour a stroke is painted in: its most opaque pixel's, as #rrggbb --
+// the edges are blended toward nothing and say less. Null for a blank one.
+export function inkColour(picture: Picture): string | null {
+  const { width, height } = pictureSize(picture)
+  if (!width || !height) return null
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(picture, 0, 0)
+  const data = ctx.getImageData(0, 0, width, height).data
+  let best = -1
+  for (let i = 3; i < data.length; i += 4) {
+    if (best < 0 || data[i] > data[best]) best = i
+    if (data[i] === 255) break
+  }
+  if (best < 0 || data[best] === 0) return null
+  return '#' + [data[best - 3], data[best - 2], data[best - 1]].map(v => v.toString(16).padStart(2, '0')).join('')
+}
+
 // The drawing a drawing trace belongs to: the group it's in, when everything
 // in that group is a drawing (a "Drawing N"), or just itself -- alone, or
 // among other things in a group of some other kind.

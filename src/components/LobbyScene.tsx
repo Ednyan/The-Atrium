@@ -29,10 +29,11 @@ import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
 import { recordAction } from '../lib/actionHistory'
 import { adoptTraces } from '../lib/layerUndo'
 import { createGroup } from '../hooks/useLayers'
+import { cachedPicture, dropStrokes, loadDrawingPicture, pictureFieldsOf, pictureRow, pieceFields, placementOf, restoreStrokes, saveDrawingPicture, writePicture, type PictureFields } from '../lib/drawingFiles'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { inOrder, isValidOrderKey, keyAt, keysOnTopOfGroup, newTraceOrderFields } from '../lib/order'
+import { inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTopOfGroup, newTraceOrderFields } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
 import { fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
@@ -40,7 +41,7 @@ import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapeStyleColumns, 
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
-import { BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, isCustomBrush, makeBrushTip, newStrokeSeed, pictureSize, rasterizeStroke, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Picture, type Piece, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
+import { BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Piece, type Stroke, type StrokePoint } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
@@ -950,11 +951,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // ---- The drawing being drawn --------------------------------------------------
   //
   // Each stroke is saved as it's finished: a picture of just that stroke
-  // (lib/brushes rasterizeStroke), its own trace, in the drawing's group --
-  // "Drawing N", made with the first stroke, or the group of the drawing being
-  // edited. The eraser takes pixels out of every stroke of the drawing it
-  // crosses (erasePicture) and saves each one it changed. Nothing waits for a
-  // Save button: a stroke is kept the moment it's let go of.
+  // (lib/brushes rasterizeStroke), its own trace. Leaving drawing mode puts a
+  // new drawing's strokes into a group of their own, "Drawing N"; a drawing
+  // being edited that has a group gets its new strokes there straight away.
+  // The eraser takes pixels out of every stroke of the drawing it crosses
+  // (erasePicture) and saves each one it changed. Nothing waits for Save:
+  // what's drawn, erased, cleared or undone is written at once
+  // (lib/drawingFiles).
   //
   // What the drawing is, is the store: its strokes are traces there. While
   // drawing they're kept off TraceOverlay (hiddenTraceIds) and painted on the
@@ -964,12 +967,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // (lib/actionHistory), which TraceOverlay keeps.
   type Unsettled = { kind: 'stroke'; piece: Piece } | { kind: 'erase'; stroke: Stroke }
   interface DrawingSession {
+    // The group of the drawing being edited. A new drawing's is made as
+    // drawing ends (groupDrawing).
     groupId: string | null
-    // A drawing in no group, being edited: its group is made where it is,
-    // with the first new stroke, and it goes in.
+    // A drawing in no group, being edited: it goes into that group with its
+    // new strokes, and the group goes where it was.
     anchorId: string | null
-    // Its group made here -- taken away again if it's left empty.
-    madeGroup: boolean
     members: Set<string>
     unsettled: Unsettled[]
     // The saving, one change at a time, in the order they were made.
@@ -984,9 +987,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const drawingLiveRef = useRef(false)
   drawingLiveRef.current = drawingLive
   const [editingDrawing, setEditingDrawing] = useState(false)
-  // Every stroke's picture, by its file's address: painted here, or loaded
-  // to be drawn over.
-  const drawingPicturesRef = useRef(new Map<string, Picture>())
   const drawingVersionRef = useRef(0)
   const redrawDrawing = () => {
     drawingVersionRef.current++
@@ -997,116 +997,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return session.queue
   }
 
-  // Where a stroke trace's picture is in the world, as TraceOverlay lays it
-  // out (storedTransformOf, getTraceSize).
-  const placementOf = (trace: Trace, picture: Picture): TracePlacement => {
-    const natural = pictureSize(picture)
-    const fit = Math.min(1, 300 / Math.max(1, natural.width, natural.height))
+  // A stroke's own step of undo: taken away and put back -- as it is when
+  // it's taken (in its group by then, say), not as it was made.
+  const strokeStep = (made: Trace) => {
+    let kept = made
     return {
-      cx: trace.x, cy: trace.y, rotation: trace.rotation ?? 0,
-      flipH: !!trace.flipHorizontal, flipV: !!trace.flipVertical,
-      width: trace.width && trace.height ? trace.width : Math.round(natural.width * fit),
-      height: trace.width && trace.height ? trace.height : Math.round(natural.height * fit),
-      scaleX: trace.scaleX ?? trace.scale ?? 1, scaleY: trace.scaleY ?? trace.scale ?? 1,
-      cropX: trace.cropX ?? 0, cropY: trace.cropY ?? 0, cropWidth: trace.cropWidth ?? 1, cropHeight: trace.cropHeight ?? 1,
+      label: 'drawing stroke',
+      undo: () => {
+        kept = useGameStore.getState().traces.find(tr => tr.id === made.id) ?? kept
+        return dropStrokes([kept])
+      },
+      redo: () => restoreStrokes([kept]),
     }
   }
-  // A stroke trace's picture and where it is -- all of it in the picture:
-  // nothing scaled, turned, flipped or cropped.
-  const pieceFields = (piece: Piece, mediaUrl: string) => ({
-    mediaUrl, x: piece.placement.cx, y: piece.placement.cy, width: piece.placement.width, height: piece.placement.height,
-    scale: 1, scaleX: 1, scaleY: 1, rotation: 0, flipHorizontal: false, flipVertical: false,
-    cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
-  })
-  type PictureFields = Pick<Trace, 'mediaUrl' | 'x' | 'y' | 'width' | 'height' | 'scale' | 'scaleX' | 'scaleY' | 'rotation' | 'flipHorizontal' | 'flipVertical' | 'cropX' | 'cropY' | 'cropWidth' | 'cropHeight'>
-  const pictureFieldsOf = (tr: Trace): PictureFields => ({
-    mediaUrl: tr.mediaUrl, x: tr.x, y: tr.y, width: tr.width, height: tr.height, scale: tr.scale, scaleX: tr.scaleX, scaleY: tr.scaleY,
-    rotation: tr.rotation, flipHorizontal: tr.flipHorizontal, flipVertical: tr.flipVertical,
-    cropX: tr.cropX, cropY: tr.cropY, cropWidth: tr.cropWidth, cropHeight: tr.cropHeight,
-  })
-  const pictureRow = (f: PictureFields) => ({
-    media_url: f.mediaUrl ?? null, position_x: f.x, position_y: f.y, width: f.width ?? null, height: f.height ?? null,
-    scale: f.scale ?? 1, scale_x: f.scaleX ?? 1, scale_y: f.scaleY ?? 1, rotation: f.rotation ?? 0,
-    flip_horizontal: !!f.flipHorizontal, flip_vertical: !!f.flipVertical,
-    crop_x: f.cropX ?? 0, crop_y: f.cropY ?? 0, crop_width: f.cropWidth ?? 1, crop_height: f.cropHeight ?? 1,
-  })
-  // A stroke trace given a picture: written at once, as drawing always has.
-  const writePicture = async (traceId: string, fields: PictureFields) => {
-    const current = useGameStore.getState().traces.find(tr => tr.id === traceId)
-    if (current) useGameStore.getState().addTrace({ ...current, ...fields })
-    const { error } = await (supabase!.from('traces') as any).update(pictureRow(fields)).eq('id', traceId)
-    if (error) console.error('[drawing] could not save a stroke:', error)
-  }
 
-  // A picture's file: drawing_<user>_<time>.png (isDrawingTrace knows a
-  // drawing by it), or the picture in the row as a data URL if the upload
-  // fails. Remembered by its address, so it's painted from here, not fetched.
-  const saveDrawingPicture = async (picture: HTMLCanvasElement): Promise<string> => {
-    const blob = await new Promise<Blob | null>(resolve => picture.toBlob(resolve, 'image/png'))
-    let url = ''
-    if (blob) {
-      const storagePath = `${lobbyId}/drawing_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`
-      const { error } = await supabase!.storage.from('traces').upload(storagePath, blob, { contentType: 'image/png' })
-      if (error) console.error('Storage upload failed, falling back to data URL:', error)
-      else url = supabase!.storage.from('traces').getPublicUrl(storagePath).data.publicUrl
-    }
-    if (!url) url = picture.toDataURL('image/png')
-    drawingPicturesRef.current.set(url, picture)
-    // Fetched ahead, so it's there when the trace shows it after drawing.
-    if (/^https?:/.test(url)) new Image().src = url
-    return url
-  }
-
-  // A drawing's picture from its file, readable back from a canvas (the
-  // eraser reads it): from the vault as a blob on desktop, and on the web with
-  // CORS, falling back to the site's own image proxy. Null if it can't be had.
-  const loadDrawingPicture = async (mediaUrl: string): Promise<Picture | null> => {
-    const known = drawingPicturesRef.current.get(mediaUrl)
-    if (known) return known
-    const load = (src: string, crossOrigin: boolean) => new Promise<HTMLImageElement | null>(resolve => {
-      const img = new Image()
-      if (crossOrigin) img.crossOrigin = 'anonymous'
-      img.onload = () => resolve(img)
-      img.onerror = () => resolve(null)
-      img.src = src
-    })
-    let img: HTMLImageElement | null = null
-    if (mediaUrl.startsWith('local://')) {
-      const { resolveLocalUrl } = await import('../lib/localDb')
-      const resolved = await resolveLocalUrl(mediaUrl)
-      if (!resolved.startsWith('local://')) img = await load(resolved, false)
-    } else if (mediaUrl.startsWith('data:')) {
-      img = await load(mediaUrl, false)
-    } else {
-      img = await load(mediaUrl, true)
-        ?? (isDesktop ? null : await load(`/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`, false))
-    }
-    if (!img || !img.naturalWidth) return null
-    drawingPicturesRef.current.set(mediaUrl, img)
-    return img
-  }
-
-  // The drawing's group, made with its first stroke: on top of everything,
-  // named Drawing N -- or, for a drawing in no group being edited, where that
-  // drawing is, and it goes in.
-  const drawingGroupFor = async (session: DrawingSession): Promise<string> => {
-    if (session.groupId) return session.groupId
-    const { traces, layers } = useGameStore.getState()
-    const name = firstFreeName(layers.map(l => l.name), n => t('atrium.layers.numberedDrawing', { n }))
-    const anchor = session.anchorId ? traces.find(tr => tr.id === session.anchorId) : undefined
-    const group = await createGroup(lobbyId, name, userId, anchor?.orderKey && isValidOrderKey(anchor.orderKey) ? anchor.orderKey : undefined)
-    session.groupId = group.id
-    session.madeGroup = true
-    if (anchor) {
-      const orderKey = keysOnTopOfGroup([], group.id)[0]
-      const now = useGameStore.getState().traces.find(tr => tr.id === anchor.id)
-      if (now) useGameStore.getState().addTrace({ ...now, layerId: group.id, orderKey })
-      await (supabase!.from('traces') as any).update({ layer_id: group.id, order_key: orderKey }).eq('id', anchor.id)
-    }
-    return group.id
-  }
-
-  // A stroke let go of: shown at once, saved behind it.
+  // A stroke let go of: shown at once, saved behind it -- on top of
+  // everything, or, in a drawing being edited that has a group, over its
+  // other strokes there.
   const settleStroke = (session: DrawingSession, stroke: Stroke, zoom: number) => {
     const piece = rasterizeStroke(stroke, zoom)
     if (!piece) return
@@ -1119,13 +1026,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           showToast(lobbyFullMessage())
           return
         }
-        const groupId = await drawingGroupFor(session)
-        const mediaUrl = await saveDrawingPicture(piece.picture)
-        // Over the drawing's other strokes, in its group.
-        const inGroup = inOrder(useGameStore.getState().traces.filter(tr => tr.layerId === groupId))
-        let top = -1
-        inGroup.forEach((tr, i) => { if (session.members.has(tr.id)) top = i })
-        const orderKey = keyAt(inGroup, top + 1) ?? keysOnTopOfGroup(inGroup, groupId)[0]
+        const mediaUrl = await saveDrawingPicture(piece.picture, lobbyId, userId)
+        const { traces: all, layers } = useGameStore.getState()
+        const groupId = session.groupId
+        let orderKey: string | null
+        if (groupId) {
+          const inGroup = inOrder(all.filter(tr => tr.layerId === groupId))
+          let top = -1
+          inGroup.forEach((tr, i) => { if (session.members.has(tr.id)) top = i })
+          orderKey = keyAt(inGroup, top + 1) ?? keysOnTopOfGroup(inGroup, groupId)[0]
+        } else {
+          orderKey = newTraceOrderFields(all, layers)[0].order_key
+        }
         const { data, error } = await supabase!.from('traces').insert({
           user_id: userId,
           username,
@@ -1148,20 +1060,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // would record when it sees it arrive.
         adoptTraces([trace.id])
         useGameStore.getState().addTrace(trace)
-        recordAction({
-          label: 'drawing stroke',
-          undo: () => {
-            const store = useGameStore.getState()
-            store.removeTrace(trace.id)
-            store.markTraceDeleted(trace.id)
-          },
-          redo: () => {
-            adoptTraces([trace.id])
-            const store = useGameStore.getState()
-            store.addTrace(trace)
-            store.unmarkTraceDeleted(trace.id)
-          },
-        })
+        recordAction(strokeStep(trace))
       } catch (err: any) {
         console.error('[drawing] could not save a stroke:', err)
         showToast(t('atrium.draw.strokeSaveFailed', { message: err?.message ?? '' }))
@@ -1173,22 +1072,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
 
   // An erasure, made or taken back: each stroke it reached shows what was
-  // left of it, or what it was before -- or, erased entirely, is gone, as a
-  // deleted trace is (for good at Save).
+  // left of it, or what it was before -- or, erased entirely, is deleted,
+  // and put back.
   type Erased = { before: Trace; after: PictureFields | null }
   const applyErase = async (changes: Erased[], direction: 'forward' | 'back') => {
-    const store = useGameStore.getState()
-    for (const { before, after } of changes) {
-      if (after) continue
-      if (direction === 'forward') {
-        store.removeTrace(before.id)
-        store.markTraceDeleted(before.id)
-      } else {
-        adoptTraces([before.id])
-        store.addTrace(before)
-        store.unmarkTraceDeleted(before.id)
-      }
-    }
+    const whole = changes.filter(c => !c.after).map(c => c.before)
+    await (direction === 'forward' ? dropStrokes(whole) : restoreStrokes(whole))
     await Promise.all(changes.filter(c => c.after).map(c => writePicture(c.before.id, direction === 'forward' ? c.after! : pictureFieldsOf(c.before))))
   }
 
@@ -1203,11 +1092,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const changes: Erased[] = []
         for (const trace of useGameStore.getState().traces) {
           if (!session.members.has(trace.id) || !trace.mediaUrl) continue
-          const picture = drawingPicturesRef.current.get(trace.mediaUrl)
+          const picture = cachedPicture(trace.mediaUrl)
           if (!picture) continue
           const left = erasePicture(picture, placementOf(trace, picture), eraser)
           if (left === 'untouched') continue
-          changes.push({ before: trace, after: left && pieceFields(left, await saveDrawingPicture(left.picture)) })
+          changes.push({ before: trace, after: left && pieceFields(left, await saveDrawingPicture(left.picture, lobbyId, userId)) })
         }
         if (changes.length === 0) return
         await applyErase(changes, 'forward')
@@ -1226,35 +1115,39 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     })
   }
 
-  // Clear: every stroke of the drawing gone, as one step -- deleted as any
-  // trace is, for good at Save.
+  // Clear: every stroke of the drawing deleted, as one step.
   const clearDrawing = () => {
     const session = sessionRef.current
     if (!session) return
     void enqueueDrawing(session, async () => {
       const gone = useGameStore.getState().traces.filter(tr => session.members.has(tr.id))
       if (gone.length === 0) return
-      const take = () => {
-        const store = useGameStore.getState()
-        for (const tr of gone) {
-          store.removeTrace(tr.id)
-          store.markTraceDeleted(tr.id)
-        }
-      }
-      take()
-      recordAction({
-        label: 'drawing cleared',
-        undo: () => {
-          adoptTraces(gone.map(tr => tr.id))
-          const store = useGameStore.getState()
-          for (const tr of gone) {
-            store.addTrace(tr)
-            store.unmarkTraceDeleted(tr.id)
-          }
-        },
-        redo: take,
-      })
+      await dropStrokes(gone)
+      recordAction({ label: 'drawing cleared', undo: () => restoreStrokes(gone), redo: () => dropStrokes(gone) })
     })
+  }
+
+  // A new drawing's strokes -- with the drawing in no group being edited, if
+  // that's what this was -- into a group of their own, Drawing N, where that
+  // drawing was, or where the topmost of them is. Not a step of undo: undoing
+  // after it takes the last stroke away, out of the group.
+  const groupDrawing = async (session: DrawingSession) => {
+    if (session.groupId) return
+    const { traces: all, layers } = useGameStore.getState()
+    const strokes = inOrder(all.filter(tr => session.members.has(tr.id)))
+    // Nothing new drawn: an edited drawing is left as it was.
+    if (!strokes.some(tr => tr.id !== session.anchorId)) return
+    const place = strokes.find(tr => tr.id === session.anchorId) ?? strokes[strokes.length - 1]
+    const name = firstFreeName(layers.map(l => l.name), n => t('atrium.layers.numberedDrawing', { n }))
+    const group = await createGroup(lobbyId, name, userId, place.orderKey && isValidOrderKey(place.orderKey) ? place.orderKey : undefined)
+    const keys = keysBetween(null, null, strokes.length)
+    await Promise.all(strokes.map(async (tr, i) => {
+      const now = useGameStore.getState().traces.find(x => x.id === tr.id)
+      if (!now) return
+      useGameStore.getState().addTrace({ ...now, layerId: group.id, orderKey: keys[i] })
+      const { error } = await (supabase!.from('traces') as any).update({ layer_id: group.id, order_key: keys[i] }).eq('id', tr.id)
+      if (error) console.error('[drawing] could not put a stroke in its group:', error)
+    }))
   }
 
   // Undo and redo while drawing: TraceOverlay's, once every stroke drawn so
@@ -1290,7 +1183,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     sessionRef.current = {
       groupId,
       anchorId: editTraceId && !groupId ? editTraceId : null,
-      madeGroup: false,
       members: new Set(members.map(m => m.id)),
       unsettled: [],
       queue: Promise.resolve(),
@@ -1304,9 +1196,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
 
   // Out of drawing mode, whichever way. Every stroke is saved already, or on
-  // its way: the canvas stays up until the last one is, then the traces show
-  // in their place. A group made here and left empty -- everything undone --
-  // is taken away again.
+  // its way: the canvas stays up until the last one is and the drawing is
+  // grouped, then its traces show in their place.
   const leaveDrawing = () => {
     setIsDrawingMode(false)
     setIsEraserMode(false)
@@ -1314,15 +1205,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     currentStrokeRef.current = []
     const session = sessionRef.current
     if (!session) return
-    void session.queue.then(async () => {
-      const { groupId } = session
-      if (groupId && session.madeGroup && !useGameStore.getState().traces.some(tr => tr.layerId === groupId)) {
-        const { error } = await (supabase!.from('layers') as any).delete().eq('id', groupId)
-        if (!error) {
-          useGameStore.getState().forgetLayer(groupId)
-          window.dispatchEvent(new Event('atrium:layers-changed'))
-        }
-      }
+    void enqueueDrawing(session, () => groupDrawing(session)).then(() => {
       if (sessionRef.current !== session) return
       sessionRef.current = null
       setDrawingMembers(new Set())
@@ -1512,7 +1395,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // being saved, in the order it was done.
         const saved = inOrder(useGameStore.getState().traces.filter(tr => session.members.has(tr.id)))
         for (const trace of saved) {
-          const picture = trace.mediaUrl ? drawingPicturesRef.current.get(trace.mediaUrl) : undefined
+          const picture = trace.mediaUrl ? cachedPicture(trace.mediaUrl) : undefined
           if (picture) drawPlacedPicture(layerCtx, picture, placementOnScreen(placementOf(trace, picture), view))
         }
         for (const op of session.unsettled) {

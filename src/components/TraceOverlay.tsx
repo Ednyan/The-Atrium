@@ -46,6 +46,7 @@ import { drawingOf, isDrawingTrace } from '../lib/brushes'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
+import StrokeColourField from './StrokeColourField'
 import { cropClip, flipInBox } from '../lib/traceFlip'
 import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
@@ -8800,6 +8801,11 @@ return (
             )}
             
             <div className="space-y-5">
+              {/* A drawing's stroke: its colour, changed after it's drawn. */}
+              {lobbyId && isDrawingTrace(editingTrace) && (
+                <StrokeColourField traceIds={[editingTrace.id]} lobbyId={lobbyId} userId={userId} />
+              )}
+
               {/* Shape controls first, directly under the name -- where the create
                   panel has them, and the same component, so the two are one panel.
                   The point editor is the one part only an existing trace can have,
@@ -9831,6 +9837,14 @@ return (
                     ))}
                   </div>
                 </div>
+
+                {/* The colour of the drawing strokes in the selection -- a
+                    drawing's group, as a right-click selects it. */}
+                {(() => {
+                  const strokeIds = traces.filter(t => multiSelectedIds.has(t.id) && isDrawingTrace(t)).map(t => t.id)
+                  if (!lobbyId || strokeIds.length === 0) return null
+                  return <StrokeColourField key={strokeIds.join(',')} traceIds={strokeIds} lobbyId={lobbyId} userId={userId} />
+                })()}
 
                 {/* Text, for the text traces in the selection.
 

@@ -399,6 +399,7 @@ const fr: Catalogue = {
   'atrium.draw.exit': 'Quitter le dessin',
   'atrium.draw.hint': 'Cliquez et faites glisser pour dessiner — chaque trait s’enregistre tout seul • E gomme • Ctrl+Z annuler, Ctrl+Shift+Z rétablir • Échap quitte',
   'atrium.draw.strokeSaveFailed': 'Un trait n’a pas pu être enregistré : {message}',
+  'atrium.draw.strokeColour': 'Couleur du trait',
   'common.create': 'Créer',
   'common.rename': 'Renommer',
   'common.dragReorder': 'Faites glisser pour réordonner',

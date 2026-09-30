@@ -303,6 +303,7 @@ export const en = {
   'atrium.draw.exit': 'Exit drawing',
   'atrium.draw.hint': 'Click and drag to draw — each stroke saves itself • E eraser • Ctrl+Z undo, Ctrl+Shift+Z redo • Esc exits',
   'atrium.draw.strokeSaveFailed': 'A stroke couldn\'t be saved: {message}',
+  'atrium.draw.strokeColour': 'Stroke colour',
   'common.create': 'Create',
   'common.rename': 'Rename',
   'common.dragReorder': 'Drag to reorder',

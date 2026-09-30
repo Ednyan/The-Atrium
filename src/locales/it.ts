@@ -401,6 +401,7 @@ const it: Catalogue = {
   'atrium.draw.exit': 'Esci dal disegno',
   'atrium.draw.hint': 'Clicca e trascina per disegnare — ogni tratto si salva da solo • E gomma • Ctrl+Z annulla, Ctrl+Shift+Z ripeti • Esc esce',
   'atrium.draw.strokeSaveFailed': 'Non è stato possibile salvare un tratto: {message}',
+  'atrium.draw.strokeColour': 'Colore del tratto',
   'common.create': 'Crea',
   'common.rename': 'Rinomina',
   'common.dragReorder': 'Trascina per riordinare',

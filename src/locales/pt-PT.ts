@@ -404,6 +404,7 @@ const ptPT: Catalogue = {
   'atrium.draw.exit': 'Sair do desenho',
   'atrium.draw.hint': 'Clique e arraste para desenhar — cada traço guarda-se sozinho • E borracha • Ctrl+Z desfazer, Ctrl+Shift+Z refazer • Esc sai',
   'atrium.draw.strokeSaveFailed': 'Não foi possível guardar um traço: {message}',
+  'atrium.draw.strokeColour': 'Cor do traço',
   'common.create': 'Criar',
   'common.rename': 'Mudar nome',
   'common.dragReorder': 'Arraste para reordenar',

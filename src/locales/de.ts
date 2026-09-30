@@ -400,6 +400,7 @@ const de: Catalogue = {
   'atrium.draw.exit': 'Zeichnen beenden',
   'atrium.draw.hint': 'Klicken und ziehen zum Zeichnen – jeder Strich speichert sich selbst • E Radierer • Strg+Z rückgängig, Strg+Umschalt+Z wiederholen • Esc beendet',
   'atrium.draw.strokeSaveFailed': 'Ein Strich konnte nicht gespeichert werden: {message}',
+  'atrium.draw.strokeColour': 'Strichfarbe',
   'common.create': 'Erstellen',
   'common.rename': 'Umbenennen',
   'common.dragReorder': 'Zum Umsortieren ziehen',
