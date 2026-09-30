@@ -42,6 +42,6 @@ export function isCanvasTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el?.closest) return false
   if (el.closest('.trace-nier-handle, .trace-nier-handle-center, .trace-rotate-handle, [data-elbow-grip], [data-frame-title]')) return false
-  if (el.closest('[data-trace-element], [data-canvas-backdrop]')) return true
+  if (el.closest('[data-trace-element]')) return true
   return !el.closest('[data-ui-element], [data-hud], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
 }

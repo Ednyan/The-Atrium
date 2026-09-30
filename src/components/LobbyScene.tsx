@@ -2232,6 +2232,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       e.preventDefault()
       e.stopPropagation()
       cameraFlyToRef.current = null
+      // Starting to make something lets go of what was selected, as in
+      // Excalidraw -- and its panel with it (TraceOverlay's panels follow the
+      // selection). What this makes is selected when it exists; a click
+      // that makes nothing leaves nothing selected.
+      setMultiSelectRequest([])
       placeStartRef.current = {
         sx: e.clientX, sy: e.clientY,
         wx: (e.clientX - c.x) / zoomRef.current, wy: (e.clientY - c.y) / zoomRef.current,

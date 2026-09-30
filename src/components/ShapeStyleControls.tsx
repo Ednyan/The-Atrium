@@ -38,23 +38,32 @@ const PATH_LINES: { kind: ShapeStyle['pathCurveType']; glyph: string; key: 'atri
   { kind: 'elbow', glyph: '┗', key: 'atrium.links.elbow' },
 ]
 
-function SectionRule({ label }: { label: string }) {
+// A section's heading, and -- in Batch Edit, where a setting may be for only
+// some of what's selected -- a note of which.
+export function SectionRule({ label, note }: { label: string; note?: string | null }) {
   return (
     <div className="flex items-baseline gap-3 pt-1">
       <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{label}</span>
+      {note && <span className="text-nier-bg/60 text-[10px] tracking-wide">{note}</span>}
       <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
     </div>
   )
 }
 
-export function Check({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+// A switch. `mixed`: some of the traces it's for have it on and some off --
+// shown as a dash, and turned on for all of them by a click.
+export function Check({ checked, onChange, label, hint, mixed = false }: {
+  checked: boolean; onChange: (value: boolean) => void; label: string; hint?: string; mixed?: boolean
+}) {
+  const on = checked && !mixed
   return (
     <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${checked ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-        {checked && <span className="text-nier-bg text-[10px]">✓</span>}
+      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${on || mixed ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+        {on && <span className="text-nier-bg text-[10px]">✓</span>}
+        {mixed && <span className="text-nier-bg text-[10px]">–</span>}
       </div>
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="hidden" />
-      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{label}</span>
+      <input type="checkbox" checked={on} onChange={() => onChange(!on)} className="hidden" />
+      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={hint}>{label}</span>
     </label>
   )
 }
@@ -175,9 +184,13 @@ function SizeInput({ label, value, onCommit }: { label: string; value: number; o
   )
 }
 
-export default function ShapeStyleControls({ value, onChange, size, onSizeChange, pathExtra }: {
+export default function ShapeStyleControls({ value, onChange, size, onSizeChange, pathExtra, typePicker = true, note }: {
   value: ShapeStyle
   onChange: (patch: Partial<ShapeStyle>) => void
+  /** Off in Batch Edit: shapes and paths are edited apart there, and a type picked for all of them could turn a box into a line with no points. */
+  typePicker?: boolean
+  /** Beside the heading: which of a selection these are for (Batch Edit). */
+  note?: string | null
   /** The shape's box as drawn. Given by both panels, so both show it in the same place. */
   size?: { width: number; height: number }
   onSizeChange?: (width: number, height: number) => void
@@ -203,9 +216,9 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
 
   return (
     <div className="space-y-4">
-      <SectionRule label={t('atrium.customize.shape')} />
+      <SectionRule label={isPath ? t('atrium.trace.shape.path') : t('atrium.customize.shape')} note={note} />
 
-      <div>
+      {typePicker && <div>
         <label className={LABEL}>{t('atrium.customize.shapeType')}</label>
         <div className="grid grid-cols-2 gap-2">
           {(['rectangle', 'circle', 'triangle', 'path'] as ShapeKind[]).map(kind => (
@@ -218,7 +231,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* A path is sized by the points it passes through, not by a box. */}
       {size && onSizeChange && !isPath && (

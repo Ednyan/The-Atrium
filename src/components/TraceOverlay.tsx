@@ -38,7 +38,9 @@ import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
-import ShapeStyleControls from './ShapeStyleControls'
+import ShapeStyleControls, { Check } from './ShapeStyleControls'
+import BatchEditPanel from './BatchEditPanel'
+import { has } from '../lib/traceKinds'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, rememberShapeStyle, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
@@ -367,9 +369,6 @@ const storedTransformOf = (trace: Trace) => ({
   rotation: trace.rotation ?? 0.0,
 })
 
-// The types whose frame -- border colour and thickness -- the Customize panel
-// offers.
-const BORDERED_TYPES = new Set<string>(['text', 'embed', 'image', 'document', 'frame'])
 
 const SHAPE_DRAFT_ID = '__shape-draft__'
 const SHAPE_DRAFT_Z = 999_999
@@ -412,12 +411,10 @@ const OWN_CURSOR_MIN_Z_INDEX = 20_000_000
 // They previously used small values (50-300) left over from before trace
 // z-index was uncapped, which put the handle/cursor z-index bumps above (in
 // front of) these menus once a trace's own z-index or a handle exceeded
-// ~300. MENU_PANEL_Z_INDEX is for the actual menu/dialog content; menus
-// that have a separate click-outside-to-close backdrop element (Customize,
-// Batch Edit) use MENU_BACKDROP_Z_INDEX for that, which must stay below the
-// panel itself. Single self-contained overlays (context menu, delete
-// confirm, full-view modal) just use MENU_PANEL_Z_INDEX for the whole thing.
-const MENU_BACKDROP_Z_INDEX = 10_000_000
+// ~300. The Customize and Batch Edit panels lay nothing over the rest of the
+// screen: they follow the selection instead (see "The panels follow the
+// selection"), so the canvas, the quick bar and the HUD all go on working
+// while one is open.
 const MENU_PANEL_Z_INDEX = 10_000_100
 
 type TraceClipboardPayload = {
@@ -3355,17 +3352,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }
 
-  // Applies the same property updates to every trace in a set at once (used
-  // by the batch-edit panel), as one undo step (inOneStep). It was one per
-  // trace, so undoing a batch edit took a Ctrl+Z for every trace.
-  const updateTraceCustomizationForMany = (traceIds: Iterable<string>, updates: Partial<Trace>) => {
-    inOneStep(() => {
-      for (const traceId of traceIds) {
-        updateTraceCustomization(traceId, updates)
-      }
-    })
-  }
-
   // Touch adapter: converts a TouchEvent into a fake React.MouseEvent for handleMouseDown
   const handleTouchDown = (e: React.TouchEvent, trace: Trace, mode: TransformMode, corner?: string) => {
     if (e.touches.length !== 1) return
@@ -4970,22 +4956,31 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [transformMode, selectedTraceId])
 
-  // Clear editingTrace when trace is deselected
+  // The panels follow the selection, as Excalidraw's properties do. Open, one
+  // shows what's selected now: Customize for one trace, Batch Edit for
+  // several -- switching between the two as the selection does -- and goes
+  // when nothing is. So nothing has to be laid over the screen to close it: a
+  // click on the canvas deselects, and that's all. (It used to be a
+  // transparent backdrop across everything, which took the click meant for
+  // the quick bar, the HUD or the next trace.) Not on trace updates: while
+  // it's open, editingTrace is the source of truth for the trace it shows.
+  const batchOpenRef = useRef(showBatchEditPanel)
+  batchOpenRef.current = showBatchEditPanel
   useEffect(() => {
-    if (!selectedTraceId && editingTrace) {
-      // Clear editingTrace when nothing is selected
-      setEditingTrace(null)
+    const editing = editingTraceRef.current
+    if (!editing && !batchOpenRef.current) return
+    if (multiSelectedIds.size > 1) {
+      if (editing) setEditingTrace(null)
+      setShowBatchEditPanel(true)
+      return
     }
-    // Don't sync on traces updates - let editingTrace be the source of truth during editing
-  }, [selectedTraceId, editingTrace])
-
-  // Close the batch-edit panel if the multi-selection it applies to drops
-  // below 2 traces (e.g. the user clicked away to deselect while it was open)
-  useEffect(() => {
-    if (showBatchEditPanel && multiSelectedIds.size < 2) {
-      setShowBatchEditPanel(false)
+    setShowBatchEditPanel(false)
+    if (!selectedTraceId) {
+      if (editing) setEditingTrace(null)
+      return
     }
-  }, [showBatchEditPanel, multiSelectedIds])
+    if (editing?.id !== selectedTraceId) setEditingTrace(tracesRef.current.find(t => t.id === selectedTraceId) ?? null)
+  }, [selectedTraceId, multiSelectedIds])
 
   // Disable path creation mode when selection is cleared
   // Note: We don't check editingTrace here to avoid disabling mode when updating points
@@ -8802,7 +8797,7 @@ return (
             
             <div className="space-y-5">
               {/* A drawing's stroke: its colour, changed after it's drawn. */}
-              {lobbyId && isDrawingTrace(editingTrace) && (
+              {lobbyId && has(editingTrace, 'strokes') && (
                 <StrokeColourField traceIds={[editingTrace.id]} lobbyId={lobbyId} userId={userId} />
               )}
 
@@ -8810,7 +8805,7 @@ return (
                   panel has them, and the same component, so the two are one panel.
                   The point editor is the one part only an existing trace can have,
                   so it goes in through pathExtra. */}
-              {editingTrace.type === 'shape' && (
+              {(has(editingTrace, 'shape') || has(editingTrace, 'line')) && (
                 <ShapeStyleControls
                   value={shapeStyleOf(editingTrace)}
                   // The size as drawn. Resize handles change scale, not width,
@@ -8947,7 +8942,7 @@ return (
                   Placed above the toggle group below rather than inside it,
                   because that group is hidden for shapes -- which are one of
                   the three types this applies to. */}
-              {(editingTrace.type === 'text' || editingTrace.type === 'embed' || editingTrace.type === 'shape') && (
+              {has(editingTrace, 'link') && (
                 <div className="space-y-3">
                   <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
                     <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
@@ -8992,7 +8987,7 @@ return (
               )}
 
               {/* Font Settings for Text Traces */}
-              {editingTrace.type === 'text' && (
+              {has(editingTrace, 'font') && (
                 <>
 
                   <div className="flex items-baseline gap-3 pt-1">
@@ -9197,7 +9192,7 @@ return (
                 </>
               )}
               {/* Border & Fill Color Controls (for text and embed traces) */}
-              {BORDERED_TYPES.has(editingTrace.type) && (
+              {has(editingTrace, 'frame') && (
                 <>
 
                   <div className="flex items-baseline gap-3 pt-1">
@@ -9364,136 +9359,81 @@ return (
                   )}
                 </>
               )}
-              {editingTrace.type !== 'shape' && (
+              {has(editingTrace, 'frame') && (
                 <div className="flex items-baseline gap-3 pt-1">
                   <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.frame')}</span>
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
               )}
 
-              {/* Toggle Options -- shapes have their own dedicated Show
-                  Outline/No Fill controls further down (and are created with
-                  these generic wrapper toggles off by default), so showing
-                  both here read as duplicated "no fill" controls */}
-              {editingTrace.type !== 'shape' && (
+              {/* Toggle Options -- shapes have their own Show Outline and No
+                  Fill instead (ShapeStyleControls): these are the box's. */}
+              {has(editingTrace, 'frame') && (
               <div className="space-y-3">
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showBorder ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showBorder: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showBorder: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBorder')}</span>
-                </label>
-
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showBackground ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showBackground: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showBackground: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBackground')}</span>
-                </label>
-
-                {!isFrame(editingTrace) && (
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showFilename ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showFilename: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showFilename: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showUsername')}</span>
-                </label>
+                <Check
+                  checked={editingTrace.showBorder ?? true}
+                  label={t('atrium.customize.showBorder')}
+                  onChange={on => {
+                    setEditingTrace({ ...editingTrace, showBorder: on })
+                    updateTraceCustomization(editingTrace.id, { showBorder: on })
+                  }}
+                />
+                <Check
+                  checked={editingTrace.showBackground ?? true}
+                  label={t('atrium.customize.showBackground')}
+                  onChange={on => {
+                    setEditingTrace({ ...editingTrace, showBackground: on })
+                    updateTraceCustomization(editingTrace.id, { showBackground: on })
+                  }}
+                />
+                {has(editingTrace, 'captions') && (
+                  <>
+                <Check
+                  checked={editingTrace.showFilename ?? true}
+                  label={t('atrium.customize.showUsername')}
+                  onChange={on => {
+                    setEditingTrace({ ...editingTrace, showFilename: on })
+                    updateTraceCustomization(editingTrace.id, { showFilename: on })
+                  }}
+                />
+                <Check
+                  checked={editingTrace.showDescription ?? false}
+                  label={t('atrium.customize.showDescription')}
+                  onChange={on => {
+                    setEditingTrace({ ...editingTrace, showDescription: on })
+                    updateTraceCustomization(editingTrace.id, { showDescription: on })
+                  }}
+                />
+                  </>
                 )}
-
-                {!isFrame(editingTrace) && (
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showDescription ?? false}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showDescription: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showDescription: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showDescription')}</span>
-                </label>
-                )}
-
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingTrace.showShadow ?? true}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, showShadow: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { showShadow: e.target.checked })
-                    }}
-                    className="hidden"
-                  />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.softShadowHint')}>{t('atrium.customize.softShadow')}</span>
-                </label>
-
+                <Check
+                  checked={editingTrace.showShadow ?? true}
+                  label={t('atrium.customize.softShadow')}
+                  hint={t('atrium.customize.softShadowHint')}
+                  onChange={on => {
+                    setEditingTrace({ ...editingTrace, showShadow: on })
+                    updateTraceCustomization(editingTrace.id, { showShadow: on })
+                  }}
+                />
                 {/* Embed-only, but grouped with the other toggles rather than
                     left further down in the embed section. */}
                 {editingTrace.type === 'embed' && (
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.enableInteraction ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(editingTrace.enableInteraction ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editingTrace.enableInteraction ?? false}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, enableInteraction: e.target.checked }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { enableInteraction: e.target.checked })
-                      }}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.menu.enableInteraction')}</span>
-                  </label>
+                  <Check
+                    checked={editingTrace.enableInteraction ?? false}
+                    label={t('atrium.menu.enableInteraction')}
+                    onChange={on => {
+                      setEditingTrace({ ...editingTrace, enableInteraction: on })
+                      updateTraceCustomization(editingTrace.id, { enableInteraction: on })
+                    }}
+                  />
                 )}
-
               </div>
               )}
 
               {/* Border thickness. Its own block above the colour controls so
                   it also reaches PDF traces, where a frame is what separates a
                   white page from a light background. */}
-              {BORDERED_TYPES.has(editingTrace.type) && (editingTrace.showBorder ?? true) && (
+              {has(editingTrace, 'frame') && (editingTrace.showBorder ?? true) && (
                 <div>
                   <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
                     {t('atrium.customize.borderThickness', { value: editingTrace.borderWidth ?? 2 })}
@@ -9515,7 +9455,7 @@ return (
               )}
 
               {/* Border Radius Customization (for non-shape traces) */}
-              {editingTrace.type !== 'shape' && (
+              {has(editingTrace, 'frame') && (
                 <div>
                   <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
                     {t('atrium.customize.borderRadius', { value: editingTrace.borderRadius ?? 0 })}
@@ -9546,7 +9486,7 @@ return (
                   those (and pulsing) are hidden for them, reusing the same
                   illuminate/lightColor/lightIntensity fields for the glow
                   rendered in renderPathSvg instead. */}
-              {(() => {
+              {has(editingTrace, 'light') && (() => {
                 const isPathTrace = editingTrace.shapeType === 'path'
                 return (
               <div>
@@ -9756,504 +9696,36 @@ return (
             </div>
           </div>
 
-          {/* Backdrop. Marked, so an armed quick-bar tool treats a press on
-              it as one on the canvas behind (LobbyScene): placing shapes one
-              after another keeps each one's panel open in turn. */}
-          <div
-            data-canvas-backdrop=""
-            className="fixed inset-0 bg-transparent pointer-events-auto"
-            style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
-            onClick={() => setEditingTrace(null)}
-          />
         </>
       )}
 
-      {/* Batch Edit panel: shared border/background properties applied to every
-          trace in multiSelectedIds at once. Reads its displayed values from
-          whichever selected trace happens to be `traces.find`'s first match --
-          there's no per-field "mixed values" indicator, changing a control
-          just overwrites that field on every selected trace immediately. */}
-      {showBatchEditPanel && multiSelectedIds.size > 1 && canEdit && (() => {
-        const batchIds = Array.from(multiSelectedIds)
-        const seedTrace = traces.find(t => t.id === selectedTraceId && multiSelectedIds.has(t.id))
-          || traces.find(t => multiSelectedIds.has(t.id))
-        if (!seedTrace) return null
-
-        return (
-          <>
-            <div
-              className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
-              style={{
-                position: 'fixed',
-                right: '20px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                zIndex: MENU_PANEL_Z_INDEX
-              }}
-            >
-              {/* Corner brackets */}
-              <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
-              <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
-              <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
-
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-                <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.customize.batchEdit', { count: batchIds.length })}</h2>
-              </div>
-
-              <div className="space-y-5">
-                {/* The presets, at the top, because a preset is the fastest
-                    answer to "make these look alike" and that is most of what
-                    anybody selects a dozen traces to do. It also sets the
-                    atrium's house style, exactly as choosing one on a single
-                    trace does -- the point of a preset is that it holds. */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">{t('atrium.customize.quickPresets')}</span>
-                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {TRACE_PRESETS.map(preset => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => {
-                          updateTraceCustomizationForMany(batchIds, {
-                            borderColor: preset.border,
-                            fillColor: preset.fill,
-                            showBorder: true,
-                            showBackground: true,
-                            fontFamily: 'mono',
-                            ...(preset.text ? { textColor: preset.text } : {}),
-                          })
-                          if (lobbyId) rememberTracePreset(lobbyId, preset.id)
-                        }}
-                        className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[11px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors"
-                        style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
-                      >
-                        {t(preset.labelKey as TranslationKey)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* The colour of the drawing strokes in the selection -- a
-                    drawing's group, as a right-click selects it. */}
-                {(() => {
-                  const strokeIds = traces.filter(t => multiSelectedIds.has(t.id) && isDrawingTrace(t)).map(t => t.id)
-                  if (!lobbyId || strokeIds.length === 0) return null
-                  return <StrokeColourField key={strokeIds.join(',')} traceIds={strokeIds} lobbyId={lobbyId} userId={userId} />
-                })()}
-
-                {/* Text, for the text traces in the selection.
-
-                    Only shown when there are some: a font control over a
-                    selection of images is a control that does nothing, and the
-                    panel is already long. The traces it does not apply to are
-                    left alone rather than quietly given a font they will never
-                    render, which is also why the count says how many are
-                    actually about to change.
-
-                    Each one re-fits its own box, because auto-fit depends on
-                    the text inside it -- applying one width to the whole
-                    selection would size every trace to whichever happened to
-                    be measured. */}
-                {(() => {
-                  const textTraces = traces.filter(t => multiSelectedIds.has(t.id) && t.type === 'text')
-                  if (textTraces.length === 0) return null
-                  const seedFont = textTraces[0].fontFamily ?? 'sans'
-                  const mixed = textTraces.some(t => (t.fontFamily ?? 'sans') !== seedFont)
-                  return (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-nier-bg/75 text-[11px] tracking-[0.15em] uppercase">
-                          {t('atrium.controls.textCount', { count: textTraces.length })}
-                        </span>
-                        <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
-                      </div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontFamily')}</label>
-                      <select
-                        value={mixed ? '' : seedFont}
-                        onChange={e => {
-                          const next = e.target.value
-                          if (!next) return
-                          inOneStep(() => { for (const trace of textTraces) {
-                            const effectiveFontSize = typeof trace.fontSize === 'number'
-                              ? trace.fontSize
-                              : (trace.fontSize === 'small' ? 10 : trace.fontSize === 'large' ? 14 : 12)
-                            const textSize = computeAutoFitTextSize(
-                              trace.content ?? '',
-                              effectiveFontSize,
-                              { fontFamily: resolveFontFamilyCss(next) },
-                            )
-                            updateTraceCustomization(trace.id, {
-                              fontFamily: next,
-                              width: textSize.width,
-                              height: textSize.height,
-                            })
-                          } })
-                        }}
-                        className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      >
-                        {/* Only while they disagree, and it cannot be chosen --
-                            picking it would mean "set them all to mixed". */}
-                        {mixed && <option value="" disabled>{t('common.mixed')}</option>}
-                        {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
-                          <option key={value} value={value}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )
-                })()}
-
-                {/* Toggle Options */}
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showBorder ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(seedTrace.showBorder ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={seedTrace.showBorder ?? true}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBorder: e.target.checked })}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBorder')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showBackground ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(seedTrace.showBackground ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={seedTrace.showBackground ?? true}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showBackground: e.target.checked })}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showBackground')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showFilename ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(seedTrace.showFilename ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={seedTrace.showFilename ?? true}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showFilename: e.target.checked })}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showUsername')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showDescription ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(seedTrace.showDescription ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={seedTrace.showDescription ?? false}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showDescription: e.target.checked })}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.showDescription')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${seedTrace.showShadow ?? true ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(seedTrace.showShadow ?? true) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={seedTrace.showShadow ?? true}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { showShadow: e.target.checked })}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.softShadow')}</span>
-                  </label>
-                </div>
-
-                {/* Text colour, on the same gate as Text Sizing below: shown
-                    as long as ANY selected trace is text.
-
-                    The single-trace panel has had this since text traces did;
-                    batch edit could set the border and the fill of a dozen
-                    traces at once but not the one property that is actually
-                    about the words. Recolouring twelve labels one at a time is
-                    exactly the work this panel exists to avoid.
-
-                    No text field beside the swatch, unlike the single-trace
-                    version. There it mirrors one trace's current value, which
-                    is a fact; here the selection may hold a dozen different
-                    colours and any hex printed in the box would be a claim
-                    about all of them. The swatch sets, and says nothing. */}
-                {(() => {
-                  const colourSeed = batchIds
-                    .map(id => traces.find(t => t.id === id))
-                    .find((t): t is Trace => !!t && t.type === 'text')
-                  if (!colourSeed) return null
-                  return (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textColour')}</label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="color"
-                          value={colourSeed.textColor ?? '#ffffff'}
-                          onChange={(e) => updateTraceCustomizationForMany(batchIds, { textColor: e.target.value })}
-                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                        />
-                        <button
-                          onClick={() => updateTraceCustomizationForMany(batchIds, { textColor: '#ffffff' })}
-                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title={t('atrium.customize.resetWhite')}
-                        >
-                          ↺
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Text Sizing -- gated like Border Radius below: shown as long
-                    as ANY selected trace is text, not just the seed. */}
-                {(() => {
-                  const textSeed = batchIds
-                    .map(id => traces.find(t => t.id === id))
-                    .find((t): t is Trace => !!t && t.type === 'text')
-                  if (!textSeed) return null
-                  return (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
-                      <div className="flex gap-2">
-                        {([
-                          { value: true, label: t('atrium.controls.scalesWithBox') },
-                          { value: false, label: t('atrium.controls.fixedSize') },
-                        ] as const).map(({ value, label }) => (
-                          <button
-                            key={String(value)}
-                            onClick={() => updateTraceCustomizationForMany(batchIds, { textScaleWithBox: value })}
-                            className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
-                              (textSeed.textScaleWithBox ?? true) === value
-                                ? 'bg-nier-bg text-nier-black border-nier-bg'
-                                : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Shape colours, which are not the border and fill above.
-                    A shape carries its own set -- shapeColor, shapeOutlineColor,
-                    shapeOutlineWidth -- and the controls below this one write
-                    borderColor and fillColor, which a shape never reads. So
-                    batch-editing a dozen rectangles appeared to do nothing:
-                    the fields were there, they took the colour, and it went
-                    somewhere the shape does not look.
-
-                    Gated on any selected trace being a shape, like Text Sizing
-                    above, rather than on the seed happening to be one. */}
-                {(() => {
-                  const shapeSeed = batchIds
-                    .map(id => traces.find(t => t.id === id))
-                    .find((t): t is Trace => !!t && t.type === 'shape')
-                  if (!shapeSeed) return null
-                  return (
-                    <>
-                      <div>
-                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
-                        <div className="flex gap-2 items-center">
-                          <input
-                            type="color"
-                            value={shapeSeed.shapeColor || '#3b82f6'}
-                            onChange={(e) => updateTraceCustomizationForMany(batchIds, { shapeColor: e.target.value })}
-                            className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                          />
-                          <button
-                            onClick={() => updateTraceCustomizationForMany(batchIds, { shapeColor: '#3b82f6' })}
-                            className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                            title={t('atrium.customize.resetDefault')}
-                          >
-                            ↺
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.outlineColour')}</label>
-                        <div className="flex gap-2 items-center">
-                          <input
-                            type="color"
-                            value={shapeSeed.shapeOutlineColor || shapeSeed.shapeColor || '#3b82f6'}
-                            onChange={(e) => updateTraceCustomizationForMany(batchIds, { shapeOutlineColor: e.target.value })}
-                            className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                          />
-                          <button
-                            onClick={() => updateTraceCustomizationForMany(batchIds, { shapeOutlineColor: undefined })}
-                            className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                            title={t('atrium.customize.resetDefault')}
-                          >
-                            ↺
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                          {t('atrium.customize.outlineWidth', { value: shapeSeed.shapeOutlineWidth ?? 2 })}
-                        </label>
-                        <input
-                          type="range"
-                          min="1"
-                          max="20"
-                          step="1"
-                          value={shapeSeed.shapeOutlineWidth ?? 2}
-                          onChange={(e) => updateTraceCustomizationForMany(batchIds, { shapeOutlineWidth: parseInt(e.target.value) })}
-                          className="w-full accent-nier-bg"
-                          title={t('atrium.customize.outlineThickness')}
-                        />
-                      </div>
-                    </>
-                  )
-                })()}
-
-                {/* Border Color & Opacity */}
-                {(seedTrace.showBorder ?? true) && (
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.borderColour')}</label>
-                    <div className="flex gap-2 items-center mb-2">
-                      <input
-                        type="color"
-                        value={seedTrace.borderColor || getBorderColor(seedTrace.type)}
-                        onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderColor: e.target.value })}
-                        className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                      />
-                      <input
-                        type="text"
-                        defaultValue={seedTrace.borderColor || getBorderColor(seedTrace.type)}
-                        onBlur={(e) => updateTraceCustomizationForMany(batchIds, { borderColor: e.target.value })}
-                        className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                        placeholder="#ffffff"
-                      />
-                      <button
-                        onClick={() => updateTraceCustomizationForMany(batchIds, { borderColor: undefined })}
-                        className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                        title={t('atrium.customize.resetDefault')}
-                      >
-                        ↺
-                      </button>
-                    </div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                      {t('atrium.customize.borderOpacity', { value: Math.round((seedTrace.borderOpacity ?? 1) * 100) })}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={Math.round((seedTrace.borderOpacity ?? 1) * 100)}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderOpacity: parseInt(e.target.value) / 100 })}
-                      className="w-full accent-nier-bg"
-                    />
-                  </div>
-                )}
-
-                {/* Fill Color & Opacity */}
-                {(seedTrace.showBackground ?? true) && (
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
-                    <div className="flex gap-2 items-center mb-2">
-                      <input
-                        type="color"
-                        value={seedTrace.fillColor || '#1a1a2e'}
-                        onChange={(e) => updateTraceCustomizationForMany(batchIds, { fillColor: e.target.value })}
-                        className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                      />
-                      <input
-                        type="text"
-                        defaultValue={seedTrace.fillColor || '#1a1a2e'}
-                        onBlur={(e) => updateTraceCustomizationForMany(batchIds, { fillColor: e.target.value })}
-                        className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                        placeholder="#1a1a2e"
-                      />
-                      <button
-                        onClick={() => updateTraceCustomizationForMany(batchIds, { fillColor: undefined })}
-                        className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                        title={t('atrium.customize.resetDefault')}
-                      >
-                        ↺
-                      </button>
-                    </div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                      {t('atrium.customize.fillOpacity', { value: Math.round((seedTrace.fillOpacity ?? 0.95) * 100) })}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={Math.round((seedTrace.fillOpacity ?? 0.95) * 100)}
-                      onChange={(e) => updateTraceCustomizationForMany(batchIds, { fillOpacity: parseInt(e.target.value) / 100 })}
-                      className="w-full accent-nier-bg"
-                    />
-                  </div>
-                )}
-
-                {/* Border Radius (non-shape traces -- shapes use their own
-                    Corner Radius control instead). Shown as long as ANY
-                    trace in the selection is non-shape -- gating on just
-                    seedTrace's own type hid this for the whole batch
-                    whenever the seed happened to be a shape, even with
-                    other, eligible traces also selected. */}
-                {(() => {
-                  const nonShapeSeed = batchIds
-                    .map(id => traces.find(t => t.id === id))
-                    .find((t): t is Trace => !!t && t.type !== 'shape')
-                  if (!nonShapeSeed) return null
-                  return (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                        {t('atrium.customize.borderRadius', { value: nonShapeSeed.borderRadius ?? 0 })}
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="50"
-                        step="1"
-                        value={nonShapeSeed.borderRadius ?? 0}
-                        onChange={(e) => updateTraceCustomizationForMany(batchIds, { borderRadius: parseInt(e.target.value) })}
-                        className="w-full accent-nier-bg"
-                      />
-                    </div>
-                  )
-                })()}
-              </div>
-
-              <button
-                onClick={() => {
-                  batchIds.forEach(id => markTraceChanged(id))
-                  setShowBatchEditPanel(false)
-                }}
-                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-4"
-              >
-                {t('atrium.customize.done')}
-              </button>
-            </div>
-
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 bg-transparent pointer-events-auto"
-              style={{ zIndex: MENU_BACKDROP_Z_INDEX }}
-              onClick={() => setShowBatchEditPanel(false)}
-            />
-          </>
-        )
-      })()}
+      {/* Batch Edit (BatchEditPanel): what the selection's traces have, each
+          change to those that have it, as one step of undo. */}
+      {showBatchEditPanel && multiSelectedIds.size > 1 && canEdit && (
+        <BatchEditPanel
+          traces={traces.filter(tr => multiSelectedIds.has(tr.id))}
+          lobbyId={lobbyId}
+          userId={userId}
+          zIndex={MENU_PANEL_Z_INDEX}
+          fontOptions={FONT_FAMILY_OPTIONS}
+          borderColourOf={getBorderColor}
+          onChange={changes => inOneStep(() => {
+            for (const { ids, patch } of changes) for (const id of ids) updateTraceCustomization(id, patch)
+          })}
+          // Each fitted to its own text again: auto-fit depends on the words.
+          onFont={(ids, family) => inOneStep(() => {
+            for (const trace of traces.filter(tr => ids.includes(tr.id))) {
+              const fontSize = typeof trace.fontSize === 'number' ? trace.fontSize : trace.fontSize === 'small' ? 10 : trace.fontSize === 'large' ? 14 : 12
+              const size = computeAutoFitTextSize(trace.content ?? '', fontSize, { fontFamily: resolveFontFamilyCss(family) })
+              updateTraceCustomization(trace.id, { fontFamily: family, width: size.width, height: size.height })
+            }
+          })}
+          onDone={() => {
+            multiSelectedIds.forEach(id => markTraceChanged(id))
+            setShowBatchEditPanel(false)
+          }}
+        />
+      )}
 
       {/* Full view modal (also the text-trace preview) */}
       {modalTrace && (
