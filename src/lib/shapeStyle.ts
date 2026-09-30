@@ -50,6 +50,37 @@ export function shapeStyleOf(trace: Partial<Trace>): ShapeStyle {
   }
 }
 
+// The look a new shape is made with: the last shape's, as it was made or last
+// customized -- change one shape's colour and the next is that colour too, as
+// in Excalidraw. Lines apart from the filled kinds: a path's colour and
+// thickness aren't a box's. Kept on this device (localStorage), which may
+// refuse it -- then it's the defaults.
+const LAST_STYLE_KEY = 'atrium.lastShapeStyle'
+const slotOf = (kind: ShapeKind) => (kind === 'path' ? 'path' : 'filled')
+
+function lastStyles(): Record<string, Partial<ShapeStyle>> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(LAST_STYLE_KEY) ?? '{}')
+    return stored && typeof stored === 'object' ? stored : {}
+  } catch {
+    return {}
+  }
+}
+
+export function rememberShapeStyle(style: ShapeStyle) {
+  const { shapeType, ...look } = style
+  try {
+    localStorage.setItem(LAST_STYLE_KEY, JSON.stringify({ ...lastStyles(), [slotOf(shapeType)]: look }))
+  } catch {
+    // Not kept; the next shape has the defaults.
+  }
+}
+
+/** The style a new shape of `kind` starts with. */
+export function nextShapeStyle(kind: ShapeKind): ShapeStyle {
+  return shapeStyleOf({ ...lastStyles()[slotOf(kind)], shapeType: kind } as Partial<Trace>)
+}
+
 /** The same style as database columns, for an insert. */
 export function shapeStyleColumns(style: ShapeStyle) {
   return {

@@ -9,6 +9,10 @@
 // Image and Embed open the Leave Trace panel on that type, and Pinterest
 // opens the board import.
 //
+// The bar always wins: whatever is under way -- drawing, a shape or path
+// being placed, text being typed -- ends when another tool is picked here.
+// Nothing is lost by it: a drawing's strokes are saved as they're drawn.
+//
 // Keys 1 to 9 pick the first nine, in the order shown.
 //
 // Two tools have kinds, in a flyout at their side (as the canvas menu's
@@ -143,16 +147,13 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
     >
       {QUICK_ORDER.map((action, i) => {
         const on = action === 'select' ? !armed && !drawing : action === 'draw' ? drawing : armed === action
-        // While drawing, only Draw (which ends it) is to hand: switching to
-        // anything else would throw the drawing away unsaved.
-        const off = drawing && action !== 'draw'
         const key = i < 9 ? String(i + 1) : null
         const withKinds = kinded(action)
         return (
           <div
             key={action}
             className="relative"
-            onMouseEnter={withKinds && !off ? () => keepFlyout(action) : undefined}
+            onMouseEnter={withKinds ? () => keepFlyout(action) : undefined}
             onMouseLeave={withKinds ? letFlyoutGo : undefined}
           >
             {action === 'pinterest' && <div className="h-px mx-1 mb-1 bg-nier-border/30" />}
@@ -162,7 +163,6 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
               aria-pressed={on}
               aria-haspopup={withKinds ? 'true' : undefined}
               aria-expanded={withKinds ? flyout === action : undefined}
-              disabled={off}
               title={key ? `${label[action]} — ${key}` : label[action]}
               onClick={() => {
                 // A tool with kinds pressed while it's already in hand opens
@@ -173,7 +173,7 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
                 }
                 onAction(action)
               }}
-              className={`relative w-9 h-9 flex items-center justify-center border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+              className={`relative w-9 h-9 flex items-center justify-center border transition-colors ${
                 on
                   ? 'bg-nier-bg text-nier-black border-nier-bg'
                   : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg'
@@ -188,7 +188,7 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
                 <span aria-hidden="true" className="absolute right-0.5 top-0.5 w-0 h-0 opacity-60" style={{ borderTop: '4px solid currentColor', borderLeft: '4px solid transparent' }} />
               )}
             </button>
-            {withKinds && flyout === action && !off && (
+            {withKinds && flyout === action && (
               <div
                 data-quick-flyout={action}
                 className="absolute left-full top-0 ml-2 flex gap-1 p-1 border border-nier-border/40 z-10"

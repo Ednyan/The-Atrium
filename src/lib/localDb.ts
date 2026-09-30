@@ -8,6 +8,7 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 import { mkdir, exists } from '@tauri-apps/plugin-fs'
 import { carryLinks } from './traceLinks'
 import { carriedFrameId, freshIds } from './frames'
+import { flattenLegacyOrder } from './order'
 
 let db: Database | null = null
 let mediaBasePath: string = ''
@@ -830,6 +831,8 @@ async function writeLobbyVaultSnapshot(lobbyId: string): Promise<void> {
   const snapshot = {
     version: 1,
     format: 'vault-mirror',
+    // Keyed as one stack (lib/order); a mirror without this is from before.
+    layerOrder: 'flat',
     syncedAt: new Date().toISOString(),
     app: 'Digital Atrium Desktop',
     lobby,
@@ -1497,6 +1500,8 @@ export async function initLocalDb(): Promise<void> {
     // Column already exists — ignore
   }
 
+  await makeLayersOneStack(db)
+
   await dropTraceTypeCheckConstraint(db)
 
   await resolveVaultIdentity(db)
@@ -1504,6 +1509,60 @@ export async function initLocalDb(): Promise<void> {
   await migrateLegacyLocalMediaIntoAtriumFolders()
 
   void syncAllLobbiesToVault()
+}
+
+// flattenLegacyOrder (lib/order) for rows as they're stored.
+function flatKeysForRows(traces: any[], layers: any[]) {
+  return flattenLegacyOrder(
+    traces.map(t => ({ id: t.id, layerId: t.layer_id ?? null, orderKey: t.order_key ?? null })),
+    layers.map(l => ({ id: l.id, orderKey: l.order_key ?? null })),
+  )
+}
+
+// Groups and loose traces made one stack (lib/order), once per vault -- the
+// web's make_layers_one_stack.sql, marked done the same way: every atrium's
+// groups lifted above its loose traces, as they were drawn. Never again, as
+// that would lift them over loose traces put above them since.
+//
+// One UPDATE per table, groups first, so being cut off anywhere before the
+// mark only means doing it again from the same keys.
+async function makeLayersOneStack(db: Database): Promise<void> {
+  try {
+    await db.execute("CREATE TABLE IF NOT EXISTS app_changes (name TEXT PRIMARY KEY, done_at TEXT DEFAULT (datetime('now')))")
+    const done = await db.select<any[]>("SELECT name FROM app_changes WHERE name = 'flat_layers'")
+    if (done.length > 0) return
+
+    const traces = await db.select<any[]>('SELECT id, lobby_id, layer_id, order_key FROM traces')
+    const layers = await db.select<any[]>('SELECT id, lobby_id, order_key FROM layers')
+    const byLobby = new Map<string, { traces: any[]; layers: any[] }>()
+    const lobbyOf = (id: string) => {
+      let lobby = byLobby.get(id)
+      if (!lobby) byLobby.set(id, lobby = { traces: [], layers: [] })
+      return lobby
+    }
+    for (const t of traces) if (t.lobby_id) lobbyOf(t.lobby_id).traces.push(t)
+    for (const l of layers) if (l.lobby_id) lobbyOf(l.lobby_id).layers.push(l)
+
+    const layerKeys: [string, string][] = []
+    const traceKeys: [string, string][] = []
+    for (const lobby of byLobby.values()) {
+      const lifted = flatKeysForRows(lobby.traces, lobby.layers)
+      layerKeys.push(...lifted.layers)
+      traceKeys.push(...lifted.traces)
+    }
+    for (const [table, keys] of [['layers', layerKeys], ['traces', traceKeys]] as const) {
+      if (keys.length === 0) continue
+      await db.execute(
+        `UPDATE ${table} SET order_key = v.column2 FROM (VALUES ${keys.map(() => '(?, ?)').join(', ')}) AS v WHERE ${table}.id = v.column1`,
+        keys.flat(),
+      )
+    }
+    await db.execute("INSERT OR IGNORE INTO app_changes (name) VALUES ('flat_layers')")
+  } catch (e) {
+    // Not fatal: tried again at the next start. Until then an older atrium
+    // draws its loose traces among its groups by their old keys.
+    console.error('[localDb] could not make groups and loose traces one stack:', e)
+  }
 }
 
 // Removes the CHECK(type IN (...)) constraint from the traces table.
@@ -2603,12 +2662,16 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
 
   await putRow('lobbies', { ...lobby, id: lobbyId, name: lobbyName, owner_user_id: LOCAL_USER_ID })
 
+  // A mirror from before groups and loose traces were one stack (lib/order)
+  // has its groups lifted above its loose traces, as it was drawn.
+  const lifted = snapshot.layerOrder === 'flat' ? null : flatKeysForRows(snapshot.traces ?? [], snapshot.layers ?? [])
+
   // Old layer id -> new, so traces can be repointed when restoring as a copy.
   const layerIdMap = new Map<string, string>()
   for (const layer of snapshot.layers ?? []) {
     const newId = asCopy ? uuid() : layer.id
     layerIdMap.set(layer.id, newId)
-    await putRow('layers', { ...layer, id: newId, lobby_id: lobbyId, user_id: LOCAL_USER_ID })
+    await putRow('layers', { ...layer, id: newId, lobby_id: lobbyId, user_id: LOCAL_USER_ID, order_key: lifted?.layers.get(layer.id) ?? layer.order_key ?? null })
   }
 
   let mediaFiles = 0
@@ -2679,6 +2742,7 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
       image_url: imageUrl,
       layer_id: rest.layer_id ? layerIdMap.get(rest.layer_id) ?? null : null,
       frame_id: carriedFrameId(rest.frame_id, restoredIds),
+      order_key: lifted?.traces.get(rest.id) ?? rest.order_key ?? null,
     })
     traceIds.set(rest.id, id)
     traces++

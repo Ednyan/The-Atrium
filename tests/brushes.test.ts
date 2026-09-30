@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { alphaBounds, drawPlacedPicture, isCustomBrush, isDrawingTrace, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha } from '../src/lib/brushes.ts'
+import { alphaBounds, drawPlacedPicture, drawingOf, isCustomBrush, isDrawingTrace, niceDensity, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha, worldSize } from '../src/lib/brushes.ts'
 
 test('stamps land at the spacing, whatever the segments are', () => {
   const xs = (points: { x: number; y: number }[]) => stampPositions(points, () => 2).map(s => s.x)
@@ -99,4 +99,38 @@ test('an edited drawing is placed as the trace shows it: flipped whole, then cro
   // Flipped, the whole picture turns over in its box, and the window shows
   // the left half of that: the picture's right edge now at the window's left.
   assert.deepEqual(drawnEdges({ ...base, flipH: true }), { left: 150, right: -50 })
+})
+
+test('a stroke is painted at a density that comes to whole world units', () => {
+  assert.equal(niceDensity(1), 1)
+  assert.equal(niceDensity(1.2), 2)
+  assert.equal(niceDensity(2.0000000001), 2)
+  assert.equal(niceDensity(0.9), 1)
+  assert.equal(niceDensity(0.3), 1 / 3)
+  assert.equal(niceDensity(0.25), 1 / 4)
+  for (const zoom of [0.07, 0.3, 0.5, 1, 1.7, 3.2]) assert.ok(niceDensity(zoom) >= zoom - 1e-9, `${zoom}`)
+  // Padded to whole units, and the pixels come to exactly that many.
+  assert.deepEqual(worldSize(7, 2), { px: 8, units: 4 })
+  assert.deepEqual(worldSize(8, 2), { px: 8, units: 4 })
+  assert.deepEqual(worldSize(5, 1 / 3), { px: 5, units: 15 })
+  for (const [px, ppw] of [[1, 1], [13, 3], [100, 4], [9, 1 / 2]] as const) {
+    const size = worldSize(px, ppw)
+    assert.ok(size.px >= px && Number.isInteger(size.units) && Math.abs(size.px / ppw - size.units) < 1e-9, `${px} at ${ppw}`)
+  }
+})
+
+test("a drawing is its group when that's all drawings, else the trace alone", () => {
+  const drawing = (id: string, layerId: string | null) => ({ id, layerId, type: 'image', content: 'freehand drawing', mediaUrl: `https://x/drawing_${id}.png` })
+  const layers = [{ id: 'g' }, { id: 'mixed' }]
+  const traces = [
+    drawing('a', 'g'), drawing('b', 'g'),
+    drawing('c', 'mixed'), { id: 'photo', layerId: 'mixed', type: 'image', content: 'a photo', mediaUrl: 'https://x/photo.png' },
+    drawing('d', null), drawing('e', 'gone'),
+  ]
+  const of = (id: string) => { const d = drawingOf(traces.find(t => t.id === id)!, traces, layers); return `${d.groupId}:${d.members.map(t => t.id).join(',')}` }
+  assert.equal(of('a'), 'g:a,b')
+  assert.equal(of('c'), 'mixed:c')
+  assert.equal(of('d'), 'null:d')
+  // In a group that no longer exists: on its own, as it's drawn.
+  assert.equal(of('e'), 'null:e')
 })

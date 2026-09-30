@@ -13,6 +13,7 @@
 // every time, rather than shimmering as the next one is drawn.
 
 import { anyTransparent } from './imageAlpha.ts'
+import { groupIdOf, type Stackable } from './order.ts'
 
 // p is pen pressure, 0..1, present only on points drawn with a pen.
 export type StrokePoint = { x: number; y: number; p?: number }
@@ -453,12 +454,13 @@ export async function registerCustomBrush(brush: CustomBrush): Promise<boolean> 
   }
 }
 
-// ---- Editing a saved drawing ------------------------------------------------
+// ---- A drawing, stroke by stroke ---------------------------------------------
 //
-// A saved drawing is a picture -- its strokes were flattened into it -- so
-// editing one starts from that picture: it goes under the new strokes exactly
-// where the trace shows it, the eraser can take parts of it away, and saving
-// paints the two together into a new picture for the same trace.
+// Each stroke is saved as it's finished, as a picture of just that stroke --
+// a trace of its own, in the drawing's group (LobbyScene). The eraser takes
+// pixels out of every stroke of the drawing it crosses, each one painted again
+// without them. A drawing from before this is one picture of all its strokes,
+// and is erased the same way.
 
 // Whether a trace is a drawing. Its file is saved as drawing_<...>.png; the
 // label covers one kept as a data URL because its upload failed.
@@ -516,8 +518,15 @@ export function placementBounds(pl: TracePlacement, naturalWidth: number, natura
   return { minX: pl.cx - hw, maxX: pl.cx + hw, minY: pl.cy - hh, maxY: pl.cy + hh }
 }
 
-export function drawPlacedPicture(ctx: CanvasRenderingContext2D, img: HTMLImageElement, pl: TracePlacement) {
-  const p = placePicture(pl, img.naturalWidth, img.naturalHeight)
+// A stroke's picture: loaded from its file, or painted here.
+export type Picture = HTMLImageElement | HTMLCanvasElement
+export const pictureSize = (picture: Picture) => 'naturalWidth' in picture
+  ? { width: picture.naturalWidth, height: picture.naturalHeight }
+  : { width: picture.width, height: picture.height }
+
+export function drawPlacedPicture(ctx: CanvasRenderingContext2D, img: Picture, pl: TracePlacement) {
+  const size = pictureSize(img)
+  const p = placePicture(pl, size.width, size.height)
   ctx.save()
   ctx.translate(pl.cx, pl.cy)
   ctx.rotate(pl.rotation * Math.PI / 180)
@@ -553,4 +562,148 @@ export function alphaBounds(rgba: ArrayLike<number>, width: number, height: numb
     }
   }
   return maxX < 0 ? null : { minX, minY, maxX: maxX + 1, maxY: maxY + 1 }
+}
+
+// ---- Stroke pictures -------------------------------------------------------------
+
+// A picture and where it sits in the world: centred on (cx, cy), width x height
+// world units, nothing turned, flipped or cropped.
+export interface Piece { picture: HTMLCanvasElement; placement: TracePlacement }
+
+export const plainPlacement = (cx: number, cy: number, width: number, height: number): TracePlacement => ({
+  cx, cy, rotation: 0, flipH: false, flipV: false, width, height, scaleX: 1, scaleY: 1, cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
+})
+
+// Pixels per world unit a stroke's picture is painted at: at least `wanted`,
+// and a whole number of them (1, 2, 3...) or a whole number of world units to
+// the pixel (1/2, 1/3...). With that, and the picture padded to match
+// (worldSize), its size is a whole number of world units -- which is all the
+// web's width and height columns hold -- so it's shown exactly as painted, and
+// erasing it again copies its pixels across untouched rather than blurring
+// them a little more each time.
+export function niceDensity(wanted: number): number {
+  if (wanted >= 1) return Math.max(1, Math.ceil(wanted - 1e-6))
+  return 1 / Math.max(1, Math.floor(1 / wanted + 1e-6))
+}
+
+// The next density down from a nice one, for a picture too big to paint.
+const lowerDensity = (ppw: number) => (ppw > 1 ? ppw - 1 : 1 / (Math.round(1 / ppw) + 1))
+
+// `px` pixels across, padded so they come to a whole number of world units.
+export function worldSize(px: number, ppw: number): { px: number; units: number } {
+  if (ppw >= 1) {
+    const units = Math.max(1, Math.ceil(px / ppw - 1e-6))
+    return { px: Math.round(units * ppw), units }
+  }
+  const perPixel = Math.round(1 / ppw)
+  return { px: Math.max(1, px), units: Math.max(1, px) * perPixel }
+}
+
+// Canvases are refused past this on a side.
+const MAX_SIDE = 8192
+
+// What's left on `canvas` -- whose top-left pixel is at (originX, originY) in
+// the world, `ppw` pixels to a world unit -- cut down to its ink, as a piece.
+// Null when nothing is left.
+function trimToInk(canvas: HTMLCanvasElement, originX: number, originY: number, ppw: number): Piece | null {
+  const ctx = canvas.getContext('2d')!
+  const found = alphaBounds(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height)
+  if (!found) return null
+  const wide = worldSize(found.maxX - found.minX, ppw)
+  const high = worldSize(found.maxY - found.minY, ppw)
+  const picture = document.createElement('canvas')
+  picture.width = wide.px
+  picture.height = high.px
+  picture.getContext('2d')!.drawImage(canvas, -found.minX, -found.minY)
+  return {
+    picture,
+    placement: plainPlacement(originX + found.minX / ppw + wide.units / 2, originY + found.minY / ppw + high.units / 2, wide.units, high.units),
+  }
+}
+
+// A stroke's reach past its points, in its own units: its edge beyond the
+// centre line, and a soft one's fade, three quarters of a width further out.
+const strokeReach = (stroke: Stroke) => stroke.width * 1.3
+
+function strokeBox(stroke: Stroke, reach: number) {
+  const xs = stroke.points.map(p => p.x)
+  const ys = stroke.points.map(p => p.y)
+  return { minX: Math.min(...xs) - reach, maxX: Math.max(...xs) + reach, minY: Math.min(...ys) - reach, maxY: Math.max(...ys) + reach }
+}
+
+// Paints `stroke` (in world units) onto `ctx`, whose top-left is (originX,
+// originY) in the world at `ppw` pixels to a unit.
+function paintInto(ctx: CanvasRenderingContext2D, stroke: Stroke, originX: number, originY: number, ppw: number) {
+  drawStroke(ctx, {
+    ...stroke,
+    width: stroke.width * ppw,
+    points: stroke.points.map(p => ({ ...p, x: (p.x - originX) * ppw, y: (p.y - originY) * ppw })),
+  })
+}
+
+// A finished stroke (world units) as a piece of its own, painted at no less
+// than `zoom` pixels to a world unit -- the detail it was drawn with. Null if
+// it left no ink.
+export function rasterizeStroke(stroke: Stroke, zoom: number): Piece | null {
+  if (stroke.points.length === 0 || stroke.isEraser) return null
+  const box = strokeBox(stroke, Math.max(20 / zoom, strokeReach(stroke) + 4 / zoom))
+  let ppw = niceDensity(zoom)
+  while (ppw > 1 / 64 && Math.max(box.maxX - box.minX, box.maxY - box.minY) * ppw > MAX_SIDE) ppw = lowerDensity(ppw)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.ceil((box.maxX - box.minX) * ppw))
+  canvas.height = Math.max(1, Math.ceil((box.maxY - box.minY) * ppw))
+  paintInto(canvas.getContext('2d')!, stroke, box.minX, box.minY, ppw)
+  return trimToInk(canvas, box.minX, box.minY, ppw)
+}
+
+// A drawing's picture, placed in the world as its trace shows it, with an
+// eraser stroke (world units) taken out of it: 'untouched' when the eraser
+// didn't reach any of its ink, null when it took all of it, else what's left.
+//
+// A picture that isn't turned, flipped or cropped -- every stroke saved since
+// strokes were saved one by one -- is copied across pixel for pixel, at its
+// own density; one that is (a drawing from before, moved about) is painted
+// flat once, at the nearest nice density to its own.
+export function erasePicture(picture: Picture, placement: TracePlacement, eraser: Stroke): Piece | null | 'untouched' {
+  if (eraser.points.length === 0) return 'untouched'
+  const { width: nw, height: nh } = pictureSize(picture)
+  if (!nw || !nh) return 'untouched'
+  const shown = placePicture(placement, nw, nh)
+  const plain = placement.rotation % 360 === 0 && !placement.flipH && !placement.flipV
+    && placement.cropX === 0 && placement.cropY === 0 && placement.cropWidth === 1 && placement.cropHeight === 1
+  let ppw = niceDensity(nw / Math.abs(shown.w))
+  const box = plain
+    ? { minX: placement.cx + shown.x, minY: placement.cy + shown.y, maxX: placement.cx + shown.x + shown.w, maxY: placement.cy + shown.y + shown.h }
+    : placementBounds(placement, nw, nh)
+
+  const reach = strokeBox(eraser, strokeReach(eraser) + 2 / ppw)
+  if (reach.maxX < box.minX || reach.minX > box.maxX || reach.maxY < box.minY || reach.minY > box.maxY) return 'untouched'
+
+  while (!plain && ppw > 1 / 64 && Math.max(box.maxX - box.minX, box.maxY - box.minY) * ppw > MAX_SIDE) ppw = lowerDensity(ppw)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.min(MAX_SIDE, Math.round((box.maxX - box.minX) * ppw + (plain ? 0 : 0.5))))
+  canvas.height = Math.max(1, Math.min(MAX_SIDE, Math.round((box.maxY - box.minY) * ppw + (plain ? 0 : 0.5))))
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.setTransform(ppw, 0, 0, ppw, -box.minX * ppw, -box.minY * ppw)
+  drawPlacedPicture(ctx, picture, placement)
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  const before = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  paintInto(ctx, eraser, box.minX, box.minY, ppw)
+  const after = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  let changed = false
+  for (let i = 3; i < after.length && !changed; i += 4) changed = after[i] !== before[i]
+  if (!changed) return 'untouched'
+  return trimToInk(canvas, box.minX, box.minY, ppw)
+}
+
+// The drawing a drawing trace belongs to: the group it's in, when everything
+// in that group is a drawing (a "Drawing N"), or just itself -- alone, or
+// among other things in a group of some other kind.
+export function drawingOf<T extends Stackable & { type: string; mediaUrl?: string | null; content?: string | null }>(
+  trace: T, traces: T[], layers: { id: string }[],
+): { groupId: string | null; members: T[] } {
+  const groupId = groupIdOf(trace, layers)
+  if (!groupId) return { groupId: null, members: [trace] }
+  const inGroup = traces.filter(t => t.layerId === groupId)
+  return { groupId, members: inGroup.every(isDrawingTrace) ? inGroup : [trace] }
 }

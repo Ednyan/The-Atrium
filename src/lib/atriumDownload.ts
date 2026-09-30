@@ -41,6 +41,8 @@ export function atriumEnvelope(
   )
   return {
     version: 3,
+    // Keyed as one stack (lib/order); a file without this is from before.
+    layerOrder: 'flat',
     exportedAt: new Date().toISOString(),
     app,
     lobby,

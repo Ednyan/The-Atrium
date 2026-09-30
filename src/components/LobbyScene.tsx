@@ -25,20 +25,22 @@ import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { copyLobbyId } from '../lib/clipboard'
 import { showToast } from '../lib/toast'
 import { tCount, useTranslation } from '../lib/i18n'
-import { isEditableTarget } from '../lib/editableTarget'
-import { record, undo as undoHistory, redo as redoHistory, clearHistory, canUndo, canRedo, subscribeToHistory } from '../lib/history'
+import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
+import { recordAction } from '../lib/actionHistory'
+import { adoptTraces } from '../lib/layerUndo'
+import { createGroup } from '../hooks/useLayers'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { newTraceOrderFields } from '../lib/order'
+import { inOrder, isValidOrderKey, keyAt, keysOnTopOfGroup, newTraceOrderFields } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
-import { fileTitle, nextTextName, nextUntitledName } from '../lib/traceNames'
+import { fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
-import { alphaBounds, BUILTIN_BRUSHES, customBrushKey, drawPlacedPicture, drawStroke, isCustomBrush, makeBrushTip, newStrokeSeed, placePicture, placementBounds, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
+import { BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, isCustomBrush, makeBrushTip, newStrokeSeed, pictureSize, rasterizeStroke, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Picture, type Piece, type Stroke, type StrokePoint, type TracePlacement } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
@@ -46,7 +48,7 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
-import { placementInWorld, placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
+import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
 import type { View } from '../lib/worldCamera'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
@@ -666,17 +668,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }, [currentLobby?.themeSettings?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
-  // The layer group new traces are created into (null = ungrouped). Set by
-  // clicking a group/Ungrouped header in the Layer panel.
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
-  // A group that's gone -- ungrouped, deleted, undone -- is nowhere to put
-  // new traces: they'd be made in a group that doesn't exist.
-  useEffect(() => {
-    if (!activeLayerId) return
-    return useGameStore.subscribe(state => {
-      if (!state.layers.some(l => l.id === activeLayerId)) setActiveLayerId(null)
-    })
-  }, [activeLayerId])
   // One-shot request for TraceOverlay to multi-select a set of trace ids,
   // fired when the user clicks a group in the Layer panel. TraceOverlay owns
   // its own selection state internally, so this is passed down rather than
@@ -715,15 +706,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // multi-selected trace/group, not just the single selectedTraceId.
   const [multiSelectedTraceIds, setMultiSelectedTraceIds] = useState<string[]>([])
 
-  // activeLayerId used to be cleared here too, on the theory that it should
-  // track canvas selection (deselecting on the canvas should un-target the
-  // group). That assumption broke once focusing a group (clicking its name,
-  // just sets the target) and selecting its traces (clicking its diamond
-  // icon) became separate actions: focusing a group is now meant to persist
-  // independently of canvas selection, specifically so a new trace can still
-  // be placed into it -- placing a trace involves clicking the canvas/context
-  // menu, which deselects, which was wiping activeLayerId right back to null
-  // first and silently dropping every new trace into "ungrouped".
   // Drives the top-right "Saving..." indicator for every save trigger --
   // autosave, the manual HUD Save Changes button, AND Ctrl+S (whose handler
   // lives in TraceOverlay and calls saveAllChanges() directly, with no way
@@ -921,7 +903,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [isEraserMode, setIsEraserMode] = useState(false)
-  const [completedStrokes, setCompletedStrokes] = useState<Stroke[]>([])
   // A built-in brush's name or customBrushKey(id) -- see lib/brushes.
   const [drawingBrush, setDrawingBrush] = useState<string>('pen')
   const drawingBrushRef = useRef('pen')
@@ -932,18 +913,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const brushFileInputRef = useRef<HTMLInputElement>(null)
   // The seed of the stroke being drawn, so its grain holds still as it grows.
   const currentSeedRef = useRef(0)
-  // Every finished stroke, painted once into a layer of its own. Redrawing
-  // them all on every pointer move was fine for plain lines, but a stamped
-  // brush is hundreds of stamps a stroke; now only the stroke in progress is
-  // painted per move.
-  // Painted at a view, and painted again when the view moves: the strokes are
-  // kept in world units (lib/drawingView), so a drawing stays where it was
-  // drawn while the view pans and zooms around it.
-  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; strokes: Stroke[] | null; view: View | null } | null>(null)
-  // The saved drawing being edited: its trace, and its picture where the trace
-  // shows it, which sits under the new strokes as where they start from.
-  const editingDrawingRef = useRef<{ traceId: string; img: HTMLImageElement; placement: TracePlacement } | null>(null)
-  const [editingDrawingId, setEditingDrawingId] = useState<string | null>(null)
+  // The drawing's finished strokes, painted once into a layer of their own,
+  // so only the stroke in progress is painted per pointer move -- a stamped
+  // brush is hundreds of stamps a stroke. Painted at a view, and again when
+  // the view moves or what it shows changes (drawingVersionRef): the strokes
+  // are in the world (lib/drawingView), so a drawing stays where it was drawn
+  // while the view pans and zooms around it.
+  const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; version: number; view: View | null } | null>(null)
   const [drawingColor, setDrawingColor] = useState('#ffffff')
   const [drawingWidth, setDrawingWidth] = useState(3)
   const [drawingSmoothing, setDrawingSmoothing] = useState(30)
@@ -951,18 +927,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [drawingHardness, setDrawingHardness] = useState(100)
   const drawingHardnessRef = useRef(100)
   const [pointerOnDrawingCanvas, setPointerOnDrawingCanvas] = useState(false)
-  const [isSavingDrawing, setIsSavingDrawing] = useState(false)
   const currentStrokeRef = useRef<StrokePoint[]>([])
   // The stroke in progress's width, in world units: the brush's size on
   // screen at the zoom it was begun at.
   const strokeWidthRef = useRef(3)
-  // The closest any stroke of this drawing was drawn from, so saving keeps
-  // the detail it was drawn with even when saved from further out.
-  const drawnZoomRef = useRef(0)
+  // The zoom it was begun at: its picture keeps the detail it was drawn with.
+  const strokeZoomRef = useRef(1)
   const isDrawingModeRef = useRef(false)
   const isEraserModeRef = useRef(false)
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
-  const completedStrokesRef = useRef<typeof completedStrokes>([])
   const drawingColorRef = useRef('#ffffff')
   const drawingWidthRef = useRef(3)
   const smoothedPointRef = useRef<{ x: number; y: number } | null>(null)
@@ -974,61 +947,396 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // animation -- run by the compositor, so it stays smooth however busy the
   // page is. Not while drawing: the strokes are on a canvas of their own.
 
-  // Drawing history. Snapshots of the whole stroke list rather than a stack of
-  // strokes, because "clear" has to be undoable too and there is no single
-  // stroke to put back for it.
+  // ---- The drawing being drawn --------------------------------------------------
   //
-  // The snapshots are the same as they were; what changed is where they are
-  // kept. They used to live in drawPastRef/drawFutureRef here, a stack of
-  // their own that took turns with TraceOverlay's by mode -- drawing's Ctrl+Z
-  // won while drawing mode was on, the trace one won otherwise. They now go on
-  // the shared timeline in lib/history, in the order they happened, alongside
-  // everything else that will move onto it.
+  // Each stroke is saved as it's finished: a picture of just that stroke
+  // (lib/brushes rasterizeStroke), its own trace, in the drawing's group --
+  // "Drawing N", made with the first stroke, or the group of the drawing being
+  // edited. The eraser takes pixels out of every stroke of the drawing it
+  // crosses (erasePicture) and saves each one it changed. Nothing waits for a
+  // Save button: a stroke is kept the moment it's let go of.
   //
-  // First consumer, and chosen for it because it is self-contained: nothing
-  // outside this component can change the drawing, so there is no call site
-  // elsewhere that could quietly bypass the recording.
-  type DrawSnapshot = typeof completedStrokes
+  // What the drawing is, is the store: its strokes are traces there. While
+  // drawing they're kept off TraceOverlay (hiddenTraceIds) and painted on the
+  // drawing canvas instead, so the eraser is seen working on them, with the
+  // strokes and erasures not saved yet painted over them, in order, until
+  // they are. Each stroke and each erasure is a step of the atrium's own undo
+  // (lib/actionHistory), which TraceOverlay keeps.
+  type Unsettled = { kind: 'stroke'; piece: Piece } | { kind: 'erase'; stroke: Stroke }
+  interface DrawingSession {
+    groupId: string | null
+    // A drawing in no group, being edited: its group is made where it is,
+    // with the first new stroke, and it goes in.
+    anchorId: string | null
+    // Its group made here -- taken away again if it's left empty.
+    madeGroup: boolean
+    members: Set<string>
+    unsettled: Unsettled[]
+    // The saving, one change at a time, in the order they were made.
+    queue: Promise<void>
+  }
+  const sessionRef = useRef<DrawingSession | null>(null)
+  // Its strokes, which TraceOverlay leaves to the drawing canvas.
+  const [drawingMembers, setDrawingMembers] = useState<ReadonlySet<string>>(() => new Set())
+  // Whether the drawing canvas is up: while drawing, and after, until the
+  // last stroke is saved and shows as a trace in its place.
+  const [drawingLive, setDrawingLive] = useState(false)
+  const drawingLiveRef = useRef(false)
+  drawingLiveRef.current = drawingLive
+  const [editingDrawing, setEditingDrawing] = useState(false)
+  // Every stroke's picture, by its file's address: painted here, or loaded
+  // to be drawn over.
+  const drawingPicturesRef = useRef(new Map<string, Picture>())
+  const drawingVersionRef = useRef(0)
+  const redrawDrawing = () => {
+    drawingVersionRef.current++
+    renderDrawingCanvasRef.current()
+  }
+  const enqueueDrawing = (session: DrawingSession, work: () => Promise<void>) => {
+    session.queue = session.queue.then(work).catch(err => console.error('[drawing]', err))
+    return session.queue
+  }
 
-  // The timeline lives outside React, so nothing re-renders when it changes.
-  // The undo and redo buttons read canUndo/canRedo, which means this component
-  // has to hear about every push and pop. The value itself is never read --
-  // it exists only to make the render happen.
-  const [, onHistoryChanged] = useState(0)
-  useEffect(() => subscribeToHistory(() => onHistoryChanged(n => n + 1)), [])
+  // Where a stroke trace's picture is in the world, as TraceOverlay lays it
+  // out (storedTransformOf, getTraceSize).
+  const placementOf = (trace: Trace, picture: Picture): TracePlacement => {
+    const natural = pictureSize(picture)
+    const fit = Math.min(1, 300 / Math.max(1, natural.width, natural.height))
+    return {
+      cx: trace.x, cy: trace.y, rotation: trace.rotation ?? 0,
+      flipH: !!trace.flipHorizontal, flipV: !!trace.flipVertical,
+      width: trace.width && trace.height ? trace.width : Math.round(natural.width * fit),
+      height: trace.width && trace.height ? trace.height : Math.round(natural.height * fit),
+      scaleX: trace.scaleX ?? trace.scale ?? 1, scaleY: trace.scaleY ?? trace.scale ?? 1,
+      cropX: trace.cropX ?? 0, cropY: trace.cropY ?? 0, cropWidth: trace.cropWidth ?? 1, cropHeight: trace.cropHeight ?? 1,
+    }
+  }
+  // A stroke trace's picture and where it is -- all of it in the picture:
+  // nothing scaled, turned, flipped or cropped.
+  const pieceFields = (piece: Piece, mediaUrl: string) => ({
+    mediaUrl, x: piece.placement.cx, y: piece.placement.cy, width: piece.placement.width, height: piece.placement.height,
+    scale: 1, scaleX: 1, scaleY: 1, rotation: 0, flipHorizontal: false, flipVertical: false,
+    cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
+  })
+  type PictureFields = Pick<Trace, 'mediaUrl' | 'x' | 'y' | 'width' | 'height' | 'scale' | 'scaleX' | 'scaleY' | 'rotation' | 'flipHorizontal' | 'flipVertical' | 'cropX' | 'cropY' | 'cropWidth' | 'cropHeight'>
+  const pictureFieldsOf = (tr: Trace): PictureFields => ({
+    mediaUrl: tr.mediaUrl, x: tr.x, y: tr.y, width: tr.width, height: tr.height, scale: tr.scale, scaleX: tr.scaleX, scaleY: tr.scaleY,
+    rotation: tr.rotation, flipHorizontal: tr.flipHorizontal, flipVertical: tr.flipVertical,
+    cropX: tr.cropX, cropY: tr.cropY, cropWidth: tr.cropWidth, cropHeight: tr.cropHeight,
+  })
+  const pictureRow = (f: PictureFields) => ({
+    media_url: f.mediaUrl ?? null, position_x: f.x, position_y: f.y, width: f.width ?? null, height: f.height ?? null,
+    scale: f.scale ?? 1, scale_x: f.scaleX ?? 1, scale_y: f.scaleY ?? 1, rotation: f.rotation ?? 0,
+    flip_horizontal: !!f.flipHorizontal, flip_vertical: !!f.flipVertical,
+    crop_x: f.cropX ?? 0, crop_y: f.cropY ?? 0, crop_width: f.cropWidth ?? 1, crop_height: f.cropHeight ?? 1,
+  })
+  // A stroke trace given a picture: written at once, as drawing always has.
+  const writePicture = async (traceId: string, fields: PictureFields) => {
+    const current = useGameStore.getState().traces.find(tr => tr.id === traceId)
+    if (current) useGameStore.getState().addTrace({ ...current, ...fields })
+    const { error } = await (supabase!.from('traces') as any).update(pictureRow(fields)).eq('id', traceId)
+    if (error) console.error('[drawing] could not save a stroke:', error)
+  }
 
-  // Every change to the drawing goes through here, so nothing can quietly
-  // mutate the strokes without becoming undoable.
-  const commitDrawing = useCallback((next: DrawSnapshot | ((prev: DrawSnapshot) => DrawSnapshot)) => {
-    const before = completedStrokesRef.current
-    const after = typeof next === 'function' ? next(before) : next
-    setCompletedStrokes(after)
-    // Recorded after the change, with both ends captured, so the entry always
-    // describes something that actually happened.
-    record({
-      label: 'drawing',
-      undo: () => setCompletedStrokes(before),
-      redo: () => setCompletedStrokes(after),
+  // A picture's file: drawing_<user>_<time>.png (isDrawingTrace knows a
+  // drawing by it), or the picture in the row as a data URL if the upload
+  // fails. Remembered by its address, so it's painted from here, not fetched.
+  const saveDrawingPicture = async (picture: HTMLCanvasElement): Promise<string> => {
+    const blob = await new Promise<Blob | null>(resolve => picture.toBlob(resolve, 'image/png'))
+    let url = ''
+    if (blob) {
+      const storagePath = `${lobbyId}/drawing_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`
+      const { error } = await supabase!.storage.from('traces').upload(storagePath, blob, { contentType: 'image/png' })
+      if (error) console.error('Storage upload failed, falling back to data URL:', error)
+      else url = supabase!.storage.from('traces').getPublicUrl(storagePath).data.publicUrl
+    }
+    if (!url) url = picture.toDataURL('image/png')
+    drawingPicturesRef.current.set(url, picture)
+    // Fetched ahead, so it's there when the trace shows it after drawing.
+    if (/^https?:/.test(url)) new Image().src = url
+    return url
+  }
+
+  // A drawing's picture from its file, readable back from a canvas (the
+  // eraser reads it): from the vault as a blob on desktop, and on the web with
+  // CORS, falling back to the site's own image proxy. Null if it can't be had.
+  const loadDrawingPicture = async (mediaUrl: string): Promise<Picture | null> => {
+    const known = drawingPicturesRef.current.get(mediaUrl)
+    if (known) return known
+    const load = (src: string, crossOrigin: boolean) => new Promise<HTMLImageElement | null>(resolve => {
+      const img = new Image()
+      if (crossOrigin) img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = () => resolve(null)
+      img.src = src
     })
-  }, [])
+    let img: HTMLImageElement | null = null
+    if (mediaUrl.startsWith('local://')) {
+      const { resolveLocalUrl } = await import('../lib/localDb')
+      const resolved = await resolveLocalUrl(mediaUrl)
+      if (!resolved.startsWith('local://')) img = await load(resolved, false)
+    } else if (mediaUrl.startsWith('data:')) {
+      img = await load(mediaUrl, false)
+    } else {
+      img = await load(mediaUrl, true)
+        ?? (isDesktop ? null : await load(`/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`, false))
+    }
+    if (!img || !img.naturalWidth) return null
+    drawingPicturesRef.current.set(mediaUrl, img)
+    return img
+  }
 
-  // Kept as named functions rather than calling the shared undo directly at
-  // the key handler, so the drawing keys read the same as they did and there
-  // is one place to change if drawing ever needs to do more than reverse the
-  // last thing on the timeline.
-  const undoDrawing = useCallback(() => { void undoHistory() }, [])
-  const redoDrawing = useCallback(() => { void redoHistory() }, [])
+  // The drawing's group, made with its first stroke: on top of everything,
+  // named Drawing N -- or, for a drawing in no group being edited, where that
+  // drawing is, and it goes in.
+  const drawingGroupFor = async (session: DrawingSession): Promise<string> => {
+    if (session.groupId) return session.groupId
+    const { traces, layers } = useGameStore.getState()
+    const name = firstFreeName(layers.map(l => l.name), n => t('atrium.layers.numberedDrawing', { n }))
+    const anchor = session.anchorId ? traces.find(tr => tr.id === session.anchorId) : undefined
+    const group = await createGroup(lobbyId, name, userId, anchor?.orderKey && isValidOrderKey(anchor.orderKey) ? anchor.orderKey : undefined)
+    session.groupId = group.id
+    session.madeGroup = true
+    if (anchor) {
+      const orderKey = keysOnTopOfGroup([], group.id)[0]
+      const now = useGameStore.getState().traces.find(tr => tr.id === anchor.id)
+      if (now) useGameStore.getState().addTrace({ ...now, layerId: group.id, orderKey })
+      await (supabase!.from('traces') as any).update({ layer_id: group.id, order_key: orderKey }).eq('id', anchor.id)
+    }
+    return group.id
+  }
 
-  // Leaving, entering or saving starts a fresh drawing, so the history of the
-  // previous one must not survive into it.
-  const resetDrawing = useCallback(() => {
-    setCompletedStrokes([])
+  // A stroke let go of: shown at once, saved behind it.
+  const settleStroke = (session: DrawingSession, stroke: Stroke, zoom: number) => {
+    const piece = rasterizeStroke(stroke, zoom)
+    if (!piece) return
+    const op: Unsettled = { kind: 'stroke', piece }
+    session.unsettled.push(op)
+    redrawDrawing()
+    void enqueueDrawing(session, async () => {
+      try {
+        if (useGameStore.getState().isLobbyFull()) {
+          showToast(lobbyFullMessage())
+          return
+        }
+        const groupId = await drawingGroupFor(session)
+        const mediaUrl = await saveDrawingPicture(piece.picture)
+        // Over the drawing's other strokes, in its group.
+        const inGroup = inOrder(useGameStore.getState().traces.filter(tr => tr.layerId === groupId))
+        let top = -1
+        inGroup.forEach((tr, i) => { if (session.members.has(tr.id)) top = i })
+        const orderKey = keyAt(inGroup, top + 1) ?? keysOnTopOfGroup(inGroup, groupId)[0]
+        const { data, error } = await supabase!.from('traces').insert({
+          user_id: userId,
+          username,
+          type: 'image',
+          content: 'freehand drawing',
+          lobby_id: lobbyId,
+          show_border: false,
+          show_background: false,
+          show_description: false,
+          show_filename: false,
+          ...pictureRow(pieceFields(piece, mediaUrl)),
+          layer_id: groupId,
+          order_key: orderKey,
+        } as any).select()
+        if (error || !data?.[0]) throw error ?? new Error('no row came back')
+        const trace = mapRowToTrace(data[0])
+        session.members.add(trace.id)
+        setDrawingMembers(new Set(session.members))
+        // Its own step, recorded below, rather than an addition TraceOverlay
+        // would record when it sees it arrive.
+        adoptTraces([trace.id])
+        useGameStore.getState().addTrace(trace)
+        recordAction({
+          label: 'drawing stroke',
+          undo: () => {
+            const store = useGameStore.getState()
+            store.removeTrace(trace.id)
+            store.markTraceDeleted(trace.id)
+          },
+          redo: () => {
+            adoptTraces([trace.id])
+            const store = useGameStore.getState()
+            store.addTrace(trace)
+            store.unmarkTraceDeleted(trace.id)
+          },
+        })
+      } catch (err: any) {
+        console.error('[drawing] could not save a stroke:', err)
+        showToast(t('atrium.draw.strokeSaveFailed', { message: err?.message ?? '' }))
+      } finally {
+        session.unsettled.splice(session.unsettled.indexOf(op), 1)
+        redrawDrawing()
+      }
+    })
+  }
+
+  // An erasure, made or taken back: each stroke it reached shows what was
+  // left of it, or what it was before -- or, erased entirely, is gone, as a
+  // deleted trace is (for good at Save).
+  type Erased = { before: Trace; after: PictureFields | null }
+  const applyErase = async (changes: Erased[], direction: 'forward' | 'back') => {
+    const store = useGameStore.getState()
+    for (const { before, after } of changes) {
+      if (after) continue
+      if (direction === 'forward') {
+        store.removeTrace(before.id)
+        store.markTraceDeleted(before.id)
+      } else {
+        adoptTraces([before.id])
+        store.addTrace(before)
+        store.unmarkTraceDeleted(before.id)
+      }
+    }
+    await Promise.all(changes.filter(c => c.after).map(c => writePicture(c.before.id, direction === 'forward' ? c.after! : pictureFieldsOf(c.before))))
+  }
+
+  // An eraser stroke let go of: shown at once, taken out of every stroke of
+  // the drawing it reaches behind it.
+  const settleErase = (session: DrawingSession, eraser: Stroke) => {
+    const op: Unsettled = { kind: 'erase', stroke: eraser }
+    session.unsettled.push(op)
+    redrawDrawing()
+    void enqueueDrawing(session, async () => {
+      try {
+        const changes: Erased[] = []
+        for (const trace of useGameStore.getState().traces) {
+          if (!session.members.has(trace.id) || !trace.mediaUrl) continue
+          const picture = drawingPicturesRef.current.get(trace.mediaUrl)
+          if (!picture) continue
+          const left = erasePicture(picture, placementOf(trace, picture), eraser)
+          if (left === 'untouched') continue
+          changes.push({ before: trace, after: left && pieceFields(left, await saveDrawingPicture(left.picture)) })
+        }
+        if (changes.length === 0) return
+        await applyErase(changes, 'forward')
+        recordAction({
+          label: 'drawing eraser',
+          undo: () => applyErase(changes, 'back'),
+          redo: () => applyErase(changes, 'forward'),
+        })
+      } catch (err: any) {
+        console.error('[drawing] could not save an erasure:', err)
+        showToast(t('atrium.draw.strokeSaveFailed', { message: err?.message ?? '' }))
+      } finally {
+        session.unsettled.splice(session.unsettled.indexOf(op), 1)
+        redrawDrawing()
+      }
+    })
+  }
+
+  // Clear: every stroke of the drawing gone, as one step -- deleted as any
+  // trace is, for good at Save.
+  const clearDrawing = () => {
+    const session = sessionRef.current
+    if (!session) return
+    void enqueueDrawing(session, async () => {
+      const gone = useGameStore.getState().traces.filter(tr => session.members.has(tr.id))
+      if (gone.length === 0) return
+      const take = () => {
+        const store = useGameStore.getState()
+        for (const tr of gone) {
+          store.removeTrace(tr.id)
+          store.markTraceDeleted(tr.id)
+        }
+      }
+      take()
+      recordAction({
+        label: 'drawing cleared',
+        undo: () => {
+          adoptTraces(gone.map(tr => tr.id))
+          const store = useGameStore.getState()
+          for (const tr of gone) {
+            store.addTrace(tr)
+            store.unmarkTraceDeleted(tr.id)
+          }
+        },
+        redo: take,
+      })
+    })
+  }
+
+  // Undo and redo while drawing: TraceOverlay's, once every stroke drawn so
+  // far is saved -- each is a step from then.
+  const stepDrawing = async (direction: 'undo' | 'redo') => {
+    await sessionRef.current?.queue
+    window.dispatchEvent(new Event(direction === 'undo' ? 'atrium:undo' : 'atrium:redo'))
+  }
+
+  // Into drawing mode: a new drawing, or -- Edit Drawing -- the one a trace
+  // belongs to (lib/brushes drawingOf), its strokes' pictures loaded first so
+  // the eraser can reach them. One that can't be read is left out: on the
+  // canvas as it is, out of the eraser's reach.
+  const startDrawing = async (editTraceId?: string) => {
+    if (!canEditRef.current) return
+    // A drawing still being saved is finished first.
+    await sessionRef.current?.queue
+    let members: Trace[] = []
+    let groupId: string | null = null
+    if (editTraceId) {
+      const { traces: all, layers } = useGameStore.getState()
+      const trace = all.find(tr => tr.id === editTraceId)
+      if (!trace) return
+      const drawing = drawingOf(trace, all, layers)
+      const loaded = await Promise.all(drawing.members.map(m => (m.mediaUrl ? loadDrawingPicture(m.mediaUrl) : Promise.resolve(null))))
+      members = drawing.members.filter((_, i) => loaded[i])
+      if (!members.some(m => m.id === editTraceId)) {
+        showToast(t('atrium.draw.editLoadFailed'))
+        return
+      }
+      groupId = drawing.groupId
+    }
+    sessionRef.current = {
+      groupId,
+      anchorId: editTraceId && !groupId ? editTraceId : null,
+      madeGroup: false,
+      members: new Set(members.map(m => m.id)),
+      unsettled: [],
+      queue: Promise.resolve(),
+    }
+    setDrawingMembers(new Set(members.map(m => m.id)))
+    setEditingDrawing(!!editTraceId)
+    drawingVersionRef.current++
+    setDrawingLive(true)
+    setIsEraserMode(false)
+    setIsDrawingMode(true)
+  }
+
+  // Out of drawing mode, whichever way. Every stroke is saved already, or on
+  // its way: the canvas stays up until the last one is, then the traces show
+  // in their place. A group made here and left empty -- everything undone --
+  // is taken away again.
+  const leaveDrawing = () => {
+    setIsDrawingMode(false)
+    setIsEraserMode(false)
+    setIsDrawing(false)
     currentStrokeRef.current = []
-    drawnZoomRef.current = 0
-    // The way back to a drawing that no longer exists is not a way back to
-    // anything, so the timeline goes with it.
-    clearHistory()
-  }, [])
+    const session = sessionRef.current
+    if (!session) return
+    void session.queue.then(async () => {
+      const { groupId } = session
+      if (groupId && session.madeGroup && !useGameStore.getState().traces.some(tr => tr.layerId === groupId)) {
+        const { error } = await (supabase!.from('layers') as any).delete().eq('id', groupId)
+        if (!error) {
+          useGameStore.getState().forgetLayer(groupId)
+          window.dispatchEvent(new Event('atrium:layers-changed'))
+        }
+      }
+      if (sessionRef.current !== session) return
+      sessionRef.current = null
+      setDrawingMembers(new Set())
+      setDrawingLive(false)
+      setEditingDrawing(false)
+    })
+  }
+  const toggleDrawing = () => {
+    if (isDrawingModeRef.current) leaveDrawing()
+    else void startDrawing()
+  }
+  // The key handler is registered once; these change every render.
+  const drawingKeysRef = useRef({ toggleDrawing, leaveDrawing, stepDrawing })
+  drawingKeysRef.current = { toggleDrawing, leaveDrawing, stepDrawing }
 
   // Keep drawing mode ref in sync
   useEffect(() => {
@@ -1070,22 +1378,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     el.style.borderColor = brushRingColour
     el.style.borderStyle = isEraserMode ? 'dashed' : 'solid'
   }, [drawingWidth, isEraserMode, brushRingColour, isDrawingMode])
+  // The drawing's strokes are traces: painted again when they change.
   useEffect(() => {
-    completedStrokesRef.current = completedStrokes
-    renderDrawingCanvas()
-  }, [completedStrokes])
+    if (drawingLiveRef.current) redrawDrawing()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traces])
   useEffect(() => { drawingBrushRef.current = drawingBrush }, [drawingBrush])
   useEffect(() => { drawingHardnessRef.current = drawingHardness }, [drawingHardness])
-  // The canvas goes away without a pointerleave, so the flag would outlive it.
-  // And leaving drawing mode, whichever way, ends an edit.
+  // The canvas stops taking the pointer without a pointerleave, so the flag
+  // would outlive it.
   useEffect(() => {
-    if (isDrawingMode) return
-    setPointerOnDrawingCanvas(false)
-    if (editingDrawingRef.current) {
-      editingDrawingRef.current = null
-      setEditingDrawingId(null)
-      if (committedLayerRef.current) committedLayerRef.current.strokes = null
-    }
+    if (!isDrawingMode) setPointerOnDrawingCanvas(false)
   }, [isDrawingMode])
 
   // Imported brushes live in the vault, so only desktop has any. Read once,
@@ -1148,19 +1451,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const finishStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!e.isPrimary || !isDrawing) return
     setIsDrawing(false)
-    const rawPoints = currentStrokeRef.current
-    if (rawPoints.length >= 1) {
-      commitDrawing(prev => [...prev, {
-        points: [...rawPoints],
-        color: drawingColorRef.current,
-        width: strokeWidthRef.current,
-        isEraser: isEraserModeRef.current,
-        brush: drawingBrushRef.current,
-        seed: currentSeedRef.current,
-        hardness: drawingHardnessRef.current / 100,
-      }])
-    }
+    const points = currentStrokeRef.current
     currentStrokeRef.current = []
+    const session = sessionRef.current
+    if (!session || points.length === 0) return
+    const stroke: Stroke = {
+      points: [...points],
+      color: drawingColorRef.current,
+      width: strokeWidthRef.current,
+      isEraser: isEraserModeRef.current,
+      brush: drawingBrushRef.current,
+      seed: currentSeedRef.current,
+      hardness: drawingHardnessRef.current / 100,
+    }
+    if (stroke.isEraser) settleErase(session, stroke)
+    else settleStroke(session, stroke, strokeZoomRef.current)
   }
 
   const addStrokeSample = (raw: StrokePoint) => {
@@ -1190,38 +1495,37 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const strokes = completedStrokesRef.current
     const view = drawView()
-    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), strokes: null, view: null }
+    const layer = committedLayerRef.current ??= { canvas: document.createElement('canvas'), version: -1, view: null }
     if (layer.canvas.width !== canvas.width || layer.canvas.height !== canvas.height) {
       layer.canvas.width = canvas.width
       layer.canvas.height = canvas.height
-      layer.strokes = null
+      layer.version = -1
     }
-    const sameViewAsLayer = sameView(layer.view, view)
-    if (layer.strokes !== strokes || !sameViewAsLayer) {
+    if (layer.version !== drawingVersionRef.current || !sameView(layer.view, view)) {
       const layerCtx = layer.canvas.getContext('2d')
       if (!layerCtx) return
-      const previous = layer.strokes
-      // A stroke added to the end -- the usual case -- is painted on top of
-      // what is there. Anything else (undo, clear, redo, the view moving)
-      // repaints them all.
-      const appended = sameViewAsLayer && previous !== null
-        && strokes.length === previous.length + 1
-        && strokes[previous.length - 1] === previous[previous.length - 1]
-      if (!appended) {
-        layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
-        // An edited drawing's picture goes in first, so the eraser reaches it.
-        const editing = editingDrawingRef.current
-        if (editing) drawPlacedPicture(layerCtx, editing.img, placementOnScreen(editing.placement, view))
+      layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+      const session = sessionRef.current
+      if (session) {
+        // The drawing's strokes as saved, in their order, then what's still
+        // being saved, in the order it was done.
+        const saved = inOrder(useGameStore.getState().traces.filter(tr => session.members.has(tr.id)))
+        for (const trace of saved) {
+          const picture = trace.mediaUrl ? drawingPicturesRef.current.get(trace.mediaUrl) : undefined
+          if (picture) drawPlacedPicture(layerCtx, picture, placementOnScreen(placementOf(trace, picture), view))
+        }
+        for (const op of session.unsettled) {
+          if (op.kind === 'stroke') drawPlacedPicture(layerCtx, op.piece.picture, placementOnScreen(op.piece.placement, view))
+          else drawStroke(layerCtx, strokeOnScreen(op.stroke, view))
+        }
       }
-      for (const stroke of appended ? strokes.slice(-1) : strokes) drawStroke(layerCtx, strokeOnScreen(stroke, view))
-      layer.strokes = strokes
+      layer.version = drawingVersionRef.current
       layer.view = view
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(layer.canvas, 0, 0)
-    // Draw current active stroke
+    // The stroke in progress; an eraser takes out of what's under it.
     if (currentStrokeRef.current.length >= 1) {
       drawStroke(ctx, strokeOnScreen({
         points: currentStrokeRef.current,
@@ -1239,7 +1543,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // Canvas resize effect
   useEffect(() => {
-    if (!isDrawingMode) return
+    if (!drawingLive) return
     const canvas = drawingCanvasRef.current
     if (!canvas) return
     const resize = () => {
@@ -1250,7 +1554,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     resize()
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
-  }, [isDrawingMode])
+  }, [drawingLive])
 
   // Put the renderer back in step with the window when the two drift apart.
   //
@@ -1618,7 +1922,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       }
 
       // The quick bar's keys: 1 to 9 pick its first nine tools, in the order
-      // shown; Esc lets go of an armed one. While drawing, only Draw's.
+      // shown -- while drawing too, which a tool picked ends; Esc lets go of
+      // an armed one.
       if (e.key === 'Escape' && placeToolRef.current) {
         setPlaceTool(null)
         placeStartRef.current = null
@@ -1626,7 +1931,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       }
       if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && canEditRef.current) {
         const action = QUICK_ORDER[Number(e.key) - 1]
-        if (action && (!isDrawingModeRef.current || action === 'draw')) {
+        if (action) {
           e.preventDefault()
           quickActionRef.current(action)
         }
@@ -1644,13 +1949,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         if (!canEditRef.current) return
         e.preventDefault()
         e.stopPropagation()
-        setIsDrawingMode(prev => {
-          if (!prev) return true
-          // Exiting: clear everything
-          resetDrawing()
-          setIsEraserMode(false)
-          return false
-        })
+        drawingKeysRef.current.toggleDrawing()
       }
       if (e.key === 'e' || e.key === 'E') {
         if (isDrawingModeRef.current) {
@@ -1661,44 +1960,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       }
       // The drawing's own keys. TraceOverlay's Ctrl+Z (trace undo/redo) and
       // its Delete (remove selected traces) both step aside while
-      // isDrawingMode is active -- see the isDrawingModeRef guards there.
+      // isDrawingMode is active -- see the isDrawingModeRef guards there. Undo
+      // is TraceOverlay's still, once the strokes drawn are saved (stepDrawing).
       if (isDrawingModeRef.current) {
         const mod = e.ctrlKey || e.metaKey
         if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
           e.preventDefault()
           e.stopPropagation()
-          undoDrawing()
+          void drawingKeysRef.current.stepDrawing('undo')
         }
         // Ctrl+Y as well as Ctrl+Shift+Z: the first is what Windows apps use,
         // the second what design tools do, and people arrive from both.
         if (mod && ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y')) {
           e.preventDefault()
           e.stopPropagation()
-          redoDrawing()
+          void drawingKeysRef.current.stepDrawing('redo')
         }
-        // Clears the canvas rather than deleting a trace -- and goes through
-        // the history, so it is a step back like any other.
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-          e.preventDefault()
-          e.stopPropagation()
-          commitDrawing([])
-          currentStrokeRef.current = []
-        }
-        // Enter is the same path as the Save button, guarded there against an
-        // empty canvas and against a save already running.
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          e.stopPropagation()
-          void saveDrawingRef.current()
-        }
-        // Escape leaves without saving, which is what Escape means everywhere
-        // else in the app. The Exit button does the same thing.
+        // Escape leaves. Every stroke is kept already.
         if (e.key === 'Escape') {
           e.preventDefault()
           e.stopPropagation()
-          setIsDrawingMode(false)
-          resetDrawing()
-          setIsEraserMode(false)
+          drawingKeysRef.current.leaveDrawing()
         }
       }
     }
@@ -1791,7 +2073,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!userId) return null
     if (!ensureLobbyHasSpace()) return null
 
-    const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
+    const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
     const sized = size ? { width: Math.max(1, Math.round(size.width)), height: Math.max(1, Math.round(size.height)) } : {}
 
     if (!supabase) {
@@ -1818,7 +2100,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ...sized,
         ...(points ? { shapePoints: points } : {}),
         orderKey: layerFields.order_key,
-        ...(activeLayerId ? { layerId: activeLayerId } : {}),
       }
       useGameStore.getState().addTrace(trace)
       return trace.id
@@ -1871,17 +2152,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return c ? { x: (sx - c.x) / zoomRef.current, y: (sy - c.y) / zoomRef.current } : { x: sx, y: sy }
   }
 
-  // Drawing on or off, as the Draw button has it: leaving throws away what
-  // wasn't saved.
-  const toggleDrawing = () => {
-    if (isDrawingMode) {
-      setCompletedStrokes([])
-      currentStrokeRef.current = []
-      setIsEraserMode(false)
-    }
-    setIsDrawingMode(!isDrawingMode)
-  }
-
   // Pinterest's board import, placing at `anchor` -- or, not connected yet,
   // connecting it first, right here: the same panel the welcome screen opens
   // (desktop links with a code from the browser; the web goes to Pinterest and
@@ -1895,6 +2165,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const quickAction = (action: QuickAction) => {
     if (!canEdit) return
+    // The bar always wins: a tool picked here ends whatever tool or mode was
+    // under way -- drawing, a shape being placed from the panel, and, in
+    // TraceOverlay, a path's points, crop mode, a connection (toolSwitch).
+    // Text being typed ends as the bar takes the focus.
+    setToolSwitch(n => n + 1)
+    if (action !== 'draw' && isDrawingModeRef.current) leaveDrawing()
+    if (shapeDragArmedRef.current && showTracePanel) handleCloseTracePanel()
     if (action === 'select') {
       setPlaceTool(null)
       return
@@ -1930,8 +2207,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // An armed tool let go of on the canvas: pressed at `start`, released at
   // `end`, both on screen. A drag gives a box its size (from corner to
-  // corner; `even`, as big each way) and a path its two ends; a click puts
-  // the trace there at its usual size, or starts a path to click on from.
+  // corner; `even`, as big each way) and a path its two ends; a click puts a
+  // text or a frame there at its usual size, or starts a path to click on
+  // from. A rectangle or a circle needs the drag.
   const finishPlacing = async (tool: PlaceTool, start: { sx: number; sy: number; wx: number; wy: number }, end: { sx: number; sy: number }, even: boolean) => {
     // The tool stays in hand, to place another straight away, as Excalidraw
     // does -- all but Text, whose next click ends the typing it starts (and a
@@ -1968,7 +2246,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
     if (tool === 'path') {
-      const style = shapeStyleOf({ shapeType: 'path' })
+      const style = nextShapeStyle('path')
       if (dragged) {
         const id = await insertShapeTrace(style, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [a, b])
         if (id) customize(id)
@@ -1982,12 +2260,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       }
       return
     }
-    const id = await insertShapeTrace(
-      shapeStyleOf({ shapeType: tool }),
-      dragged ? centre : a,
-      undefined,
-      dragged ? { width, height } : { width: 200, height: 200 },
-    )
+    // A click makes nothing: a shape at some default size, wherever a stray
+    // click landed, only got in the way.
+    if (!dragged) return
+    const id = await insertShapeTrace(nextShapeStyle(tool), centre, undefined, { width, height })
     if (id) customize(id)
   }
   const finishPlacingRef = useRef(finishPlacing)
@@ -2063,20 +2339,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // An armed tool takes the next press on the canvas -- or on a trace, which
   // a frame is often drawn around -- ahead of everything that would
   // otherwise take it (panning, selecting, dragging a trace). Not a press on
-  // the interface: the bar itself, the panels, the buttons.
+  // the interface: the bar itself, the panels, the buttons (isCanvasTarget).
   useEffect(() => {
-    const onCanvas = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null
-      if (!el?.closest) return false
-      // A selected trace's handles stay its own, so what was just placed can
-      // be sized and turned with the tool still in hand.
-      if (el.closest('.trace-nier-handle, .trace-nier-handle-center, .trace-rotate-handle, [data-elbow-grip], [data-frame-title]')) return false
-      if (el.closest('[data-trace-element], [data-canvas-backdrop]')) return true
-      return !el.closest('[data-ui-element], [data-hud], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
-    }
     const down = (e: PointerEvent) => {
       if (!placeToolRef.current || !canEditRef.current || isDrawingModeRef.current) return
-      if (e.button !== 0 || !e.isPrimary || !onCanvas(e.target)) return
+      if (e.button !== 0 || !e.isPrimary || !isCanvasTarget(e.target)) return
       const c = worldContainerRef.current
       if (!c) return
       e.preventDefault()
@@ -2129,10 +2396,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }, [])
 
-  // Drawing, or losing the right to edit, lets go of an armed tool.
+  // Drawing, or losing the right to edit, lets go of an armed tool. (Only
+  // as drawing starts: a tool picked in the bar ends drawing, and stays.)
   useEffect(() => {
     if (isDrawingMode || !canEdit) setPlaceTool(null)
   }, [isDrawingMode, canEdit])
+  // Counted up as a tool is picked in the bar, for TraceOverlay.
+  const [toolSwitch, setToolSwitch] = useState(0)
 
   // Camera helpers for the Locations panel: read the live camera view, and
   // smoothly fly to a saved one (the ticker eases cameraPositionRef + zoom
@@ -2393,7 +2663,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     // On top of the group, in page order. (Placed in a group, the pages used
     // to be numbered 1 upwards -- below the group's own range.)
-    const orderFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, pages.length)
+    const orderFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers, pages.length)
 
     const { preCacheLocalUrl } = await import('../lib/localDb')
     const stamp = Date.now()
@@ -2525,7 +2795,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     if (supabase) {
       // Each one above the last, all on top of the group.
-      const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null, urls.length)
+      const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers, urls.length)
 
       const rows = urls.map((url, i) => ({
         user_id: userId,
@@ -3278,7 +3548,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         if (viewMoved) updateGridRef.current?.()
         // A drawing in progress is in the world, and is painted through the
         // view (renderDrawingCanvas), so it moves with it.
-        if (isDrawingModeRef.current && !sameView(committedLayerRef.current?.view ?? null, { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current })) {
+        if (drawingLiveRef.current && !sameView(committedLayerRef.current?.view ?? null, { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current })) {
           renderDrawingCanvasRef.current()
         }
         
@@ -4071,7 +4341,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The live store, not the render-time `traces`, so a multi-file drop --
       // which adds each inserted row back before the next -- stacks each one
       // above the last instead of giving them all the same place.
-      const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
+      const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
 
       // An embed's proportions have to be decided from its link, because they
       // can't be measured: a cross-origin frame cannot report the size of what
@@ -4241,283 +4511,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('message', onMessage)
   }, [canEdit])
 
-  // Saving the drawing: rasterise the strokes, upload, place the result as an
-  // image trace. Lifted out of the button so the Enter key runs the same path
-  // -- two ways in, one implementation.
-  const saveDrawing = async () => {
-    if (isSavingDrawing || completedStrokesRef.current.length === 0) return
-    const editing = editingDrawingRef.current
-    let editSaved = false
-    setIsSavingDrawing(true)
-    try {
-      // The strokes are kept in the world (lib/drawingView); they're saved as
-      // they're seen at the current view, which is also the one the box they
-      // end up in is placed back into the world with, below.
-      const view = drawView()
-      const strokes = completedStrokes.map(stroke => strokeOnScreen(stroke, view))
-      const editPlacement = editing ? placementOnScreen(editing.placement, view) : null
-      // Render all strokes to find tight bounding box
-      const allPoints = strokes.flatMap(s => s.points)
-      // Returning from inside the try skips the cleanup after it, so this one
-      // has to undo the flag itself or the button stays disabled for good.
-      if (allPoints.length === 0) { setIsSavingDrawing(false); return }
-
-      // Room for the widest stroke's edge beyond its centre line, or a
-      // thick one came out with its sides sliced off -- and past that, room
-      // for a soft stroke's fade, up to three quarters of a width further out.
-      const padding = Math.max(20, Math.ceil(Math.max(...strokes.map(s => s.width)) * 1.3) + 4)
-      let minSX = Math.min(...allPoints.map(p => p.x)) - padding
-      let maxSX = Math.max(...allPoints.map(p => p.x)) + padding
-      let minSY = Math.min(...allPoints.map(p => p.y)) - padding
-      let maxSY = Math.max(...allPoints.map(p => p.y)) + padding
-
-      // Pixels per screen pixel: the screen's resolution, or finer where any
-      // of it was drawn from closer in than it's saved from, so zooming out
-      // to save doesn't blur it. An edited one keeps its picture's own
-      // resolution where that is finer still -- edited while zoomed out, it
-      // would otherwise come back blurrier every time. Up to 4x either way.
-      let k = Math.min(4, Math.max(1, drawnZoomRef.current / view.zoom))
-      if (editing && editPlacement) {
-        const { img } = editing
-        const placement = editPlacement
-        // The picture counts toward the box: it may reach past anything drawn.
-        const b = placementBounds(placement, img.naturalWidth, img.naturalHeight)
-        minSX = Math.min(minSX, Math.floor(b.minX))
-        maxSX = Math.max(maxSX, Math.ceil(b.maxX))
-        minSY = Math.min(minSY, Math.floor(b.minY))
-        maxSY = Math.max(maxSY, Math.ceil(b.maxY))
-        const shown = placePicture(placement, img.naturalWidth, img.naturalHeight)
-        k = Math.max(k, Math.min(4, Math.max(1, img.naturalWidth / Math.max(1, Math.abs(shown.w)))))
-      }
-      const cropW = Math.max(1, maxSX - minSX)
-      const cropH = Math.max(1, maxSY - minSY)
-      // And never past what a canvas can hold.
-      k = Math.min(k, 8192 / cropW, 8192 / cropH)
-
-      // Create offscreen canvas sized to the bounding box
-      const offscreen = document.createElement('canvas')
-      offscreen.width = Math.ceil(cropW * k)
-      offscreen.height = Math.ceil(cropH * k)
-      const offCtx = offscreen.getContext('2d')!
-
-      if (editing && editPlacement) {
-        offCtx.setTransform(k, 0, 0, k, -minSX * k, -minSY * k)
-        drawPlacedPicture(offCtx, editing.img, editPlacement)
-        offCtx.setTransform(1, 0, 0, 1, 0, 0)
-      }
-
-      // Draw strokes shifted so bounding box starts at (0,0)
-      // The spread keeps each point's pressure, which a bare {x, y} dropped.
-      for (const stroke of strokes) {
-        drawStroke(offCtx, {
-          ...stroke,
-          width: stroke.width * k,
-          points: stroke.points.map(p => ({ ...p, x: (p.x - minSX) * k, y: (p.y - minSY) * k })),
-        })
-      }
-
-      // Trimmed to what is actually there. The box above was sized from every
-      // point drawn and all of an edited drawing's picture, so whatever was
-      // erased -- and room left for a soft edge that turned out not to need
-      // it -- would otherwise stay on as empty space in the trace.
-      const found = alphaBounds(offCtx.getImageData(0, 0, offscreen.width, offscreen.height).data, offscreen.width, offscreen.height)
-      if (!found) {
-        setIsSavingDrawing(false)
-        resetDrawing()
-        if (editing) {
-          // All of it erased: the drawing goes, the way a delete does, so
-          // Don't Save still brings it back.
-          const store = useGameStore.getState()
-          store.removeTrace(editing.traceId)
-          store.markTraceDeleted(editing.traceId)
-          showToast(t('atrium.draw.drawingRemoved'))
-          setIsDrawingMode(false)
-        } else {
-          showToast(t('atrium.draw.nothingLeft'))
-        }
-        return
-      }
-      const picture = document.createElement('canvas')
-      picture.width = found.maxX - found.minX
-      picture.height = found.maxY - found.minY
-      picture.getContext('2d')!.drawImage(offscreen, -found.minX, -found.minY)
-      // The trimmed box, back in screen pixels.
-      const outMinX = minSX + found.minX / k
-      const outMinY = minSY + found.minY / k
-      const outW = picture.width / k
-      const outH = picture.height / k
-
-      // Export as PNG blob and upload to Supabase Storage
-      const blob = await new Promise<Blob>((resolve) => {
-        picture.toBlob((b) => resolve(b!), 'image/png')
-      })
-      const fileName = `drawing_${userId}_${Date.now()}.png`
-      const storagePath = `${lobbyId}/${fileName}`
-      
-      let imageUrl = ''
-      const { error: uploadError } = await supabase!.storage
-        .from('traces')
-        .upload(storagePath, blob, { contentType: 'image/png' })
-      
-      if (uploadError) {
-        console.error('Storage upload failed, falling back to data URL:', uploadError)
-        imageUrl = picture.toDataURL('image/png')
-      } else {
-        const { data: { publicUrl } } = supabase!.storage
-          .from('traces')
-          .getPublicUrl(storagePath)
-        imageUrl = publicUrl
-      }
-
-      // Convert screen-space bounds to world coordinates, through the view
-      // they were laid out at -- the upload above takes time, and the view
-      // may have moved since.
-      const panX = view.x
-      const panY = view.y
-      const zoom = view.zoom
-      const worldMinX = (outMinX - panX) / zoom
-      const worldMinY = (outMinY - panY) / zoom
-      const worldW = outW / zoom
-      const worldH = outH / zoom
-      const worldCenterX = worldMinX + worldW / 2
-      const worldCenterY = worldMinY + worldH / 2
-
-      if (supabase) {
-        // Check lobby size limit before saving drawing
-        if (useGameStore.getState().isLobbyFull()) {
-          showToast(lobbyFullMessage())
-          setIsSavingDrawing(false)
-          return
-        }
-        if (editing) {
-          // The same trace, now showing the new picture. Its position, size and
-          // turn are in the picture itself now, so the rest goes back to
-          // plain. Written straight away, as a new drawing's insert is.
-          const x = worldCenterX
-          const y = worldCenterY
-          const width = Math.round(worldW)
-          const height = Math.round(worldH)
-          const { error } = await (supabase.from('traces') as any).update({
-            media_url: imageUrl,
-            position_x: x,
-            position_y: y,
-            width,
-            height,
-            scale: 1,
-            scale_x: 1,
-            scale_y: 1,
-            rotation: 0,
-            flip_horizontal: false,
-            flip_vertical: false,
-            crop_x: 0,
-            crop_y: 0,
-            crop_width: 1,
-            crop_height: 1,
-          }).eq('id', editing.traceId)
-          if (error) {
-            console.error('Failed to save the edited drawing:', error)
-            showToast(t('atrium.draw.editSaveFailed'))
-          } else {
-            const current = useGameStore.getState().traces.find(tr => tr.id === editing.traceId)
-            if (current) {
-              useGameStore.getState().addTrace({
-                ...current,
-                mediaUrl: imageUrl,
-                x, y, width, height,
-                scale: 1, scaleX: 1, scaleY: 1, rotation: 0,
-                flipHorizontal: false, flipVertical: false,
-                cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
-              })
-            }
-            editSaved = true
-          }
-        } else {
-        const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
-
-        const { data, error } = await supabase.from('traces').insert({
-          user_id: userId,
-          username,
-          type: 'image',
-          content: 'freehand drawing',
-          media_url: imageUrl,
-          position_x: worldCenterX,
-          position_y: worldCenterY,
-          scale: 1.0,
-          rotation: 0.0,
-          lobby_id: lobbyId,
-          width: Math.round(worldW),
-          height: Math.round(worldH),
-          show_border: false,
-          show_background: false,
-          show_description: false,
-          show_filename: false,
-          ...layerFields,
-        } as any).select()
-
-        if (!error && data && data[0]) {
-          // From the saved row, like every other new trace: a hand-built copy
-          // here left out the group and z-index, so a new drawing sat at the
-          // bottom of the canvas, outside its group, until the next reload.
-          useGameStore.getState().addTrace(mapRowToTrace(data[0]))
-        } else if (error) {
-          console.error('Failed to save drawing:', error)
-        }
-        }
-      }
-    } catch (err) {
-      console.error('Error saving drawing:', err)
-    }
-    setIsSavingDrawing(false)
-    // A failed edit keeps its strokes, so nothing drawn is lost to a retry.
-    if (editing && !editSaved) return
-    resetDrawing()
-    // Done editing: back to the atrium, where the drawing now shows the
-    // change. The effect on isDrawingMode ends the edit.
-    if (editSaved) setIsDrawingMode(false)
-  }
-
-  // Edit Drawing, from the right-click menu: back into drawing mode with the
-  // drawing's picture under the brush. Loaded so the canvas can read it back
-  // when saving -- from the vault as a blob on desktop, and on the web with
-  // CORS, falling back to the site's own image proxy.
-  const handleEditDrawing = async (traceId: string, mediaUrl: string, placement: TracePlacement) => {
-    if (!canEditRef.current) return
-    const load = (src: string, crossOrigin: boolean) => new Promise<HTMLImageElement | null>(resolve => {
-      const img = new Image()
-      if (crossOrigin) img.crossOrigin = 'anonymous'
-      img.onload = () => resolve(img)
-      img.onerror = () => resolve(null)
-      img.src = src
-    })
-    let img: HTMLImageElement | null = null
-    if (mediaUrl.startsWith('local://')) {
-      const { resolveLocalUrl } = await import('../lib/localDb')
-      const resolved = await resolveLocalUrl(mediaUrl)
-      if (!resolved.startsWith('local://')) img = await load(resolved, false)
-    } else if (mediaUrl.startsWith('data:')) {
-      img = await load(mediaUrl, false)
-    } else {
-      img = await load(mediaUrl, true)
-        ?? (isDesktop ? null : await load(`/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`, false))
-    }
-    if (!img || !img.naturalWidth) {
-      showToast(t('atrium.draw.editLoadFailed'))
-      return
-    }
-    resetDrawing()
-    // Where its picture sits in the world, to be drawn over as the view moves.
-    editingDrawingRef.current = { traceId, img, placement: placementInWorld(placement, drawView()) }
-    if (committedLayerRef.current) committedLayerRef.current.strokes = null
-    setEditingDrawingId(traceId)
-    setIsEraserMode(false)
-    setIsDrawingMode(true)
-  }
-
-  // The key handler is registered once, so it reaches the current save
-  // through a ref rather than closing over the first render's copy.
-  const saveDrawingRef = useRef(saveDrawing)
-  useEffect(() => { saveDrawingRef.current = saveDrawing })
-
   return (
     <div
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
@@ -4559,8 +4552,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
             hideCursor={isDrawingMode && pointerOnDrawingCanvas}
-            onEditDrawing={handleEditDrawing}
-            hiddenTraceId={editingDrawingId}
+            placing={!!placeTool || shapeArmed}
+            onEditDrawing={traceId => void startDrawing(traceId)}
+            hiddenTraceIds={drawingMembers}
+            toolSwitch={toolSwitch}
             onMultiSelectionChange={setMultiSelectedTraceIds}
             onCustomizeOpen={() => { closeSidePanels(); setShowTracePanel(false) }}
             canEdit={canEdit}
@@ -4573,7 +4568,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             Over the traces (their layer is isolated), under the HUD and the
             Create Trace panel. A plain layer: the canvas's own mouse handling
             takes the drag, as it does on empty canvas. */}
-        {shapeArmed && <div className="absolute inset-0" style={{ zIndex: 1, pointerEvents: 'auto', cursor: 'crosshair' }} />}
+        {shapeArmed && <div className="absolute inset-0" style={{ zIndex: 1, pointerEvents: 'auto' }} />}
 
         {/* Shift+drag area-selection rectangle -- position/size mutated
             directly on mousemove (see handleMouseMove), not React state.
@@ -5103,9 +5098,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </button>
       )}
 
-      {/* Drawing Mode Overlay */}
-      {isDrawingMode && (
+      {/* Drawing Mode Overlay. The canvas outlasts drawing mode until its last
+          strokes are saved (drawingLive), taking no pointer by then. */}
+      {drawingLive && (
         <>
+          {isDrawingMode && (
+          <>
           {/* Drawing controls panel */}
           <div
             data-ui-element="true"
@@ -5125,7 +5123,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
               <div className="flex flex-col items-stretch gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{editingDrawingId ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}</p>
+                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{editingDrawing ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}</p>
                 </div>
 
                 <>
@@ -5324,67 +5322,32 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   </div>
                 )}
 
-                {/* Undo and redo. Both stay mounted once there is anything to
-                    step through, so the row does not reflow under the pointer
-                    mid-edit -- and redo outlives an undo back to an empty
-                    canvas, which is exactly when it is wanted. */}
-                {(completedStrokes.length > 0 || canUndo()) && (
-                  <button
-                    onClick={undoDrawing}
-                    disabled={!canUndo()}
-                    className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    {t('common.undo')}
-                  </button>
-                )}
-                {(completedStrokes.length > 0 || canRedo()) && (
-                  <button
-                    onClick={redoDrawing}
-                    disabled={!canRedo()}
-                    className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    {t('common.redo')}
-                  </button>
-                )}
+                {/* Undo and redo: the atrium's own, each stroke and erasure a
+                    step of it. Nothing to save, and nothing to leave by here:
+                    every stroke keeps itself, and the quick bar, the Draw
+                    button or Esc end drawing. */}
+                <button
+                  onClick={() => void stepDrawing('undo')}
+                  className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
+                >
+                  {t('common.undo')}
+                </button>
+                <button
+                  onClick={() => void stepDrawing('redo')}
+                  className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
+                >
+                  {t('common.redo')}
+                </button>
 
-                {/* Clear all strokes */}
-                {completedStrokes.length > 0 && (
+                {/* Every stroke of the drawing, as one step. */}
+                {drawingMembers.size > 0 && (
                   <button
-                    onClick={() => {
-                      commitDrawing([])
-                      currentStrokeRef.current = []
-                    }}
+                    onClick={clearDrawing}
                     className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
                   >
                     {t('common.clear')}
                   </button>
                 )}
-
-                {/* Print (save as image) button */}
-                {completedStrokes.length > 0 && (
-                  <button
-                    disabled={isSavingDrawing}
-                    onClick={saveDrawing}
-                    className="bg-white hover:bg-nier-bg text-black px-4 py-1 text-xs tracking-wider uppercase transition-all border border-nier-bg font-bold"
-                  >
-                    {isSavingDrawing ? '...' : `✓ ${t('atrium.draw.save')} (${completedStrokes.length})`}
-                  </button>
-                )}
-
-                <button
-                  onClick={() => {
-                    setIsDrawingMode(false)
-                    resetDrawing()
-                    setIsEraserMode(false)
-                  }}
-                  className="atrium-btn w-full hover:brightness-110"
-                  style={{
-                    borderColor: 'rgb(var(--c-danger) / 0.55)',
-                    color: 'rgb(var(--c-danger))',
-                  }}
-                >
-                  {t('atrium.draw.exit')}
-                </button>
                 </>
 
               </div>
@@ -5405,6 +5368,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               display: 'none',
             }}
           />
+          </>
+          )}
 
           {/* Drawing canvas overlay - below UI buttons, above traces */}
           <canvas
@@ -5417,6 +5382,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               // Or the browser claims pen and finger drags for scrolling and
               // gestures, and the canvas never hears them.
               touchAction: 'none',
+              pointerEvents: isDrawingMode ? 'auto' : 'none',
             }}
             // Pointer events, not mouse and touch. A tablet pen arrives on
             // Windows as touch, whose handlers drew the stroke but never moved
@@ -5444,7 +5410,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 const at = pointToWorld(e.clientX, e.clientY, drawView())
                 const point = strokePoint(at.x, at.y, e.pointerType, e.pressure)
                 strokeWidthRef.current = drawingWidthRef.current / zoomRef.current
-                drawnZoomRef.current = Math.max(drawnZoomRef.current, zoomRef.current)
+                strokeZoomRef.current = zoomRef.current
                 currentStrokeRef.current = [point]
                 currentSeedRef.current = newStrokeSeed()
                 smoothedPointRef.current = { x: point.x, y: point.y }
@@ -5654,7 +5620,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           lobbyId={lobbyId}
           initialType={tracePanelInitialType}
           initialShapeType={tracePanelInitialShapeType}
-          activeLayerId={activeLayerId}
           shapeDraftSize={shapeDraftSize}
           onShapeDraftChange={handleShapeDraftChange}
           onShapeModeChange={handleShapeModeChange}
@@ -5718,8 +5683,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             setSelectedTraceId(traceId)
             // setSelectedTraceId called
           }}
-          activeLayerId={activeLayerId}
-          onSetActiveLayer={setActiveLayerId}
           onSelectGroupTraces={(traceIds) => setMultiSelectRequest(traceIds)}
           // Same channel a group-header click already uses: the panel says what
           // should be selected, and the canvas is what holds a selection.

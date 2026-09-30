@@ -3,7 +3,7 @@ import type { TranslationKey } from '../locales/en'
 import { tCount, useTranslation } from '../lib/i18n'
 import ShapeStyleControls from './ShapeStyleControls'
 import TraceNameField from './TraceNameField'
-import { defaultShapeColor, shapeStyleColumns, shapeStyleOf, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { nextShapeStyle, rememberShapeStyle, shapeStyleColumns, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -34,7 +34,6 @@ const DEFAULT_PATH_HALF_LENGTH = 30
 // limits before the user even realizes it.
 const MAX_BATCH_EMBED_LINKS = 30
 
-const getDefaultShapeColor = defaultShapeColor
 
 const getDefaultPathPoints = (position: { x: number; y: number }) => ([
   { x: position.x - DEFAULT_PATH_HALF_LENGTH, y: position.y },
@@ -47,7 +46,6 @@ interface TracePanelProps {
   lobbyId: string
   initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
   initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
-  activeLayerId?: string | null
   // Submitting a Path skips the normal insert-and-done flow -- instead of a
   // static pre-made line, this hands off to LobbyScene/TraceOverlay's
   // point-by-point drawing mode so the user starts placing the path (and
@@ -112,7 +110,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, activeLayerId, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, initialPdfFile, onOpenPinterestImport, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, initialPdfFile, onOpenPinterestImport, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const { t } = useTranslation()
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
@@ -230,7 +228,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   // Every option a shape has, the same set the customize panel edits -- see
   // ShapeStyleControls. It used to be four loose values here, so an outline,
   // no-fill or a path's arrows could only be added after creating the shape.
-  const [shapeStyle, setShapeStyle] = useState<ShapeStyle>(() => shapeStyleOf({ shapeType: initialShapeType || 'rectangle' }))
+  // It starts as the last shape made looked (nextShapeStyle).
+  const [shapeStyle, setShapeStyle] = useState<ShapeStyle>(() => nextShapeStyle(initialShapeType || 'rectangle'))
   const { shapeType } = shapeStyle
   const [shapeWidth, setShapeWidth] = useState(200)
   const [shapeHeight, setShapeHeight] = useState(200)
@@ -286,13 +285,12 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
   const changeShapeStyle = (patch: Partial<ShapeStyle>) => {
     setShapeStyle(current => {
-      const next = { ...current, ...patch }
-      // Switching type carries the colour across only if it was chosen. An
-      // untouched default follows the type, since a path's default is grey.
-      if (patch.shapeType && current.shapeColor === getDefaultShapeColor(current.shapeType)) {
-        next.shapeColor = getDefaultShapeColor(patch.shapeType)
+      // Between a line and a filled shape, the look is the last one of that
+      // kind's (nextShapeStyle); among the filled ones it carries across.
+      if (patch.shapeType && (patch.shapeType === 'path') !== (current.shapeType === 'path')) {
+        return { ...nextShapeStyle(patch.shapeType), ...patch }
       }
-      return next
+      return { ...current, ...patch }
     })
   }
 
@@ -305,6 +303,9 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       alert(lobbyFullMessage())
       return
     }
+
+    // The next shape starts looking like this one.
+    if (traceType === 'shape') rememberShapeStyle(shapeStyle)
 
     // Hand off to the point-by-point drawing flow instead of inserting a
     // static pre-made line -- see the onCreatePath prop's doc comment.
@@ -457,7 +458,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
 
       // Save to Supabase if available
       if (supabase) {
-        const layerFields = newTraceOrderFields(useGameStore.getState().traces, activeLayerId ?? null)[0]
+        const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
 
         const { data, error} = await supabase.from('traces').insert({
           // Don't specify id - let database generate UUID

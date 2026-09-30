@@ -32,3 +32,16 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   if (field instanceof HTMLInputElement && NON_TEXT_INPUT_TYPES.has(field.type)) return false
   return true
 }
+
+// Whether a pointer event is on the atrium itself -- the canvas, or a trace --
+// rather than on the interface over it: the bars, the panels, the buttons. An
+// armed tool places on the one (LobbyScene), and the cursor is a crosshair
+// over it (TraceOverlay's OwnCursor). A selected trace's handles are its own,
+// so what was just placed can be sized and turned with the tool still in hand.
+export function isCanvasTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el?.closest) return false
+  if (el.closest('.trace-nier-handle, .trace-nier-handle-center, .trace-rotate-handle, [data-elbow-grip], [data-frame-title]')) return false
+  if (el.closest('[data-trace-element], [data-canvas-backdrop]')) return true
+  return !el.closest('[data-ui-element], [data-hud], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto')
+}

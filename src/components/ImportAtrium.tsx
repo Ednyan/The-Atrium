@@ -3,7 +3,7 @@ import { tCount, useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
-import { keysFromNumbers } from '../lib/order'
+import { flattenLegacyOrder, keysFromNumbers } from '../lib/order'
 import { firstFreeName } from '../lib/traceNames'
 
 interface ImportAtriumProps {
@@ -62,6 +62,8 @@ interface AtriumExport {
     is_locked?: boolean | number
   }>
   traces: Array<Record<string, any>>
+  // 'flat' in files keyed as one stack (lib/order); older ones need lifting.
+  layerOrder?: string
   // Threads between traces, by the traces' ids in this file. Newer files only.
   links?: Array<Record<string, any>>
 }
@@ -169,6 +171,18 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // An older file orders by number only: keys from those, in its order.
       const layerKeys = keysFromNumbers(parsed.layers, l => l.z_index ?? 0)
       const traceKeys = keysFromNumbers(parsed.traces, tr => tr.z_index ?? 0, tr => tr._local_layer_id ?? null)
+      const layerKeyOf = new Map(parsed.layers.map(l => [l, l.order_key ?? layerKeys.get(l) ?? null]))
+      const traceKeyOf = new Map(parsed.traces.map(tr => [tr, tr.order_key ?? traceKeys.get(tr) ?? null]))
+      // One from before groups and loose traces were one stack (lib/order)
+      // has its groups lifted above its loose traces, as it was drawn.
+      if (parsed.layerOrder !== 'flat') {
+        const lifted = flattenLegacyOrder(
+          parsed.traces.map((tr, i) => ({ id: String(i), layerId: tr._local_layer_id ?? null, orderKey: traceKeyOf.get(tr) })),
+          parsed.layers.map(l => ({ id: l._local_id, orderKey: layerKeyOf.get(l) })),
+        )
+        parsed.traces.forEach((tr, i) => { const key = lifted.traces.get(String(i)); if (key) traceKeyOf.set(tr, key) })
+        parsed.layers.forEach(l => { const key = lifted.layers.get(l._local_id); if (key) layerKeyOf.set(l, key) })
+      }
       // Text traces from a file made before they had names are numbered here.
       const textNames = new Map<Record<string, any>, string>()
       const namesTaken: string[] = parsed.traces.filter(tr => tr.type === 'text' && tr.layer_name).map(tr => tr.layer_name)
@@ -186,7 +200,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             .insert({
               name: layer.name,
               z_index: layer.z_index,
-              order_key: layer.order_key ?? layerKeys.get(layer) ?? null,
+              order_key: layerKeyOf.get(layer) ?? null,
               is_group: !!layer.is_group,
               parent_id: layer.parent_id ? layerIdMap[layer.parent_id] || null : null,
               user_id: user.id,
@@ -379,7 +393,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           lobby_id: lobbyId,
           layer_id: mappedLayerId,
           frame_id: carriedFrameId(trace.frame_id, newTraceIds),
-          order_key: trace.order_key ?? traceKeys.get(trace) ?? null,
+          order_key: traceKeyOf.get(trace) ?? null,
           ...(trace.type === 'text' ? { layer_name: trace.layer_name ?? textNames.get(trace) ?? null } : {}),
           media_url: mediaUrl || null,
           image_url: imageUrl || null,

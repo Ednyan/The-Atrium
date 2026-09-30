@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { compareOrder, drawRanks, inOrder, isValidOrderKey, keyAt, keyBetween, keysBetween, keysFromNumbers, keysOnTop } from '../src/lib/order.ts'
+import { compareOrder, drawRanks, flattenLegacyOrder, inOrder, isValidOrderKey, keyAt, keyBetween, keysBetween, keysFromNumbers, keysOnTop, newTraceOrderFields, siblingsOf, type Ordered, type Stackable } from '../src/lib/order.ts'
 
 test('keys between two others match the published algorithm', () => {
   const cases: [string | null, string | null, string][] = [
@@ -84,18 +84,61 @@ test('ties go by id, and a thing without a key sits on top', () => {
   assert.equal(keyAt([{ id: 'a', orderKey: 'a0' }, { id: 'b', orderKey: 'a0' }], 1), null)
 })
 
-test('the drawing order: ungrouped at the bottom, then each group from the bottom up', () => {
-  const layers = [{ id: 'top', orderKey: 'a2' }, { id: 'bottom', orderKey: 'a1' }]
+const drawn = (traces: Stackable[], layers: Ordered[]) =>
+  [...drawRanks(traces, layers).entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id)
+
+test('the drawing order: one stack, loose traces between groups, a group\'s traces where it stands', () => {
+  const layers = [{ id: 'top', orderKey: 'a4' }, { id: 'bottom', orderKey: 'a1' }]
   const traces = [
     { id: 't-top-2', layerId: 'top', orderKey: 'a1' },
     { id: 't-top-1', layerId: 'top', orderKey: 'a0' },
-    { id: 'loose', layerId: null, orderKey: 'z0' },
+    { id: 'between', layerId: null, orderKey: 'a2' },
+    { id: 'lowest', layerId: null, orderKey: 'a0' },
     { id: 't-bottom', layerId: 'bottom', orderKey: 'a5' },
-    { id: 'orphan', layerId: 'gone', orderKey: 'a0' },
+    // Its group isn't known: drawn as loose, by its own key.
+    { id: 'orphan', layerId: 'gone', orderKey: 'a3' },
   ]
-  const ranks = drawRanks(traces, layers)
-  const order = [...ranks.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id)
-  assert.deepEqual(order, ['orphan', 'loose', 't-bottom', 't-top-1', 't-top-2'])
+  assert.deepEqual(drawn(traces, layers), ['lowest', 't-bottom', 'between', 'orphan', 't-top-1', 't-top-2'])
+})
+
+test('an atrium keyed before the stack is drawn as it was: its groups lifted above its loose traces', () => {
+  // Keyed apart, both from the first key, as they were: loose traces were a
+  // band under every group.
+  const layers = [{ id: 'g-top', orderKey: 'a1' }, { id: 'g-bottom', orderKey: 'a0' }]
+  const traces = [
+    { id: 'loose-1', layerId: null, orderKey: 'a0' },
+    { id: 'loose-2', layerId: null, orderKey: 'a1' },
+    { id: 'loose-3', layerId: null, orderKey: 'a2' },
+    { id: 'unkeyed', layerId: null, orderKey: null },
+    { id: 'in-bottom', layerId: 'g-bottom', orderKey: 'a0' },
+    { id: 'in-top', layerId: 'g-top', orderKey: 'a0' },
+  ]
+  const was = ['loose-1', 'loose-2', 'loose-3', 'unkeyed', 'in-bottom', 'in-top']
+  const { traces: traceKeys, layers: layerKeys } = flattenLegacyOrder(traces, layers)
+  const after = drawn(
+    traces.map(t => ({ ...t, orderKey: traceKeys.get(t.id) ?? t.orderKey })),
+    layers.map(l => ({ ...l, orderKey: layerKeys.get(l.id) ?? l.orderKey })),
+  )
+  assert.deepEqual(after, was)
+  for (const key of [...traceKeys.values(), ...layerKeys.values()]) assert.ok(isValidOrderKey(key), key)
+  // Nothing to lift without both.
+  assert.equal(flattenLegacyOrder(traces.filter(t => !t.layerId), []).layers.size, 0)
+  assert.equal(flattenLegacyOrder(traces.filter(t => t.layerId), layers).layers.size, 0)
+})
+
+test('a new trace goes on top of everything, in no group', () => {
+  const layers = [{ id: 'g', orderKey: 'a5' }]
+  const traces = [{ id: 'in-g', layerId: 'g', orderKey: 'z0' }, { id: 'loose', layerId: null, orderKey: 'a2' }]
+  const [fields] = newTraceOrderFields(traces, layers)
+  assert.deepEqual(Object.keys(fields), ['order_key'])
+  assert.deepEqual(drawn([...traces, { id: 'new', layerId: null, orderKey: fields.order_key }], layers).at(-1), 'new')
+})
+
+test('what a trace is ordered among: its group\'s traces, or -- loose -- the whole stack', () => {
+  const layers = [{ id: 'g', orderKey: 'a1' }]
+  const traces = [{ id: 'a', layerId: 'g', orderKey: 'a0' }, { id: 'b', layerId: 'g', orderKey: 'a1' }, { id: 'c', layerId: null, orderKey: 'a0' }]
+  assert.deepEqual(siblingsOf(traces[0], traces, layers).map(s => s.id), ['b'])
+  assert.deepEqual(siblingsOf(traces[2], traces, layers).map(s => s.id).sort(), ['g'])
 })
 
 test('rows from an older export are keyed in the order of their numbers, group by group', () => {

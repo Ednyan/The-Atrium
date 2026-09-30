@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
-import { keysOnTop } from '../lib/order'
+import { keysOnTop, topLevel } from '../lib/order'
 
 export function mapRowToLayer(row: any): Layer {
   return {
@@ -28,12 +28,13 @@ export async function reloadLayers(lobbyId: string) {
   }
 }
 
-// A new group on top of the others, put in the store and announced. Two people
-// doing this at the same moment may pick the same key; the tie is broken by id,
-// the same way for everyone.
-export async function createGroup(lobbyId: string, name: string, userId: string | null): Promise<Layer> {
+// A new group -- on top of everything, unless given its place in the stack --
+// put in the store and announced. Two people doing this at the same moment
+// may pick the same key; the tie is broken by id, the same way for everyone.
+export async function createGroup(lobbyId: string, name: string, userId: string | null, orderKey?: string): Promise<Layer> {
+  const { traces, layers } = useGameStore.getState()
   const { data, error } = await (supabase!.from('layers') as any)
-    .insert({ name, order_key: keysOnTop(useGameStore.getState().layers)[0], is_group: true, user_id: userId, lobby_id: lobbyId })
+    .insert({ name, order_key: orderKey ?? keysOnTop(topLevel(traces, layers))[0], is_group: true, user_id: userId, lobby_id: lobbyId })
     .select()
     .single()
   if (error || !data) throw new Error(error?.message || 'the group was not made')

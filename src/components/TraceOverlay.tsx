@@ -9,7 +9,7 @@ import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { useLatestHandlers } from '../hooks/useLatestHandlers'
 import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
-import { isEditableTarget } from '../lib/editableTarget'
+import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
 
 // Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
 // Video and audio stream from the vault rather than being read into memory --
@@ -29,7 +29,7 @@ import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { throughRelay, toEmbedUrl } from '../lib/embedUrl'
-import { drawRanks, inOrder, keyAt, keysBetween, keysOnTop, keysOnTopOfGroup, type Ordered } from '../lib/order'
+import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, siblingsOf, topLevel, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
@@ -41,8 +41,8 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls from './ShapeStyleControls'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { PREVIEW_OPACITY, previewFrameColour, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
-import { isDrawingTrace, type TracePlacement } from '../lib/brushes'
+import { PREVIEW_OPACITY, previewFrameColour, rememberShapeStyle, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
+import { drawingOf, isDrawingTrace } from '../lib/brushes'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
@@ -202,6 +202,9 @@ interface TraceOverlayProps {
   // traces it reaches into and the threads it crosses are selected here,
   // where each trace's real size is known. A new object each time.
   areaSelectRequest?: Box | null
+  // A tool is in hand that the next press on the canvas places with (the
+  // quick bar's, or the Create Trace panel's shape): the cursor's a crosshair.
+  placing?: boolean
   // The shape being placed from the Create Trace panel, drawn over every
   // trace as it will look: its style and size, and its centre in world units.
   shapeDraft?: { draft: ShapeDraft; x: number; y: number } | null
@@ -236,11 +239,14 @@ interface TraceOverlayProps {
   // True while the pointer is over the drawing canvas, where the brush circle
   // stands in for the cursor.
   hideCursor?: boolean
-  // Edit Drawing, handed up with where the drawing sits on screen, and the
-  // drawing being edited, kept off the canvas while its picture is in the
-  // drawing layer instead.
-  onEditDrawing?: (traceId: string, mediaUrl: string, placement: TracePlacement) => void
-  hiddenTraceId?: string | null
+  // Edit Drawing, handed up; and the strokes of the drawing being drawn, kept
+  // off the canvas while they're in the drawing layer instead (LobbyScene).
+  onEditDrawing?: (traceId: string) => void
+  hiddenTraceIds?: ReadonlySet<string>
+  // Counts up each time a tool is picked in the quick bar, which ends
+  // whatever was under way here: a path's points, crop mode, a connection
+  // being made, a colour being picked.
+  toolSwitch?: number
   // Reports this file's current multi-selection up to LobbyScene so the
   // Layer panel (a sibling, not a child, of this component) can highlight
   // every multi-selected trace/group, not just the single selectedTraceId.
@@ -490,14 +496,20 @@ function roundedPolygonPath(points: { x: number; y: number }[], radius: number):
 // when it's shown again.
 let pointerAt: { x: number; y: number } | null = null
 
-function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow }: {
+function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow, crosshair }: {
   hidden: boolean
   atriumBackground?: string
   zIndex: number
   pointerInWindow: boolean
+  // Something is being placed or picked on the canvas: a crosshair over it,
+  // the usual cursor over the interface.
+  crosshair: boolean
 }) {
   const { username, playerColor, cursorState, hideOwnNameTag } = useGamePick('username', 'playerColor', 'cursorState', 'hideOwnNameTag')
   const elRef = useRef<HTMLDivElement | null>(null)
+  // Whether the pointer is over the canvas; a render only when that changes.
+  const [overCanvas, setOverCanvas] = useState(true)
+  const overCanvasRef = useRef(true)
   const place = useCallback((el: HTMLDivElement | null) => {
     elRef.current = el
     if (!el) return
@@ -508,6 +520,8 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow }: {
   useEffect(() => {
     const follow = (e: PointerEvent) => {
       pointerAt = { x: e.clientX, y: e.clientY }
+      const onCanvas = isCanvasTarget(e.target)
+      if (onCanvas !== overCanvasRef.current) setOverCanvas(overCanvasRef.current = onCanvas)
       const el = elRef.current
       if (!el) return
       el.style.visibility = ''
@@ -542,6 +556,19 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow }: {
           transform: 'translate(-2px, -2px)',
           transition: 'transform 0.1s ease-out',
         } as React.CSSProperties
+      }
+
+      if (crosshair && overCanvas) {
+        // Centred on the point, where the arrow's tip is at it. Drawn twice,
+        // the edge colour under the player's, so it reads on any ground.
+        const arms = 'M12 2v6M12 16v6M2 12h6M16 12h6'
+        return (
+          <svg {...baseProps} style={{ transform: 'translate(-12px, -12px)' }}>
+            <path d={arms} stroke={cursorEdge} strokeWidth="3.5" strokeLinecap="round" />
+            <path d={arms} stroke={playerColor} strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="12" cy="12" r="1" fill={playerColor} stroke={cursorEdge} strokeWidth="0.6" />
+          </svg>
+        )
       }
 
       switch (cursorState) {
@@ -707,7 +734,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, onEditDrawing, hiddenTraceId, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1170,8 +1197,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   }
 
   const groupLayers = React.useMemo(() => inOrder(layers).reverse(), [layers])
-  // Each trace's place in the drawing order (lib/order) -- ungrouped at the
-  // bottom, then each group from the bottom up -- as its CSS z-index. Tripled,
+  // Each trace's place in the drawing order (lib/order) -- the stack from the
+  // bottom up, a group's traces where the group is -- as its CSS z-index. Tripled,
   // so between it and the trace under it there are two levels of its own: its
   // light, one below it, and under that the threads whose lower end it is
   // (TraceLinksLayer).
@@ -1220,37 +1247,75 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const borders = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0)
     setGroupFlyoutMaxHeight(last.offsetTop + last.offsetHeight + padBottom + borders)
   }, [contextMenuGroupOpen, groupLayers.length])
-  // Reassigns the given traces to a layer group (or Ungrouped when
-  // targetLayerId is null), on top of it, in the order they were drawn in.
-  // One write each: the trace's group and its key there.
-  const moveIntoGroup = useCallback(async (traceIds: string[], targetLayerId: string | null) => {
+  // One trace's new group (null: none) and key: shown, then written.
+  const writeTraceGroupKey = async (trace: Trace, layerId: string | null, orderKey: string) => {
+    const { error } = await (supabase!.from('traces') as any)
+      .update({ layer_id: layerId, order_key: orderKey })
+      .eq('id', trace.id)
+    if (error) return
+    // As it is now, not as it was read: edits waiting for Save stay.
+    const now = useGameStore.getState().traces.find(t => t.id === trace.id) ?? trace
+    useGameStore.getState().addTrace({ ...now, layerId, orderKey })
+  }
+
+  // Into a group, on top of it, in the order they were drawn in. One write
+  // each: the trace's group and its key there. (Out of one: releaseFromGroups.)
+  const moveIntoGroup = useCallback(async (traceIds: string[], targetLayerId: string) => {
     if (!supabase || !canEdit || traceIds.length === 0) return
     const store = useGameStore.getState()
     const idSet = new Set(traceIds)
     const ranks = drawRanks(store.traces, store.layers)
     const moving = store.traces
-      .filter(t => idSet.has(t.id) && (t.layerId ?? null) !== targetLayerId)
+      .filter(t => idSet.has(t.id) && t.layerId !== targetLayerId)
       .sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0))
     const keys = keysOnTopOfGroup(store.traces.filter(t => !idSet.has(t.id)), targetLayerId, moving.length)
-    for (let i = 0; i < moving.length; i++) {
-      const { error } = await (supabase.from('traces') as any)
-        .update({ layer_id: targetLayerId, order_key: keys[i] })
-        .eq('id', moving[i].id)
-      if (error) continue
-      // As it is now, not as it was read: edits waiting for Save stay.
-      const now = useGameStore.getState().traces.find(t => t.id === moving[i].id) ?? moving[i]
-      useGameStore.getState().addTrace({ ...now, layerId: targetLayerId, orderKey: keys[i] })
+    for (let i = 0; i < moving.length; i++) await writeTraceGroupKey(moving[i], targetLayerId, keys[i])
+  }, [canEdit])
+
+  // Out of their groups, into the stack (lib/order): each group's traces just
+  // above it, in the order they were drawn in -- where they were, as near as
+  // can be. Ungroup, for traces picked out of a group or for all of one.
+  const releaseFromGroups = useCallback(async (traceIds: string[]) => {
+    if (!supabase || !canEdit || traceIds.length === 0) return
+    const idSet = new Set(traceIds)
+    const byGroup = new Map<string, string[]>()
+    for (const tr of useGameStore.getState().traces) {
+      if (idSet.has(tr.id) && tr.layerId) byGroup.set(tr.layerId, [...(byGroup.get(tr.layerId) ?? []), tr.id])
+    }
+    for (const [layerId, ids] of byGroup) {
+      // Read again for each group: the one before it has moved things.
+      const store = useGameStore.getState()
+      const moving = inOrder(store.traces.filter(t => ids.includes(t.id)))
+      const stack = inOrder(topLevel(store.traces, store.layers))
+      const at = stack.findIndex(item => item.id === layerId)
+      const keys = (at === -1 ? null : keysAt(stack, at + 1, moving.length)) ?? keysOnTop(stack, moving.length)
+      for (let i = 0; i < moving.length; i++) await writeTraceGroupKey(moving[i], null, keys[i])
     }
   }, [canEdit])
 
-  // Makes a group, on top of the others, and drops the traces straight into it.
+  // Makes a group and drops the traces straight into it. The group stands
+  // where the highest of them did -- as Photoshop's does -- so grouping
+  // doesn't send them over or under what they were among.
   const makeGroupWith = useCallback(async (traceIds: string[], rawName: string) => {
     const name = rawName.trim()
     if (!supabase || !lobbyId || !name) return
 
+    const store = useGameStore.getState()
+    const idSet = new Set(traceIds)
+    const ranks = drawRanks(store.traces, store.layers)
+    const highest = store.traces.filter(t => idSet.has(t.id)).sort((a, b) => (ranks.get(b.id) ?? 0) - (ranks.get(a.id) ?? 0))[0]
+    const stack = inOrder(topLevel(store.traces.filter(t => !idSet.has(t.id)), store.layers))
+    let orderKey: string | undefined
+    if (highest) {
+      // Its group, in the stack; or -- loose, so not in it -- where it was.
+      const inGroup = groupIdOf(highest, store.layers)
+      const at = inGroup ? stack.findIndex(item => item.id === inGroup) + 1 : stack.filter(item => compareOrder(item, highest) < 0).length
+      orderKey = keyAt(stack, at) ?? undefined
+    }
+
     let group
     try {
-      group = await createGroup(lobbyId, name, userId)
+      group = await createGroup(lobbyId, name, userId, orderKey)
     } catch (err) {
       console.error('[layers] could not create group:', err)
       return
@@ -1278,19 +1343,33 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // The same two from the menus and the New Group dialog, through the layer
   // queue (lib/layerQueue); the unqueued ones above are for inside a change.
   const moveTracesToGroup = (traceIds: string[], targetLayerId: string | null) =>
-    queueLayerChange(() => withLayerUndo('move to group', () => moveIntoGroup(traceIds, targetLayerId)))
+    queueLayerChange(() => withLayerUndo('move to group', () =>
+      targetLayerId ? moveIntoGroup(traceIds, targetLayerId) : releaseFromGroups(traceIds)))
   const createGroupAndMove = (traceIds: string[], name: string) =>
     queueLayerChange(() => withLayerUndo('new group', () => makeGroupWith(traceIds, name)))
 
-  // Ungroup (the canvas menu, Ctrl+Shift+G): each group's traces out to the
-  // ungrouped ones, and the group gone -- as the Layer panel's Ungroup does.
-  // One step, for all the groups at once.
-  const ungroupGroups = (layerIds: string[]) => {
-    if (!supabase || !canEdit || layerIds.length === 0) return
+  // Ungroup (the canvas menu, Ctrl+Shift+G), for what's selected: a group
+  // selected whole is undone -- its traces left where it stood, the group
+  // gone, as the Layer panel's Ungroup does -- and traces picked out of a
+  // group (a second click, or Direct select) leave it on their own, just
+  // above it, the group kept. One step for all of it.
+  const ungroupSelection = (traceIds: string[]) => {
+    if (!supabase || !canEdit || traceIds.length === 0) return
+    const store = useGameStore.getState()
+    const idSet = new Set(traceIds)
+    const whole: string[] = []
+    const picked: string[] = []
+    for (const layerId of groupsOf(traceIds)) {
+      const members = store.traces.filter(tr => tr.layerId === layerId)
+      if (members.every(m => idSet.has(m.id))) whole.push(layerId)
+      else picked.push(...members.filter(m => idSet.has(m.id)).map(m => m.id))
+    }
+    if (whole.length === 0 && picked.length === 0) return
     return queueLayerChange(() => withLayerUndo('ungroup', async () => {
-      for (const layerId of layerIds) {
+      await releaseFromGroups(picked)
+      for (const layerId of whole) {
         const members = useGameStore.getState().traces.filter(tr => tr.layerId === layerId).map(tr => tr.id)
-        await moveIntoGroup(members, null)
+        await releaseFromGroups(members)
         const { error } = await (supabase!.from('layers') as any).delete().eq('id', layerId)
         if (error) {
           console.error('[layers] could not remove the group:', error)
@@ -1509,23 +1588,50 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setPathCreationMode(true)
   }, [newPathRequest, setSelectedTraceId])
 
-  // The text equivalent -- but into the trace itself, not the Customize panel.
-  //
-  // This first reached for setEditingTrace, copying the path effect above,
-  // which was the wrong door: editingTrace is what the Customize panel reads,
-  // so a brand-new text trace opened a side panel and still needed a
-  // double-click before anything could be typed into it. Inline editing is a
-  // separate trio of states -- the same three the double-click handler sets --
-  // and the textarea autoFocuses once inlineEditingTraceId names the trace.
+  // The text equivalent: typed into straight away -- inline editing, the same
+  // trio of states the double-click handler sets, whose textarea autoFocuses
+  // once inlineEditingTraceId names the trace -- with its Customize panel
+  // open beside it, as a new shape's is. (It once opened only the panel,
+  // and still needed a double-click before anything could be typed.)
   useEffect(() => {
     if (!newTextRequest) return
     const trace = tracesRef.current.find(t => t.id === newTextRequest.id)
     if (!trace) return
     if (newTextRequest.drawn) drawnTextIdRef.current = trace.id
+    freshTextIdsRef.current.add(trace.id)
     setSelectedTraceId(trace.id)
+    setEditingTrace(trace)
     setInlineEditingTraceId(trace.id)
     setInlineEditText(trace.content ?? '')
   }, [newTextRequest, setSelectedTraceId])
+
+  // New texts not written in yet. One still empty once it's let go of -- no
+  // longer typed in or selected; its Customize panel, open or not, doesn't
+  // hold it -- goes, as if it had never been made: from the database at once
+  // (it was written there when it was made), and from the undo history.
+  // Clicking into its panel keeps it selected, so it stays for that.
+  const freshTextIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    const fresh = freshTextIdsRef.current
+    for (const id of [...fresh]) {
+      if (id === inlineEditingTraceId || id === selectedTraceId || multiSelectedIds.has(id)) continue
+      fresh.delete(id)
+      const trace = tracesRef.current.find(t => t.id === id)
+      if (!trace || (trace.content ?? '').trim()) continue
+      if (editingTraceRef.current?.id === id) setEditingTrace(null)
+      const store = useGameStore.getState()
+      store.removeTrace(id)
+      // Nothing left to save or delete for it at Save.
+      store.markTraceDeleted(id)
+      store.unmarkTraceDeleted(id)
+      knownTraceIdsRef.current?.delete(id)
+      undoStackRef.current = undoStackRef.current.filter(op => !((op.kind === 'add' || op.kind === 'update') && op.traceId === id))
+      // Then'd, not just called: a query is only sent once it's awaited.
+      if (supabase) (supabase.from('traces') as any).delete().eq('id', id).then(({ error }: { error: unknown }) => {
+        if (error) console.error('[text] could not remove an empty text:', error)
+      })
+    }
+  }, [inlineEditingTraceId, selectedTraceId, multiSelectedIds])
 
   // Cleanup stale entries from state objects when traces are removed
   useEffect(() => {
@@ -1725,6 +1831,24 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     })
   }, [traces])
 
+  // Ends placing a path's points. A path of two or more is kept; one of
+  // fewer -- nothing drawn yet -- is removed rather than left as a stray
+  // trace. True when it was removed. Reads refs, so the key handler below,
+  // registered once, can use it.
+  const endPathPoints = () => {
+    setPathCreationMode(false)
+    const id = selectedTraceIdRef.current
+    if (!id) return false
+    const trace = tracesRef.current.find(t => t.id === id)
+    const editing = editingTraceRef.current
+    const points = (editing && editing.id === id ? editing.shapePoints : trace?.shapePoints) || []
+    if (points.length >= 2) return false
+    removeTrace(id)
+    markTraceDeleted(id)
+    knownTraceIdsRef.current?.delete(id)
+    return true
+  }
+
   // ESC key to deselect trace and close menus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1735,30 +1859,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           document.body.style.cursor = 'default'
           return
         }
-        // Escape while actively placing a new path's points either finishes
-        // it (2+ points already placed -- same as clicking "Done Adding")
-        // or fully discards it (still 0-1 points, i.e. nothing meaningful
-        // was drawn yet), rather than leaving a degenerate stray trace
-        // behind. Uses refs (this listener is registered once, not
-        // re-bound per render) rather than the render-scoped executeDelete.
-        // A path worth keeping stays selected: this Escape ends the adding,
+        // Escape while placing a path's points ends it (endPathPoints). A
+        // path worth keeping stays selected: this Escape ends the adding,
         // and the next one lets go of it.
-        if (pathCreationModeRef.current) {
-          setPathCreationMode(false)
-          const currentSelectedId = selectedTraceIdRef.current
-          if (currentSelectedId) {
-            const trace = tracesRef.current.find(t => t.id === currentSelectedId)
-            const currentEditingTrace = editingTraceRef.current
-            const points = (currentEditingTrace && currentEditingTrace.id === currentSelectedId ? currentEditingTrace.shapePoints : trace?.shapePoints) || []
-            if (points.length < 2) {
-              removeTrace(currentSelectedId)
-              markTraceDeleted(currentSelectedId)
-              knownTraceIdsRef.current?.delete(currentSelectedId)
-            } else {
-              return
-            }
-          }
-        }
+        if (pathCreationModeRef.current && !endPathPoints()) return
         setSelectedTraceId(null)
         setMultiSelectedIds(new Set()) // Clear multi-selection on Escape
         setTransformMode('none')
@@ -1774,19 +1878,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         const typingHere = isEditableTarget(target)
         if (typingHere) return
         e.preventDefault()
-        setPathCreationMode(false)
-        const currentSelectedId = selectedTraceIdRef.current
-        if (currentSelectedId) {
-          const trace = tracesRef.current.find(t => t.id === currentSelectedId)
-          const currentEditingTrace = editingTraceRef.current
-          const points = (currentEditingTrace && currentEditingTrace.id === currentSelectedId ? currentEditingTrace.shapePoints : trace?.shapePoints) || []
-          if (points.length < 2) {
-            removeTrace(currentSelectedId)
-            markTraceDeleted(currentSelectedId)
-            knownTraceIdsRef.current?.delete(currentSelectedId)
-            setSelectedTraceId(null)
-            setEditingTrace(null)
-          }
+        if (endPathPoints()) {
+          setSelectedTraceId(null)
+          setEditingTrace(null)
         }
       }
     }
@@ -2282,20 +2376,29 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     applyUndoOp(op, 'redo')
   }, [applyUndoOp])
 
+  // Undo and redo asked for from outside: drawing mode has the keys while
+  // it's on (LobbyScene), and waits for its strokes to be saved first.
+  useEffect(() => {
+    const back = () => undo()
+    const forward = () => redo()
+    window.addEventListener('atrium:undo', back)
+    window.addEventListener('atrium:redo', forward)
+    return () => {
+      window.removeEventListener('atrium:undo', back)
+      window.removeEventListener('atrium:redo', forward)
+    }
+  }, [undo, redo])
+
   // Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo/redo shortcut
   const isDrawingModeRef = useRef(isDrawingMode)
   useEffect(() => {
     isDrawingModeRef.current = isDrawingMode
   }, [isDrawingMode])
   useEffect(() => {
-    const isEditableTarget = (eventTarget: EventTarget | null) => {
-      const element = eventTarget as HTMLElement | null
-      const tag = element?.tagName
-      return element?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
-    }
     const handleUndoRedoShortcut = (e: KeyboardEvent) => {
-      // Drawing mode owns Ctrl+Z/Ctrl+Shift+Z for stroke undo while active
-      // (see LobbyScene) -- don't also rewind trace history underneath it.
+      // While drawing, LobbyScene takes these keys: it waits for the strokes
+      // drawn to be saved, each its own step, then asks for this undo
+      // (atrium:undo) -- so it isn't done twice.
       if (isDrawingModeRef.current) return
       if (isEditableTarget(e.target)) return
       if (!(e.ctrlKey || e.metaKey)) return
@@ -2570,6 +2673,20 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const [connectFrom, setConnectFrom] = useState<string[] | null>(null)
   const connectFromRef = useRef<string[] | null>(null)
   connectFromRef.current = connectFrom
+
+  // A tool picked in the quick bar ends whatever was under way here (the
+  // bar always wins; Esc isn't the only way out).
+  useEffect(() => {
+    if (!toolSwitch) return
+    if (pathCreationModeRef.current && endPathPoints()) {
+      setSelectedTraceId(null)
+      setEditingTrace(null)
+    }
+    setIsCropMode(false)
+    setConnectFrom(null)
+    setColorPickerCallback(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolSwitch])
   const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null)
   // Threads selected -- Shift adds and removes. Deleted with Delete or from
   // their menu: a delete button on the thread itself sat in the way of
@@ -2823,16 +2940,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const offsetX = 50
     const offsetY = 50
 
-    // Each copy just above its original, in the original's group. A pasted
-    // trace from another atrium has no original here, and its group isn't
-    // this atrium's: it goes on top of the ungrouped ones.
+    // Each copy just above its original, among what that's ordered among (its
+    // group, or the stack). A pasted trace from another atrium has no original
+    // here, and its group isn't this atrium's: it goes on top of the stack.
     const store = useGameStore.getState()
     const known = new Set(store.layers.map(l => l.id))
     const working = new Map<string | null, Ordered[]>()
     const namedCopies: string[] = []
     const placed = sourceTraces.map(trace => {
       const layerId = trace.layerId && known.has(trace.layerId) ? trace.layerId : null
-      if (!working.has(layerId)) working.set(layerId, store.traces.filter(t => (t.layerId ?? null) === layerId))
+      if (!working.has(layerId)) working.set(layerId, layerId ? store.traces.filter(t => t.layerId === layerId) : topLevel(store.traces, store.layers))
       const group = working.get(layerId)!
       const sorted = inOrder(group)
       const at = sorted.findIndex(t => t.id === trace.id)
@@ -2917,12 +3034,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         lobbyId,
         traces: selectedTraces,
       }
-    }
-
-    const isEditableTarget = (eventTarget: EventTarget | null) => {
-      const element = eventTarget as HTMLElement | null
-      const tag = element?.tagName
-      return element?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -3050,11 +3161,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     await duplicateTraces(tracesToDuplicate)
   }
 
-  // Puts a trace at `index` among the others of its group (bottom to top):
+  // Puts a trace at `index` among what it's ordered among (bottom to top):
   // one new key, saved with the rest. Should two of them share a key there is
-  // no room between, and the group is re-keyed in its order first -- rare.
-  const placeInGroup = (trace: Trace, others: Trace[], index: number) => inOneStep(() => {
+  // no room between, and a group's traces are re-keyed in their order first
+  // -- rare.
+  // ponytail: in the stack a tie is left alone (groups are written apart from
+  // traces) and the trace goes to the top instead; re-key the stack's traces
+  // and groups together if that ever shows.
+  const placeInGroup = (trace: Trace, others: Ordered[], index: number) => inOneStep(() => {
     let key = keyAt(others, index)
+    if (key === null && !others.every(o => traceById.has(o.id))) key = keysOnTop(others)[0]
     if (key === null) {
       const sorted = inOrder(others)
       const fresh = keysBetween(null, null, sorted.length)
@@ -3064,7 +3180,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (key !== null) updateTraceCustomization(trace.id, { orderKey: key })
   })
 
-  const groupOf = (trace: Trace) => traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null))
 
   // The ids of the traces in a trace's group, when it is in one that exists
   // and has others in it; null for a trace on its own.
@@ -3077,13 +3192,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // the press turns out to be a click (handleMouseUp).
   const groupClickRef = useRef<string | null>(null)
 
-  // To the top or bottom of its own group (or of the ungrouped ones) -- the
+  // To the top or bottom of its own group (or of the stack, in none) -- the
   // right-click menu's version of dragging it to either end in the Layer panel.
   const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
     setContextMenu(null)
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
-    const others = groupOf(trace).filter(t => t.id !== traceId)
+    const others = siblingsOf(trace, traces, layers)
     if (others.length > 0) placeInGroup(trace, others, edge === 'top' ? others.length : 0)
   }
 
@@ -3092,7 +3207,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     setContextMenu(null)
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
-    const group = inOrder(groupOf(trace))
+    const group = inOrder([trace, ...siblingsOf(trace, traces, layers)])
     const index = group.findIndex(t => t.id === traceId)
     const target = direction === 'up' ? index + 1 : index - 1
     if (index === -1 || target < 0 || target >= group.length) return
@@ -4695,13 +4810,12 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         }
       }
 
-      // Ctrl+Shift+G: the selection's groups undone -- their traces left
-      // where they are, ungrouped.
+      // Ctrl+Shift+G: out of their groups -- a whole group selected is
+      // undone, a few of its traces are taken out of it (ungroupSelection).
       if ((e.key === 'g' || e.key === 'G') && (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && !typingHere && !e.repeat && !isDrawingModeRef.current && canEdit) {
         const ids = multiSelectedIds.size > 0 ? Array.from(multiSelectedIds) : selectedTraceId ? [selectedTraceId] : []
-        const groups = groupsOf(ids)
         e.preventDefault()
-        if (groups.length > 0) void ungroupGroups(groups)
+        void ungroupSelection(ids)
         return
       }
       // Ctrl+G (Cmd+G): group the selection. Also keeps the webview's own
@@ -4716,17 +4830,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }
 
       // G: select the selected trace's whole group -- exactly the right-click
-      // menu's Select > Select group, anchored on the same trace. An ungrouped
-      // trace's "group" is every ungrouped trace, as in the menu. No modifier,
+      // menu's Select > Select group, anchored on the same trace. A trace in
+      // no group has none to select. No modifier,
       // so Ctrl+G and the like stay the browser's, and a held key does no more
       // than a pressed one.
       if ((e.key === 'g' || e.key === 'G') && !typingHere && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && !isDrawingModeRef.current) {
         const anchorId = selectedTraceId ?? (multiSelectedIds.size > 0 ? Array.from(multiSelectedIds)[0] : null)
         const anchor = anchorId ? traces.find(t => t.id === anchorId) : undefined
-        if (anchor) {
+        const groupId = anchor ? groupIdOf(anchor, layers) : null
+        if (anchor && groupId) {
           e.preventDefault()
-          const groupId = anchor.layerId ?? null
-          setMultiSelectedIds(new Set(traces.filter(t => (t.layerId ?? null) === groupId).map(t => t.id)))
+          setMultiSelectedIds(new Set(traces.filter(t => t.layerId === groupId).map(t => t.id)))
           setSelectedTraceId(anchor.id)
         }
       }
@@ -5047,7 +5161,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const grip = 12 / zoomNow
     let best: { box: TurnedBox; z: number } | null = null
     for (const t of visibleTracesRef.current) {
-      if (isPathTrace(t) || t.id === hiddenTraceId) continue
+      if (isPathTrace(t) || hiddenTraceIds?.has(t.id)) continue
       const b = traceBoxFor(t)
       const box: TurnedBox = {
         cx: b.cx, cy: b.cy, halfW: b.halfW, halfH: b.halfH,
@@ -5150,7 +5264,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   }
 
   // A new frame over `box`, named Frame N, drawn under everything (the bottom
-  // of the ungrouped traces) so what it holds is over it. It takes in the
+  // of the stack) so what it holds is over it. It takes in the
   // traces in `wrap`, whole groups with them, from whatever frame they were
   // in; without `wrap`, what lies loose inside it. Then it's selected.
   const createFrame = async (box: FrameBox, wrap?: string[], customize = false) => {
@@ -5161,7 +5275,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
     const store = useGameStore.getState()
     const groups = new Set(store.layers.map(l => l.id))
-    const ungrouped = store.traces.filter(tr => !tr.layerId || !groups.has(tr.layerId))
+    const stack = topLevel(store.traces, store.layers)
     const preset = currentTracePreset(lobbyId)
     const draft: Trace = {
       id: '',
@@ -5185,7 +5299,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       fillColor: preset.fill,
       borderWidth: 2,
       borderRadius: 8,
-      orderKey: keyAt(ungrouped, 0) ?? keysOnTopOfGroup(store.traces, null)[0],
+      // Under everything, so what it holds is drawn over it.
+      orderKey: keyAt(stack, 0) ?? keysOnTop(stack)[0],
     }
     let frame: Trace
     if (supabase) {
@@ -5819,7 +5934,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       failedImages.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
       playingMedia.has(id), movingIds.has(id), glidingIds.has(id),
       // The selected trace's frame, and crop mode, which only it shows.
-      selected, multiSelectedIds.has(id), selected ? selectedPointIndex : null, selected && isCropMode, hiddenTraceId === id,
+      selected, multiSelectedIds.has(id), selected ? selectedPointIndex : null, selected && isCropMode, !!hiddenTraceIds?.has(id),
       editingTrace?.id === id ? editingTrace : null, editing, editing ? inlineEditText : null,
       pressedClickableId === id, pendingLinkTraceId === id,
       documentError[id], page, documentPageCount[id], documentPages[`${id}:${page}`],
@@ -5837,6 +5952,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           atriumBackground={atriumBackground}
           zIndex={item.zIndex}
           pointerInWindow={pointerInWindow}
+          crosshair={placing || pathCreationMode || !!colorPickerCallback}
         />
       )
     }
@@ -5847,7 +5963,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // One trace, drawn -- inside its TraceSlot, which keeps the drawing while
   // traceSignature(trace) is unchanged.
   const renderTrace = (trace: Trace) => {
-    if (trace.id === hiddenTraceId) return null
+    if (hiddenTraceIds?.has(trace.id)) return null
     // Use editingTrace for selected trace to show live updates (check ID match to be safe)
     const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
 const transform = getTraceTransform(trace)
@@ -8057,44 +8173,31 @@ return (
                 <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.customize')}
               </button>
             )}
-            {/* Back into drawing mode with this drawing's picture under the
-                brush, placed exactly where the trace shows it. */}
+            {/* Back into drawing mode on this drawing -- all its strokes (lib/brushes
+                drawingOf) -- to draw on and erase from, where they are. */}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
-              if (editingWholeSelection || !canEdit || !onEditDrawing || !trace?.mediaUrl || !isDrawingTrace(trace)) return null
-              const mediaUrl = trace.mediaUrl
+              if (!canEdit || !onEditDrawing || !trace?.mediaUrl || !isDrawingTrace(trace)) return null
+              const members = new Set(drawingOf(trace, traces, layers).members.map(t => t.id))
+              // In a selection only when the selection is this drawing: its
+              // group, which a right-click takes whole.
+              if (editingWholeSelection && ![...multiSelectedIds].every(id => members.has(id))) return null
               return (
                 <button
                   className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
                   onClick={() => {
-                    const size = getTraceSize(trace)
-                    const tf = localTraceTransforms[trace.id] || getTraceTransform(trace)
-                    // Its store copy is current; a leftover drag override would
-                    // go on showing the old placement over the edited one.
+                    // Their store copies are current; a leftover drag override
+                    // would go on showing the old placement over the edited one.
                     setLocalTraceTransforms(prev => {
-                      if (!(trace.id in prev)) return prev
+                      if (!Object.keys(prev).some(id => members.has(id))) return prev
                       const next = { ...prev }
-                      delete next[trace.id]
+                      for (const id of members) delete next[id]
                       return next
                     })
                     setSelectedTraceId(null)
                     setMultiSelectedIds(new Set())
                     setContextMenu(null)
-                    onEditDrawing(trace.id, mediaUrl, {
-                      cx: tf.x * zoom + worldOffset.x,
-                      cy: tf.y * zoom + worldOffset.y,
-                      rotation: tf.rotation ?? 0,
-                      flipH: !!trace.flipHorizontal,
-                      flipV: !!trace.flipVertical,
-                      width: size.width,
-                      height: size.height,
-                      scaleX: (tf.scaleX ?? 1) * zoom,
-                      scaleY: (tf.scaleY ?? 1) * zoom,
-                      cropX: trace.cropX ?? 0,
-                      cropY: trace.cropY ?? 0,
-                      cropWidth: trace.cropWidth ?? 1,
-                      cropHeight: trace.cropHeight ?? 1,
-                    })
+                    onEditDrawing(trace.id)
                   }}
                 >
                   <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.editDrawing')}
@@ -8397,7 +8500,7 @@ return (
               if (!trace) return null
               const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
               const targetIds = inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId]
-              const currentLayerId = inMultiSelect ? undefined : (trace.layerId ?? null)
+              const currentLayerId = inMultiSelect ? undefined : groupIdOf(trace, layers)
               return (
                 <div
                   className="relative"
@@ -8480,14 +8583,14 @@ return (
                 when it's in one), each undone -- traces left where they are. */}
             {canEdit && (() => {
               const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
-              const groups = groupsOf(inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId])
-              if (groups.length === 0) return null
+              const targets = inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId]
+              if (groupsOf(targets).length === 0) return null
               return (
                 <button
                   className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-6 text-[11px] tracking-wider uppercase"
                   onClick={() => {
                     setContextMenu(null)
-                    void ungroupGroups(groups)
+                    void ungroupSelection(targets)
                   }}
                 >
                   <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.ungroup')}</span>
@@ -8501,8 +8604,7 @@ return (
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!trace) return null
-              const groupSize = traces.filter(t => (t.layerId ?? null) === (trace.layerId ?? null)).length
-              if (groupSize <= 1) return null
+              if (siblingsOf(trace, traces, layers).length === 0) return null
               return (
                 <div
                   className="relative"
@@ -8564,8 +8666,8 @@ return (
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
               if (!trace) return null
-              const groupId = trace.layerId ?? null
-              const inGroup = traces.filter(t => (t.layerId ?? null) === groupId)
+              const groupId = groupIdOf(trace, layers)
+              const inGroup = groupId ? traces.filter(t => t.layerId === groupId) : []
               return (
                 <div
                   ref={selectTriggerRef}
@@ -8589,7 +8691,8 @@ return (
                       onMouseLeave={scheduleCloseSelectFlyout}
                     >
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center justify-between gap-6"
+                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center justify-between gap-6 disabled:opacity-30 disabled:cursor-not-allowed"
+                        disabled={inGroup.length === 0}
                         onClick={() => {
                           setMultiSelectedIds(new Set(inGroup.map(t => t.id)))
                           setSelectedTraceId(trace.id)
@@ -8726,6 +8829,8 @@ return (
                   onChange={(patch) => {
                     setEditingTrace({ ...editingTrace, ...patch })
                     updateTraceCustomization(editingTrace.id, patch)
+                    // The next shape made looks like this one now.
+                    rememberShapeStyle(shapeStyleOf({ ...editingTrace, ...patch }))
                   }}
                   pathExtra={
                   <div>

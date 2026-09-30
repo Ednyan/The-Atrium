@@ -1,10 +1,12 @@
 // Stacking order: which trace is drawn over which.
 //
-// Each trace has an order key that places it among the traces of its own group
-// (or among the ungrouped ones), and each group has one that places it among
-// the groups. A key is a string that sorts between its neighbours, so putting
-// something between two others means giving it a key between theirs: one
-// write, whatever else is in the atrium. Nothing else is renumbered.
+// The atrium is one stack, as in Photoshop: groups, and traces in no group,
+// side by side, so a loose trace can sit between two groups. Each of them has
+// an order key placing it in that stack (topLevel); a trace in a group has one
+// placing it among the group's traces. A key is a string that sorts between
+// its neighbours, so putting something between two others means giving it a
+// key between theirs: one write, whatever else is in the atrium. Nothing else
+// is renumbered.
 //
 // It replaced a z-index of group*100 + position, where moving a group meant
 // rewriting every trace inside it, reordering the groups rewrote every trace in
@@ -12,8 +14,14 @@
 // the next group's numbers.
 //
 // The drawing order is worked out from the keys when it's needed (drawRanks):
-// ungrouped traces at the bottom, then the groups from the bottom up, each
-// with its traces in order.
+// the stack from the bottom up, a group's traces in order where it stands.
+//
+// Until 2026-09-30 loose traces were a band of their own, "Ungrouped", drawn
+// under every group, and keyed apart from the groups -- so an atrium from
+// then has both starting from the same first key. flattenLegacyOrder lifts
+// its groups above its loose traces, which is how it was drawn; it is done
+// once (the web's make_layers_one_stack.sql, localDb at startup, and a file
+// or vault mirror without layerOrder: 'flat' when it is read).
 //
 // The keys are fractional indexes, as Figma and Linear order things: base-62
 // strings with an integer part whose length is given by its first character
@@ -180,17 +188,17 @@ export function keysOnTop(items: Ordered[], n = 1): string[] {
   return keysBetween(top, null, n)
 }
 
-// Keys for n new traces on top of a group (null: the ungrouped ones).
-export function keysOnTopOfGroup(traces: Stackable[], layerId: string | null, n = 1): string[] {
-  return keysOnTop(traces.filter(t => (t.layerId ?? null) === layerId), n)
+// Keys for n new traces on top of a group's.
+export function keysOnTopOfGroup(traces: Stackable[], layerId: string, n = 1): string[] {
+  return keysOnTop(traces.filter(t => t.layerId === layerId), n)
 }
 
-// The group and order fields for n new trace rows in a group (null: ungrouped),
-// on top of it -- what every place that makes traces puts in its insert. Pass
-// the store's traces as they are now, so a batch made one at a time stacks.
-export function newTraceOrderFields(traces: Stackable[], layerId: string | null, n = 1) {
-  return keysOnTopOfGroup(traces, layerId, n).map(order_key =>
-    layerId ? { layer_id: layerId, order_key } : { order_key })
+// The order field for n new trace rows, in no group, on top of everything --
+// what every place that makes traces puts in its insert, so nothing new lands
+// hidden under what's already there. Pass the store's traces as they are now,
+// so a batch made one at a time stacks.
+export function newTraceOrderFields(traces: Stackable[], layers: Ordered[], n = 1) {
+  return keysOnTop(topLevel(traces, layers), n).map(order_key => ({ order_key }))
 }
 
 // Where to put `moving` so that it lands at position `index` of `others`
@@ -198,13 +206,19 @@ export function newTraceOrderFields(traces: Stackable[], layerId: string | null,
 // between. Null when they share a key and nothing fits -- the caller re-keys
 // the whole run with keysBetween(null, null, n) then, which is rare.
 export function keyAt(others: Ordered[], index: number): string | null {
+  return keysAt(others, index, 1)?.[0] ?? null
+}
+
+// n keys, in order, for things landing together at position `index` of
+// `others`; null as keyAt.
+export function keysAt(others: Ordered[], index: number, n: number): string[] | null {
   const sorted = inOrder(others)
   const below = index > 0 ? sorted[index - 1]?.orderKey ?? null : null
   const above = index < sorted.length ? sorted[index]?.orderKey ?? null : null
   if (below !== null && !isValidOrderKey(below)) return null
   if (above !== null && !isValidOrderKey(above)) return null
   if (below !== null && above !== null && below >= above) return null
-  return keyBetween(below, above)
+  return keysBetween(below, above, n)
 }
 
 // Keys for rows from before order keys (an older export), which carry only a
@@ -229,22 +243,68 @@ export function keysFromNumbers<T>(rows: T[], numberOf: (row: T) => number, grou
 
 export interface Stackable extends Ordered { layerId?: string | null }
 
-// Each trace's place in the drawing order, 1 at the bottom: ungrouped traces
-// first, then each group from the bottom up with its traces in order. A trace
-// whose group isn't known (deleted, or not loaded yet) is drawn as ungrouped.
+// The group a trace is in, or null when it's in none -- or in one that isn't
+// known (deleted, or not loaded yet), which it's drawn as.
+export function groupIdOf(trace: Stackable, layers: Ordered[]): string | null {
+  return trace.layerId && layers.some(l => l.id === trace.layerId) ? trace.layerId : null
+}
+
+// The stack: every group, and every trace in none -- the things ordered among
+// each other. The groups first, then the loose traces; inOrder() it to stack it.
+export function topLevel<T extends Stackable, L extends Ordered>(traces: T[], layers: L[]): (T | L)[] {
+  const known = new Set(layers.map(l => l.id))
+  return [...layers, ...traces.filter(t => !t.layerId || !known.has(t.layerId))]
+}
+
+// What a trace is ordered among, not counting itself: its group's other
+// traces, or -- in none -- the rest of the stack, groups included.
+export function siblingsOf<T extends Stackable, L extends Ordered>(trace: T, traces: T[], layers: L[]): (T | L)[] {
+  const group = groupIdOf(trace, layers)
+  const pool = group ? traces.filter(t => t.layerId === group) : topLevel(traces, layers)
+  return pool.filter(s => s.id !== trace.id)
+}
+
+// Each trace's place in the drawing order, 1 at the bottom: the stack from the
+// bottom up, a group's traces in order where the group stands.
 export function drawRanks(traces: Stackable[], layers: Ordered[]): Map<string, number> {
   const known = new Set(layers.map(l => l.id))
-  const byGroup = new Map<string | null, Stackable[]>()
+  const byGroup = new Map<string, Stackable[]>()
   for (const trace of traces) {
-    const group = trace.layerId && known.has(trace.layerId) ? trace.layerId : null
-    const list = byGroup.get(group)
+    if (!trace.layerId || !known.has(trace.layerId)) continue
+    const list = byGroup.get(trace.layerId)
     if (list) list.push(trace)
-    else byGroup.set(group, [trace])
+    else byGroup.set(trace.layerId, [trace])
   }
   const ranks = new Map<string, number>()
   let rank = 0
-  for (const group of [null, ...inOrder(layers).map(l => l.id)]) {
-    for (const trace of inOrder(byGroup.get(group) ?? [])) ranks.set(trace.id, ++rank)
+  for (const item of inOrder(topLevel(traces, layers))) {
+    if (known.has(item.id)) {
+      for (const trace of inOrder(byGroup.get(item.id) ?? [])) ranks.set(trace.id, ++rank)
+    } else {
+      ranks.set(item.id, ++rank)
+    }
   }
   return ranks
+}
+
+// An atrium keyed before the stack (see the top): new keys that lift its
+// groups, in their order, above every loose trace -- and give a loose trace
+// with no key yet one just under the groups, where it was drawn. Empty when
+// there's nothing to lift (no groups, or no loose traces).
+export function flattenLegacyOrder(traces: Stackable[], layers: Ordered[]): { traces: Map<string, string>; layers: Map<string, string> } {
+  const known = new Set(layers.map(l => l.id))
+  const loose = traces.filter(t => !t.layerId || !known.has(t.layerId))
+  const out = { traces: new Map<string, string>(), layers: new Map<string, string>() }
+  if (layers.length === 0 || loose.length === 0) return out
+  let top: string | null = null
+  for (const t of loose) {
+    const k = t.orderKey ?? null
+    if (k !== null && isValidOrderKey(k) && (top === null || k > top)) top = k
+  }
+  const unkeyed = loose.filter(t => !t.orderKey || !isValidOrderKey(t.orderKey)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  const groups = inOrder(layers)
+  const keys = keysBetween(top, null, unkeyed.length + groups.length)
+  unkeyed.forEach((t, i) => out.traces.set(t.id, keys[i]))
+  groups.forEach((g, i) => out.layers.set(g.id, keys[unkeyed.length + i]))
+  return out
 }

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { packBoxesAroundCenter, scaleToDisplayBox, getDefaultTraceBoxSize } from '../lib/binPack'
-import { newTraceOrderFields } from '../lib/order'
+import { keysOnTopOfGroup } from '../lib/order'
 import { cleanTitle, firstFreeName, nextUntitledName } from '../lib/traceNames'
 import { createGroup } from '../hooks/useLayers'
 import { queueLayerChange } from '../lib/layerQueue'
@@ -97,7 +97,8 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
       })
 
       // In that group, in pin order.
-      const orderFields = newTraceOrderFields(useGameStore.getState().traces, group.id, pins.length)
+      const orderFields = keysOnTopOfGroup(useGameStore.getState().traces, group.id, pins.length)
+        .map(order_key => ({ layer_id: group.id, order_key }))
       // A pin whose title, description and alt text are blank -- often only
       // invisible characters, which showed as an empty row -- is Untitled N.
       const titles: string[] = []

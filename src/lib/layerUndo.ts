@@ -26,6 +26,9 @@ export function snapshotLayers(): LayerSnapshot {
 const adopted = new Set<string>()
 let applying = 0
 export const layerChangeAdopts = (id: string) => adopted.delete(id) || applying > 0
+// The same for any other change that records its own step (a drawing's
+// strokes, LobbyScene): these traces are about to arrive by it.
+export const adoptTraces = (ids: Iterable<string>) => { for (const id of ids) adopted.add(id) }
 
 // Makes the store and the database what `delta` leads to (lib/layerDelta).
 export async function applyLayerDelta(delta: LayerDelta): Promise<void> {

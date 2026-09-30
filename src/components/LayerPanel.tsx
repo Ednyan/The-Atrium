@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { tCount, useTranslation } from '../lib/i18n'
 import type { Layer, Trace } from '../types/database'
-import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, type Ordered } from '../lib/order'
+import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, topLevel, type Ordered } from '../lib/order'
 import { feelSpring, feelStep } from '../lib/dragFeel'
 import { panelDrop, type PanelDropTarget } from '../lib/panelDrop'
 import { cleanTitle, nextTextName } from '../lib/traceNames'
@@ -14,8 +14,6 @@ import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { withLayerUndo } from '../lib/layerUndo'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
-
-const UNGROUPED_DROP_TARGET = '__ungrouped__'
 
 // Each trace type's mark in the list.
 const TYPE_GLYPH: Record<string, string> = { text: '◇', image: '◻', audio: '♪', video: '▷', embed: '⬡', frame: '⬚' }
@@ -72,9 +70,10 @@ function liftCard(card: HTMLElement, at: { x: number; y: number; width: number; 
   }
 }
 
-// Where a dragged row would land: position `index` among the others in
-// `layerId` (bottom to top; for a group, among the groups), shown by a line --
-// or, with no line, into a group's header, lit up.
+// Where a dragged row would land: position `index` (bottom to top) among the
+// others in group `layerId`, or -- null -- in the stack, among the groups and
+// the traces in none (lib/order); shown by a line. With no line, into a
+// group's header, lit up.
 type DropSlot = {
   layerId: string | null
   index: number
@@ -131,11 +130,6 @@ interface LayerPanelProps {
   onSetSelection?: (traceIds: string[]) => void
   onSelectTrace?: (traceId: string) => void
   onGoToTrace?: (traceId: string) => void
-  // The layer group new traces should be created into. Clicking a group
-  // header sets this (and selects all its traces); clicking it again, or the
-  // Ungrouped section, clears it back to null.
-  activeLayerId?: string | null
-  onSetActiveLayer?: (layerId: string | null) => void
   onSelectGroupTraces?: (traceIds: string[]) => void
   // Frames the camera on a whole set of traces at once (Go to Group), as
   // opposed to onGoToTrace which centers a single one at the current zoom.
@@ -148,7 +142,7 @@ interface LayerPanelProps {
   canEdit?: boolean
 }
 
-export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSetSelection, onSelectTrace, onGoToTrace, activeLayerId, onSetActiveLayer, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
+export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSelectedTraceIds, onCustomize, onSetSelection, onSelectTrace, onGoToTrace, onSelectGroupTraces, onGoToTraces, canEdit = true }: LayerPanelProps) {
   const { t } = useTranslation()
   const multiSelectedSet = new Set(multiSelectedTraceIds ?? [])
   const { traces, username, userId, addTrace, removeTrace } = useGamePick('traces', 'username', 'userId', 'addTrace', 'removeTrace')
@@ -157,10 +151,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // (lib/layerQueue), they run after this render's copy is out of date.
   const layers = useGameStore(s => s.layers)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-  // The group (or Ungrouped) a dragged trace would drop into, lit up.
+  // The group a dragged trace would drop into, lit up.
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-  // What is being dragged, and where it would land (see beginRowDrag).
-  const [rowDrag, setRowDrag] = useState<{ kind: 'group' | 'trace'; ids: string[] } | null>(null)
+  // Where a dragged row would land (see beginRowDrag).
   const [dropSlot, setDropSlot] = useState<DropSlot | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -275,8 +268,15 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // ---- Order (lib/order): one key per move ----------------------------------
 
   // A group's traces, bottom to top.
-  const groupBottomUp = (layerId: string | null) =>
-    inOrder(useGameStore.getState().traces.filter(t => (t.layerId ?? null) === layerId))
+  const groupBottomUp = (layerId: string) =>
+    inOrder(useGameStore.getState().traces.filter(t => t.layerId === layerId))
+  // The stack -- the groups and the traces in none -- bottom to top.
+  const stackBottomUp = (): (Trace | Layer)[] => {
+    const { traces: all, layers: groups } = useGameStore.getState()
+    return inOrder(topLevel(all, groups))
+  }
+  // What a trace is ordered among, itself included, bottom to top.
+  const poolOf = (layerId: string | null): (Trace | Layer)[] => (layerId ? groupBottomUp(layerId) : stackBottomUp())
 
   // A trace's new place (and group, if given): shown at once, then written.
   // A refusal puts back the trace as it was.
@@ -294,6 +294,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       useGameStore.getState().addTrace(before)
     }
   }
+
+  // A new key for a group or a trace in the stack, whichever it is.
+  const writeItemKey = (item: Trace | Layer, orderKey: string) =>
+    useGameStore.getState().layers.some(l => l.id === item.id)
+      ? writeLayerKey(item as Layer, orderKey)
+      : writeTraceKey(item as Trace, orderKey)
 
   // A group's new place: shown at once, then written. .select() so a refusal
   // can't pass for success -- RLS doesn't raise on a forbidden UPDATE, the row
@@ -380,14 +386,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (error) {
       console.error('Error deleting group:', error)
       return
-    }
-
-    // activeLayerId now persists independently of canvas selection (see
-    // LobbyScene's comment on where it used to be cleared) -- but it must
-    // still be cleared here, otherwise it'd keep pointing at a group that no
-    // longer exists and new traces would silently try to target it.
-    if (layerId === activeLayerId) {
-      onSetActiveLayer?.(null)
     }
 
     await reloadLayers(lobbyId)
@@ -497,17 +495,15 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     await reloadLayers(lobbyId)
   }
 
-  // Deletes the group but keeps its traces, moving them out to Ungrouped.
-  // Separate from doDeleteGroup, which takes the contents down with it --
-  // as a one-click menu item that needed to be an explicit, distinct choice
-  // rather than the only meaning of "Delete".
+  // Deletes the group but keeps its traces, left in the stack where the group
+  // stood. Separate from doDeleteGroup, which takes the contents down with it
+  // -- as a one-click menu item that needed to be an explicit, distinct
+  // choice rather than the only meaning of "Delete".
   const doDeleteGroupKeepTracesNow = async (layerId: string) => {
     if (!supabase || !canEdit) return
 
-    const groupTraces = getTracesForLayer(layerId)
-    if (groupTraces.length > 0) {
-      await moveTracesToLayerNow(groupTraces.map(t => t.id), null)
-    }
+    const groupTraces = groupBottomUp(layerId)
+    if (groupTraces.length > 0) await releaseNow(groupTraces.map(t => t.id))
 
     const { error } = await supabase.from('layers').delete().eq('id', layerId)
     if (error) {
@@ -515,7 +511,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       return
     }
 
-    if (layerId === activeLayerId) onSetActiveLayer?.(null)
     await reloadLayers(lobbyId)
   }
 
@@ -531,8 +526,9 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     setIsBusy(true)
     try {
-      // Just above the original.
-      const orderKey = keyAt(groups, at + 1) ?? keysOnTop(groups)[0]
+      // Just above the original, in the stack.
+      const stack = stackBottomUp()
+      const orderKey = keyAt(stack, stack.findIndex(item => item.id === layerId) + 1) ?? keysOnTop(stack)[0]
       const { data: created, error: layerError } = await (supabase.from('layers') as any)
         .insert({
           name: `${source.name} copy`,
@@ -579,11 +575,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     setIsBusy(true)
     try {
-      // Just above the original, in its group -- and the same 20px nudge the
-      // canvas duplicate uses, so the copy doesn't hide exactly behind it.
-      const group = groupBottomUp(trace.layerId ?? null)
-      const at = group.findIndex(t => t.id === traceId)
-      const orderKey = keyAt(group, at + 1) ?? keysOnTop(group)[0]
+      // Just above the original, among what it's ordered among -- and the same
+      // 20px nudge the canvas duplicate uses, so the copy doesn't hide exactly
+      // behind it.
+      const pool = poolOf(layerIdOf(trace))
+      const at = pool.findIndex(item => item.id === traceId)
+      const orderKey = keyAt(pool, at + 1) ?? keysOnTop(pool)[0]
       const layerName = trace.type === 'text'
         ? nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n }))
         : trace.layerName ?? null
@@ -645,9 +642,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     }
   }
 
-  // Traces to position `index` among the rest of a group (bottom to top),
-  // moved into it if they're elsewhere, in the order they were drawn in: one
-  // write each.
+  // The group a trace is in, or null when it's in the stack (none, or one
+  // that's gone).
+  const layerIdOf = (trace: Trace) =>
+    trace.layerId && useGameStore.getState().layers.some(l => l.id === trace.layerId) ? trace.layerId : null
+
+  // Traces to position `index` (bottom to top) among the rest of a group --
+  // or, for null, of the stack -- moved there if they're elsewhere, in the
+  // order they were drawn in: one write each.
   const moveTracesToNow = async (traceIds: string[], layerId: string | null, index: number) => {
     if (!supabase || !canEdit || traceIds.length === 0) return
     const store = useGameStore.getState()
@@ -657,56 +659,72 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     const moving = store.traces
       .filter(t => idSet.has(t.id))
       .sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0))
-    const others = groupBottomUp(layerId).filter(t => !idSet.has(t.id))
-    const keys = await keysAmong(others, index, moving.length, (t, key) => writeTraceKey(t, key))
+    const others = poolOf(layerId).filter(item => !idSet.has(item.id))
+    const keys = await keysAmong(others, index, moving.length, writeItemKey)
     setIsReordering(true)
     try {
       for (let i = 0; i < moving.length; i++) {
-        await writeTraceKey(moving[i], keys[i], (moving[i].layerId ?? null) !== layerId ? layerId : undefined)
+        await writeTraceKey(moving[i], keys[i], layerIdOf(moving[i]) !== layerId ? layerId : undefined)
       }
     } finally {
       setIsReordering(false)
     }
   }
 
-  // Into a group (or Ungrouped, for null), on top of it. Those already in it
-  // stay where they are.
-  const moveTracesToLayerNow = async (traceIds: string[], layerId: string | null) => {
+  // Into a group, on top of it. Those already in it stay where they are.
+  const moveTracesToLayerNow = async (traceIds: string[], layerId: string) => {
     const traces = useGameStore.getState().traces
-    const outside = traceIds.filter(id => (traces.find(t => t.id === id)?.layerId ?? null) !== layerId)
+    const outside = traceIds.filter(id => traces.find(t => t.id === id)?.layerId !== layerId)
     if (outside.length === 0) return
     const idSet = new Set(outside)
     await moveTracesToNow(outside, layerId, groupBottomUp(layerId).filter(t => !idSet.has(t.id)).length)
   }
-  const moveTraceToLayerNow = (traceId: string, layerId: string | null) => moveTracesToLayerNow([traceId], layerId)
 
-  // One step up or down its group, past its neighbour: one write.
+  // Out of their groups, into the stack: each group's traces just above it,
+  // in their order -- where they were, as near as can be. The canvas's
+  // Ungroup does the same (TraceOverlay releaseFromGroups).
+  const releaseNow = async (traceIds: string[]) => {
+    const byGroup = new Map<string, string[]>()
+    for (const id of traceIds) {
+      const trace = useGameStore.getState().traces.find(t => t.id === id)
+      const group = trace ? layerIdOf(trace) : null
+      if (group) byGroup.set(group, [...(byGroup.get(group) ?? []), id])
+    }
+    for (const [layerId, ids] of byGroup) {
+      const idSet = new Set(ids)
+      const stack = stackBottomUp().filter(item => !idSet.has(item.id))
+      await moveTracesToNow(ids, null, stack.findIndex(item => item.id === layerId) + 1)
+    }
+  }
+
+  // One step up or down among what it's ordered among -- past a whole group,
+  // in the stack: one write.
   const moveTraceWithinLayerNow = async (traceId: string, layerId: string | null, direction: 'up' | 'down') => {
     if (!supabase || !canEdit) return
-    const group = groupBottomUp(layerId)
-    const index = group.findIndex(t => t.id === traceId)
+    const pool = poolOf(layerId)
+    const index = pool.findIndex(item => item.id === traceId)
     const target = direction === 'up' ? index + 1 : index - 1
-    if (index === -1 || target < 0 || target >= group.length) return
-    const others = group.filter(t => t.id !== traceId)
-    const orderKey = await keyAmong(others, target, (t, key) => writeTraceKey(t, key))
+    if (index === -1 || target < 0 || target >= pool.length) return
+    const others = pool.filter(item => item.id !== traceId)
+    const orderKey = await keyAmong(others, target, writeItemKey)
     setIsReordering(true)
     try {
-      await writeTraceKey(group[index], orderKey)
+      await writeTraceKey(pool[index] as Trace, orderKey)
     } finally {
       setIsReordering(false)
     }
   }
 
-  // A group to position `index` among the others (bottom to top): one write.
+  // A group to position `index` in the stack (bottom to top): one write.
   const moveGroupToNow = async (layerId: string, index: number) => {
     if (!supabase || !canEdit) return
-    const groups = inOrder(useGameStore.getState().layers)
-    const at = groups.findIndex(l => l.id === layerId)
+    const stack = stackBottomUp()
+    const at = stack.findIndex(item => item.id === layerId)
     if (at === -1 || at === index) return
     setIsReordering(true)
     try {
-      const orderKey = await keyAmong(groups.filter(l => l.id !== layerId), index, (l, key) => writeLayerKey(l, key))
-      await writeLayerKey(groups[at], orderKey)
+      const orderKey = await keyAmong(stack.filter(item => item.id !== layerId), index, writeItemKey)
+      await writeLayerKey(stack[at] as Layer, orderKey)
     } finally {
       setIsReordering(false)
     }
@@ -727,55 +745,61 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // (lib/dragFeel), and on release flies to where it landed.
 
   // Where a drag at clientY would land (null: nowhere).
+  //
+  // In the stack, between two of its items -- a group's card or a loose
+  // trace's row -- before the first whose middle is below the pointer. A
+  // trace can also go into a group, onto the middle half of its header, or
+  // among a group's traces, beside one of them; a header's top and bottom
+  // quarters are the stack, above or below that group, so a trace can be put
+  // down next to a group without going into it.
   const findDropSlot = (kind: 'group' | 'trace', ids: string[], clientY: number): DropSlot | null => {
     const list = listRef.current
     if (!list) return null
     const moving = new Set(ids)
     const rectOf = (el: HTMLElement) => el.getBoundingClientRect()
-
-    if (kind === 'group') {
-      // Between groups: before the first whose middle is below the pointer.
-      const cards = Array.from(list.querySelectorAll<HTMLElement>('[data-group-card]'))
-        .filter(el => !moving.has(el.dataset.groupCard!))
-      if (cards.length === 0) return null
-      let before = cards.findIndex(el => { const r = rectOf(el); return clientY < r.top + r.height / 2 })
-      if (before === -1) before = cards.length
-      const r = rectOf(cards[Math.min(before, cards.length - 1)])
+    // The stack's items on screen, top first, without what's being moved.
+    const items = Array.from(list.querySelectorAll<HTMLElement>('[data-stack-item]'))
+      .filter(el => !moving.has(el.dataset.stackItem!))
+    const inStack = (before: number): DropSlot | null => {
+      if (items.length === 0) return null
+      const r = rectOf(items[Math.min(before, items.length - 1)])
       return {
         layerId: null,
-        index: cards.length - before,
-        line: { left: r.left, top: before < cards.length ? r.top - 3 : r.bottom + 1, width: r.width },
+        index: items.length - before,
+        line: { left: r.left, top: before < items.length ? r.top - 3 : r.bottom + 1, width: r.width },
       }
     }
 
-    // Onto a header: into that group (or Ungrouped), on top.
-    for (const header of Array.from(list.querySelectorAll<HTMLElement>('[data-group-header], [data-ungrouped-header]'))) {
-      const r = rectOf(header)
-      if (clientY >= r.top && clientY <= r.bottom) {
-        const layerId = header.dataset.groupHeader ?? null
+    if (kind === 'trace') {
+      for (const header of Array.from(list.querySelectorAll<HTMLElement>('[data-group-header]'))) {
+        const r = rectOf(header)
+        if (clientY < r.top || clientY > r.bottom) continue
+        const layerId = header.dataset.groupHeader!
+        const card = items.findIndex(el => el.dataset.stackItem === layerId)
+        const quarter = r.height / 4
+        if (card !== -1 && clientY < r.top + quarter) return inStack(card)
+        if (card !== -1 && clientY > r.bottom - quarter && !expandedRef.current.has(layerId)) return inStack(card + 1)
         return { layerId, index: groupBottomUp(layerId).filter(t => !moving.has(t.id)).length, line: null }
       }
+      for (const row of Array.from(list.querySelectorAll<HTMLElement>('[data-row-trace]'))) {
+        const layerId = row.dataset.rowLayer
+        if (!layerId || moving.has(row.dataset.rowTrace!)) continue
+        const r = rectOf(row)
+        if (clientY < r.top - 3 || clientY > r.bottom + 3) continue
+        const below = clientY > r.top + r.height / 2
+        const topFirst = getTracesForLayer(layerId).filter(t => !moving.has(t.id))
+        const before = topFirst.findIndex(t => t.id === row.dataset.rowTrace) + (below ? 1 : 0)
+        return {
+          layerId,
+          index: topFirst.length - before,
+          line: { left: r.left, top: below ? r.bottom + 1 : r.top - 3, width: r.width },
+        }
+      }
     }
-    // Otherwise above or below the nearest row.
-    let nearest: HTMLElement | null = null
-    let distance = Infinity
-    for (const row of Array.from(list.querySelectorAll<HTMLElement>('[data-row-trace]'))) {
-      if (moving.has(row.dataset.rowTrace!)) continue
-      const r = rectOf(row)
-      const d = clientY < r.top ? r.top - clientY : clientY > r.bottom ? clientY - r.bottom : 0
-      if (d < distance) { distance = d; nearest = row }
-    }
-    if (!nearest) return null
-    const r = rectOf(nearest)
-    const below = clientY > r.top + r.height / 2
-    const layerId = nearest.dataset.rowLayer || null
-    const topFirst = getTracesForLayer(layerId).filter(t => !moving.has(t.id))
-    const before = topFirst.findIndex(t => t.id === nearest!.dataset.rowTrace) + (below ? 1 : 0)
-    return {
-      layerId,
-      index: topFirst.length - before,
-      line: { left: r.left, top: below ? r.bottom + 1 : r.top - 3, width: r.width },
-    }
+
+    let before = items.findIndex(el => { const r = rectOf(el); return clientY < r.top + r.height / 2 })
+    if (before === -1) before = items.length
+    return inStack(before)
   }
 
   // The list scrolls under a drag held near its top or bottom edge; returns
@@ -802,7 +826,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   expandedRef.current = expandedGroups
   const showSlot = (slot: DropSlot | null) => {
     setDropSlot(slot)
-    setDropTargetId(slot && !slot.line ? slot.layerId ?? UNGROUPED_DROP_TARGET : null)
+    setDropTargetId(slot && !slot.line ? slot.layerId : null)
     const over = slot && !slot.line ? slot.layerId : null
     if (springOpen.current?.layerId === over) return
     if (springOpen.current) window.clearTimeout(springOpen.current.timer)
@@ -821,8 +845,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   // Where a dropped card settles: on the bar, or on the header it went into.
   const landingFor = (slot: DropSlot, height: number): { x: number; y: number } | null => {
     if (slot.line) return { x: slot.line.left, y: slot.line.top - height / 2 }
-    const header = listRef.current?.querySelector<HTMLElement>(
-      slot.layerId ? `[data-group-header="${CSS.escape(slot.layerId)}"]` : '[data-ungrouped-header]')
+    const header = slot.layerId ? listRef.current?.querySelector<HTMLElement>(`[data-group-header="${CSS.escape(slot.layerId)}"]`) : null
     const r = header?.getBoundingClientRect()
     return r ? { x: r.left, y: r.top } : null
   }
@@ -857,7 +880,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         if (scrollListNear(pointer.y)) showSlot(slot = findDropSlot(kind, ids, pointer.y))
       })
       row.style.opacity = '0.3'
-      setRowDrag({ kind, ids })
     }
 
     const move = (ev: PointerEvent) => {
@@ -891,10 +913,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       // Settles where it landed -- or, dropped nowhere, back where it came from.
       const back = row.getBoundingClientRect()
       const to = (dropped && landingFor(dropped, origin.height)) || { x: back.left, y: back.top }
-      card.land(to.x, to.y, () => {
-        row.style.opacity = ''
-        setRowDrag(null)
-      })
+      card.land(to.x, to.y, () => { row.style.opacity = '' })
     }
 
     window.addEventListener('pointermove', move)
@@ -956,7 +975,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
             if (carried.current && scrollListNear(carried.current.pointerY)) showSlot(findDropSlot('trace', ids, carried.current.pointerY))
           }),
         }
-        setRowDrag({ kind: 'trace', ids })
       }
       carried.current.pointerY = y
       carried.current.card.follow(cardLeft(x), y - 18)
@@ -970,13 +988,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       showSlot(null)
       if (!slot) {
         c.card.drop()
-        setRowDrag(null)
         return false
       }
       void moveTracesTo(ids, slot.layerId, slot.index)
       const to = landingFor(slot, 36)
-      if (to) c.card.land(to.x, to.y, () => setRowDrag(null))
-      else { c.card.drop(); setRowDrag(null) }
+      if (to) c.card.land(to.x, to.y)
+      else c.card.drop()
       return true
     },
     leave() {
@@ -984,7 +1001,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       carried.current = null
       c?.card.drop()
       showSlot(null)
-      setRowDrag(null)
     },
   }
   useEffect(() => {
@@ -1046,18 +1062,19 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     return () => cancelAnimationFrame(raf)
   }, [selectedTraceId, traces, expandedGroups])
 
-  // One place up or down among the groups: one write.
+  // One place up or down in the stack, past a trace or a whole group: one
+  // write.
   const moveLayerByOne = async (layer: Layer, direction: 'up' | 'down') => {
     if (!supabase || !canEdit) return
     // As it is now, not as it was when clicked: a change queued ahead of
     // this one may have moved it.
-    const groups = inOrder(useGameStore.getState().layers)
-    const index = groups.findIndex(l => l.id === layer.id)
+    const stack = stackBottomUp()
+    const index = stack.findIndex(item => item.id === layer.id)
     const target = direction === 'up' ? index + 1 : index - 1
-    if (index === -1 || target < 0 || target >= groups.length) return
-    const others = groups.filter(l => l.id !== layer.id)
-    const orderKey = await keyAmong(others, target, (l, key) => writeLayerKey(l, key))
-    await writeLayerKey(groups[index], orderKey)
+    if (index === -1 || target < 0 || target >= stack.length) return
+    const others = stack.filter(item => item.id !== layer.id)
+    const orderKey = await keyAmong(others, target, writeItemKey)
+    await writeLayerKey(stack[index] as Layer, orderKey)
   }
   const moveLayerUpNow = (layer: Layer) => moveLayerByOne(layer, 'up')
   const moveLayerDownNow = (layer: Layer) => moveLayerByOne(layer, 'down')
@@ -1081,38 +1098,35 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
   const setTraceLocked = queued(setTraceLockedNow)
   const setTracesLocked = queued(setTracesLockedNow)
   const setTracesEnableInteraction = queued(setTracesEnableInteractionNow)
-  const moveTraceToLayer = queued(moveTraceToLayerNow)
   const moveTracesToLayer = queued(moveTracesToLayerNow)
+  const release = queued(releaseNow)
   const moveTraceWithinLayer = queued(moveTraceWithinLayerNow)
   const moveTracesTo = queued(moveTracesToNow)
   const moveGroupTo = queued(moveGroupToNow)
   const moveLayerUp = queued(moveLayerUpNow)
   const moveLayerDown = queued(moveLayerDownNow)
 
-  // Get traces for a specific layer
-  const getTracesForLayer = (layerId: string | null) => {
-    return groupBottomUp(layerId).reverse() // top of the group first
-  }
+  // A group's traces, top first, as the list shows them.
+  const getTracesForLayer = (layerId: string) => groupBottomUp(layerId).reverse()
 
-  // Get ungrouped traces, sorted the same way grouped traces are (highest
-  // z-index first) so the rendered order matches what moveTraceToPosition /
-  // moveTraceWithinLayer reason about -- otherwise reordering within the
-  // ungrouped section appears to do nothing.
-  const ungroupedTraces = getTracesForLayer(null)
+  // The stack, top first, as the list shows it: the groups, and the traces in
+  // none, side by side (lib/order).
+  const stackTopFirst = inOrder(topLevel(traces, layers)).reverse()
+  const isGroupItem = (item: Trace | Layer): item is Layer => layers.some(l => l.id === item.id)
 
   // Every trace row that is currently on screen, top to bottom, in the order
-  // the panel draws them: each expanded group's traces, then the ungrouped.
+  // the panel draws them.
   //
   // Collapsed groups are left out on purpose. A range drawn between two
   // visible rows should select what lies between them on screen -- sweeping in
   // a dozen traces hidden inside a folded group would be a selection nobody
-  // made and nobody can see.
+  // made and nobody can see. (It used to walk the groups in the order they
+  // were loaded, not the order they're shown in.)
   const visibleTraceOrder: string[] = []
-  for (const orderLayer of layers) {
-    if (!expandedGroups.has(orderLayer.id)) continue
-    for (const layerTrace of getTracesForLayer(orderLayer.id)) visibleTraceOrder.push(layerTrace.id)
+  for (const item of stackTopFirst) {
+    if (!isGroupItem(item)) visibleTraceOrder.push(item.id)
+    else if (expandedGroups.has(item.id)) for (const layerTrace of getTracesForLayer(item.id)) visibleTraceOrder.push(layerTrace.id)
   }
-  for (const looseTrace of ungroupedTraces) visibleTraceOrder.push(looseTrace.id)
 
   // What is selected right now, as a list.
   //
@@ -1169,9 +1183,122 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     else onSelectTrace?.(traceId)
   }
 
-  // The groups, top first.
-  const sortedLayers = inOrder(layers).reverse()
-  const allItems = sortedLayers.map(l => ({ type: 'layer' as const, data: l }))
+  // One trace's row -- in an open group, or in the stack beside the groups.
+  // `siblings` is what it's ordered among, top first, for its ▲ and ▼. (One
+  // renderer: the ungrouped rows were a copy of the grouped ones.)
+  const renderTraceRow = (trace: Trace, siblings: (Trace | Layer)[]) => {
+    const layerId = layerIdOf(trace)
+    const at = siblings.findIndex(item => item.id === trace.id)
+    const isTop = at === 0
+    const isBottom = at === siblings.length - 1
+    return (
+      <div
+        key={trace.id}
+        ref={setTraceRowRef(trace.id)}
+        className={`bg-nier-black border p-2 flex items-center justify-between text-xs transition-all cursor-pointer select-none hover:bg-nier-blackLight ${
+          dropTargetId === trace.id
+            ? 'border-emerald-400 bg-emerald-900/20'
+            : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
+            ? 'border-blue-400 bg-blue-900/30'
+            : 'border-nier-border/40'
+        }`}
+        data-row-trace={trace.id}
+        data-row-layer={layerId ?? ''}
+        data-stack-item={layerId ? undefined : trace.id}
+        onPointerDown={(e) => beginRowDrag(e, 'trace', trace.id)}
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).closest('button')) return
+          startRename(trace.id, nameOf(trace))
+        }}
+        onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
+        onClick={(e) => {
+          handleTraceRowClick(e, trace.id)
+        }}
+      >
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {canEdit && (
+            <span
+              className="grid grid-cols-2 gap-[2px] px-1 py-0.5 cursor-grab active:cursor-grabbing group/tgrip shrink-0"
+              style={{ userSelect: 'none' }}
+              onClick={(e) => e.stopPropagation()}
+              title={t('common.dragReorder')}
+            >
+              {Array.from({ length: 6 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="w-[3px] h-[3px] rounded-full bg-gray-600 group-hover/tgrip:bg-gray-300 pointer-events-none"
+                  style={{ userSelect: 'none' }}
+                />
+              ))}
+            </span>
+          )}
+          <span className="text-nier-bg/70 text-xs">
+            {TYPE_GLYPH[trace.type] ?? ''}
+          </span>
+          {renamingId === trace.id ? renameField() : (
+            <span className="text-nier-strong/80 truncate tracking-wide">{rowLabel(trace)}</span>
+          )}
+          {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              moveTraceWithinLayer(trace.id, layerId, 'up')
+            }}
+            disabled={isTop}
+            className={`text-xs px-1.5 py-0.5 ${isTop ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
+            title={layerId ? t('atrium.layers.moveUpInGroup') : t('atrium.layers.moveUp')}
+          >
+            ▲
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              moveTraceWithinLayer(trace.id, layerId, 'down')
+            }}
+            disabled={isBottom}
+            className={`text-xs px-1.5 py-0.5 ${isBottom ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
+            title={layerId ? t('atrium.layers.moveDownInGroup') : t('atrium.layers.moveDown')}
+          >
+            ▼
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onGoToTrace?.(trace.id)
+            }}
+            className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
+            title={t('atrium.layers.goToTrace')}
+          >
+            →
+          </button>
+          {layerId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                release(multiSelectedSet.has(trace.id) && multiSelectedSet.size > 1 ? Array.from(multiSelectedSet) : [trace.id])
+              }}
+              className="text-nier-bg/80 hover:text-nier-bg/80 text-xs px-1.5 py-0.5"
+              title={t('atrium.layers.removeFromGroup')}
+            >
+              ↗
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              doDeleteTrace(trace.id)
+            }}
+            className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
+            title={t('atrium.layers.deleteTrace')}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -1242,25 +1369,23 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
       {/* Layer list */}
       <div ref={listRef} className="flex-1 overflow-y-auto p-2 space-y-1">
-        {allItems.map((item) => {
-          const layer = item.data as Layer
+        {stackTopFirst.map((item, stackIndex) => {
+          if (!isGroupItem(item)) return renderTraceRow(item, stackTopFirst)
+          const layer = item
           const layerTraces = getTracesForLayer(layer.id)
           const isExpanded = expandedGroups.has(layer.id)
-          
-          // Check if this layer can move up or down
-          const layerIndex = sortedLayers.findIndex(l => l.id === layer.id)
-          const canMoveUp = layerIndex > 0 // Not already at top (highest z-index)
-          const canMoveDown = layerIndex < sortedLayers.length - 1 // Not already at bottom (lowest z-index)
-          
+
+          // Up and down in the stack, past a trace or a whole group.
+          const canMoveUp = stackIndex > 0
+          const canMoveDown = stackIndex < stackTopFirst.length - 1
+
           // Check if any/all traces in this group are selected
           const hasSelectedTrace = layerTraces.some(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
           const isGroupFullySelected = layerTraces.length > 0 && layerTraces.every(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
-          const isActiveLayer = activeLayerId === layer.id
-          // "Hard selected" (all traces in the group actually selected on
-          // canvas, via the diamond icon) gets the amber/yellow treatment;
-          // merely focusing the group (soft selection, via its name) or
-          // having only some of its traces selected gets blue instead.
+          // All its traces selected on the canvas gets the amber treatment;
+          // only some of them, blue.
           const isHardSelected = isGroupFullySelected
+          const selectGroup = () => onSelectGroupTraces?.(isGroupFullySelected ? [] : layerTraces.map(t => t.id))
 
           return (
             <div
@@ -1276,13 +1401,14 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 // the highlight actually visible.
                 isHardSelected
                   ? 'border-amber-400 bg-amber-900/20 ring-1 ring-amber-400/60'
-                  : (isActiveLayer || hasSelectedTrace)
+                  : hasSelectedTrace
                   ? 'border-blue-400 bg-blue-900/20'
                   : dropTargetId === layer.id
                     ? 'border-emerald-400 bg-emerald-900/20'
                     : 'border-nier-border/40 bg-nier-blackLight/80'
               }`}
               data-group-card={layer.id}
+              data-stack-item={layer.id}
             >
               {/* Group header */}
               <div
@@ -1332,30 +1458,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                   </span>
                   <div
                     className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
-                    onClick={() => {
-                      // Just focuses the group as the target for new traces --
-                      // does NOT select its traces on the canvas. That's the
-                      // diamond icon's job (below), kept as a separate click
-                      // target so opening/targeting a group doesn't yank the
-                      // user's current canvas selection out from under them.
-                      if (isActiveLayer) {
-                        onSetActiveLayer?.(null)
-                      } else {
-                        onSetActiveLayer?.(layer.id)
-                      }
-                    }}
+                    // Selects the group, as its diamond does -- there's no
+                    // longer a group new traces go into to pick here: they
+                    // go on top of everything, in none.
+                    onClick={selectGroup}
                   >
                     <span
                       className={`text-xs ${isHardSelected ? 'text-amber-400' : 'text-nier-bg/70'} hover:text-amber-300`}
                       title={t('atrium.layers.selectGroup')}
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (isGroupFullySelected) {
-                          onSelectGroupTraces?.([])
-                        } else {
-                          onSelectGroupTraces?.(layerTraces.map(t => t.id))
-                          onSetActiveLayer?.(layer.id)
-                        }
+                        selectGroup()
                       }}
                     >
                       {isHardSelected ? '◆' : '◇'}
@@ -1366,9 +1479,6 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                       <span className="text-nier-strong text-xs tracking-wide">{layer.name}</span>
                     )}
                     <span className="text-nier-bg/80 text-xs">({layerTraces.length})</span>
-                    {isActiveLayer && (
-                      <span className={`text-xs tracking-wider uppercase ${isHardSelected ? 'text-amber-400' : 'text-blue-400'}`}>{t('atrium.layers.target')}</span>
-                    )}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -1410,267 +1520,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
               {/* Traces in group */}
               {isExpanded && (
                 <div className="pl-6 pr-2 pb-2 space-y-1">
-                  {layerTraces.map((trace) => (
-                    <div
-                      key={trace.id}
-                      ref={setTraceRowRef(trace.id)}
-                      className={`bg-nier-black border p-2 flex items-center justify-between text-xs transition-all cursor-pointer select-none hover:bg-nier-blackLight ${
-                        dropTargetId === trace.id
-                          ? 'border-emerald-400 bg-emerald-900/20'
-                          : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
-                          ? 'border-blue-400 bg-blue-900/30'
-                          : 'border-nier-border/40'
-                      }`}
-                      data-row-trace={trace.id}
-                      data-row-layer={trace.layerId ?? ''}
-                      onPointerDown={(e) => beginRowDrag(e, 'trace', trace.id)}
-                      onDoubleClick={(e) => {
-                        if ((e.target as HTMLElement).closest('button')) return
-                        startRename(trace.id, nameOf(trace))
-                      }}
-                      onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
-                      onClick={(e) => {
-                        handleTraceRowClick(e, trace.id)
-                      }}
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {canEdit && (
-                          <span
-                            className="grid grid-cols-2 gap-[2px] px-1 py-0.5 cursor-grab active:cursor-grabbing group/tgrip shrink-0"
-                            style={{ userSelect: 'none' }}
-                            onClick={(e) => e.stopPropagation()}
-                            title={t('common.dragReorder')}
-                          >
-                            {Array.from({ length: 6 }).map((_, i) => (
-                              <span
-                                key={i}
-                                className="w-[3px] h-[3px] rounded-full bg-gray-600 group-hover/tgrip:bg-gray-300 pointer-events-none"
-                                style={{ userSelect: 'none' }}
-                              />
-                            ))}
-                          </span>
-                        )}
-                        <span className="text-nier-bg/70 text-xs">
-                          {TYPE_GLYPH[trace.type] ?? ''}
-                        </span>
-                        {renamingId === trace.id ? renameField() : (
-                          <span className="text-nier-strong/80 truncate tracking-wide">{rowLabel(trace)}</span>
-                        )}
-                        {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            moveTraceWithinLayer(trace.id, trace.layerId ?? null, 'up')
-                          }}
-                          disabled={layerTraces.findIndex(t => t.id === trace.id) === 0}
-                          className={`text-xs px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                          title={t('atrium.layers.moveUpInGroup')}
-                        >
-                          ▲
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            moveTraceWithinLayer(trace.id, trace.layerId ?? null, 'down')
-                          }}
-                          disabled={layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1}
-                          className={`text-xs px-1.5 py-0.5 ${layerTraces.findIndex(t => t.id === trace.id) === layerTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                          title={t('atrium.layers.moveDownInGroup')}
-                        >
-                          ▼
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onGoToTrace?.(trace.id)
-                          }}
-                          className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
-                          title={t('atrium.layers.goToTrace')}
-                        >
-                          →
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (multiSelectedSet.has(trace.id) && multiSelectedSet.size > 1) {
-                              moveTracesToLayer(Array.from(multiSelectedSet), null)
-                            } else {
-                              moveTraceToLayer(trace.id, null)
-                            }
-                          }}
-                          className="text-nier-bg/80 hover:text-nier-bg/80 text-xs px-1.5 py-0.5"
-                          title={t('atrium.layers.removeFromGroup')}
-                        >
-                          ↗
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            doDeleteTrace(trace.id)
-                          }}
-                          className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
-                          title={t('atrium.layers.deleteTrace')}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  {layerTraces.map(trace => renderTraceRow(trace, layerTraces))}
                 </div>
               )}
             </div>
           )
         })}
-
-        {/* Ungrouped traces */}
-        {(ungroupedTraces.length > 0 || rowDrag?.kind === 'trace') && (
-          <div
-            className={`border p-2 transition-all ${
-              !activeLayerId
-                ? 'border-amber-400 bg-amber-900/10 ring-1 ring-amber-400/60'
-                : dropTargetId === UNGROUPED_DROP_TARGET ? 'border-emerald-400 bg-emerald-900/20' : 'border-nier-border/40 bg-nier-black/50'
-            }`}
-          >
-            {/* Same soft/hard split as a group header: clicking the label
-                only targets Ungrouped for new traces, and the diamond is what
-                selects its traces on canvas. This section used to do both at
-                once from a single click, so there was no way to target it
-                without also yanking the current canvas selection away. */}
-            {(() => {
-              const isUngroupedFullySelected = ungroupedTraces.length > 0 &&
-                ungroupedTraces.every(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
-              return (
-                <div data-ungrouped-header className="flex items-center gap-2 mb-2">
-                  <span
-                    className={`text-xs cursor-pointer ${isUngroupedFullySelected ? 'text-amber-400' : 'text-nier-bg/70'} hover:text-amber-300`}
-                    title={t('atrium.layers.selectUngrouped')}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (isUngroupedFullySelected) {
-                        onSelectGroupTraces?.([])
-                      } else {
-                        onSelectGroupTraces?.(ungroupedTraces.map(t => t.id))
-                        onSetActiveLayer?.(null)
-                      }
-                    }}
-                  >
-                    {isUngroupedFullySelected ? '◆' : '◇'}
-                  </span>
-                  <span
-                    className="text-nier-bg/70 text-xs tracking-[0.15em] uppercase cursor-pointer hover:text-gray-200"
-                    title={t('atrium.layers.setUngroupedTarget')}
-                    onClick={() => onSetActiveLayer?.(null)}
-                  >
-                    {t('atrium.layers.ungrouped')}
-                  </span>
-                  {!activeLayerId && (
-                    <span className={`text-xs tracking-wider uppercase ${isUngroupedFullySelected ? 'text-amber-400' : 'text-blue-400'}`}>{t('atrium.layers.target')}</span>
-                  )}
-                </div>
-              )
-            })()}
-            <div className="space-y-1">
-              {ungroupedTraces.map((trace) => (
-                <div
-                  key={trace.id}
-                  ref={setTraceRowRef(trace.id)}
-                  className={`bg-nier-black border p-2 flex items-center justify-between text-xs transition-all cursor-pointer select-none hover:bg-nier-blackLight ${
-                    dropTargetId === trace.id
-                      ? 'border-emerald-400 bg-emerald-900/20'
-                      : trace.id === selectedTraceId || multiSelectedSet.has(trace.id)
-                      ? 'border-blue-400 bg-blue-900/30'
-                      : 'border-nier-border/40'
-                  }`}
-                  data-row-trace={trace.id}
-                  data-row-layer={trace.layerId ?? ''}
-                  onPointerDown={(e) => beginRowDrag(e, 'trace', trace.id)}
-                  onDoubleClick={(e) => {
-                    if ((e.target as HTMLElement).closest('button')) return
-                    startRename(trace.id, nameOf(trace))
-                  }}
-                  onContextMenu={(e) => openRowMenu(e, 'trace', trace.id)}
-                  onClick={(e) => {
-                    handleTraceRowClick(e, trace.id)
-                  }}
-                >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {canEdit && (
-                      <span
-                        className="grid grid-cols-2 gap-[2px] px-1 py-0.5 cursor-grab active:cursor-grabbing group/tgrip shrink-0"
-                        style={{ userSelect: 'none' }}
-                        onClick={(e) => e.stopPropagation()}
-                        title={t('common.dragReorder')}
-                      >
-                        {Array.from({ length: 6 }).map((_, i) => (
-                          <span
-                            key={i}
-                            className="w-[3px] h-[3px] rounded-full bg-gray-600 group-hover/tgrip:bg-gray-300 pointer-events-none"
-                            style={{ userSelect: 'none' }}
-                          />
-                        ))}
-                      </span>
-                    )}
-                    <span className="text-nier-bg/70 text-xs">
-                      {TYPE_GLYPH[trace.type] ?? ''}
-                    </span>
-                    {renamingId === trace.id ? renameField() : (
-                      <span className="text-nier-strong/80 truncate tracking-wide">{rowLabel(trace)}</span>
-                    )}
-                    {trace.illuminate && <span className="text-yellow-400 text-xs" title={t('atrium.layers.emitsLight')}>★</span>}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        moveTraceWithinLayer(trace.id, null, 'up')
-                      }}
-                      disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === 0}
-                      className={`text-xs px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === 0 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                      title={t('atrium.layers.moveUp')}
-                    >
-                      ▲
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        moveTraceWithinLayer(trace.id, null, 'down')
-                      }}
-                      disabled={ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1}
-                      className={`text-xs px-1.5 py-0.5 ${ungroupedTraces.findIndex(t => t.id === trace.id) === ungroupedTraces.length - 1 ? 'text-gray-700 cursor-not-allowed' : 'text-nier-bg/70 hover:text-nier-strong'}`}
-                      title={t('atrium.layers.moveDown')}
-                    >
-                      ▼
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onGoToTrace?.(trace.id)
-                      }}
-                      className="text-nier-bg/70 hover:text-nier-strong text-xs px-1.5 py-0.5 hover:bg-gray-600 transition-colors"
-                      title={t('atrium.layers.goToTrace')}
-                    >
-                      →
-                    </button>
-                    {/* The "Move to..." dropdown that used to sit here is now
-                        the right-click menu's Move to Group flyout. */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        doDeleteTrace(trace.id)
-                      }}
-                      className="text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5"
-                      title={t('atrium.layers.deleteTrace')}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Row right-click menu. Fixed-positioned against the viewport (the
@@ -1741,10 +1596,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 />
                 <MenuItem
                   label={t('atrium.layers.selectAllTraces')}
-                  onClick={() => {
-                    onSelectGroupTraces?.(groupTraces.map(t => t.id))
-                    onSetActiveLayer?.(rowMenu.id)
-                  }}
+                  onClick={() => onSelectGroupTraces?.(groupTraces.map(t => t.id))}
                   disabled={groupTraces.length === 0}
                 />
                 <MenuItem
@@ -1756,7 +1608,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                 <div className="h-[1px] bg-nier-blackLight my-1" />
                 <MenuItem
                   label={t('atrium.layers.ungroupAll')}
-                  onClick={() => moveTracesToLayer(groupTraces.map(t => t.id), null)}
+                  onClick={() => release(groupTraces.map(t => t.id))}
                   disabled={groupTraces.length === 0}
                   hint={t('atrium.layers.ungroupAllHint')}
                 />
@@ -1878,7 +1730,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
                         ? `${t('atrium.layers.ungroup')} (${menuTargets.length})`
                         : t('atrium.layers.ungroup')
                     }
-                    onClick={() => moveTracesToLayer(menuTargets, null)}
+                    onClick={() => release(menuTargets)}
                     hint={t('atrium.layers.ungroupHint')}
                   />
                 )}
