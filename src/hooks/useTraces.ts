@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { asStrokeData } from '../lib/brushes'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import type { Trace } from '../types/database'
@@ -121,6 +122,8 @@ export function mapRowToTrace(row: any): Trace {
     shapeOutlineWidth: row.shape_outline_width,
     shapeOutlineOpacity: row.shape_outline_opacity ?? 1.0,
     shapePoints: row.shape_points,
+    // Checked, not trusted: it's painted from.
+    strokeData: asStrokeData(row.stroke_data),
     pathCurveType: row.path_curve_type,
     pathArrowStart: row.path_arrow_start,
     pathArrowEnd: row.path_arrow_end,

@@ -1,6 +1,6 @@
 // A drawing's strokes as files and as rows: saved, loaded, deleted, brought
-// back and recoloured. Drawing mode (LobbyScene) and a stroke's colour
-// changed afterwards (StrokeColourField) both go through here.
+// back, and changed after they're drawn. Drawing mode (LobbyScene) and a
+// stroke's look changed afterwards (StrokeStyleField) both go through here.
 //
 // Everything a drawing does is written at once, as each stroke is -- a
 // stroke taken away (undone, erased entirely, cleared) is deleted then and
@@ -9,7 +9,7 @@
 import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Trace } from '../types/database'
-import { isDrawingTrace, pictureSize, tintPicture, type Picture, type Piece, type TracePlacement } from './brushes'
+import { asStrokeData, isDrawingTrace, localToWorldDelta, pictureSize, refitStrokeData, renderStrokeData, tintPicture, type Picture, type Piece, type Stroke, type TracePlacement } from './brushes'
 import { buildTraceInsertRow } from './traceInsert'
 import { adoptTraces } from './layerUndo'
 import { recordAction } from './actionHistory'
@@ -69,9 +69,10 @@ export async function loadDrawingPicture(mediaUrl: string): Promise<Picture | nu
 }
 
 // Where a stroke trace's picture is in the world, as TraceOverlay lays it out
-// (storedTransformOf, getTraceSize).
-export function placementOf(trace: Trace, picture: Picture): TracePlacement {
-  const natural = pictureSize(picture)
+// (storedTransformOf, getTraceSize). The picture only for a trace with no size
+// of its own, which a stroke always has.
+export function placementOf(trace: Trace, picture?: Picture): TracePlacement {
+  const natural = picture ? pictureSize(picture) : { width: 1, height: 1 }
   const fit = Math.min(1, 300 / Math.max(1, natural.width, natural.height))
   const sized = !!(trace.width && trace.height)
   return {
@@ -84,24 +85,24 @@ export function placementOf(trace: Trace, picture: Picture): TracePlacement {
   }
 }
 
-export type PictureFields = Pick<Trace, 'mediaUrl' | 'x' | 'y' | 'width' | 'height' | 'scale' | 'scaleX' | 'scaleY' | 'rotation' | 'flipHorizontal' | 'flipVertical' | 'cropX' | 'cropY' | 'cropWidth' | 'cropHeight'>
+export type PictureFields = Pick<Trace, 'mediaUrl' | 'strokeData' | 'x' | 'y' | 'width' | 'height' | 'scale' | 'scaleX' | 'scaleY' | 'rotation' | 'flipHorizontal' | 'flipVertical' | 'cropX' | 'cropY' | 'cropWidth' | 'cropHeight'>
 
 // A stroke's picture and where it is -- all of it in the picture: nothing
 // scaled, turned, flipped or cropped.
 export const pieceFields = (piece: Piece, mediaUrl: string): PictureFields => ({
-  mediaUrl, x: piece.placement.cx, y: piece.placement.cy, width: piece.placement.width, height: piece.placement.height,
+  mediaUrl, strokeData: piece.data ?? null, x: piece.placement.cx, y: piece.placement.cy, width: piece.placement.width, height: piece.placement.height,
   scale: 1, scaleX: 1, scaleY: 1, rotation: 0, flipHorizontal: false, flipVertical: false,
   cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
 })
 
 export const pictureFieldsOf = (t: Trace): PictureFields => ({
-  mediaUrl: t.mediaUrl, x: t.x, y: t.y, width: t.width, height: t.height, scale: t.scale, scaleX: t.scaleX, scaleY: t.scaleY,
+  mediaUrl: t.mediaUrl, strokeData: t.strokeData ?? null, x: t.x, y: t.y, width: t.width, height: t.height, scale: t.scale, scaleX: t.scaleX, scaleY: t.scaleY,
   rotation: t.rotation, flipHorizontal: t.flipHorizontal, flipVertical: t.flipVertical,
   cropX: t.cropX, cropY: t.cropY, cropWidth: t.cropWidth, cropHeight: t.cropHeight,
 })
 
 const COLUMNS: Record<keyof PictureFields, string> = {
-  mediaUrl: 'media_url', x: 'position_x', y: 'position_y', width: 'width', height: 'height',
+  mediaUrl: 'media_url', strokeData: 'stroke_data', x: 'position_x', y: 'position_y', width: 'width', height: 'height',
   scale: 'scale', scaleX: 'scale_x', scaleY: 'scale_y', rotation: 'rotation',
   flipHorizontal: 'flip_horizontal', flipVertical: 'flip_vertical',
   cropX: 'crop_x', cropY: 'crop_y', cropWidth: 'crop_width', cropHeight: 'crop_height',
@@ -157,20 +158,55 @@ export async function restoreStrokes(back: Trace[]): Promise<void> {
   }
 }
 
-// Strokes painted over in `colour`, their shading kept (tintPicture): each a
-// new file, all of it one step of undo. False when none of them could be.
-export async function recolourStrokes(traceIds: string[], colour: string, lobbyId: string, userId: string | null): Promise<boolean> {
-  const changes: { id: string; before: string; after: string }[] = []
+// What can be changed on a stroke after it's drawn.
+export type StrokeChange = Partial<Pick<Stroke, 'color' | 'width' | 'brush' | 'hardness'>>
+
+// Strokes changed after they're drawn, each painted again from what's kept of
+// it (StrokeData) -- a new width, brush or softness fitting its box to its
+// ink again, the trace staying where it is -- and saved as a new file, all of
+// it one step of undo. A drawing from before strokes were kept has only its
+// picture: its colour can change (tintPicture, shading kept, every colour in
+// it becoming the one), nothing else. False when none of them changed.
+export async function changeStrokes(traceIds: string[], change: StrokeChange, lobbyId: string, userId: string | null): Promise<boolean> {
+  const changes: { id: string; before: Partial<PictureFields>; after: Partial<PictureFields> }[] = []
+  const reshape = change.width !== undefined || change.brush !== undefined || change.hardness !== undefined
   for (const id of traceIds) {
     const trace = useGameStore.getState().traces.find(t => t.id === id)
     if (!trace?.mediaUrl || !isDrawingTrace(trace)) continue
-    const picture = await loadDrawingPicture(trace.mediaUrl)
-    if (!picture) continue
-    changes.push({ id, before: trace.mediaUrl, after: await saveDrawingPicture(tintPicture(picture, colour), lobbyId, userId) })
+    const data = asStrokeData(trace.strokeData)
+    if (!data || !trace.width || !trace.height) {
+      if (!change.color) continue
+      const picture = await loadDrawingPicture(trace.mediaUrl)
+      if (!picture) continue
+      changes.push({ id, before: { mediaUrl: trace.mediaUrl }, after: { mediaUrl: await saveDrawingPicture(tintPicture(picture, change.color), lobbyId, userId) } })
+      continue
+    }
+    const next = { ...data, stroke: { ...data.stroke, ...change } }
+    const before = pictureFieldsOf(trace)
+    if (!reshape) {
+      const picture = renderStrokeData(next, trace.width, trace.height)
+      changes.push({ id, before, after: { mediaUrl: await saveDrawingPicture(picture, lobbyId, userId), strokeData: next } })
+      continue
+    }
+    const fitted = refitStrokeData(next, trace.width, trace.height)
+    if (!fitted) continue
+    const moved = localToWorldDelta(fitted.dx, fitted.dy, placementOf(trace, fitted.picture))
+    changes.push({
+      id,
+      before,
+      after: {
+        mediaUrl: await saveDrawingPicture(fitted.picture, lobbyId, userId),
+        strokeData: fitted.data,
+        x: trace.x + moved.x,
+        y: trace.y + moved.y,
+        width: fitted.width,
+        height: fitted.height,
+      },
+    })
   }
   if (changes.length === 0) return false
-  const put = (which: 'before' | 'after') => Promise.all(changes.map(c => writePicture(c.id, { mediaUrl: c[which] }))).then(() => {})
+  const put = (which: 'before' | 'after') => Promise.all(changes.map(c => writePicture(c.id, c[which]))).then(() => {})
   await put('after')
-  recordAction({ label: 'stroke colour', undo: () => put('before'), redo: () => put('after') })
+  recordAction({ label: 'stroke changed', undo: () => put('before'), redo: () => put('after') })
   return true
 }

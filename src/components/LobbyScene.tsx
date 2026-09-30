@@ -41,7 +41,7 @@ import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapeStyleColumns, 
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
-import { BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Piece, type Stroke, type StrokePoint } from '../lib/brushes'
+import { asStrokeData, BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, eraseStrokeData, strokeToLocal, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Piece, type Stroke, type StrokePoint } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
@@ -49,6 +49,7 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
+import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
 import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
 import type { View } from '../lib/worldCamera'
 // pathSimplify no longer needed - drawings saved as raster images
@@ -95,37 +96,6 @@ const DRAW_SWATCHES = [
   '#CBCBCB', '#191919', '#8F8F8F', '#FF8A3D', '#E8C15A',
   '#9AD4C4', '#A8B6D9', '#C77DFF', '#E87A6D', '#7FD1A6',
 ]
-
-const BRUSH_LABELS = {
-  pen: 'atrium.draw.brushPen',
-  pencil: 'atrium.draw.brushPencil',
-  marker: 'atrium.draw.brushMarker',
-  airbrush: 'atrium.draw.brushAirbrush',
-  calligraphy: 'atrium.draw.brushCalligraphy',
-} as const satisfies Record<BuiltinBrush, string>
-
-// Each built-in brush as a small picture of the mark it makes.
-function BrushGlyph({ brush }: { brush: BuiltinBrush }) {
-  const wave = 'M2 11 C 6 3, 10 3, 12 7 S 18 11, 22 3'
-  return (
-    <svg width="24" height="14" viewBox="0 0 24 14" fill="none" stroke="currentColor" strokeLinecap="round" aria-hidden="true">
-      {brush === 'pen' && <path d={wave} strokeWidth="1.8" />}
-      {brush === 'pencil' && <path d={wave} strokeWidth="1.4" strokeDasharray="0.6 1.4" />}
-      {brush === 'marker' && <path d={wave} strokeWidth="4" strokeOpacity="0.5" strokeLinecap="butt" />}
-      {brush === 'airbrush' && (
-        <>
-          <circle cx="12" cy="7" r="6" fill="currentColor" fillOpacity="0.15" stroke="none" />
-          <circle cx="12" cy="7" r="3.5" fill="currentColor" fillOpacity="0.35" stroke="none" />
-          <circle cx="12" cy="7" r="1.5" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {/* The same wave swept along a 45-degree nib, as the brush does. */}
-      {brush === 'calligraphy' && [-1.5, -0.9, -0.3, 0.3, 0.9, 1.5].map(o => (
-        <path key={o} d={wave} strokeWidth="0.9" transform={`translate(${o} ${-o})`} />
-      ))}
-    </svg>
-  )
-}
 
 const HUD_TEXT_OUTLINE =
   '0 0 4px rgb(var(--c-ground) / 0.95), 1px 0 2px rgb(var(--c-ground) / 0.94), -1px 0 2px rgb(var(--c-ground) / 0.94), 0 1px 2px rgb(var(--c-ground) / 0.94), 0 -1px 2px rgb(var(--c-ground) / 0.94)'
@@ -1074,7 +1044,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // An erasure, made or taken back: each stroke it reached shows what was
   // left of it, or what it was before -- or, erased entirely, is deleted,
   // and put back.
-  type Erased = { before: Trace; after: PictureFields | null }
+  type Erased = { before: Trace; after: Partial<PictureFields> | null }
   const applyErase = async (changes: Erased[], direction: 'forward' | 'back') => {
     const whole = changes.filter(c => !c.after).map(c => c.before)
     await (direction === 'forward' ? dropStrokes(whole) : restoreStrokes(whole))
@@ -1092,6 +1062,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const changes: Erased[] = []
         for (const trace of useGameStore.getState().traces) {
           if (!session.members.has(trace.id) || !trace.mediaUrl) continue
+          // A kept stroke takes the eraser into what's kept of it, in its own
+          // box units: its box, and wherever it's been moved, scaled or
+          // turned to, stay as they are.
+          const kept = asStrokeData(trace.strokeData)
+          if (kept && trace.width && trace.height) {
+            const left = eraseStrokeData(kept, trace.width, trace.height, strokeToLocal(eraser, placementOf(trace)))
+            if (left === 'untouched') continue
+            changes.push({ before: trace, after: left && { mediaUrl: await saveDrawingPicture(left.picture, lobbyId, userId), strokeData: left.data } })
+            continue
+          }
+          // A drawing from before: its picture, painted again without it.
           const picture = cachedPicture(trace.mediaUrl)
           if (!picture) continue
           const left = erasePicture(picture, placementOf(trace, picture), eraser)

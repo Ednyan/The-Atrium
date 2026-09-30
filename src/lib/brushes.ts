@@ -567,8 +567,9 @@ export function alphaBounds(rgba: ArrayLike<number>, width: number, height: numb
 // ---- Stroke pictures -------------------------------------------------------------
 
 // A picture and where it sits in the world: centred on (cx, cy), width x height
-// world units, nothing turned, flipped or cropped.
-export interface Piece { picture: HTMLCanvasElement; placement: TracePlacement }
+// world units, nothing turned, flipped or cropped -- and, for a stroke, the
+// stroke itself, to paint it again from (StrokeData).
+export interface Piece { picture: HTMLCanvasElement; placement: TracePlacement; data?: StrokeData }
 
 export const plainPlacement = (cx: number, cy: number, width: number, height: number): TracePlacement => ({
   cx, cy, rotation: 0, flipH: false, flipV: false, width, height, scaleX: 1, scaleY: 1, cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
@@ -653,7 +654,11 @@ export function rasterizeStroke(stroke: Stroke, zoom: number): Piece | null {
   canvas.width = Math.max(1, Math.ceil((box.maxX - box.minX) * ppw))
   canvas.height = Math.max(1, Math.ceil((box.maxY - box.minY) * ppw))
   paintInto(canvas.getContext('2d')!, stroke, box.minX, box.minY, ppw)
-  return trimToInk(canvas, box.minX, box.minY, ppw)
+  const piece = trimToInk(canvas, box.minX, box.minY, ppw)
+  if (!piece) return null
+  // Kept too, in the box's own units: its top-left the picture's first pixel.
+  const { cx, cy, width, height } = piece.placement
+  return { ...piece, data: { v: 1, ppw, stroke: shiftStroke(stroke, -(cx - width / 2), -(cy - height / 2)), erasers: [] } }
 }
 
 // A drawing's picture, placed in the world as its trace shows it, with an
@@ -745,4 +750,176 @@ export function drawingOf<T extends Stackable & { type: string; mediaUrl?: strin
   if (!groupId) return { groupId: null, members: [trace] }
   const inGroup = traces.filter(t => t.layerId === groupId)
   return { groupId, members: inGroup.every(isDrawingTrace) ? inGroup : [trace] }
+}
+
+// ---- A stroke kept as it was drawn ----------------------------------------------
+//
+// A stroke's picture is its file, but the stroke is kept as well: its points,
+// colour, width, brush, softness and seed, and each eraser stroke taken out of
+// it, in the trace's own box units -- (0, 0) the box's top-left, width x
+// height its size before any scaling. Moving, scaling or turning the trace
+// leaves them alone. From them it's painted again: sharp at whatever zoom
+// it's seen at (TraceOverlay), and in another colour, width, brush or
+// softness. The file stays, for everything that reads files -- exports, older
+// copies of the app -- and is painted again with it.
+
+export interface StrokeData {
+  v: 1
+  // Pixels per unit its file is painted at.
+  ppw: number
+  stroke: Stroke
+  erasers: Stroke[]
+}
+
+const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+
+function asStroke(value: any): Stroke | null {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.points) || typeof value.color !== 'string' || !finite(value.width) || value.width <= 0) return null
+  if (!value.points.every((p: any) => p && finite(p.x) && finite(p.y) && (p.p === undefined || finite(p.p)))) return null
+  return {
+    points: value.points.map((p: any) => (p.p === undefined ? { x: p.x, y: p.y } : { x: p.x, y: p.y, p: p.p })),
+    color: value.color,
+    width: value.width,
+    isEraser: !!value.isEraser,
+    ...(typeof value.brush === 'string' ? { brush: value.brush } : {}),
+    ...(finite(value.seed) ? { seed: value.seed } : {}),
+    ...(finite(value.hardness) ? { hardness: value.hardness } : {}),
+  }
+}
+
+// A stroke's data as read back -- from the database, a file, a desktop vault
+// (as text there) -- or null for anything that isn't one. Never trusted as it
+// comes: it's painted from.
+export function asStrokeData(value: unknown): StrokeData | null {
+  let data: any = value
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data) } catch { return null }
+  }
+  if (!data || typeof data !== 'object' || data.v !== 1 || !finite(data.ppw) || data.ppw <= 0 || !Array.isArray(data.erasers)) return null
+  const stroke = asStroke(data.stroke)
+  const erasers = data.erasers.map(asStroke)
+  if (!stroke || erasers.some((e: Stroke | null) => !e)) return null
+  return { v: 1, ppw: data.ppw, stroke: { ...stroke, isEraser: false }, erasers: erasers.map((e: Stroke) => ({ ...e, isEraser: true })) }
+}
+
+export const shiftStroke = (stroke: Stroke, dx: number, dy: number): Stroke =>
+  ({ ...stroke, points: stroke.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) })
+
+// The stroke, and what the eraser took from it, painted at `ppw` pixels to a
+// unit: its box's top-left at the canvas's.
+export function paintStrokeData(ctx: CanvasRenderingContext2D, data: StrokeData, ppw: number) {
+  paintInto(ctx, data.stroke, 0, 0, ppw)
+  for (const eraser of data.erasers) paintInto(ctx, eraser, 0, 0, ppw)
+}
+
+export function renderStrokeData(data: StrokeData, width: number, height: number, ppw = data.ppw): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(width * ppw))
+  canvas.height = Math.max(1, Math.round(height * ppw))
+  paintStrokeData(canvas.getContext('2d', { willReadFrequently: true })!, data, ppw)
+  return canvas
+}
+
+// An eraser stroke in the world, in a trace's own box units: back through
+// where it's centred, how it's turned, scaled and flipped (TracePlacement, in
+// world units). Its width by the scale's geometric mean -- a trace stretched
+// more one way than the other gets a round eraser, near enough.
+export function strokeToLocal(stroke: Stroke, pl: TracePlacement): Stroke {
+  const turn = -pl.rotation * Math.PI / 180
+  const cos = Math.cos(turn)
+  const sin = Math.sin(turn)
+  const sx = pl.scaleX || 1
+  const sy = pl.scaleY || 1
+  return {
+    ...stroke,
+    width: stroke.width / Math.sqrt(Math.abs(sx * sy)),
+    points: stroke.points.map(p => {
+      const dx = p.x - pl.cx
+      const dy = p.y - pl.cy
+      let x = (dx * cos - dy * sin) / sx
+      let y = (dx * sin + dy * cos) / sy
+      if (pl.flipH) x = -x
+      if (pl.flipV) y = -y
+      return { ...p, x: x + pl.width / 2, y: y + pl.height / 2 }
+    }),
+  }
+}
+
+// A move in a trace's box units, as it is in the world: flipped, scaled and
+// turned as the trace is.
+export function localToWorldDelta(dx: number, dy: number, pl: TracePlacement) {
+  const x = (pl.flipH ? -dx : dx) * (pl.scaleX || 1)
+  const y = (pl.flipV ? -dy : dy) * (pl.scaleY || 1)
+  const turn = pl.rotation * Math.PI / 180
+  return { x: x * Math.cos(turn) - y * Math.sin(turn), y: x * Math.sin(turn) + y * Math.cos(turn) }
+}
+
+const pixelsOf = (canvas: HTMLCanvasElement) => canvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data
+function inkChanged(before: Uint8ClampedArray, after: Uint8ClampedArray) {
+  for (let i = 3; i < after.length; i += 4) if (after[i] !== before[i]) return true
+  return false
+}
+function hasInk(data: Uint8ClampedArray) {
+  for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true
+  return false
+}
+
+// An eraser stroke, in the trace's box units, taken out of a kept stroke:
+// 'untouched' when it reached none of its ink, null when it took all of it,
+// else the stroke with that eraser added and its picture. The box stays as it
+// is, so the trace doesn't move.
+export function eraseStrokeData(data: StrokeData, width: number, height: number, eraser: Stroke): { data: StrokeData; picture: HTMLCanvasElement } | null | 'untouched' {
+  if (eraser.points.length === 0) return 'untouched'
+  const reach = strokeBox(eraser, strokeReach(eraser) + 2 / data.ppw)
+  if (reach.maxX < 0 || reach.minX > width || reach.maxY < 0 || reach.minY > height) return 'untouched'
+  const next: StrokeData = { ...data, erasers: [...data.erasers, { ...eraser, isEraser: true }] }
+  const picture = renderStrokeData(next, width, height)
+  const after = pixelsOf(picture)
+  if (!inkChanged(pixelsOf(renderStrokeData(data, width, height)), after)) return 'untouched'
+  return hasInk(after) ? { data: next, picture } : null
+}
+
+// A kept stroke painted again after its width, brush or softness changed --
+// which can need a bigger box, or fit a smaller one: its box fitted to its ink
+// again. Returned in the new box's units, with the new box's size and how far
+// its centre moved, in the old box's units. Null when no ink is left.
+export function refitStrokeData(data: StrokeData, width: number, height: number): {
+  data: StrokeData; picture: HTMLCanvasElement; width: number; height: number; dx: number; dy: number
+} | null {
+  const ppw = data.ppw
+  const box = strokeBox(data.stroke, Math.max(20 / ppw, strokeReach(data.stroke) + 4 / ppw))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.min(MAX_SIDE, Math.ceil((box.maxX - box.minX) * ppw)))
+  canvas.height = Math.max(1, Math.min(MAX_SIDE, Math.ceil((box.maxY - box.minY) * ppw)))
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  paintInto(ctx, data.stroke, box.minX, box.minY, ppw)
+  for (const eraser of data.erasers) paintInto(ctx, eraser, box.minX, box.minY, ppw)
+  const piece = trimToInk(canvas, box.minX, box.minY, ppw)
+  if (!piece) return null
+  const { cx, cy, width: w, height: h } = piece.placement
+  const left = cx - w / 2
+  const top = cy - h / 2
+  return {
+    data: { ...data, stroke: shiftStroke(data.stroke, -left, -top), erasers: data.erasers.map(e => shiftStroke(e, -left, -top)) },
+    picture: piece.picture,
+    width: w,
+    height: h,
+    dx: cx - width / 2,
+    dy: cy - height / 2,
+  }
+}
+
+// How sharp a kept stroke is painted when seen closer than its file
+// (components/StrokeCanvas). Pixels a stroke's canvas may hold: A stroke seen far closer than it was
+// drawn stops getting sharper past this -- one as big as the screen, at a
+// high zoom, would otherwise ask for tens of megabytes, and a drawing is
+// many strokes.
+const MAX_STROKE_PIXELS = 1_000_000
+
+// The pixels per box unit to paint at, for `needed`: the power of two at or
+// above it, as far as MAX_STROKE_PIXELS allows for a width x height box.
+export function strokeDensity(needed: number, width: number, height: number): number {
+  let density = 2 ** Math.ceil(Math.log2(Math.max(1 / 16, needed)))
+  while (density > 1 / 16 && width * height * density * density > MAX_STROKE_PIXELS) density /= 2
+  return density
 }

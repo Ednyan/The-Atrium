@@ -13,7 +13,7 @@ import { has, kindOf, settingsOf, type Setting, type TraceKind } from '../lib/tr
 import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
 import { rememberShapeStyle, shapeStyleOf } from '../lib/shapeStyle'
 import ShapeStyleControls, { Check, ColourField, SectionRule, Slider } from './ShapeStyleControls'
-import StrokeColourField from './StrokeColourField'
+import StrokeStyleField from './StrokeStyleField'
 
 export type BatchChange = { ids: string[]; patch: Partial<Trace> }
 
@@ -69,7 +69,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         return lobbyId ? (
           <div className="space-y-3">
             <SectionRule label={t('atrium.trace.type.drawing')} note={note} />
-            <StrokeColourField key={ids(targets).join(',')} traceIds={ids(targets)} lobbyId={lobbyId} userId={userId} />
+            <StrokeStyleField key={ids(targets).join(',')} traceIds={ids(targets)} lobbyId={lobbyId} userId={userId} />
           </div>
         ) : null
 

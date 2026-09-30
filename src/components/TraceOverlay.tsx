@@ -44,11 +44,12 @@ import { has } from '../lib/traceKinds'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { PREVIEW_OPACITY, previewFrameColour, rememberShapeStyle, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
-import { drawingOf, isDrawingTrace } from '../lib/brushes'
+import { drawingOf, isDrawingTrace, strokeDensity } from '../lib/brushes'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
-import StrokeColourField from './StrokeColourField'
+import StrokeStyleField from './StrokeStyleField'
+import StrokeCanvas from './StrokeCanvas'
 import { cropClip, flipInBox } from '../lib/traceFlip'
 import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
@@ -5963,6 +5964,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // Use editingTrace for selected trace to show live updates (check ID match to be safe)
     const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
 const transform = getTraceTransform(trace)
+// A drawing stroke seen closer than its picture was drawn is painted from
+// what's kept of it instead, sharp (StrokeCanvas): at this density, where
+// it's more than the picture's.
+const keptStroke = trace.type === 'image' && trace.width && trace.height ? trace.strokeData : null
+const strokePaintDensity = keptStroke
+  ? strokeDensity(zoom * Math.max(Math.abs(transform.scaleX ?? 1), Math.abs(transform.scaleY ?? 1)) * (window.devicePixelRatio || 1), trace.width!, trace.height!)
+  : 0
+const paintStroke = !!keptStroke && strokePaintDensity > keptStroke.ppw
 let { screenX, screenY } = getScreenPosition(transform.x, transform.y)
 // Same staleness problem as the viewport-culling filter above: a
 // path's x/y only reflects where it was created or last moved as a
@@ -6530,8 +6539,14 @@ return (
               height: `${height}px`,
             }}
           >
+      {/* A drawing stroke seen closer than its picture was drawn: painted
+          from what's kept of it instead, sharp (StrokeCanvas). */}
+      {paintStroke && keptStroke && (
+        <StrokeCanvas data={keptStroke} width={trace.width!} height={trace.height!} density={strokePaintDensity} style={{ clipPath: cropClip(shownCrop) }} />
+      )}
+
       {/* Image Content */}
-      {trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
+      {!paintStroke && trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
         (() => {
           const rawUrl = trace.mediaUrl || trace.imageUrl || ''
           const isLocal = rawUrl.startsWith('local://')
@@ -6594,7 +6609,7 @@ return (
       )}
       
       {/* Image placeholder - shown when no URL or when image failed to load */}
-      {trace.type === 'image' && (!trace.mediaUrl && !trace.imageUrl || failedImages.has(trace.id)) && (
+      {!paintStroke && trace.type === 'image' && (!trace.mediaUrl && !trace.imageUrl || failedImages.has(trace.id)) && (
         <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
           <span className="text-4xl mb-2">🖼️</span>
           {showDescription && trace.content && (
@@ -7490,7 +7505,19 @@ return (
           the drawing surface, and went back under them whenever the camera
           moved. */}
       <div className={traceFadeEnabled ? 'world-vignette' : undefined} style={{ position: 'absolute', inset: 0, isolation: 'isolate' }}>
-      <div ref={worldLayerRef} style={{ position: 'absolute', inset: 0, transformOrigin: '0 0' }}>
+      <div
+        ref={worldLayerRef}
+        style={{ position: 'absolute', inset: 0, transformOrigin: '0 0' }}
+        // A selected trace's handles are its own: a right-click on one opens
+        // its menu, as one on the trace does. They're drawn apart from it,
+        // so they had none -- and a thin trace, a stroke turned on its side,
+        // can be nearly all handles. One place for every kind of handle.
+        onContextMenu={(e) => {
+          if (!selectedTraceId || !(e.target as HTMLElement).closest?.('.trace-nier-handle, .trace-nier-handle-center, .trace-rotate-handle')) return
+          e.preventDefault()
+          setContextMenu({ x: e.clientX, y: e.clientY, traceId: selectedTraceId })
+        }}
+      >
       {/* Render traces AND player in z-index order */}
       {/* Connections, each at the level of the lower of its two traces,
           just under it, and drawn from border to border. Worked out from the
@@ -8798,7 +8825,7 @@ return (
             <div className="space-y-5">
               {/* A drawing's stroke: its colour, changed after it's drawn. */}
               {lobbyId && has(editingTrace, 'strokes') && (
-                <StrokeColourField traceIds={[editingTrace.id]} lobbyId={lobbyId} userId={userId} />
+                <StrokeStyleField traceIds={[editingTrace.id]} lobbyId={lobbyId} userId={userId} />
               )}
 
               {/* Shape controls first, directly under the name -- where the create

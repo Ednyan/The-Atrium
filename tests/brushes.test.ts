@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { alphaBounds, drawPlacedPicture, drawingOf, isCustomBrush, isDrawingTrace, niceDensity, placePicture, placementBounds, seededRandom, stampPositions, tipAlpha, worldSize } from '../src/lib/brushes.ts'
+import { alphaBounds, asStrokeData, drawPlacedPicture, drawingOf, isCustomBrush, isDrawingTrace, localToWorldDelta, niceDensity, placePicture, placementBounds, seededRandom, stampPositions, strokeDensity, strokeToLocal, tipAlpha, worldSize } from '../src/lib/brushes.ts'
 
 test('stamps land at the spacing, whatever the segments are', () => {
   const xs = (points: { x: number; y: number }[]) => stampPositions(points, () => 2).map(s => s.x)
@@ -133,4 +133,39 @@ test("a drawing is its group when that's all drawings, else the trace alone", ()
   assert.equal(of('d'), 'null:d')
   // In a group that no longer exists: on its own, as it's drawn.
   assert.equal(of('e'), 'null:e')
+})
+
+test("a stroke's kept data is checked, not trusted", () => {
+  const good = { v: 1, ppw: 2, stroke: { points: [{ x: 1, y: 2 }, { x: 3, y: 4, p: 0.5 }], color: '#fff', width: 3, isEraser: false, brush: 'pen', seed: 7, hardness: 1 }, erasers: [] }
+  assert.deepEqual(asStrokeData(good)?.stroke.points, good.stroke.points)
+  // As the desktop vault hands it back: text.
+  assert.equal(asStrokeData(JSON.stringify(good))?.ppw, 2)
+  // An eraser is always one, whatever it says.
+  assert.equal(asStrokeData({ ...good, erasers: [{ ...good.stroke, isEraser: false }] })?.erasers[0].isEraser, true)
+  for (const bad of [null, 'nope', { ...good, v: 2 }, { ...good, ppw: 0 }, { ...good, stroke: { ...good.stroke, width: -1 } },
+    { ...good, stroke: { ...good.stroke, points: [{ x: 'a', y: 1 }] } }, { ...good, erasers: [{}] }, { ...good, erasers: 'x' }]) {
+    assert.equal(asStrokeData(bad), null, JSON.stringify(bad))
+  }
+})
+
+test('an eraser in the world lands where the stroke is, however the trace is turned, scaled and flipped', () => {
+  const pl = { cx: 100, cy: 50, rotation: 30, flipH: true, flipV: false, width: 40, height: 20, scaleX: 2, scaleY: 0.5, cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 }
+  // A point in the box's own units, placed in the world as the trace shows it...
+  const local = { x: 7, y: 15 }
+  const move = localToWorldDelta(local.x - pl.width / 2, local.y - pl.height / 2, pl)
+  const world = { x: pl.cx + move.x, y: pl.cy + move.y }
+  // ...comes back to the same point.
+  const back = strokeToLocal({ points: [world], color: '#000', width: 4, isEraser: true }, pl)
+  assert.ok(Math.abs(back.points[0].x - local.x) < 1e-9 && Math.abs(back.points[0].y - local.y) < 1e-9, JSON.stringify(back.points[0]))
+  // And its width by the scale's geometric mean.
+  assert.equal(back.width, 4)
+})
+
+test('a stroke is painted sharper in powers of two, and never past a million pixels', () => {
+  assert.equal(strokeDensity(1, 100, 100), 1)
+  assert.equal(strokeDensity(1.5, 100, 100), 2)
+  assert.equal(strokeDensity(3.2, 100, 100), 4)
+  // 1000 x 1000 units can't have more than one pixel a unit.
+  assert.equal(strokeDensity(8, 1000, 1000), 1)
+  assert.ok(strokeDensity(64, 300, 20) * strokeDensity(64, 300, 20) * 300 * 20 <= 1_000_000)
 })

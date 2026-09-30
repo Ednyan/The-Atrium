@@ -1,3 +1,4 @@
+import type { StrokeData } from '../lib/brushes'
 export interface Database {
   public: {
     Tables: {
@@ -88,6 +89,8 @@ export interface Trace {
   shapeOutlineColor?: string // Color of the outline stroke
   shapeOutlineWidth?: number // Width of the outline in pixels (1-20)
   shapeOutlineOpacity?: number // Outline/stroke opacity 0-1, independent of shapeOpacity (fill)
+  // A drawing stroke's stroke, kept to paint it again from (lib/brushes).
+  strokeData?: StrokeData | null
   shapePoints?: Array<{
     x: number
     y: number

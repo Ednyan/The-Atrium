@@ -89,6 +89,7 @@ export function buildTraceInsertRow(
     if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
     if (trace.shapeOutlineOpacity !== undefined) newTrace.shape_outline_opacity = trace.shapeOutlineOpacity
     if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
+  if (trace.strokeData) newTrace.stroke_data = trace.strokeData
     if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
     if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
     if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd

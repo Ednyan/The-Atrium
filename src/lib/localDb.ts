@@ -1499,6 +1499,13 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
+  try {
+    // A drawing stroke's stroke, as JSON (lib/brushes StrokeData; the web's
+    // add_stroke_data.sql).
+    await db.execute('ALTER TABLE traces ADD COLUMN stroke_data TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
 
   await makeLayersOneStack(db)
 
@@ -2043,6 +2050,9 @@ function convertRowFromSql(table: string, row: any): any {
   if (table === 'traces' && out.shape_points) {
     out.shape_points = parseJsonField(out.shape_points)
   }
+  if (table === 'traces' && out.stroke_data) {
+    out.stroke_data = parseJsonField(out.stroke_data)
+  }
   if (table === 'lobbies' && out.theme_settings) {
     out.theme_settings = parseJsonField(out.theme_settings)
   }
@@ -2074,6 +2084,9 @@ function convertRowToSql(table: string, row: any): any {
   // Serialize JSON fields
   if (table === 'traces' && out.shape_points && typeof out.shape_points !== 'string') {
     out.shape_points = JSON.stringify(out.shape_points)
+  }
+  if (table === 'traces' && out.stroke_data && typeof out.stroke_data !== 'string') {
+    out.stroke_data = JSON.stringify(out.stroke_data)
   }
   if (table === 'lobbies' && out.theme_settings && typeof out.theme_settings !== 'string') {
     out.theme_settings = JSON.stringify(out.theme_settings)
@@ -2179,7 +2192,7 @@ async function localRpc(fnName: string, params: any): Promise<{ data: any; error
         //
         // Sum the approximate row size of all traces in this lobby...
         const rows = await db.select<any[]>(
-          `SELECT SUM(LENGTH(CAST(id AS TEXT)) + LENGTH(COALESCE(content,'')) + LENGTH(COALESCE(image_url,'')) + LENGTH(COALESCE(media_url,'')) + LENGTH(COALESCE(shape_points,'')) + 200) as total_bytes FROM traces WHERE lobby_id = ?`,
+          `SELECT SUM(LENGTH(CAST(id AS TEXT)) + LENGTH(COALESCE(content,'')) + LENGTH(COALESCE(image_url,'')) + LENGTH(COALESCE(media_url,'')) + LENGTH(COALESCE(shape_points,'')) + LENGTH(COALESCE(stroke_data,'')) + 200) as total_bytes FROM traces WHERE lobby_id = ?`,
           [params.p_lobby_id]
         )
         const rowBytes = rows[0]?.total_bytes || 0
