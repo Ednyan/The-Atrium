@@ -18,9 +18,18 @@
 let tail: Promise<unknown> = Promise.resolve()
 let unfinished = 0
 
+// What a layer change also waits for before it starts: new traces still being
+// written (lib/traceWrites), so a change never writes to a row that isn't
+// there yet. Set from there, which keeps this free of the database.
+let before: () => Promise<unknown> = () => Promise.resolve()
+export function waitBeforeLayerChanges(wait: () => Promise<unknown>) {
+  before = wait
+}
+
 export function queueLayerChange<T>(change: () => Promise<T>): Promise<T> {
   unfinished++
-  const run = tail.then(change, change).finally(() => { unfinished-- })
+  const ready = () => before()
+  const run = tail.then(ready, ready).then(change, change).finally(() => { unfinished-- })
   tail = run.catch(() => {})
   return run
 }

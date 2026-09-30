@@ -33,7 +33,6 @@ import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween
 import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
-import { mapRowToTrace } from '../hooks/useTraces'
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -43,13 +42,14 @@ import BatchEditPanel from './BatchEditPanel'
 import { has } from '../lib/traceKinds'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { PREVIEW_OPACITY, previewFrameColour, rememberShapeStyle, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
+import { previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { drawingOf, isDrawingTrace, strokeDensity } from '../lib/brushes'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import StrokeStyleField from './StrokeStyleField'
 import StrokeCanvas from './StrokeCanvas'
+import { insertTrace } from '../lib/traceWrites'
 import { cropClip, flipInBox } from '../lib/traceFlip'
 import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
@@ -5299,22 +5299,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       // Under everything, so what it holds is drawn over it.
       orderKey: keyAt(stack, 0) ?? keysOnTop(stack)[0],
     }
-    let frame: Trace
-    if (supabase) {
-      const { data, error } = await (supabase.from('traces') as any)
-        .insert(buildTraceInsertRow(draft, userId, username, lobbyId, 0, 0))
-        .select()
-      if (error || !data?.[0]) {
-        showToast(t('atrium.error.frameFailed', { message: error?.message ?? '' }))
-        return
-      }
-      frame = mapRowToTrace(data[0])
-    } else {
-      // No database (a development build): in the store alone, as traces
-      // made any other way are then.
-      frame = { ...draft, id: `trace_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`, createdAt: new Date().toISOString() }
-    }
-    addTrace(frame)
+    // There at once (lib/traceWrites), written behind.
+    const frame = insertTrace(buildTraceInsertRow(draft, userId, username, lobbyId, 0, 0), message => showToast(t('atrium.error.frameFailed', { message })))
     const all = useGameStore.getState().traces
     const units = wrap
       ? unitsOf(all, groups, new Set(wrap))
@@ -6265,25 +6251,14 @@ return (
             <div className="trace-nier-type-badge">{trace.shapeType === 'path' ? 'Path' : 'Shape'}</div>
           )}
           {(() => {
-            const shapeColor = trace.shapeColor || '#3b82f6'
-            const shapeOpacity = trace.shapeOpacity ?? 1.0
             const cornerRadius = trace.cornerRadius || 0
             const shapeType = trace.shapeType || 'rectangle'
-            const hasOutline = trace.shapeOutlineOnly ?? false
-            const noFill = trace.shapeNoFill ?? false
-            const outlineColor = trace.shapeOutlineColor || shapeColor
-            const outlineWidth = trace.shapeOutlineWidth ?? 2
-            const outlineOpacity = trace.shapeOutlineOpacity ?? 1.0
-            
-            // Determine fill and stroke based on options (independent)
-            const fill = noFill ? 'none' : shapeColor
-            const stroke = hasOutline ? outlineColor : 'none'
-            // World units, like a path's thickness and a frame's border
-            // (both multiplied by zoom). non-scaling-stroke below makes
-            // strokeWidth mean SCREEN pixels, so it has to carry the zoom
-            // itself -- without it the outline stayed one fixed pixel
-            // width at every zoom, the same bug paths had.
-            const strokeWidth = hasOutline ? Math.max(outlineWidth * zoom, 0.5) : 0
+            // Fill and outline (lib/shapeStyle shapePaint, which the quick
+            // bar's preview paints with too). The outline's width in world
+            // units, like a path's thickness and a frame's border: drawn
+            // non-scaling, so it carries the zoom.
+            const { fill, fillOpacity: shapeOpacity, stroke, strokeOpacity: outlineOpacity, strokeWidth } = shapePaint(shapeStyleOf(trace), zoom)
+            const hasOutline = strokeWidth > 0
             // How far to pull the shape in so the whole stroke stays in
             // the box, in viewBox units -- per axis, because the viewBox
             // is 0-100 stretched to borderWidth x borderHeight pixels.
@@ -6299,14 +6274,12 @@ return (
             const insetX = hasOutline ? Math.min((strokeWidth / 2 / borderWidth) * 100, 50) : 0
             const insetY = hasOutline ? Math.min((strokeWidth / 2 / borderHeight) * 100, 50) : 0
 
-            // While its customize panel is open, the shape looks exactly
-            // as it did while it was being placed: drawn at the preview's
-            // opacity, with the same breathing frame, in the same colour
-            // (PREVIEW_OPACITY and previewFrameColour are shared with the
-            // placement preview in LobbyScene). Editing and creating are
-            // the same act, and now read as one.
+            // While its customize panel is open -- or it's the panel's shape
+            // still being placed -- it wears the breathing frame, in the
+            // colour that stands out from the atrium (previewFrameColour).
+            // At full strength: it was drawn see-through then, which made a
+            // new shape look like something other than what it would be.
             const editing = editingTrace?.id === trace.id || trace.id === SHAPE_DRAFT_ID
-            const k = editing ? PREVIEW_OPACITY : 1
             // 1.5 world units, like the preview frame, kept inside the box.
             const frameWidth = Math.max(1.5 * zoom, 1)
             const frameX = Math.min((frameWidth / 2 / borderWidth) * 100, 50)
@@ -6352,8 +6325,8 @@ return (
                     stroke={stroke}
                     strokeWidth={strokeWidth}
                     vectorEffect="non-scaling-stroke"
-                    fillOpacity={shapeOpacity * k}
-                    strokeOpacity={outlineOpacity * k}
+                    fillOpacity={shapeOpacity}
+                    strokeOpacity={outlineOpacity}
                   />
                   {editing && (
                     <rect
@@ -6382,8 +6355,8 @@ return (
                     stroke={stroke}
                     strokeWidth={strokeWidth}
                     vectorEffect="non-scaling-stroke"
-                    fillOpacity={shapeOpacity * k}
-                    strokeOpacity={outlineOpacity * k}
+                    fillOpacity={shapeOpacity}
+                    strokeOpacity={outlineOpacity}
                   />
                   {editing && (
                     <ellipse {...frameProps} cx="50" cy="50" rx={50 - frameX} ry={50 - frameY} />
@@ -6418,8 +6391,8 @@ return (
                     strokeWidth={strokeWidth}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
-                    fillOpacity={shapeOpacity * k}
-                    strokeOpacity={outlineOpacity * k}
+                    fillOpacity={shapeOpacity}
+                    strokeOpacity={outlineOpacity}
                   />
                   {editing && (
                     <path

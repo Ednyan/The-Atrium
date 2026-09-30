@@ -6,18 +6,17 @@ import TraceNameField from './TraceNameField'
 import { nextShapeStyle, rememberShapeStyle, shapeStyleColumns, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
-import { supabase, isDesktop } from '../lib/supabase'
+import { isDesktop } from '../lib/supabase'
 import { uploadTraceFile } from '../lib/traceUpload'
 import { exrFileToPng, isExr } from '../lib/exr'
 import { newTraceOrderFields } from '../lib/order'
-import { nextTextName } from '../lib/traceNames'
-import { mapRowToTrace } from '../hooks/useTraces'
+import { nextShapeName, nextTextName } from '../lib/traceNames'
+import { insertTrace } from '../lib/traceWrites'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { currentTracePreset } from '../lib/tracePresets'
 import { scaleToDisplayBox } from '../lib/binPack'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
-import type { Trace } from '../types/database'
 
 // Matches mapRowToTrace's `row.font_size ?? 16` fallback -- a freshly
 // created trace never sets font_size in its insert payload, so once loaded
@@ -277,7 +276,7 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapeDragArmed, shapeStyle, onShapeDraftChange])
   
-  const { username, userId, position, addTrace, isLobbyFull } = useGamePick('username', 'userId', 'position', 'addTrace', 'isLobbyFull')
+  const { username, userId, position, isLobbyFull } = useGamePick('username', 'userId', 'position', 'isLobbyFull')
   const lobbyFull = isLobbyFull()
   
   // Use trace position if provided, otherwise fall back to character position
@@ -411,130 +410,54 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
           ? await hasTransparency(mediaUrl, isDesktop ? undefined : `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`)
           : false
 
-      const newTrace: Trace = {
-        id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        borderColor: preset.border,
-        fillColor: preset.fill,
-        showBorder: !seeThrough,
-        showBackground: !seeThrough,
-        fontFamily: 'mono',
-        ...(preset.text ? { textColor: preset.text } : {}),
-        userId,
+      // There at once (lib/traceWrites), written behind; the one row, which is
+      // also what the store gets -- there were two copies of it here, one for
+      // the database and one for the store, and they drifted.
+      const all = useGameStore.getState().traces
+      const isPath = shapeType === 'path'
+      insertTrace({
+        user_id: userId,
         username,
         type: traceType,
-        content: content.trim() || `${traceType} content`,
-        x: finalPosition.x,
-        y: finalPosition.y,
-        mediaUrl: uploadedUrl || undefined,
-        createdAt: new Date().toISOString(),
+        ...(traceType === 'text' ? { layer_name: nextTextName(all, n => t('atrium.layers.numberedText', { n })) } : {}),
+        border_color: preset.border,
+        fill_color: preset.fill,
+        show_border: !seeThrough,
+        show_background: !seeThrough,
+        font_family: 'mono',
+        ...(preset.text ? { text_color: preset.text } : {}),
+        // A shape unnamed is Shape N (or Path N).
+        content: content.trim() || (traceType === 'shape'
+          ? nextShapeName(all, isPath, n => t(isPath ? 'atrium.layers.numberedPath' : 'atrium.layers.numberedShape', { n }))
+          : `${traceType} content`),
+        position_x: finalPosition.x,
+        position_y: finalPosition.y,
+        media_url: uploadedUrl || null,
         scale: 1.0,
-        scaleX: 1.0,
-        scaleY: 1.0,
         rotation: 0.0,
-        borderRadius: 0,
-        // Auto-fit the box to the content so long text isn't clipped
-        // and doesn't require a manual resize right after creating it.
+        border_radius: 0,
+        lobby_id: lobbyId,
+        show_description: false,
+        show_filename: false,
+        ...newTraceOrderFields(all, useGameStore.getState().layers)[0],
+        // Auto-fit the box to the content so long text isn't clipped and
+        // doesn't need a resize right after creating it.
         ...(textSize && { width: textSize.width, height: textSize.height }),
-        // Roughly A4 portrait, at a size that's readable on the canvas without
-        // dominating it.
+        // Roughly A4 portrait, readable on the canvas without dominating it.
         ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
-        // Starting box suited to what's embedded -- a Drive PDF or Doc in the
+        // A starting box suited to what's embedded -- a Drive PDF or Doc in the
         // 16:9 embed default is a page letterboxed into a strip.
         ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),
-        // Shape properties
         ...(traceType === 'shape' && {
-          ...shapeStyle,
+          ...shapeStyleColumns(shapeStyle),
           width: shapeWidth,
           height: shapeHeight,
-          showBorder: false,
-          showBackground: false,
-          // Initialize points for path shapes
-          ...(shapeType === 'path' && {
-            shapePoints: initialPathPoints,
-            pathCurveType: 'straight'
-          }),
+          show_border: false,
+          show_background: false,
+          // A path starts from its first points.
+          ...(isPath && { shape_points: initialPathPoints, path_curve_type: 'straight' }),
         }),
-      }
-
-      // Save to Supabase if available
-      if (supabase) {
-        const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
-
-        const { data, error} = await supabase.from('traces').insert({
-          // Don't specify id - let database generate UUID
-          user_id: userId,
-          username,
-          type: traceType,
-          ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
-          // The same house style the local object above is given. Two paths
-          // create a trace here -- one for the database, one for the store --
-          // and only one of them knowing about presets is how a trace ends up
-          // looking different depending on which branch made it.
-          border_color: preset.border,
-          fill_color: preset.fill,
-          show_border: !seeThrough,
-          show_background: !seeThrough,
-          font_family: 'mono',
-          ...(preset.text ? { text_color: preset.text } : {}),
-          content: content.trim() || `${traceType} content`,
-          position_x: finalPosition.x,
-          position_y: finalPosition.y,
-          media_url: uploadedUrl || null,
-          scale: 1.0,
-          rotation: 0.0,
-          border_radius: 0,
-          lobby_id: lobbyId,
-          show_description: false,
-          show_filename: false,
-          ...layerFields,
-          // Auto-fit the box to the content -- see the comment on newTrace above.
-          ...(textSize && { width: textSize.width, height: textSize.height }),
-          // See the comment on newTrace above.
-          ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
-          // See the comment on newTrace above.
-          ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),
-          // Shape properties
-          ...(traceType === 'shape' && {
-            ...shapeStyleColumns(shapeStyle),
-            width: shapeWidth,
-            height: shapeHeight,
-            show_border: false,
-            show_background: false,
-            // Initialize points for path shapes
-            ...(shapeType === 'path' && {
-              shape_points: initialPathPoints,
-              path_curve_type: 'straight'
-            }),
-          }),
-        } as any).select() // Get the generated trace back
-        
-        if (error) {
-          console.error('❌ Database insert error:', error)
-          alert(t('atrium.error.traceSaveFailed', { message: error.message }))
-          return // Don't add to local store if database fails
-        } else {
-          // Use the database-generated trace. mapRowToTrace is the same
-          // mapper the initial load/realtime paths use -- previously this
-          // built a trace object by hand with only ~15 of the ~45 fields
-          // (showBorder/showBackground/cropWidth/illuminate/etc. were all
-          // missing), so a freshly-created trace could render with wrong
-          // defaults until the next full reload re-fetched it correctly.
-          if (data && data[0]) {
-            const dbTrace = data[0] as any
-            const trace: Trace = {
-              ...mapRowToTrace(dbTrace),
-              shapePoints: dbTrace.shape_points ?? initialPathPoints,
-              pathCurveType: dbTrace.path_curve_type ?? (shapeType === 'path' ? 'straight' : undefined),
-            }
-            // Add to local store with database ID
-            addTrace(trace)
-          }
-        }
-      } else {
-        console.warn('⚠️ Supabase not available, trace only saved locally')
-        // Only add to local store if no Supabase
-        addTrace(newTrace)
-      }
+      }, message => alert(t('atrium.error.traceSaveFailed', { message })))
 
       setContent('')
       setMediaUrl('')

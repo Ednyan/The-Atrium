@@ -19,6 +19,16 @@ export function nextTextName(
   return firstFreeName([...traces.filter(t => t.type === 'text').map(t => t.layerName), ...alsoTaken], nameFor)
 }
 
+// The next free "Shape N" -- or, for a path, "Path N" -- among the names of the
+// shapes of that kind. A shape's name is its content.
+export function nextShapeName(
+  traces: { type: string; shapeType?: string | null; content?: string | null }[],
+  path: boolean,
+  nameFor: (n: number) => string,
+): string {
+  return firstFreeName(traces.filter(t => t.type === 'shape' && (t.shapeType === 'path') === path).map(t => t.content), nameFor)
+}
+
 // The next free "Untitled N" among the titles of traces other than text ones
 // (a text trace's content is its text, not a title).
 export function nextUntitledName(

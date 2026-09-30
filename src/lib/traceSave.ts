@@ -4,6 +4,7 @@ import { mapRowToTrace, fetchAllLobbyTraces } from '../hooks/useTraces'
 import { showToast } from './toast'
 import { tCount } from './i18n'
 import { linkRow, mapRowToLink } from './traceLinks'
+import { whenTracesWritten } from './traceWrites'
 
 // Fired on window whenever a saveAllChanges() call completes successfully.
 // Undo/redo history (see TraceOverlay.tsx) listens for this to clear its
@@ -81,6 +82,9 @@ export async function saveAllChanges(): Promise<void> {
   store.setIsSavingChanges(true)
 
   try {
+    // New traces still on their way to the database first (lib/traceWrites):
+    // an update to a row not there yet would be refused.
+    await whenTracesWritten()
     const { pendingChanges, deletedTraces, traces, clearPendingChanges, pendingLinks, deletedLinks, links, savedLinks } = useGameStore.getState()
 
     // Connections removed. Before the traces: on the web a trace's deletion

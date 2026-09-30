@@ -35,9 +35,10 @@ import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTopOfGroup, newTraceOrderFields } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
-import { fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../lib/traceNames'
+import { fileTitle, firstFreeName, nextShapeName, nextTextName, nextUntitledName } from '../lib/traceNames'
+import { insertTrace } from '../lib/traceWrites'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapePaint, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
@@ -1927,7 +1928,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // A shape made straight away, with no panel: from the create panel's Path,
   // and from the quick bar's Rectangle, Circle and Path. Centred on `at`, at a
-  // size when one is given (a path's is its points'). Its id, once it exists.
+  // size when one is given (a path's is its points'). Named Shape N or Path N.
+  // There at once (lib/traceWrites), written behind; its id.
   const insertShapeTrace = async (
     style: ShapeStyle,
     at: { x: number; y: number },
@@ -1936,44 +1938,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   ) => {
     if (!userId) return null
     if (!ensureLobbyHasSpace()) return null
-
-    const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
-    const sized = size ? { width: Math.max(1, Math.round(size.width)), height: Math.max(1, Math.round(size.height)) } : {}
-
-    if (!supabase) {
-      // No database (a development build): in the store alone, as
-      // insertDroppedTrace does.
-      const trace: Trace = {
-        id: `trace_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-        userId,
-        username,
-        type: 'shape',
-        content: 'shape content',
-        x: at.x,
-        y: at.y,
-        createdAt: new Date().toISOString(),
-        scale: 1,
-        scaleX: 1,
-        scaleY: 1,
-        rotation: 0,
-        borderRadius: 0,
-        showBorder: false,
-        showBackground: false,
-        showFilename: false,
-        ...style,
-        ...sized,
-        ...(points ? { shapePoints: points } : {}),
-        orderKey: layerFields.order_key,
-      }
-      useGameStore.getState().addTrace(trace)
-      return trace.id
-    }
-
-    const { data, error } = await supabase.from('traces').insert({
+    const { traces: all, layers } = useGameStore.getState()
+    const isPath = style.shapeType === 'path'
+    const trace = insertTrace({
       user_id: userId,
       username,
       type: 'shape',
-      content: 'shape content',
+      content: nextShapeName(all, isPath, n => t(isPath ? 'atrium.layers.numberedPath' : 'atrium.layers.numberedShape', { n })),
       position_x: at.x,
       position_y: at.y,
       media_url: null,
@@ -1986,27 +1957,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       ...shapeStyleColumns(style),
       show_border: false,
       show_background: false,
-      ...sized,
+      ...(size ? { width: Math.max(1, Math.round(size.width)), height: Math.max(1, Math.round(size.height)) } : {}),
       ...(points ? { shape_points: points } : {}),
-      ...layerFields,
-    } as any).select()
-
-    if (error || !data?.[0]) {
-      console.error('Failed to create shape:', error)
-      showToast(style.shapeType === 'path'
-        ? t('atrium.error.pathFailed', { message: error?.message ?? '' })
-        : t('atrium.error.traceSaveFailed', { message: error?.message ?? '' }))
-      return null
-    }
-
-    const dbTrace = data[0] as any
-    const trace = {
-      ...mapRowToTrace(dbTrace),
-      shapePoints: dbTrace.shape_points ?? points,
-      pathCurveType: dbTrace.path_curve_type,
-    }
-    useGameStore.getState().addTrace(trace)
-    return trace.id as string
+      ...newTraceOrderFields(all, layers)[0],
+    }, message => showToast(isPath
+      ? t('atrium.error.pathFailed', { message })
+      : t('atrium.error.traceSaveFailed', { message })))
+    return trace.id
   }
 
   // ---- The quick bar (QuickBar) ---------------------------------------------
@@ -2133,9 +2090,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const finishPlacingRef = useRef(finishPlacing)
   finishPlacingRef.current = finishPlacing
 
-  // What an armed tool is dragging out, from press to pointer on screen: the
-  // box of a rectangle, or of a frame or text box (dashed), the ellipse of a
-  // circle, the line of a path. `even`: Shift, a box as big each way. Hidden with no drag.
+  // The style what's being dragged out will have (nextShapeStyle), read once
+  // as the press begins: a rectangle, circle or path is shown as it will be.
+  const placeStyleRef = useRef<ShapeStyle | null>(null)
+  // Counts presses, so letting go of one doesn't hide the next one's preview.
+  const placePressRef = useRef(0)
+
+  // What an armed tool is dragging out, from press to pointer on screen,
+  // straight to the element -- no render, so it keeps up with the pointer. A
+  // rectangle or circle painted as it will appear (lib/shapeStyle shapePaint,
+  // as TraceOverlay paints shapes): colour, opacity, outline, corners. A path
+  // as its line. A frame's or text box's outline, dashed. `even`: Shift, a
+  // box as big each way. Hidden with no drag.
   const drawPlacePreview = (tool: PlaceTool | null, drag: { x1: number; y1: number; x2: number; y2: number; even: boolean } | null) => {
     const svg = placePreviewRef.current
     if (!svg) return
@@ -2152,14 +2118,44 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
     const left = Math.min(x1, x2), top = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1)
     const [line, ellipse, rect] = Array.from(svg.children) as SVGElement[]
-    const set = (el: SVGElement, shown: boolean, attrs: Record<string, number | string>) => {
+    const style = placeStyleRef.current
+    const zoom = zoomRef.current
+    const show = (el: SVGElement, shown: boolean, attrs: Record<string, number | string>, look: Partial<CSSStyleDeclaration>) => {
       el.style.display = shown ? '' : 'none'
-      if (shown) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+      if (!shown) return
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
+      Object.assign(el.style, look)
     }
-    set(line, tool === 'path', { x1, y1, x2, y2 })
-    set(ellipse, tool === 'circle', { cx: left + w / 2, cy: top + h / 2, rx: w / 2, ry: h / 2 })
-    set(rect, tool === 'rectangle' || tool === 'frame' || tool === 'text', { x: left, y: top, width: w, height: h, 'stroke-dasharray': tool === 'rectangle' ? 'none' : '6 4' })
+    // A frame or text box: where it will go, dashed.
+    const guide = { fill: 'rgb(var(--c-fg) / 0.08)', fillOpacity: '1', stroke: 'rgb(var(--c-fg) / 0.8)', strokeOpacity: '1', strokeWidth: '1.5', strokeDasharray: '6 4' }
+    const paint = style ? shapePaint(style, zoom) : null
+    const shapeLook = paint ? {
+      fill: paint.fill, fillOpacity: String(paint.fillOpacity), stroke: paint.stroke,
+      strokeOpacity: String(paint.strokeOpacity), strokeWidth: String(paint.strokeWidth), strokeDasharray: 'none',
+    } : guide
+    // The outline inside the box, as the shape keeps it (TraceOverlay's inset).
+    const inset = paint ? Math.min(paint.strokeWidth / 2, w / 2, h / 2) : 0
+
+    show(line, tool === 'path', { x1, y1, x2, y2 }, {
+      stroke: style?.shapeColor ?? 'rgb(var(--c-fg) / 0.8)',
+      strokeOpacity: String(style?.shapeOpacity ?? 1),
+      strokeWidth: String(style ? Math.max(style.shapeOutlineWidth * zoom, 0.5) : 2),
+      strokeLinecap: 'round',
+    })
+    show(ellipse, tool === 'circle', { cx: left + w / 2, cy: top + h / 2, rx: Math.max(0, w / 2 - inset), ry: Math.max(0, h / 2 - inset) }, shapeLook)
+    const radius = tool === 'rectangle' && style ? Math.min(style.cornerRadius * zoom, (w - inset * 2) / 2, (h - inset * 2) / 2) : 0
+    show(rect, tool === 'rectangle' || tool === 'frame' || tool === 'text', {
+      x: left + inset, y: top + inset, width: Math.max(0, w - inset * 2), height: Math.max(0, h - inset * 2), rx: radius, ry: radius,
+    }, tool === 'rectangle' ? shapeLook : guide)
     svg.style.display = 'block'
+  }
+  // Hidden once what was dragged out is on the canvas -- the frame after the
+  // store has it -- so it's never gone before its shape is there. Unless a new
+  // press has taken the preview over by then.
+  const letGoOfPreview = (press: number) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (placePressRef.current === press && !placeStartRef.current) drawPlacePreview(null, null)
+    }))
   }
 
   // The middle button pans the view, a second way to the left drag on empty
@@ -2218,6 +2214,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // selection). What this makes is selected when it exists; a click
       // that makes nothing leaves nothing selected.
       setMultiSelectRequest([])
+      const tool = placeToolRef.current
+      placeStyleRef.current = tool === 'rectangle' || tool === 'circle' || tool === 'path' ? nextShapeStyle(tool) : null
+      placePressRef.current++
       placeStartRef.current = {
         sx: e.clientX, sy: e.clientY,
         wx: (e.clientX - c.x) / zoomRef.current, wy: (e.clientY - c.y) / zoomRef.current,
@@ -2233,14 +2232,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const start = placeStartRef.current
       if (!start || e.pointerId !== start.pointerId) return
       placeStartRef.current = null
-      drawPlacePreview(null, null)
       // The click that ends this press is the placement's: on the canvas it
       // would let go of what's just been made.
       const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault() }
       window.addEventListener('click', swallow, { capture: true, once: true })
       window.setTimeout(() => window.removeEventListener('click', swallow, true), 400)
       const tool = placeToolRef.current
-      if (tool && e.type === 'pointerup') void finishPlacingRef.current(tool, start, { sx: e.clientX, sy: e.clientY }, e.shiftKey)
+      const press = placePressRef.current
+      if (tool && e.type === 'pointerup') {
+        void finishPlacingRef.current(tool, start, { sx: e.clientX, sy: e.clientY }, e.shiftKey).finally(() => letGoOfPreview(press))
+      } else {
+        drawPlacePreview(null, null)
+      }
     }
     // The press's own mouse and touch events, which the canvas and the
     // traces listen for, are kept from them while it's a placement's.
@@ -4206,122 +4209,77 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     look?: { showBorder?: boolean; showBackground?: boolean; showShadow?: boolean; textColor?: string },
   ) => {
     const sized = size ? { width: Math.round(size.width), height: Math.round(size.height) } : {}
-    if (supabase) {
-      // The live store, not the render-time `traces`, so a multi-file drop --
-      // which adds each inserted row back before the next -- stacks each one
-      // above the last instead of giving them all the same place.
-      const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
+    // The live store, not the render-time `traces`, so a multi-file drop --
+    // which adds each inserted row back before the next -- stacks each one
+    // above the last instead of giving them all the same place.
+    const layerFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers)[0]
 
-      // An embed's proportions have to be decided from its link, because they
-      // can't be measured: a cross-origin frame cannot report the size of what
-      // it's showing, and no amount of asking will get a Google Doc's height
-      // out of it. So a document-shaped link gets a document-shaped box and a
-      // folder listing gets a wide one, rather than everything arriving as the
-      // same default rectangle and needing to be resized by hand.
+    // An embed's proportions have to be decided from its link, because they
+    // can't be measured: a cross-origin frame cannot report the size of what
+    // it's showing, and no amount of asking will get a Google Doc's height
+    // out of it. So a document-shaped link gets a document-shaped box and a
+    // folder listing gets a wide one, rather than everything arriving as the
+    // same default rectangle and needing to be resized by hand.
+    //
+    // Applied here rather than at each call site so every route in -- a
+    // dropped link, Paste as Embed, a scavenged URL -- lands the same way.
+    const embedBox = traceType === 'embed'
+      ? defaultEmbedBox(mediaUrl || content)
+      : null
+
+    // A picture with a see-through background arrives without the
+    // background and border that would fill it in. Not asked of a link
+    // already known to be a page (embedBox), which would only wait on it.
+    const seeThrough = (traceType === 'image' || (traceType === 'embed' && !embedBox))
+      && await hasTransparency(
+        file ?? mediaUrl ?? '',
+        !isDesktop && mediaUrl ? `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}` : undefined,
+      )
+
+    // The atrium's house style, applied at birth. This path -- the quick
+    // "leave a trace" flow -- writes straight to the database and never went
+    // through the panel that knew about presets, which is why traces made
+    // this way kept arriving in the old default.
+    const preset = currentTracePreset(lobbyId)
+
+    const trace = insertTrace({
+      user_id: userId,
+      username,
+      type: traceType,
+      ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
+      border_color: preset.border,
+      fill_color: preset.fill,
+      show_border: look?.showBorder ?? !seeThrough,
+      show_background: look?.showBackground ?? !seeThrough,
+      ...(look?.showShadow !== undefined ? { show_shadow: look.showShadow } : {}),
+      font_family: 'mono',
+      ...(look?.textColor ? { text_color: look.textColor } : preset.text ? { text_color: preset.text } : {}),
+      content,
+      position_x: x,
+      position_y: y,
+      media_url: mediaUrl || null,
+      scale: 1.0,
+      rotation: 0.0,
+      // Explicit, not left to the column default.
       //
-      // Applied here rather than at each call site so every route in -- a
-      // dropped link, Paste as Embed, a scavenged URL -- lands the same way.
-      const embedBox = traceType === 'embed'
-        ? defaultEmbedBox(mediaUrl || content)
-        : null
-
-      // A picture with a see-through background arrives without the
-      // background and border that would fill it in. Not asked of a link
-      // already known to be a page (embedBox), which would only wait on it.
-      const seeThrough = (traceType === 'image' || (traceType === 'embed' && !embedBox))
-        && await hasTransparency(
-          file ?? mediaUrl ?? '',
-          !isDesktop && mediaUrl ? `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}` : undefined,
-        )
-
-      // The atrium's house style, applied at birth. This path -- the quick
-      // "leave a trace" flow -- writes straight to the database and never went
-      // through the panel that knew about presets, which is why traces made
-      // this way kept arriving in the old default.
-      const preset = currentTracePreset(lobbyId)
-
-      const { data, error } = await supabase.from('traces').insert({
-        user_id: userId,
-        username,
-        type: traceType,
-        ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
-        border_color: preset.border,
-        fill_color: preset.fill,
-        show_border: look?.showBorder ?? !seeThrough,
-        show_background: look?.showBackground ?? !seeThrough,
-        ...(look?.showShadow !== undefined ? { show_shadow: look.showShadow } : {}),
-        font_family: 'mono',
-        ...(look?.textColor ? { text_color: look.textColor } : preset.text ? { text_color: preset.text } : {}),
-        content,
-        position_x: x,
-        position_y: y,
-        media_url: mediaUrl || null,
-        scale: 1.0,
-        rotation: 0.0,
-        // Explicit, not left to the column default.
-        //
-        // TracePanel sets this; this path never did, so a dropped or
-        // imported trace took whatever the table hands out. The web
-        // migration moved that default from 8 to 0, but a SQLite column
-        // default is fixed when the table is created -- so every desktop
-        // vault made before that change still rounds the corners of
-        // everything imported into it. Saying 0 here is the same answer
-        // on both platforms and on a vault of any age.
-        border_radius: 0,
-        lobby_id: lobbyId,
-        show_description: false,
-        show_filename: false,
-        ...(embedBox ?? {}),
-        ...sized,
-        ...layerFields,
-      } as any).select()
-
-      if (error) {
-        console.error('Drop trace insert error:', error)
-        return
-      }
-      if (data && data[0]) {
-        // Same mapper the initial load/realtime paths use, so a freshly
-        // dropped trace gets the full field set (showBorder/showBackground/
-        // cropWidth/illuminate/etc.) instead of only ~15 of ~45 fields.
-        const created = mapRowToTrace(data[0])
-        useGameStore.getState().addTrace(created)
-        // Returned so a caller can act on the trace it just made -- "Text" in
-        // the canvas menu needs the id to put it straight into editing.
-        return created.id
-      }
-      return undefined
-    } else {
-      const preset = currentTracePreset(lobbyId)
-      const trace: Trace = {
-        id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        userId,
-        username,
-        type: traceType as any,
-        borderColor: preset.border,
-        fillColor: preset.fill,
-        showBorder: look?.showBorder ?? true,
-        showBackground: look?.showBackground ?? true,
-        // As the database insert above has it.
-        showFilename: false,
-        ...(look?.showShadow !== undefined ? { showShadow: look.showShadow } : {}),
-        fontFamily: 'mono',
-        ...(look?.textColor ? { textColor: look.textColor } : preset.text ? { textColor: preset.text } : {}),
-        content,
-        x,
-        y,
-        mediaUrl,
-        createdAt: new Date().toISOString(),
-        scale: 1.0,
-        scaleX: 1.0,
-        scaleY: 1.0,
-        rotation: 0.0,
-        borderRadius: 0,
-        ...sized,
-      }
-      useGameStore.getState().addTrace(trace)
-      return trace.id
-    }
+      // TracePanel sets this; this path never did, so a dropped or
+      // imported trace took whatever the table hands out. The web
+      // migration moved that default from 8 to 0, but a SQLite column
+      // default is fixed when the table is created -- so every desktop
+      // vault made before that change still rounds the corners of
+      // everything imported into it. Saying 0 here is the same answer
+      // on both platforms and on a vault of any age.
+      border_radius: 0,
+      lobby_id: lobbyId,
+      show_description: false,
+      show_filename: false,
+      ...(embedBox ?? {}),
+      ...sized,
+      ...layerFields,
+    }, message => showToast(t('atrium.error.traceSaveFailed', { message })))
+    // Returned so a caller can act on the trace it just made -- "Text" in
+    // the canvas menu needs the id to put it straight into editing.
+    return trace.id
   }
 
   // Images sent in by the browser extension.
@@ -4455,9 +4413,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {/* What an armed quick-bar tool is dragging out (drawPlacePreview).
             Over the traces, as the area select is. */}
         <svg ref={placePreviewRef} data-place-preview="" className="fixed inset-0 w-full h-full pointer-events-none" style={{ display: 'none', zIndex: 1_500_000 }}>
-          <line strokeWidth={2} style={{ stroke: 'rgb(var(--c-fg) / 0.8)' }} />
-          <ellipse strokeWidth={1.5} style={{ fill: 'rgb(var(--c-fg) / 0.08)', stroke: 'rgb(var(--c-fg) / 0.8)' }} />
-          <rect strokeWidth={1.5} style={{ fill: 'rgb(var(--c-fg) / 0.08)', stroke: 'rgb(var(--c-fg) / 0.8)' }} />
+          {/* Painted by drawPlacePreview, as what's dragged out will look. */}
+          <line />
+          <ellipse />
+          <rect />
         </svg>
 
         {/* Drop Zone Indicator */}

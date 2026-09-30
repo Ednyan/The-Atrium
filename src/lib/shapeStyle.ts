@@ -123,11 +123,21 @@ export function colourToNumber(colour: string | undefined): number {
 }
 
 /**
- * How opaque a shape is drawn while it is still being made or edited -- the
- * placement preview and a shape whose customize panel is open use the same, so
- * the two states read as one.
+ * How a shape's fill and outline are painted at a zoom -- by TraceOverlay, and
+ * by the quick bar's preview as one is dragged out (LobbyScene), so what's
+ * dragged out is what appears. The outline's width is in screen pixels (drawn
+ * non-scaling), so it carries the zoom: its thickness is in world units.
  */
-export const PREVIEW_OPACITY = 0.6
+export function shapePaint(style: Pick<ShapeStyle, 'shapeColor' | 'shapeOpacity' | 'shapeNoFill' | 'shapeOutlineOnly' | 'shapeOutlineColor' | 'shapeOutlineWidth' | 'shapeOutlineOpacity'>, zoom: number) {
+  const outline = style.shapeOutlineOnly
+  return {
+    fill: style.shapeNoFill ? 'none' : style.shapeColor,
+    fillOpacity: style.shapeOpacity,
+    stroke: outline ? style.shapeOutlineColor || style.shapeColor : 'none',
+    strokeOpacity: style.shapeOutlineOpacity,
+    strokeWidth: outline ? Math.max(style.shapeOutlineWidth * zoom, 0.5) : 0,
+  }
+}
 
 /**
  * The breathing frame's colour: near-black on a light atrium, white on a dark
