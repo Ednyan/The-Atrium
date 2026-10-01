@@ -464,9 +464,9 @@ export async function registerCustomBrush(brush: CustomBrush): Promise<boolean> 
 
 // Whether a trace is a drawing. Its file is saved as drawing_<...>.png; the
 // label covers one kept as a data URL because its upload failed.
-export function isDrawingTrace(t: { type: string; mediaUrl?: string | null; content?: string | null }): boolean {
+export function isDrawingTrace(t: { type: string; mediaUrl?: string | null; content?: string | null; strokeData?: unknown }): boolean {
   return t.type === 'image'
-    && (/(^|\/)drawing_[^/?#]*\.png([?#]|$)/.test(t.mediaUrl ?? '') || t.content === 'freehand drawing')
+    && (t.strokeData != null || /(^|\/)drawing_[^/?#]*\.png([?#]|$)/.test(t.mediaUrl ?? '') || t.content === 'freehand drawing')
 }
 
 // Where a trace shows its picture on screen, as TraceOverlay lays it out:
@@ -658,7 +658,8 @@ export function rasterizeStroke(stroke: Stroke, zoom: number): Piece | null {
   if (!piece) return null
   // Kept too, in the box's own units: its top-left the picture's first pixel.
   const { cx, cy, width, height } = piece.placement
-  return { ...piece, data: { v: 1, ppw, stroke: shiftStroke(stroke, -(cx - width / 2), -(cy - height / 2)), erasers: [] } }
+  const rev = nextRev()
+  return { ...piece, data: { v: 2, kind: 'drawing', ppw, ops: [shiftStroke(stroke, -(cx - width / 2), -(cy - height / 2))], rev, fileRev: rev } }
 }
 
 // A drawing's picture, placed in the world as its trace shows it, with an
@@ -740,35 +741,55 @@ export function inkColour(picture: Picture): string | null {
   return '#' + [data[best - 3], data[best - 2], data[best - 1]].map(v => v.toString(16).padStart(2, '0')).join('')
 }
 
-// The drawing a drawing trace belongs to: the group it's in, when everything
-// in that group is a drawing (a "Drawing N"), or just itself -- alone, or
-// among other things in a group of some other kind.
-export function drawingOf<T extends Stackable & { type: string; mediaUrl?: string | null; content?: string | null }>(
+// The drawing a drawing trace belongs to: itself, a whole drawing in one
+// trace; or, a stroke, the group it's in when everything in that group is
+// drawing (strokes split apart, or drawn one trace each before drawings kept
+// them all), or else just itself.
+export function drawingOf<T extends Stackable & { type: string; mediaUrl?: string | null; content?: string | null; strokeData?: unknown }>(
   trace: T, traces: T[], layers: { id: string }[],
 ): { groupId: string | null; members: T[] } {
   const groupId = groupIdOf(trace, layers)
-  if (!groupId) return { groupId: null, members: [trace] }
+  if (!groupId || asStrokeData(trace.strokeData)?.kind === 'drawing') return { groupId: null, members: [trace] }
   const inGroup = traces.filter(t => t.layerId === groupId)
   return { groupId, members: inGroup.every(isDrawingTrace) ? inGroup : [trace] }
 }
 
-// ---- A stroke kept as it was drawn ----------------------------------------------
+// ---- A drawing kept as it was drawn ----------------------------------------------
 //
-// A stroke's picture is its file, but the stroke is kept as well: its points,
-// colour, width, brush, softness and seed, and each eraser stroke taken out of
-// it, in the trace's own box units -- (0, 0) the box's top-left, width x
+// A drawing trace keeps what it was drawn with, not only its picture: every
+// stroke and every eraser stroke, in the order they were made -- an eraser
+// takes out what was painted before it, from any stroke, as it did on the
+// screen -- in the trace's own box units: (0, 0) the box's top-left, width x
 // height its size before any scaling. Moving, scaling or turning the trace
-// leaves them alone. From them it's painted again: sharp at whatever zoom
-// it's seen at (TraceOverlay), and in another colour, width, brush or
-// softness. The file stays, for everything that reads files -- exports, older
-// copies of the app -- and is painted again with it.
+// leaves them alone.
+//
+// From them it's painted again: sharp at whatever zoom it's seen at
+// (StrokeCanvas), and with another colour, width, brush or softness. Its
+// picture file is a copy of that painting, for what reads files -- exports,
+// older copies of the app -- made again after it changes (lib/drawingFiles):
+// `rev` counts changes and `fileRev` is the one the file shows, and while they
+// differ the canvas paints from the strokes instead.
+//
+// A drawing (kind 'drawing') is a whole drawing in one trace; a stroke (kind
+// 'stroke') is one stroke of one split apart (splitStrokes), in a group with
+// the others. The first form of this (v: 1) was a stroke and its erasers: a
+// stroke, read as one.
 
 export interface StrokeData {
-  v: 1
+  v: 2
+  kind: 'drawing' | 'stroke'
   // Pixels per unit its file is painted at.
   ppw: number
-  stroke: Stroke
-  erasers: Stroke[]
+  ops: Stroke[]
+  rev: number
+  fileRev: number
+}
+
+let lastRev = 0
+// A number no change has had: later than any before it, here or elsewhere.
+export function nextRev(): number {
+  lastRev = Math.max(Date.now(), lastRev + 1)
+  return lastRev
 }
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
@@ -787,29 +808,36 @@ function asStroke(value: any): Stroke | null {
   }
 }
 
-// A stroke's data as read back -- from the database, a file, a desktop vault
+// A drawing's data as read back -- from the database, a file, a desktop vault
 // (as text there) -- or null for anything that isn't one. Never trusted as it
-// comes: it's painted from.
+// comes: it's painted from. The first form (v: 1) comes back in this one.
 export function asStrokeData(value: unknown): StrokeData | null {
   let data: any = value
   if (typeof data === 'string') {
     try { data = JSON.parse(data) } catch { return null }
   }
-  if (!data || typeof data !== 'object' || data.v !== 1 || !finite(data.ppw) || data.ppw <= 0 || !Array.isArray(data.erasers)) return null
-  const stroke = asStroke(data.stroke)
-  const erasers = data.erasers.map(asStroke)
-  if (!stroke || erasers.some((e: Stroke | null) => !e)) return null
-  return { v: 1, ppw: data.ppw, stroke: { ...stroke, isEraser: false }, erasers: erasers.map((e: Stroke) => ({ ...e, isEraser: true })) }
+  if (!data || typeof data !== 'object' || !finite(data.ppw) || data.ppw <= 0) return null
+  if (data.v === 1) {
+    const stroke = asStroke(data.stroke)
+    const erasers = Array.isArray(data.erasers) ? data.erasers.map(asStroke) : null
+    if (!stroke || !erasers || erasers.some((e: Stroke | null) => !e)) return null
+    return { v: 2, kind: 'stroke', ppw: data.ppw, ops: [{ ...stroke, isEraser: false }, ...erasers.map((e: Stroke) => ({ ...e, isEraser: true }))], rev: 0, fileRev: 0 }
+  }
+  if (data.v !== 2 || !Array.isArray(data.ops) || (data.kind !== 'drawing' && data.kind !== 'stroke')) return null
+  const ops = data.ops.map(asStroke)
+  if (ops.some((o: Stroke | null) => !o)) return null
+  return { v: 2, kind: data.kind, ppw: data.ppw, ops, rev: finite(data.rev) ? data.rev : 0, fileRev: finite(data.fileRev) ? data.fileRev : 0 }
 }
+
+export const strokesIn = (data: StrokeData) => data.ops.filter(op => !op.isEraser)
 
 export const shiftStroke = (stroke: Stroke, dx: number, dy: number): Stroke =>
   ({ ...stroke, points: stroke.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) })
 
-// The stroke, and what the eraser took from it, painted at `ppw` pixels to a
-// unit: its box's top-left at the canvas's.
+// Everything drawn, in order, at `ppw` pixels to a unit: the box's top-left at
+// the canvas's.
 export function paintStrokeData(ctx: CanvasRenderingContext2D, data: StrokeData, ppw: number) {
-  paintInto(ctx, data.stroke, 0, 0, ppw)
-  for (const eraser of data.erasers) paintInto(ctx, eraser, 0, 0, ppw)
+  for (const op of data.ops) paintInto(ctx, op, 0, 0, ppw)
 }
 
 export function renderStrokeData(data: StrokeData, width: number, height: number, ppw = data.ppw): HTMLCanvasElement {
@@ -820,10 +848,10 @@ export function renderStrokeData(data: StrokeData, width: number, height: number
   return canvas
 }
 
-// An eraser stroke in the world, in a trace's own box units: back through
-// where it's centred, how it's turned, scaled and flipped (TracePlacement, in
-// world units). Its width by the scale's geometric mean -- a trace stretched
-// more one way than the other gets a round eraser, near enough.
+// A stroke in the world, in a trace's own box units: back through where it's
+// centred, how it's turned, scaled and flipped (TracePlacement, in world
+// units). Its width by the scale's geometric mean -- a trace stretched more
+// one way than the other gets a round brush, near enough.
 export function strokeToLocal(stroke: Stroke, pl: TracePlacement): Stroke {
   const turn = -pl.rotation * Math.PI / 180
   const cos = Math.cos(turn)
@@ -854,59 +882,88 @@ export function localToWorldDelta(dx: number, dy: number, pl: TracePlacement) {
   return { x: x * Math.cos(turn) - y * Math.sin(turn), y: x * Math.sin(turn) + y * Math.cos(turn) }
 }
 
+// Where the strokes' ink can reach -- their points, and past them their edge
+// and a soft one's fade. Null for none.
+export function inkBounds(ops: Stroke[]) {
+  let box: { minX: number; minY: number; maxX: number; maxY: number } | null = null
+  for (const op of ops) {
+    if (op.isEraser || op.points.length === 0) continue
+    const b = strokeBox(op, strokeReach(op) + 2)
+    box = box
+      ? { minX: Math.min(box.minX, b.minX), minY: Math.min(box.minY, b.minY), maxX: Math.max(box.maxX, b.maxX), maxY: Math.max(box.maxY, b.maxY) }
+      : b
+  }
+  return box
+}
+
+// The box fitted to the strokes: grown to hold them (`grow`, as a drawing is
+// drawn on), or to them alone (a width or brush changed). Whole units, so the
+// web's integer width and height columns hold it; the strokes moved into it,
+// and how far its centre moved, in the old box's units.
+export function fitBox(data: StrokeData, width: number, height: number, grow: boolean) {
+  const ink = inkBounds(data.ops)
+  if (!ink) return { data, width, height, dx: 0, dy: 0 }
+  const minX = Math.floor(grow ? Math.min(0, ink.minX) : ink.minX)
+  const minY = Math.floor(grow ? Math.min(0, ink.minY) : ink.minY)
+  const w = Math.max(1, Math.ceil(grow ? Math.max(width, ink.maxX) : ink.maxX) - minX)
+  const h = Math.max(1, Math.ceil(grow ? Math.max(height, ink.maxY) : ink.maxY) - minY)
+  return {
+    data: minX || minY ? { ...data, ops: data.ops.map(op => shiftStroke(op, -minX, -minY)) } : data,
+    width: w,
+    height: h,
+    dx: minX + w / 2 - width / 2,
+    dy: minY + h / 2 - height / 2,
+  }
+}
+
 const pixelsOf = (canvas: HTMLCanvasElement) => canvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data
 function inkChanged(before: Uint8ClampedArray, after: Uint8ClampedArray) {
   for (let i = 3; i < after.length; i += 4) if (after[i] !== before[i]) return true
   return false
 }
-function hasInk(data: Uint8ClampedArray) {
+export function hasInk(canvas: HTMLCanvasElement) {
+  const data = pixelsOf(canvas)
   for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true
   return false
 }
 
-// An eraser stroke, in the trace's box units, taken out of a kept stroke:
+// An eraser stroke, in the trace's box units, taken out of a kept drawing:
 // 'untouched' when it reached none of its ink, null when it took all of it,
-// else the stroke with that eraser added and its picture. The box stays as it
-// is, so the trace doesn't move.
-export function eraseStrokeData(data: StrokeData, width: number, height: number, eraser: Stroke): { data: StrokeData; picture: HTMLCanvasElement } | null | 'untouched' {
+// else the drawing with it added and its painting. `before`: the drawing as
+// painted now, when it's already to hand. The box stays as it is.
+export function eraseStrokeData(data: StrokeData, width: number, height: number, eraser: Stroke, before?: HTMLCanvasElement): { data: StrokeData; picture: HTMLCanvasElement } | null | 'untouched' {
   if (eraser.points.length === 0) return 'untouched'
   const reach = strokeBox(eraser, strokeReach(eraser) + 2 / data.ppw)
   if (reach.maxX < 0 || reach.minX > width || reach.maxY < 0 || reach.minY > height) return 'untouched'
-  const next: StrokeData = { ...data, erasers: [...data.erasers, { ...eraser, isEraser: true }] }
+  const next: StrokeData = { ...data, ops: [...data.ops, { ...eraser, isEraser: true }] }
   const picture = renderStrokeData(next, width, height)
-  const after = pixelsOf(picture)
-  if (!inkChanged(pixelsOf(renderStrokeData(data, width, height)), after)) return 'untouched'
-  return hasInk(after) ? { data: next, picture } : null
+  if (!inkChanged(pixelsOf(before ?? renderStrokeData(data, width, height)), pixelsOf(picture))) return 'untouched'
+  return hasInk(picture) ? { data: next, picture } : null
 }
 
-// A kept stroke painted again after its width, brush or softness changed --
-// which can need a bigger box, or fit a smaller one: its box fitted to its ink
-// again. Returned in the new box's units, with the new box's size and how far
-// its centre moved, in the old box's units. Null when no ink is left.
-export function refitStrokeData(data: StrokeData, width: number, height: number): {
-  data: StrokeData; picture: HTMLCanvasElement; width: number; height: number; dx: number; dy: number
-} | null {
-  const ppw = data.ppw
-  const box = strokeBox(data.stroke, Math.max(20 / ppw, strokeReach(data.stroke) + 4 / ppw))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.min(MAX_SIDE, Math.ceil((box.maxX - box.minX) * ppw)))
-  canvas.height = Math.max(1, Math.min(MAX_SIDE, Math.ceil((box.maxY - box.minY) * ppw)))
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-  paintInto(ctx, data.stroke, box.minX, box.minY, ppw)
-  for (const eraser of data.erasers) paintInto(ctx, eraser, box.minX, box.minY, ppw)
-  const piece = trimToInk(canvas, box.minX, box.minY, ppw)
-  if (!piece) return null
-  const { cx, cy, width: w, height: h } = piece.placement
-  const left = cx - w / 2
-  const top = cy - h / 2
-  return {
-    data: { ...data, stroke: shiftStroke(data.stroke, -left, -top), erasers: data.erasers.map(e => shiftStroke(e, -left, -top)) },
-    picture: piece.picture,
-    width: w,
-    height: h,
-    dx: cx - width / 2,
-    dy: cy - height / 2,
+// A drawing apart into its strokes: each with the eraser strokes made after it
+// that reach it -- those, and only those, took from it -- in a box of its own.
+// In the drawing's box units: where each box's centre is, from the drawing's.
+// A stroke erased away entirely is left out.
+export function splitStrokes(data: StrokeData, width: number, height: number): { data: StrokeData; width: number; height: number; dx: number; dy: number; picture: HTMLCanvasElement }[] {
+  const pieces = []
+  for (let i = 0; i < data.ops.length; i++) {
+    const stroke = data.ops[i]
+    if (stroke.isEraser) continue
+    const reach = inkBounds([stroke])!
+    const erasers = data.ops.slice(i + 1).filter(op => {
+      if (!op.isEraser) return false
+      const e = strokeBox(op, strokeReach(op) + 2)
+      return !(e.maxX < reach.minX || e.minX > reach.maxX || e.maxY < reach.minY || e.minY > reach.maxY)
+    })
+    const rev = nextRev()
+    const own: StrokeData = { v: 2, kind: 'stroke', ppw: data.ppw, ops: [stroke, ...erasers], rev, fileRev: rev }
+    const fitted = fitBox(own, width, height, false)
+    const picture = renderStrokeData(fitted.data, fitted.width, fitted.height)
+    if (!hasInk(picture)) continue
+    pieces.push({ ...fitted, picture })
   }
+  return pieces
 }
 
 // How sharp a kept stroke is painted when seen closer than its file

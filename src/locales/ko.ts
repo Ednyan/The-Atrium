@@ -1001,6 +1001,7 @@ const ko: Catalogue = {
   'atrium.menu.copyEmbedLink': '임베드 링크 복사',
   'atrium.menu.convertToImage': '이미지로 바꾸기',
   'atrium.menu.editDrawing': '그림 편집',
+  'atrium.menu.splitStrokes': '획으로 나누기',
   'atrium.menu.connectTo': '연결하기…',
   'atrium.menu.wrapInFrame': '프레임으로 감싸기',
   'atrium.links.pickTarget': '연결할 Trace를 선택하세요',

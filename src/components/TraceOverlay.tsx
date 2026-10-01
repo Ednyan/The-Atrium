@@ -43,7 +43,8 @@ import { has } from '../lib/traceKinds'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
-import { drawingOf, isDrawingTrace, strokeDensity } from '../lib/brushes'
+import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
+import { splitDrawing } from '../lib/drawingFiles'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
@@ -5950,14 +5951,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // Use editingTrace for selected trace to show live updates (check ID match to be safe)
     const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
 const transform = getTraceTransform(trace)
-// A drawing stroke seen closer than its picture was drawn is painted from
-// what's kept of it instead, sharp (StrokeCanvas): at this density, where
-// it's more than the picture's.
+// A kept drawing is painted from what it keeps instead of shown from its
+// picture file (StrokeCanvas) when the file isn't up to it: seen closer than
+// it was painted, not made yet since the drawing last changed, or not there.
 const keptStroke = trace.type === 'image' && trace.width && trace.height ? trace.strokeData : null
 const strokePaintDensity = keptStroke
   ? strokeDensity(zoom * Math.max(Math.abs(transform.scaleX ?? 1), Math.abs(transform.scaleY ?? 1)) * (window.devicePixelRatio || 1), trace.width!, trace.height!)
   : 0
-const paintStroke = !!keptStroke && strokePaintDensity > keptStroke.ppw
+const paintStroke = !!keptStroke && (strokePaintDensity > keptStroke.ppw || keptStroke.rev !== keptStroke.fileRev
+  || failedImages.has(trace.id) || !!imageProxySources[trace.id]?.startsWith('local://'))
 let { screenX, screenY } = getScreenPosition(transform.x, transform.y)
 // Same staleness problem as the viewport-culling filter above: a
 // path's x/y only reflects where it was created or last moved as a
@@ -8197,6 +8199,30 @@ return (
                   }}
                 >
                   <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.editDrawing')}
+                </button>
+              )
+            })()}
+            {/* A drawing apart into its strokes, each a trace, in a group
+                where it was (lib/drawingFiles splitDrawing). */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              const kept = trace && asStrokeData(trace.strokeData)
+              if (!canEdit || !trace || !kept || kept.kind !== 'drawing' || strokesIn(kept).length < 2) return null
+              if (editingWholeSelection && !(multiSelectedIds.size === 1 && multiSelectedIds.has(trace.id))) return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    setContextMenu(null)
+                    setSelectedTraceId(null)
+                    setMultiSelectedIds(new Set())
+                    void splitDrawing(trace.id, n => t('atrium.layers.numberedStroke', { n })).catch(err => {
+                      console.error('[drawing] could not split:', err)
+                      showToast(t('atrium.draw.strokeSaveFailed', { message: err?.message ?? '' }))
+                    })
+                  }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.splitStrokes')}
                 </button>
               )
             })()}

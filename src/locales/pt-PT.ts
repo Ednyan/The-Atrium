@@ -1052,6 +1052,7 @@ const ptPT: Catalogue = {
   'atrium.menu.copyEmbedLink': 'Copiar link do embed',
   'atrium.menu.convertToImage': 'Converter em imagem',
   'atrium.menu.editDrawing': 'Editar desenho',
+  'atrium.menu.splitStrokes': 'Separar em traços',
   'atrium.menu.connectTo': 'Ligar a…',
   'atrium.menu.wrapInFrame': 'Envolver numa moldura',
   'atrium.links.pickTarget': 'Seleciona o trace a que queres ligar',

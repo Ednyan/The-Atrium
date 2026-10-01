@@ -1049,6 +1049,7 @@ const it: Catalogue = {
   'atrium.menu.copyEmbedLink': 'Copia link dell’embed',
   'atrium.menu.convertToImage': 'Converti in immagine',
   'atrium.menu.editDrawing': 'Modifica disegno',
+  'atrium.menu.splitStrokes': 'Dividi in tratti',
   'atrium.menu.connectTo': 'Collega a…',
   'atrium.menu.wrapInFrame': 'Metti in una cornice',
   'atrium.links.pickTarget': 'Seleziona la trace a cui vuoi collegare',

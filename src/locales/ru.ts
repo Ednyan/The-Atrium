@@ -1051,6 +1051,7 @@ const ru: Catalogue = {
   'atrium.menu.copyEmbedLink': 'Копировать ссылку встраивания',
   'atrium.menu.convertToImage': 'Преобразовать в изображение',
   'atrium.menu.editDrawing': 'Редактировать рисунок',
+  'atrium.menu.splitStrokes': 'Разделить на штрихи',
   'atrium.menu.connectTo': 'Соединить с…',
   'atrium.menu.wrapInFrame': 'Поместить в рамку',
   'atrium.links.pickTarget': 'Выберите Trace, с которым соединить',

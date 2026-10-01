@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { alphaBounds, asStrokeData, drawPlacedPicture, drawingOf, isCustomBrush, isDrawingTrace, localToWorldDelta, niceDensity, placePicture, placementBounds, seededRandom, stampPositions, strokeDensity, strokeToLocal, tipAlpha, worldSize } from '../src/lib/brushes.ts'
+import { alphaBounds, asStrokeData, drawPlacedPicture, drawingOf, fitBox, inkBounds, isCustomBrush, isDrawingTrace, localToWorldDelta, niceDensity, placePicture, placementBounds, seededRandom, stampPositions, strokeDensity, strokeToLocal, tipAlpha, worldSize } from '../src/lib/brushes.ts'
 
 test('stamps land at the spacing, whatever the segments are', () => {
   const xs = (points: { x: number; y: number }[]) => stampPositions(points, () => 2).map(s => s.x)
@@ -135,17 +135,40 @@ test("a drawing is its group when that's all drawings, else the trace alone", ()
   assert.equal(of('e'), 'null:e')
 })
 
-test("a stroke's kept data is checked, not trusted", () => {
-  const good = { v: 1, ppw: 2, stroke: { points: [{ x: 1, y: 2 }, { x: 3, y: 4, p: 0.5 }], color: '#fff', width: 3, isEraser: false, brush: 'pen', seed: 7, hardness: 1 }, erasers: [] }
-  assert.deepEqual(asStrokeData(good)?.stroke.points, good.stroke.points)
+test("a drawing's kept data is checked, not trusted", () => {
+  const stroke = { points: [{ x: 1, y: 2 }, { x: 3, y: 4, p: 0.5 }], color: '#fff', width: 3, isEraser: false, brush: 'pen', seed: 7, hardness: 1 }
+  const eraser = { ...stroke, isEraser: true }
+  const good = { v: 2, kind: 'drawing', ppw: 2, ops: [stroke, eraser], rev: 5, fileRev: 4 }
+  assert.deepEqual(asStrokeData(good)?.ops.map(o => o.isEraser), [false, true])
+  assert.deepEqual([asStrokeData(good)?.rev, asStrokeData(good)?.fileRev], [5, 4])
   // As the desktop vault hands it back: text.
   assert.equal(asStrokeData(JSON.stringify(good))?.ppw, 2)
-  // An eraser is always one, whatever it says.
-  assert.equal(asStrokeData({ ...good, erasers: [{ ...good.stroke, isEraser: false }] })?.erasers[0].isEraser, true)
-  for (const bad of [null, 'nope', { ...good, v: 2 }, { ...good, ppw: 0 }, { ...good, stroke: { ...good.stroke, width: -1 } },
-    { ...good, stroke: { ...good.stroke, points: [{ x: 'a', y: 1 }] } }, { ...good, erasers: [{}] }, { ...good, erasers: 'x' }]) {
+  // The first form -- a stroke and its erasers -- is a stroke of the new one.
+  const first = asStrokeData({ v: 1, ppw: 1, stroke, erasers: [{ ...stroke, isEraser: false }] })
+  assert.equal(first?.kind, 'stroke')
+  assert.deepEqual(first?.ops.map(o => o.isEraser), [false, true])
+  for (const bad of [null, 'nope', { ...good, v: 3 }, { ...good, ppw: 0 }, { ...good, kind: 'other' }, { ...good, ops: 'x' },
+    { ...good, ops: [{ ...stroke, width: -1 }] }, { ...good, ops: [{ ...stroke, points: [{ x: 'a', y: 1 }] }] }, { ...good, ops: [{}] }]) {
     assert.equal(asStrokeData(bad), null, JSON.stringify(bad))
   }
+})
+
+test("a drawing's box grows to hold what's drawn, and fits it again after a change", () => {
+  const line = (x1: number, x2: number, y: number, width = 2, isEraser = false) => ({ points: [{ x: x1, y }, { x: x2, y }], color: '#fff', width, isEraser })
+  const data = { v: 2 as const, kind: 'drawing' as const, ppw: 1, ops: [line(10, 30, 10)], rev: 1, fileRev: 1 }
+  // A stroke out past the left and bottom of a 40 x 20 box: the box grows,
+  // the strokes move into it, and its centre moves the same way.
+  const grown = fitBox({ ...data, ops: [...data.ops, line(-15, 5, 30)] }, 40, 20, true)
+  assert.ok(grown.width > 40 && grown.height > 20)
+  const [first] = grown.data.ops
+  assert.ok(first.points[0].x > 10, 'shifted right')
+  assert.ok(grown.dx < 0 && grown.dy > 0)
+  // Growing never cuts what was there: the old box still inside.
+  assert.ok(inkBounds(grown.data.ops)!.minX >= 0)
+  // A thinner stroke fitted to itself: a smaller box, erasers left out of it.
+  const fitted = fitBox({ ...data, ops: [line(10, 30, 10, 2), line(0, 100, 50, 30, true)] }, 60, 60, false)
+  assert.ok(fitted.width < 60 && fitted.height < 60)
+  assert.equal(inkBounds([]), null)
 })
 
 test('an eraser in the world lands where the stroke is, however the trace is turned, scaled and flipped', () => {

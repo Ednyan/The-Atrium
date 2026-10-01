@@ -1,6 +1,7 @@
 // A drawing's strokes as files and as rows: saved, loaded, deleted, brought
-// back, and changed after they're drawn. Drawing mode (LobbyScene) and a
-// stroke's look changed afterwards (StrokeStyleField) both go through here.
+// back, changed after they're drawn, and split apart. Drawing mode
+// (LobbyScene), a stroke's look changed afterwards (StrokeStyleField) and
+// Split into Strokes (TraceOverlay) all go through here.
 //
 // Everything a drawing does is written at once, as each stroke is -- a
 // stroke taken away (undone, erased entirely, cleared) is deleted then and
@@ -9,10 +10,14 @@
 import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Trace } from '../types/database'
-import { asStrokeData, isDrawingTrace, localToWorldDelta, pictureSize, refitStrokeData, renderStrokeData, tintPicture, type Picture, type Piece, type Stroke, type TracePlacement } from './brushes'
+import { asStrokeData, fitBox, isDrawingTrace, localToWorldDelta, nextRev, pictureSize, renderStrokeData, splitStrokes, tintPicture, type Picture, type Piece, type Stroke, type StrokeData, type TracePlacement } from './brushes'
 import { buildTraceInsertRow } from './traceInsert'
-import { adoptTraces } from './layerUndo'
+import { adoptTraces, withLayerUndo } from './layerUndo'
+import { queueLayerChange } from './layerQueue'
 import { recordAction } from './actionHistory'
+import { createGroup } from '../hooks/useLayers'
+import { keysAt, keysBetween } from './order'
+import { mapRowToTrace } from '../hooks/useTraces'
 
 // Every stroke's picture, by its file's address: painted here, or loaded.
 const pictures = new Map<string, Picture>()
@@ -140,11 +145,14 @@ export async function dropStrokes(gone: Trace[]): Promise<void> {
 // already, so TraceOverlay isn't to record them arriving (adoptTraces).
 //
 // On desktop a deleted row's file goes from the vault with it (localDb
-// removeOrphanedTraceMedia), so a stroke's picture is written again, from
-// the one kept here, and the row points at that.
+// removeOrphanedTraceMedia): a kept drawing is marked changed, so its file is
+// made again from what's kept (and painted from that meanwhile); a picture
+// alone is written again from the copy held here, and the row points at that.
 export async function restoreStrokes(back: Trace[]): Promise<void> {
   if (back.length === 0) return
   back = await Promise.all(back.map(async t => {
+    const data = asStrokeData(t.strokeData)
+    if (data) return { ...t, strokeData: { ...data, rev: nextRev() } }
     const picture = t.mediaUrl?.startsWith('local://') ? pictures.get(t.mediaUrl) : undefined
     return picture && t.lobbyId ? { ...t, mediaUrl: await saveDrawingPicture(picture, t.lobbyId, t.userId) } : t
   }))
@@ -156,57 +164,181 @@ export async function restoreStrokes(back: Trace[]): Promise<void> {
       .insert({ ...buildTraceInsertRow(t, t.userId, t.username, t.lobbyId ?? undefined, 0, 0), id: t.id, is_locked: !!t.isLocked })
     if (error) console.error('[drawing] could not put a stroke back:', error)
   }
+  for (const t of back) if (t.strokeData) refreshDrawingFile(t.id)
+}
+
+// ---- A kept drawing, written and painted --------------------------------------------
+
+// A drawing painted from what's kept, as its file would be: for drawing mode's
+// canvas, painted once per change.
+const painted = new Map<string, { key: string; picture: HTMLCanvasElement }>()
+export function paintedDrawing(trace: Trace): HTMLCanvasElement | null {
+  const data = asStrokeData(trace.strokeData)
+  if (!data || !trace.width || !trace.height) return null
+  const key = `${data.rev}:${trace.width}x${trace.height}`
+  const known = painted.get(trace.id)
+  if (known?.key === key) return known.picture
+  const picture = renderStrokeData(data, trace.width, trace.height)
+  painted.set(trace.id, { key, picture })
+  return picture
+}
+
+type DrawingFields = { strokeData: StrokeData } & Partial<Pick<Trace, 'x' | 'y' | 'width' | 'height'>>
+
+// A kept drawing changed: written at once, marked as a change its file doesn't
+// show yet -- whatever the data being put back said, so an undo can't claim a
+// file that shows something else -- and its file made again behind it.
+export async function writeDrawing(traceId: string, fields: DrawingFields): Promise<void> {
+  const current = asStrokeData(useGameStore.getState().traces.find(t => t.id === traceId)?.strokeData)
+  const strokeData: StrokeData = { ...fields.strokeData, rev: nextRev(), fileRev: current?.fileRev ?? 0 }
+  await writePicture(traceId, { ...fields, strokeData })
+  refreshDrawingFile(traceId)
+}
+
+// Its file made again from what's kept, a moment after it last changed -- not
+// once a stroke: every copy is a file in the atrium's storage -- or not while
+// it's held (being drawn on: releaseDrawingFiles makes it then).
+const REFRESH_AFTER_MS = 800
+const held = new Set<string>()
+const timers = new Map<string, number>()
+export function holdDrawingFiles(ids: Iterable<string>) {
+  for (const id of ids) held.add(id)
+}
+export function releaseDrawingFiles(ids: Iterable<string>) {
+  for (const id of ids) {
+    held.delete(id)
+    refreshDrawingFile(id, 0)
+  }
+}
+export function refreshDrawingFile(traceId: string, delay = REFRESH_AFTER_MS) {
+  window.clearTimeout(timers.get(traceId))
+  if (held.has(traceId)) return
+  timers.set(traceId, window.setTimeout(() => {
+    timers.delete(traceId)
+    void makeDrawingFile(traceId)
+  }, delay))
+}
+async function makeDrawingFile(traceId: string) {
+  const store = useGameStore.getState()
+  const trace = store.traces.find(t => t.id === traceId)
+  const data = asStrokeData(trace?.strokeData)
+  if (!trace?.lobbyId || !data || data.fileRev === data.rev || !trace.width || !trace.height) return
+  const url = await saveDrawingPicture(renderStrokeData(data, trace.width, trace.height), trace.lobbyId, store.userId)
+  // Changed again meanwhile: that change's own refresh will make its file.
+  const now = asStrokeData(useGameStore.getState().traces.find(t => t.id === traceId)?.strokeData)
+  if (now?.rev !== data.rev) return
+  await writePicture(traceId, { mediaUrl: url, strokeData: { ...now, fileRev: now.rev } })
 }
 
 // What can be changed on a stroke after it's drawn.
 export type StrokeChange = Partial<Pick<Stroke, 'color' | 'width' | 'brush' | 'hardness'>>
 
-// Strokes changed after they're drawn, each painted again from what's kept of
-// it (StrokeData) -- a new width, brush or softness fitting its box to its
-// ink again, the trace staying where it is -- and saved as a new file, all of
-// it one step of undo. A drawing from before strokes were kept has only its
-// picture: its colour can change (tintPicture, shading kept, every colour in
-// it becoming the one), nothing else. False when none of them changed.
+// Strokes changed after they're drawn -- every stroke of a drawing -- painted
+// again from what's kept (StrokeData): a new width, brush or softness fitting
+// its box to them again, the trace staying where it is. All of it one step of
+// undo. A drawing from before strokes were kept has only its picture: its
+// colour can change (tintPicture, shading kept, every colour in it becoming
+// the one), nothing else. False when none of them changed.
 export async function changeStrokes(traceIds: string[], change: StrokeChange, lobbyId: string, userId: string | null): Promise<boolean> {
-  const changes: { id: string; before: Partial<PictureFields>; after: Partial<PictureFields> }[] = []
+  const kept: { id: string; before: DrawingFields; after: DrawingFields }[] = []
+  const pictures: { id: string; before: string; after: string }[] = []
   const reshape = change.width !== undefined || change.brush !== undefined || change.hardness !== undefined
   for (const id of traceIds) {
     const trace = useGameStore.getState().traces.find(t => t.id === id)
-    if (!trace?.mediaUrl || !isDrawingTrace(trace)) continue
+    if (!trace || !isDrawingTrace(trace)) continue
     const data = asStrokeData(trace.strokeData)
     if (!data || !trace.width || !trace.height) {
-      if (!change.color) continue
+      if (!change.color || !trace.mediaUrl) continue
       const picture = await loadDrawingPicture(trace.mediaUrl)
       if (!picture) continue
-      changes.push({ id, before: { mediaUrl: trace.mediaUrl }, after: { mediaUrl: await saveDrawingPicture(tintPicture(picture, change.color), lobbyId, userId) } })
+      pictures.push({ id, before: trace.mediaUrl, after: await saveDrawingPicture(tintPicture(picture, change.color), lobbyId, userId) })
       continue
     }
-    const next = { ...data, stroke: { ...data.stroke, ...change } }
-    const before = pictureFieldsOf(trace)
+    const next: StrokeData = { ...data, ops: data.ops.map(op => (op.isEraser ? op : { ...op, ...change })) }
+    const before: DrawingFields = { strokeData: data, x: trace.x, y: trace.y, width: trace.width, height: trace.height }
     if (!reshape) {
-      const picture = renderStrokeData(next, trace.width, trace.height)
-      changes.push({ id, before, after: { mediaUrl: await saveDrawingPicture(picture, lobbyId, userId), strokeData: next } })
+      kept.push({ id, before, after: { strokeData: next } })
       continue
     }
-    const fitted = refitStrokeData(next, trace.width, trace.height)
-    if (!fitted) continue
-    const moved = localToWorldDelta(fitted.dx, fitted.dy, placementOf(trace, fitted.picture))
-    changes.push({
-      id,
-      before,
-      after: {
-        mediaUrl: await saveDrawingPicture(fitted.picture, lobbyId, userId),
-        strokeData: fitted.data,
-        x: trace.x + moved.x,
-        y: trace.y + moved.y,
-        width: fitted.width,
-        height: fitted.height,
-      },
-    })
+    const fitted = fitBox(next, trace.width, trace.height, false)
+    const moved = localToWorldDelta(fitted.dx, fitted.dy, placementOf(trace))
+    kept.push({ id, before, after: { strokeData: fitted.data, x: trace.x + moved.x, y: trace.y + moved.y, width: fitted.width, height: fitted.height } })
   }
-  if (changes.length === 0) return false
-  const put = (which: 'before' | 'after') => Promise.all(changes.map(c => writePicture(c.id, c[which]))).then(() => {})
+  if (kept.length === 0 && pictures.length === 0) return false
+  const put = (which: 'before' | 'after') => Promise.all([
+    ...kept.map(c => writeDrawing(c.id, c[which])),
+    ...pictures.map(c => writePicture(c.id, { mediaUrl: c[which] })),
+  ]).then(() => {})
   await put('after')
   recordAction({ label: 'stroke changed', undo: () => put('before'), redo: () => put('after') })
   return true
+}
+
+// ---- Split into strokes ------------------------------------------------------------------
+
+// A drawing apart into its strokes (lib/brushes splitStrokes): each a trace of
+// its own named Stroke N, where it was in the drawing -- turned, scaled and
+// flipped as the drawing is -- together in a group where the drawing was: a
+// new group named as the drawing was, or, the drawing already in one, that
+// group. The drawing goes. One layer change, so one step of undo that puts
+// the drawing back (lib/layerUndo).
+export function splitDrawing(traceId: string, strokeName: (n: number) => string): Promise<boolean> {
+  return queueLayerChange(() => withLayerUndo('split drawing', async () => {
+    const { traces, layers, userId } = useGameStore.getState()
+    const drawing = traces.find(t => t.id === traceId)
+    const data = asStrokeData(drawing?.strokeData)
+    if (!supabase || !drawing?.lobbyId || !data || !drawing.width || !drawing.height) return false
+    const pieces = splitStrokes(data, drawing.width, drawing.height)
+    if (pieces.length < 2) return false
+    const placement = placementOf(drawing)
+
+    // Where they go: into the drawing's group at its place, or a new group of
+    // their own in its place in the stack.
+    const inGroup = drawing.layerId && layers.some(l => l.id === drawing.layerId) ? drawing.layerId : null
+    let groupId: string
+    let keys: string[]
+    if (inGroup) {
+      groupId = inGroup
+      const others = traces.filter(t => t.layerId === inGroup && t.id !== drawing.id)
+      const below = others.filter(t => (t.orderKey ?? '') < (drawing.orderKey ?? '')).length
+      keys = keysAt(others, below, pieces.length) ?? keysBetween(null, null, pieces.length)
+    } else {
+      groupId = (await createGroup(drawing.lobbyId, drawing.content || strokeName(1), userId, drawing.orderKey ?? undefined)).id
+      keys = keysBetween(null, null, pieces.length)
+    }
+
+    const taken = inGroup ? traces.filter(t => t.layerId === inGroup).map(t => t.content) : []
+    const names: string[] = []
+    for (let n = 1; names.length < pieces.length; n++) if (!taken.includes(strokeName(n))) names.push(strokeName(n))
+
+    for (const [i, piece] of pieces.entries()) {
+      const moved = localToWorldDelta(piece.dx, piece.dy, placement)
+      const url = await saveDrawingPicture(piece.picture, drawing.lobbyId, userId)
+      const row = {
+        ...buildTraceInsertRow({
+          ...drawing,
+          content: names[i],
+          mediaUrl: url,
+          strokeData: piece.data,
+          x: drawing.x + moved.x,
+          y: drawing.y + moved.y,
+          width: piece.width,
+          height: piece.height,
+          cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
+          layerId: groupId,
+          orderKey: keys[i],
+          frameId: drawing.frameId,
+        }, drawing.userId, drawing.username, drawing.lobbyId, 0, 0),
+        id: crypto.randomUUID(),
+      }
+      const { error } = await (supabase.from('traces') as any).insert(row)
+      if (error) throw error
+      useGameStore.getState().addTrace(mapRowToTrace(row))
+    }
+    const { error } = await (supabase.from('traces') as any).delete().eq('id', drawing.id)
+    if (error) throw error
+    useGameStore.getState().removeTrace(drawing.id)
+    window.dispatchEvent(new Event('atrium:layers-changed'))
+    return true
+  }))
 }

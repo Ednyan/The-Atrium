@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { useGamePick } from '../store/gameStore'
-import { asStrokeData, BUILTIN_BRUSHES, inkColour } from '../lib/brushes'
+import { asStrokeData, BUILTIN_BRUSHES, inkColour, strokesIn } from '../lib/brushes'
 import { changeStrokes, loadDrawingPicture, type StrokeChange } from '../lib/drawingFiles'
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
 
@@ -54,16 +54,19 @@ export default function StrokeStyleField({ traceIds, lobbyId, userId }: { traceI
   const { t } = useTranslation()
   const { traces } = useGamePick('traces')
   const [busy, setBusy] = useState(false)
-  const kept = traceIds.map(id => asStrokeData(traces.find(tr => tr.id === id)?.strokeData))
-  const first = kept.find(Boolean) ?? null
+  // The first stroke of the first of them that's kept: what the controls show.
+  const first = traceIds
+    .map(id => asStrokeData(traces.find(tr => tr.id === id)?.strokeData))
+    .map(data => (data ? strokesIn(data)[0] : undefined))
+    .find(Boolean) ?? null
   const firstTrace = traces.find(tr => tr.id === traceIds[0])
 
   // The colour shown: the first kept stroke's, or -- a drawing from before --
   // the colour its picture is drawn in.
-  const [colour, setColour] = useState(first?.stroke.color ?? '#ffffff')
+  const [colour, setColour] = useState(first?.color ?? '#ffffff')
   useEffect(() => {
     if (first) {
-      setColour(first.stroke.color)
+      setColour(first.color)
       return
     }
     let live = true
@@ -74,14 +77,14 @@ export default function StrokeStyleField({ traceIds, lobbyId, userId }: { traceI
       })
     }
     return () => { live = false }
-  }, [first?.stroke.color, firstTrace?.mediaUrl])
+  }, [first?.color, firstTrace?.mediaUrl])
 
   const apply = (change: StrokeChange) => {
     setBusy(true)
     void changeStrokes(traceIds, change, lobbyId, userId).finally(() => setBusy(false))
   }
   const colourRef = useLetGo(picked => apply({ color: picked }))
-  const brush = first?.stroke.brush ?? 'pen'
+  const brush = first?.brush ?? 'pen'
 
   return (
     <div className="space-y-3">
@@ -99,8 +102,8 @@ export default function StrokeStyleField({ traceIds, lobbyId, userId }: { traceI
       {/* Only what's kept can be painted again another way. */}
       {first && (
         <>
-          <RangeField label={t('atrium.draw.width')} value={Math.round(first.stroke.width)} min={1} max={100} step={1} disabled={busy} onLetGo={width => apply({ width })} />
-          <RangeField label={t('atrium.draw.hardness')} value={Math.round((first.stroke.hardness ?? 1) * 100)} min={0} max={100} step={1} disabled={busy} onLetGo={hardness => apply({ hardness: hardness / 100 })} />
+          <RangeField label={t('atrium.draw.width')} value={Math.round(first.width)} min={1} max={100} step={1} disabled={busy} onLetGo={width => apply({ width })} />
+          <RangeField label={t('atrium.draw.hardness')} value={Math.round((first.hardness ?? 1) * 100)} min={0} max={100} step={1} disabled={busy} onLetGo={hardness => apply({ hardness: hardness / 100 })} />
           <div className="grid grid-cols-5 gap-1">
             {BUILTIN_BRUSHES.map(kind => (
               <button

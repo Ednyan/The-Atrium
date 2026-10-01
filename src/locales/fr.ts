@@ -1047,6 +1047,7 @@ const fr: Catalogue = {
   'atrium.menu.copyEmbedLink': 'Copier le lien de l’embed',
   'atrium.menu.convertToImage': 'Convertir en image',
   'atrium.menu.editDrawing': 'Modifier le dessin',
+  'atrium.menu.splitStrokes': 'Séparer en traits',
   'atrium.menu.connectTo': 'Relier à…',
   'atrium.menu.wrapInFrame': 'Mettre dans un cadre',
   'atrium.links.pickTarget': 'Sélectionne la trace à laquelle relier',

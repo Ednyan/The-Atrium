@@ -997,6 +997,7 @@ const ja: Catalogue = {
   'atrium.menu.copyEmbedLink': '埋め込みリンクをコピー',
   'atrium.menu.convertToImage': '画像に変換',
   'atrium.menu.editDrawing': '描いたものを編集',
+  'atrium.menu.splitStrokes': 'ストロークに分割',
   'atrium.menu.connectTo': 'つなぐ…',
   'atrium.menu.wrapInFrame': 'フレームで囲む',
   'atrium.links.pickTarget': 'つなぎたい Trace を選んでください',

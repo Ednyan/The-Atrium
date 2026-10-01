@@ -1000,6 +1000,7 @@ const zh: Catalogue = {
   'atrium.menu.copyEmbedLink': '复制嵌入链接',
   'atrium.menu.convertToImage': '转换成图片',
   'atrium.menu.editDrawing': '编辑这幅画',
+  'atrium.menu.splitStrokes': '拆分为笔画',
   'atrium.menu.connectTo': '连接到…',
   'atrium.menu.wrapInFrame': '用框架包住',
   'atrium.links.pickTarget': '选择要连接的 Trace',

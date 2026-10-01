@@ -951,6 +951,7 @@ export const en = {
   'atrium.menu.copyEmbedLink': 'Copy Embed Link',
   'atrium.menu.convertToImage': 'Convert to Image',
   'atrium.menu.editDrawing': 'Edit Drawing',
+  'atrium.menu.splitStrokes': 'Split into Strokes',
   'atrium.menu.connectTo': 'Connect to…',
   'atrium.menu.wrapInFrame': 'Wrap in Frame',
   'atrium.links.pickTarget': 'Select the trace you want to connect to',

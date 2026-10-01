@@ -77,6 +77,8 @@ export function buildTraceInsertRow(
   // video trace silently dropped its size and fell back to the default box.
   if (trace.width) newTrace.width = trace.width
   if (trace.height) newTrace.height = trace.height
+  // A drawing's strokes (lib/brushes StrokeData): what it's painted from.
+  if (trace.strokeData) newTrace.stroke_data = trace.strokeData
 
   if (trace.type === 'shape') {
     if (trace.shapeType) newTrace.shape_type = trace.shapeType
@@ -89,7 +91,6 @@ export function buildTraceInsertRow(
     if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
     if (trace.shapeOutlineOpacity !== undefined) newTrace.shape_outline_opacity = trace.shapeOutlineOpacity
     if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
-  if (trace.strokeData) newTrace.stroke_data = trace.strokeData
     if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
     if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
     if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd
