@@ -9,6 +9,7 @@ import { mkdir, exists } from '@tauri-apps/plugin-fs'
 import { carryLinks } from './traceLinks'
 import { carriedFrameId, freshIds } from './frames'
 import { flattenLegacyOrder } from './order'
+import { placeholderNames } from './traceNames'
 
 let db: Database | null = null
 let mediaBasePath: string = ''
@@ -1331,6 +1332,27 @@ export async function initLocalDb(): Promise<void> {
     )
   } catch (e) {
     console.error('[localDb] could not name text traces:', e)
+  }
+  // Shapes and drawings saved under a placeholder, named as new ones are
+  // (lib/traceNames placeholderNames; the web's name_shapes_and_drawings.sql).
+  try {
+    const lobbies = await db.select<{ lobby_id: string }[]>(
+      "SELECT DISTINCT lobby_id FROM traces WHERE content = 'freehand drawing' "
+      + "OR (type = 'shape' AND (content IS NULL OR trim(content) IN ('', 'shape content')))",
+    )
+    for (const { lobby_id } of lobbies) {
+      const rows = await db.select<any[]>(
+        'SELECT id, type, shape_type, content, layer_id, media_url, stroke_data FROM traces WHERE lobby_id = ? ORDER BY created_at, id', [lobby_id])
+      const groups = await db.select<{ name: string }[]>('SELECT name FROM layers WHERE lobby_id = ?', [lobby_id])
+      const named = placeholderNames(
+        rows.map(r => ({ id: r.id, type: r.type, shapeType: r.shape_type, content: r.content, layerId: r.layer_id, mediaUrl: r.media_url, strokeData: r.stroke_data })),
+        groups.map(g => g.name),
+        { shape: n => `Shape ${n}`, path: n => `Path ${n}`, stroke: n => `Stroke ${n}`, drawing: n => `Drawing ${n}` },
+      )
+      for (const [id, name] of named) await db.execute('UPDATE traces SET content = ? WHERE id = ?', [name, id])
+    }
+  } catch (e) {
+    console.error('[localDb] could not name shapes and drawings:', e)
   }
   for (const table of ['traces', 'layers']) {
     try {

@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { cleanTitle, fileTitle, firstFreeName, nextTextName, nextUntitledName } from '../src/lib/traceNames.ts'
+import { cleanTitle, fileTitle, firstFreeName, nextTextName, nextUntitledName, placeholderNames } from '../src/lib/traceNames.ts'
 
 const text = (n: number) => `Text ${n}`
 
@@ -35,4 +35,20 @@ test('a title of blanks and invisible characters is no title', () => {
   assert.equal(cleanTitle('\u3164 Casual \n dress code \u200B'), 'Casual dress code')
   assert.equal(cleanTitle('\u2764\uFE0F\u200D\uD83D\uDD25 \u200D'), '\u2764\uFE0F\u200D\uD83D\uDD25')
   assert.equal(cleanTitle(null), '')
+})
+
+test('placeholders from before shapes and drawings were numbered get names', () => {
+  const names = { shape: (n: number) => `Shape ${n}`, path: (n: number) => `Path ${n}`, stroke: (n: number) => `Stroke ${n}`, drawing: (n: number) => `Drawing ${n}` }
+  const drawn = (id: string, layerId: string | null, mediaUrl = `https://x/drawing_u_${id}.png`) => ({ id, type: 'image', content: 'freehand drawing', layerId, mediaUrl })
+  const named = placeholderNames([
+    { id: 's1', type: 'shape', shapeType: 'rectangle', content: 'Shape 1' },
+    { id: 's2', type: 'shape', shapeType: 'circle', content: 'shape content' },
+    { id: 's3', type: 'shape', shapeType: 'rectangle', content: '  ' },
+    { id: 'p1', type: 'shape', shapeType: 'path', content: 'shape content' },
+    drawn('a', 'g'), drawn('b', 'g'), drawn('c', null),
+    // Known as a drawing only by its placeholder: left as it is.
+    drawn('d', null, 'data:image/png;base64,AAA'),
+    { id: 't', type: 'text', content: 'shape content' },
+  ], ['Drawing 1'], names)
+  assert.deepEqual(Object.fromEntries(named), { s2: 'Shape 2', s3: 'Shape 3', p1: 'Path 1', a: 'Stroke 1', b: 'Stroke 2', c: 'Drawing 2' })
 })

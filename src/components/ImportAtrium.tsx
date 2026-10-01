@@ -4,7 +4,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
 import { flattenLegacyOrder, keysFromNumbers } from '../lib/order'
-import { firstFreeName } from '../lib/traceNames'
+import { firstFreeName, placeholderNames } from '../lib/traceNames'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -192,6 +192,18 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         namesTaken.push(name)
         textNames.set(tr, name)
       }
+      // So are shapes and drawings saved under a placeholder (lib/traceNames).
+      const placeheld = placeholderNames(
+        parsed.traces.map((tr, i) => ({ id: String(i), type: tr.type, shapeType: tr.shape_type, content: tr.content, layerId: tr._local_layer_id ?? null, mediaUrl: tr.media_url, strokeData: tr.stroke_data })),
+        parsed.layers.map(l => l.name),
+        {
+          shape: n => t('atrium.layers.numberedShape', { n }),
+          path: n => t('atrium.layers.numberedPath', { n }),
+          stroke: n => t('atrium.layers.numberedStroke', { n }),
+          drawing: n => t('atrium.layers.numberedDrawing', { n }),
+        },
+      )
+      parsed.traces.forEach((tr, i) => { const name = placeheld.get(String(i)); if (name) tr.content = name })
       if (parsed.layers.length > 0) {
         setProgress(t('transfer.import.layers'))
         for (const layer of parsed.layers) {
