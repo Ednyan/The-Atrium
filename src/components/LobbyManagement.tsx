@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase, isDesktop } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import type { Lobby, LobbyAccessList, Profile } from '../types/database'
 import { useTranslation } from '../lib/i18n'
-
-// Web autosaves hit the shared Supabase project, so keep a floor high enough
-// to not be abusable; desktop autosaves only touch the local SQLite file, so
-// it can be as frequent as the user likes.
-const AUTOSAVE_MIN_SECONDS = isDesktop ? 10 : 600
-const AUTOSAVE_MAX_SECONDS = isDesktop ? 600 : 1800
-const clampAutosaveInterval = (value: number) => Math.max(AUTOSAVE_MIN_SECONDS, Math.min(AUTOSAVE_MAX_SECONDS, value))
 
 interface LobbyManagementProps {
   lobby: Lobby
@@ -24,10 +17,6 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
   const [showPasswordField, setShowPasswordField] = useState(false)
   const hasPassword = !!lobby.passwordHash
   const [isPublic, setIsPublic] = useState(lobby.isPublic)
-  const [autosaveEnabled, setAutosaveEnabled] = useState(lobby.autosaveEnabled ?? false)
-  const [autosaveIntervalSeconds, setAutosaveIntervalSeconds] = useState(
-    clampAutosaveInterval(lobby.autosaveIntervalSeconds ?? AUTOSAVE_MIN_SECONDS)
-  )
   const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
   const [editors, setEditors] = useState<(LobbyAccessList & { username?: string })[]>([])
@@ -46,8 +35,6 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
   const isDirty = (
     lobbyName !== lobby.name ||
     isPublic !== lobby.isPublic ||
-    autosaveEnabled !== (lobby.autosaveEnabled ?? false) ||
-    autosaveIntervalSeconds !== clampAutosaveInterval(lobby.autosaveIntervalSeconds ?? AUTOSAVE_MIN_SECONDS) ||
     editPermissionMode !== (lobby.editPermissionMode ?? 'all') ||
     (showPasswordField && password.trim() !== '')
   )
@@ -181,14 +168,12 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       const updates: any = {
         name: lobbyName,
         is_public: isPublic,
-        autosave_enabled: autosaveEnabled,
-        autosave_interval_seconds: clampAutosaveInterval(autosaveIntervalSeconds),
         edit_permission_mode: editPermissionMode,
       }
 
       // Only touch password_hash if the user explicitly opened the
       // set/change-password field -- otherwise saving other settings (name,
-      // autosave, etc.) would silently wipe out an existing password every
+      // visibility, etc.) would silently wipe out an existing password every
       // time, since the field always rendered empty.
       if (showPasswordField) {
         updates.password_hash = password.trim() || null
@@ -506,45 +491,6 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   {t('atrium.manage.public')}
                 </span>
               </label>
-
-              <div className="pt-2 border-t border-nier-border/20">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                    autosaveEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                  }`}>
-                    {autosaveEnabled && <span className="text-nier-bg text-xs">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={autosaveEnabled}
-                    onChange={(e) => setAutosaveEnabled(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                    {t('atrium.manage.autosave')}
-                  </span>
-                </label>
-                <p className="text-nier-bg/70 text-xs tracking-wider mt-1">
-                  {t('atrium.manage.autosaveHint')}
-                </p>
-
-                {autosaveEnabled && (
-                  <div className="mt-3">
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">
-                      {t('atrium.manage.saveEvery', { minutes: Math.floor(autosaveIntervalSeconds / 60), seconds: autosaveIntervalSeconds % 60 })}
-                    </label>
-                    <input
-                      type="range"
-                      min={AUTOSAVE_MIN_SECONDS}
-                      max={AUTOSAVE_MAX_SECONDS}
-                      step="10"
-                      value={autosaveIntervalSeconds}
-                      onChange={(e) => setAutosaveIntervalSeconds(parseInt(e.target.value, 10))}
-                      className="w-full accent-nier-bg"
-                    />
-                  </div>
-                )}
-              </div>
 
               <div className="pt-2 border-t border-nier-border/20">
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">

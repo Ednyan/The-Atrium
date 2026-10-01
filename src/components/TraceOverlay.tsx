@@ -20,7 +20,7 @@ async function resolveLocalStreamUrl(url: string): Promise<string> {
 }
 
 import ProfileCustomization from './ProfileCustomization'
-import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT, TRACE_DISCARD_COMPLETED_EVENT } from '../lib/traceSave'
+import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
@@ -758,7 +758,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         });
       };
     }, []);
-  const { username, playerZIndex, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, pendingChanges, deletedTraces, hasPendingChanges, showTraceTypeLabels, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers } = useGamePick('username', 'playerZIndex', 'setCursorState', 'otherUsers', 'removeTrace', 'userId', 'addTrace', 'markTraceChanged', 'markTraceDeleted', 'pendingChanges', 'deletedTraces', 'hasPendingChanges', 'showTraceTypeLabels', 'hideOtherNameTags', 'hideOtherCursors', 'traceFadeEnabled', 'traceFloat', 'traceMomentum', 'dragBounce', 'links', 'putLink', 'dropLink', 'layers')
+  const { username, playerZIndex, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, showTraceTypeLabels, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers } = useGamePick('username', 'playerZIndex', 'setCursorState', 'otherUsers', 'removeTrace', 'userId', 'addTrace', 'markTraceChanged', 'markTraceDeleted', 'showTraceTypeLabels', 'hideOtherNameTags', 'hideOtherCursors', 'traceFadeEnabled', 'traceFloat', 'traceMomentum', 'dragBounce', 'links', 'putLink', 'dropLink', 'layers')
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -2018,58 +2018,25 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return () => window.removeEventListener('lobby-undo-depth-changed', handleUndoDepthChanged as EventListener)
   }, [getStoredUndoDepth])
 
-  // Clear history whenever a save completes - a diff-based undo entry can no
-  // longer be safely replayed once the rows it was computed against have
-  // been persisted (other collaborators' realtime edits may land in between).
-  // This is a deliberate simplification: undo does not cross a save boundary.
+  // History goes on across saves: changes save themselves (lib/traceSave),
+  // and an undo is a change like any other -- written over the row, or the row
+  // put back if it went. It used to be cleared at every save, when saving was
+  // a button: an undo then wrote nothing, and a trace undeleted after its row
+  // was gone had nothing to update.
   //
-  // Also drop the local drag-preview overrides (localTraceTransforms /
-  // localShapePoints). These render ON TOP of the store's trace data so a
-  // drag feels instant, but they're never cleared after a normal save -- so
-  // once you'd resized/moved a trace and saved it, your client kept
-  // rendering that stale local copy and silently ignored every later
-  // realtime UPDATE another user made to the same trace (e.g. someone else
-  // rescaling a shape you'd previously touched), until a full page reload
-  // reset this component's state. The store stays authoritative now.
+  // What a save does drop is the local drag-preview overrides
+  // (localTraceTransforms / localShapePoints). These render ON TOP of the
+  // store's trace data so a drag feels instant; left after the save, they
+  // went on drawing that local copy over every later realtime UPDATE another
+  // user made to the same trace. The store stays authoritative. Saves wait
+  // for a gesture to end, so none of this goes from under a drag.
   useEffect(() => {
     const handleSaveCompleted = () => {
-      undoStackRef.current = []
-      redoStackRef.current = []
       setLocalTraceTransforms({})
       setLocalShapePoints({})
     }
     window.addEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
     return () => window.removeEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
-  }, [])
-
-  // Same reasoning applies to a discard ("Don't Save"): the traces array
-  // just got replaced wholesale with the last-saved DB state, so any undo
-  // diff is stale, and any panel showing a snapshot of a trace (Customize /
-  // Batch Edit) may now be showing values that no longer exist.
-  //
-  // Also clear localTraceTransforms/localShapePoints entirely -- these are
-  // drag-preview overrides that render ON TOP of the store's trace data
-  // (see applyUpdateTarget above, and getTraceTransform's use at the actual
-  // render site) so dragging feels instant without waiting for a state
-  // round-trip. Undo already knew to clear these per-trace; a discard is the
-  // same problem but for every trace at once. Without this, any trace moved/
-  // resized/rotated (or path point dragged) during the session kept
-  // rendering its unsaved position/shape indefinitely after "Don't Save",
-  // since the override map still had stale entries the reverted `traces`
-  // array couldn't override -- only a full page refresh (which remounts
-  // this component and resets this state) made it visually revert.
-  useEffect(() => {
-    const handleDiscardCompleted = () => {
-      undoStackRef.current = []
-      redoStackRef.current = []
-      setEditingTrace(null)
-      setShowBatchEditPanel(false)
-      setContextMenu(null)
-      setLocalTraceTransforms({})
-      setLocalShapePoints({})
-    }
-    window.addEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
-    return () => window.removeEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscardCompleted)
   }, [])
 
   // One action, one undo step: while `inOneStep` runs an action, the trace
@@ -2218,12 +2185,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     }
   }, [traces, pushBatchAddOp])
 
-  // Deletion is deferred to Save (like edits): removeTrace() gives an
-  // instant local UI update, and markTraceDeleted() queues the actual
-  // database delete for the next saveAllChanges(), which is what makes an
-  // undo cheap (unmarkTraceDeleted() below is enough to fully cancel it,
-  // no database round-trip needed) at the cost of the delete only becoming
-  // permanent once you save.
+  // Deletion goes through the save like edits: removeTrace() gives an
+  // instant local UI update, and markTraceDeleted() queues the database
+  // delete for the next save. Undone before then, unmarkTraceDeleted()
+  // cancels it; undone after, the trace is written back (lib/traceSave).
   // Shared by the 'update' and 'batch' cases below. Applies one trace's
   // before/after target and clears whatever local drag-preview state would
   // otherwise keep rendering the stale (pre-undo) value on top of it --
@@ -2886,22 +2851,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || getBorderColor(trace.type), z: zOf(trace) }
   }
 
-  // saveAllChanges (src/lib/traceSave.ts) is shared with the HUD save button,
-  // autosave, and the desktop close-with-unsaved-changes prompt.
-
-  // Ctrl+S keyboard shortcut to save
+  // Ctrl+S: saved now rather than a moment from now (lib/traceSave).
   useEffect(() => {
     const handleSaveShortcut = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
-        if (hasPendingChanges()) {
-          saveAllChanges()
-        }
+        void saveAllChanges()
       }
     }
     window.addEventListener('keydown', handleSaveShortcut)
     return () => window.removeEventListener('keydown', handleSaveShortcut)
-  }, [hasPendingChanges, pendingChanges, deletedTraces, traces])
+  }, [])
 
   const getSelectedTraceSnapshots = useCallback((preferredTraceId?: string): Trace[] => {
     const selectedIds = new Set<string>()

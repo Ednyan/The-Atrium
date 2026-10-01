@@ -2219,6 +2219,15 @@ function CloseSaveDialog() {
   const [showCloseSaveDialog, setShowCloseSaveDialog] = useState(false)
   const closeUnlistenRef = useRef<(() => void) | null>(null)
 
+  // Closed for real: the close-requested listener off first, or it would
+  // catch this close too.
+  const closeNow = async () => {
+    closeUnlistenRef.current?.()
+    closeUnlistenRef.current = null
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().close()
+  }
+
   useEffect(() => {
     if (!isDesktop) return
     let cancelled = false
@@ -2227,13 +2236,14 @@ function CloseSaveDialog() {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const win = getCurrentWindow()
-        const unlisten = await win.onCloseRequested((event) => {
-          const pending = useGameStore.getState().hasPendingChanges()
-          console.log('[CloseSaveDialog] close-requested received, hasPendingChanges =', pending)
-          if (pending) {
-            event.preventDefault()
-            setShowCloseSaveDialog(true)
-          }
+        // Changes save themselves (lib/traceSave); any still to be written are
+        // written before the window goes, and only if they can't be is
+        // anything asked.
+        const unlisten = await win.onCloseRequested(async (event) => {
+          if (!useGameStore.getState().hasPendingChanges()) return
+          event.preventDefault()
+          if (await saveAllChanges()) await closeNow()
+          else setShowCloseSaveDialog(true)
         })
         if (cancelled) {
           unlisten()
@@ -2280,28 +2290,15 @@ function CloseSaveDialog() {
         <div className="flex flex-col gap-2">
           <button
             onClick={async () => {
-              try {
-                await saveAllChanges()
-              } catch {
-                // Fall through and close even if save fails, matching the
-                // "Save and Leave" button's behavior elsewhere in the app
-              }
-              closeUnlistenRef.current?.()
-              closeUnlistenRef.current = null
-              const { getCurrentWindow } = await import('@tauri-apps/api/window')
-              getCurrentWindow().close()
+              // Tried again; still failing, it stays open rather than lose them.
+              if (await saveAllChanges()) await closeNow()
             }}
             className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
           >
             ◇ {t('desktop.close.saveAndClose')}
           </button>
           <button
-            onClick={async () => {
-              closeUnlistenRef.current?.()
-              closeUnlistenRef.current = null
-              const { getCurrentWindow } = await import('@tauri-apps/api/window')
-              getCurrentWindow().close()
-            }}
+            onClick={() => { void closeNow() }}
             className="w-full bg-red-900 hover:bg-red-700 text-white font-mono text-[10px] tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
           >
             {t('desktop.close.dontSave')}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { asStrokeData } from '../lib/brushes'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
+import { adoptTraces } from '../lib/layerUndo'
 import type { Trace } from '../types/database'
 
 // Ceiling on how long atrium entry will wait for images to decode. Generous
@@ -135,6 +136,10 @@ export function mapRowToTrace(row: any): Trace {
 // How long after a change the atrium's size is measured again: long enough
 // for a batch of changes to become one measurement.
 const SIZE_REFRESH_DELAY_MS = 1200
+// After a save, longer: changes save themselves as they're made (lib/traceSave),
+// and most -- a move, a colour -- hardly change the size, so a stretch of
+// editing is measured once, after it, not after every save in it.
+const SIZE_REFRESH_AFTER_SAVE_MS = 10_000
 
 export function useTraces(lobbyId: string | null) {
   const { setTraces, addTrace, removeTrace, setServerLobbySize } = useGamePick('setTraces', 'addTrace', 'removeTrace', 'setServerLobbySize')
@@ -176,6 +181,9 @@ export function useTraces(lobbyId: string | null) {
 
         if (data) {
           const traces: Trace[] = data.map(mapRowToTrace)
+          // Already there, not made now: kept out of the undo history even
+          // when the atrium opens before they've loaded (lib/layerUndo).
+          adoptTraces(traces.map(t => t.id))
           setTraces(traces)
           // Fetch the real lobby size from Supabase
           fetchLobbySize(traces.length)
@@ -274,7 +282,14 @@ export function useTraces(lobbyId: string | null) {
           filter: `lobby_id=eq.${lobbyId}`,
         },
         (payload: any) => {
-          addTrace(mapRowToTrace(payload.new))
+          const row = payload.new as any
+          // Someone else's new trace is theirs to undo, not this user's: the
+          // undo history records every trace that appears as made here, and
+          // with changes saving themselves an undo of it would delete it for
+          // everyone. (One made here arrives as an echo, already in the store.)
+          const { traces: here, userId } = useGameStore.getState()
+          if (row.user_id !== userId && !here.some(t => t.id === row.id)) adoptTraces([row.id])
+          addTrace(mapRowToTrace(row))
         }
       )
       .on(
@@ -321,11 +336,11 @@ export function useTraces(lobbyId: string | null) {
     // written -- rather than only on entry. In between, the store estimates
     // (getLobbySizeBytes).
     let refreshTimer: number | undefined
-    const refreshSize = () => {
+    const refreshSize = (delay = SIZE_REFRESH_DELAY_MS) => {
       window.clearTimeout(refreshTimer)
       refreshTimer = window.setTimeout(() => {
         if (!cancelled) void fetchLobbySize(useGameStore.getState().traces.length)
-      }, SIZE_REFRESH_DELAY_MS)
+      }, delay)
     }
     const onVaultChange = (event: Event) => {
       const changed = (event as CustomEvent).detail?.lobbyId
@@ -335,7 +350,8 @@ export function useTraces(lobbyId: string | null) {
     window.addEventListener('atrium:vault-write-complete', onVaultChange)
     const stopWatching = useGameStore.subscribe((state, prev) => {
       if (state.serverLobbySize === null) return
-      if (state.traces.length !== prev.traces.length || (prev.isSavingChanges && !state.isSavingChanges)) refreshSize()
+      if (state.traces.length !== prev.traces.length) refreshSize()
+      else if (prev.isSavingChanges && !state.isSavingChanges) refreshSize(SIZE_REFRESH_AFTER_SAVE_MS)
     })
 
     return () => {

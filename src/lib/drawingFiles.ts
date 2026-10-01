@@ -11,7 +11,7 @@ import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Trace } from '../types/database'
 import { asStrokeData, fitBox, isDrawingTrace, localToWorldDelta, nextRev, pictureSize, renderStrokeData, splitStrokes, tintPicture, type Picture, type Piece, type Stroke, type StrokeData, type TracePlacement } from './brushes'
-import { buildTraceInsertRow } from './traceInsert'
+import { buildTraceInsertRow, traceRow } from './traceInsert'
 import { adoptTraces, withLayerUndo } from './layerUndo'
 import { queueLayerChange } from './layerQueue'
 import { recordAction } from './actionHistory'
@@ -161,7 +161,7 @@ export async function restoreStrokes(back: Trace[]): Promise<void> {
   if (!supabase) return
   for (const t of back) {
     const { error } = await (supabase.from('traces') as any)
-      .insert({ ...buildTraceInsertRow(t, t.userId, t.username, t.lobbyId ?? undefined, 0, 0), id: t.id, is_locked: !!t.isLocked })
+      .insert(traceRow(t))
     if (error) console.error('[drawing] could not put a stroke back:', error)
   }
   for (const t of back) if (t.strokeData) refreshDrawingFile(t.id)

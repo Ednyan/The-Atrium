@@ -62,6 +62,7 @@ interface GameState {
   pendingChanges: Set<string>  // Set of trace IDs with unsaved changes
   deletedTraces: Set<string>   // Set of trace IDs that should be deleted on save
   isSavingChanges: boolean     // True while a saveAllChanges() call is in flight (prevents concurrent saves)
+  saveFailed: boolean          // The last save didn't write everything; autosave is retrying (lib/traceSave)
 
   // Server-reported lobby size (from Supabase RPC)
   serverLobbySize: number | null  // null = not yet fetched
@@ -125,6 +126,7 @@ interface GameState {
   forgetLayer: (id: string) => void
   markLinksSaved: (ids: string[]) => void
   setIsSavingChanges: (saving: boolean) => void
+  setSaveFailed: (failed: boolean) => void
 
   // Size limit
   setServerLobbySize: (size: number, traceCount: number) => void
@@ -199,6 +201,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingChanges: new Set<string>(),
   deletedTraces: new Set<string>(),
   isSavingChanges: false,
+  saveFailed: false,
 
   // Server-reported lobby size
   serverLobbySize: null,
@@ -321,6 +324,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       otherUsers: {},
       pendingChanges: new Set<string>(),
       deletedTraces: new Set<string>(),
+      saveFailed: false,
       position: { x: 400, y: 300 },  // Reset position
       cursorState: 'default',
       serverLobbySize: null,
@@ -414,6 +418,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
 
   setIsSavingChanges: (saving) => set({ isSavingChanges: saving }),
+  setSaveFailed: (saveFailed) => set({ saveFailed }),
 
   setServerLobbySize: (size, traceCount) => set({ serverLobbySize: size, serverLobbySizeTraceCount: traceCount }),
   

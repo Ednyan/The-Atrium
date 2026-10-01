@@ -392,8 +392,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         isPublic: lobby.is_public,
         createdAt: lobby.created_at,
         updatedAt: lobby.updated_at,
-        autosaveEnabled: lobby.autosave_enabled ?? false,
-        autosaveIntervalSeconds: lobby.autosave_interval_seconds,
         adminUserIds: lobby.admin_user_ids ?? [],
         editPermissionMode: lobby.edit_permission_mode ?? 'all',
         ownerUsername: profile?.username || 'Unknown',
@@ -460,11 +458,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           is_public: newLobbyIsPublic,
           max_players: 50,
           theme_settings: startingTheme,
-          // A desktop atrium lives in one vault on one disk, with nobody else
-          // saving it, so auto-save starts on -- every five minutes -- rather
-          // than leaving closing the app as the only save. The web keeps the
-          // column default (off), and both stay changeable in Manage Atrium.
-          ...(isDesktop ? { autosave_enabled: true, autosave_interval_seconds: 300 } : {}),
         })
         .select()
         .single()
@@ -1257,7 +1250,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         </div>
       </div>
 
-      {/* Manage Atrium (access/password/autosave, without entering) */}
+      {/* Manage Atrium (access/password, without entering) */}
       {managingLobbyId && (() => {
         const ownedMatch = userLobbies.find(l => l.id === managingLobbyId)
         const managedLobby = ownedMatch ?? adminLobbies.find(l => l.id === managingLobbyId)

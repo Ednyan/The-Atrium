@@ -30,7 +30,7 @@ import { recordAction } from '../lib/actionHistory'
 import { adoptTraces } from '../lib/layerUndo'
 import { cachedPicture, dropStrokes, holdDrawingFiles, loadDrawingPicture, paintedDrawing, pictureFieldsOf, pictureRow, pieceFields, placementOf, releaseDrawingFiles, restoreStrokes, saveDrawingPicture, writeDrawing, writePicture, type PictureFields } from '../lib/drawingFiles'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
-import { saveAllChanges, discardAllChanges } from '../lib/traceSave'
+import { saveAllChanges, startAutosave } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { groupIdOf, inOrder, keyAt, keysOnTopOfGroup, newTraceOrderFields, topLevel } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
@@ -125,8 +125,6 @@ const formatTimeInAtrium = (joinedAt: number | undefined) => {
   if (minutes > 0) return `${minutes}m`
   return '<1m'
 }
-
-const clampAutosaveInterval = (value: number) => Math.max(10, Math.min(600, value))
 
 const IMAGE_FILE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico', 'avif'])
 const AUDIO_FILE_EXTENSIONS = new Set(['mp3', 'wav', 'flac', 'aac', 'm4a'])
@@ -438,7 +436,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Per-atrium: how a multi-item drop/paste batch gets arranged (see the
   // Profile panel's "Batch Placement" setting and binPack.ts).
   const packingShapeRef = useRef<'square' | 'circle'>('square')
-  const autosaveSettingsRef = useRef({ enabled: false, intervalSeconds: 60 })
   const lightingLayerRef = useRef<Graphics | null>(null)
   const themeManagerRef = useRef<ThemeManager | null>(null)
   const gridRef = useRef<Graphics | null>(null)
@@ -536,7 +533,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // periodically while open, rather than only on other state changes.
   const [, setOnlineUsersListTick] = useState(0)
   
-  const { username, otherUsers, traces, userId, pendingChanges, deletedTraces, isSavingChanges, hasPendingChanges } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'pendingChanges', 'deletedTraces', 'isSavingChanges', 'hasPendingChanges')
+  const { username, otherUsers, traces, userId, isSavingChanges, saveFailed } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'isSavingChanges', 'saveFailed')
   // The usage figure reads the store as it draws; this is what redraws it
   // when the atrium has been measured again (useTraces).
   useGamePick('serverLobbySize')
@@ -677,36 +674,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // multi-selected trace/group, not just the single selectedTraceId.
   const [multiSelectedTraceIds, setMultiSelectedTraceIds] = useState<string[]>([])
 
-  // Drives the top-right "Saving..." indicator for every save trigger --
-  // autosave, the manual HUD Save Changes button, AND Ctrl+S (whose handler
-  // lives in TraceOverlay and calls saveAllChanges() directly, with no way
-  // to reach a LobbyScene-local trigger function). Tracking the store's
-  // shared isSavingChanges flag instead of requiring each caller to opt in
-  // via a wrapper means every current and future saveAllChanges() call
-  // shows the indicator automatically. The name is legacy from when it was
-  // autosave-only.
-  // Follows the store flag exactly. This used to hold "Saving" for a four
-  // second floor so a quick save stayed readable, which left the button
-  // insisting it was working long after it had finished -- the indicator
-  // outlasting the thing it indicated. The fade below is what keeps a fast
-  // save from flashing past, without lying about when it ended.
-  const isAutosaving = isSavingChanges
+  // The saving indicator follows the store's isSavingChanges, set by every
+  // save (lib/traceSave) -- autosave, Ctrl+S, leaving -- so none has to opt
+  // in. Exactly, with no floor: the fade below keeps a fast save from
+  // flashing past without saying it's still working once it isn't.
   // A save that has just finished, held for a moment so the button can
   // confirm rather than simply vanishing.
   const wasSavingRef = useRef(false)
   useEffect(() => {
-    // Timed off the indicator, not the store flag. The indicator holds
-    // "Saving" for four seconds so a quick save is readable, and the flag
-    // clears long before that -- so "Saved" was being shown and expiring
-    // underneath a label that still said Saving.
-    if (wasSavingRef.current && !isAutosaving) {
+    if (wasSavingRef.current && !isSavingChanges) {
+      wasSavingRef.current = false
+      // A save that failed says so instead (saveFailed).
+      if (useGameStore.getState().saveFailed) {
+        setJustSaved(false)
+        return
+      }
       setJustSaved(true)
       const timer = setTimeout(() => setJustSaved(false), 2200)
-      wasSavingRef.current = false
       return () => clearTimeout(timer)
     }
-    if (isAutosaving) wasSavingRef.current = true
-  }, [isAutosaving])
+    if (isSavingChanges) wasSavingRef.current = true
+  }, [isSavingChanges])
 
   const [hudMinimized, setHudMinimized] = useState(true)
   const [controlsMinimized, setControlsMinimized] = useState(true)
@@ -742,7 +730,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // so it is held mounted for the length of the fade after the last state that
   // wanted it on screen has gone.
   const SAVE_FADE_MS = 1000
-  const saveBarActive = hasPendingChanges() || isSavingChanges || justSaved
+  const saveBarActive = saveFailed || isSavingChanges || justSaved
   const [saveBarMounted, setSaveBarMounted] = useState(false)
   const [saveBarShown, setSaveBarShown] = useState(false)
   useEffect(() => {
@@ -768,16 +756,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // started.
   const saveLabel = isSavingChanges
     ? `◇ ${t('atrium.hud.saving')}`
-    : justSaved
-      ? `◇ ${t('atrium.hud.saved')}`
-      : `◇ ${t('atrium.hud.saveChanges', { count: pendingChanges.size + deletedTraces.size })}`
-  const saveDim = justSaved && !isSavingChanges
+    : saveFailed
+      ? `◇ ${t('atrium.hud.notSaved')}`
+      : `◇ ${t('atrium.hud.saved')}`
+  // Quiet while all is well; bright, and a button, when it isn't.
+  const saveDim = !saveFailed || isSavingChanges
   const lastSaveLookRef = useRef({ label: saveLabel, dim: saveDim })
   if (saveBarActive) lastSaveLookRef.current = { label: saveLabel, dim: saveDim }
   const shownSave = saveBarActive ? { label: saveLabel, dim: saveDim } : lastSaveLookRef.current
 
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
-  const [isDiscarding, setIsDiscarding] = useState(false)
   const [showReportForm, setShowReportForm] = useState(false)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
@@ -814,10 +801,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The top-right bar the Leave button is in, for the leave prompt to open under.
   const sessionBarRef = useRef<HTMLDivElement>(null)
 
-  // Warn user when leaving/refreshing with unsaved changes
+  // Leaving or refreshing the page with changes not yet written: written now
+  // -- the moment after the last change autosave waits for may be too late --
+  // and the browser asked to hold the page for it.
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (useGameStore.getState().hasPendingChanges()) {
+        void saveAllChanges()
         e.preventDefault()
         e.returnValue = '' // Required for Chrome
       }
@@ -1525,8 +1515,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           createdAt: data.created_at,
           updatedAt: data.updated_at,
           themeSettings: data.theme_settings,
-          autosaveEnabled: data.autosave_enabled,
-          autosaveIntervalSeconds: data.autosave_interval_seconds,
           adminUserIds: data.admin_user_ids ?? [],
           editPermissionMode: data.edit_permission_mode ?? 'all',
         }
@@ -1677,33 +1665,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }, [lobbyId])
 
-  // Autosave is an atrium-wide policy the owner sets in the Manage panel
-  // (currentLobby.autosaveEnabled/autosaveIntervalSeconds), not a per-browser
-  // preference -- keep the ref in sync whenever that lobby data changes.
-  useEffect(() => {
-    autosaveSettingsRef.current = {
-      enabled: currentLobby?.autosaveEnabled ?? false,
-      intervalSeconds: clampAutosaveInterval(currentLobby?.autosaveIntervalSeconds ?? 60),
-    }
-  }, [currentLobby])
-
-  // Autosave heartbeat - checks every 5s whether enough time has passed since the
-  // last save to trigger another one. A single slow-ticking interval (rather than
-  // tearing down/recreating a setInterval whenever the user drags the interval
-  // slider) keeps this simple and avoids timer churn.
-  useEffect(() => {
-    let lastAutosaveAt = Date.now()
-    const heartbeat = setInterval(() => {
-      const { enabled, intervalSeconds } = autosaveSettingsRef.current
-      if (!enabled) return
-      if (Date.now() - lastAutosaveAt < intervalSeconds * 1000) return
-      lastAutosaveAt = Date.now()
-      if (useGameStore.getState().hasPendingChanges() && !useGameStore.getState().isSavingChanges) {
-        saveAllChanges()
-      }
-    }, 5000)
-    return () => clearInterval(heartbeat)
-  }, [])
+  // Changes save themselves (lib/traceSave): a moment after the last one, and
+  // at once when the page is hidden.
+  useEffect(() => startAutosave(), [])
 
   // Password-session heartbeat: keeps this lobby's lobby_sessions row fresh
   // (see check_and_touch_lobby_access in App.tsx) as long as the user shows
@@ -4492,27 +4456,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         )}
       </div>
 
-      {/* Saving, and the button that starts it, in one place at the top.
-
-          They used to be two things in two corners: a button buried in the
-          left panel and a word that appeared on the right. One control that
-          changes state says the same thing with half the furniture, and puts
-          the answer where the question was asked.
-
-          Three states rather than two. A button that simply vanishes on
-          success leaves you wondering whether it worked, so it confirms for a
-          moment before it goes. */}
+      {/* Saving, at the top: changes save themselves (lib/traceSave), so this
+          only says so -- Saving, then Saved for a moment before it fades --
+          and becomes a button, Not saved, retry, when a save fails. */}
       {!uiHidden && saveBarMounted && (
         <div
           data-hud="true"
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono pointer-events-auto flex items-stretch gap-2"
+          // Only a failure is something to click; otherwise it lets clicks
+          // through to the canvas under it, shown as it is after every save.
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono flex items-stretch gap-2 ${saveFailed ? 'pointer-events-auto' : 'pointer-events-none'}`}
           style={{ opacity: saveBarShown ? 1 : 0, transition: `opacity ${SAVE_FADE_MS}ms ease-out` }}
         >
           <button
             type="button"
             data-ui-element="true"
-            onClick={() => { if (!isSavingChanges) saveAllChanges() }}
-            disabled={isSavingChanges || (!hasPendingChanges() && !justSaved)}
+            onClick={() => { void saveAllChanges() }}
+            disabled={isSavingChanges || !saveFailed}
             className="px-6 py-2.5 text-xs tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
             style={{
               clipPath: DONATE_CUT,
@@ -4526,54 +4485,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           >
             {shownSave.label}
           </button>
-
-          {/* Don't Save, beside Save rather than down in the left panel: the two
-              are answers to the same question, and the confirmation opens
-              where it was asked. Only while there is something unsaved --
-              not during the moment Save says "Saved". */}
-          {hasPendingChanges() && !isSavingChanges && (
-            showDiscardConfirm ? (
-              <>
-                <button
-                  type="button"
-                  data-ui-element="true"
-                  onClick={async () => {
-                    setIsDiscarding(true)
-                    await discardAllChanges(lobbyId)
-                    setIsDiscarding(false)
-                    setShowDiscardConfirm(false)
-                  }}
-                  disabled={isDiscarding || isSavingChanges}
-                  className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-red-900/60 border-red-500/60 hover:border-red-400 text-red-200"
-                  title={t('atrium.hud.discardHint')}
-                >
-                  {isDiscarding ? t('atrium.hud.discarding') : t('atrium.hud.confirmDiscard')}
-                </button>
-                <button
-                  type="button"
-                  data-ui-element="true"
-                  onClick={() => setShowDiscardConfirm(false)}
-                  disabled={isDiscarding}
-                  className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-nier-border/40 hover:border-nier-bg text-nier-strong"
-                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-                >
-                  {t('common.cancel')}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                data-ui-element="true"
-                onClick={() => setShowDiscardConfirm(true)}
-                disabled={isSavingChanges}
-                className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-nier-border/40 hover:border-red-400 text-nier-bg/80 hover:text-red-300"
-                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-                title={t('atrium.hud.discardHint')}
-              >
-                {t('atrium.hud.dontSave')}
-              </button>
-            )
-          )}
         </div>
       )}
 
@@ -4609,9 +4520,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <button
           type="button"
           data-ui-element="true"
-          onClick={() => {
+          onClick={async () => {
             if (uiHidden) { setUiHidden(false); return }
-            if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
+            // What's still to be written goes first; asked about only if it
+            // can't be.
+            if (useGameStore.getState().hasPendingChanges() && !(await saveAllChanges())) setShowLeaveDialog(true)
             else leaveWithTransition()
           }}
           className={`atrium-btn ${uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}`}
@@ -5662,8 +5575,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   createdAt: data.created_at,
                   updatedAt: data.updated_at,
                   themeSettings: data.theme_settings,
-                  autosaveEnabled: data.autosave_enabled,
-                  autosaveIntervalSeconds: data.autosave_interval_seconds,
                   adminUserIds: data.admin_user_ids ?? [],
                   editPermissionMode: data.edit_permission_mode ?? 'all',
                 }
@@ -5701,8 +5612,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                       createdAt: data.created_at,
                       updatedAt: data.updated_at,
                       themeSettings: data.theme_settings,
-                      autosaveEnabled: data.autosave_enabled,
-                      autosaveIntervalSeconds: data.autosave_interval_seconds,
                       adminUserIds: data.admin_user_ids ?? [],
                       editPermissionMode: data.edit_permission_mode ?? 'all',
                     })
@@ -5722,7 +5631,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />
       )}
 
-      {/* Unsaved Changes Leave Dialog */}
+      {/* Leaving with changes that couldn't be saved (the Leave button tries
+          first): try again, or leave without them. */}
       {showLeaveDialog && (() => {
         const barBottom = sessionBarRef.current ? sessionBarRef.current.getBoundingClientRect().bottom : 56
         return (
@@ -5751,15 +5661,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             <div className="flex flex-col gap-2">
               <button
                 onClick={async () => {
-                  // Save and leave (shared with the HUD save button, autosave,
-                  // and the desktop close-with-unsaved-changes prompt)
-                  if (useGameStore.getState().hasPendingChanges()) {
-                    try {
-                      await saveAllChanges()
-                    } catch {
-                      // Continue leaving even if save fails
-                    }
-                  }
+                  // Tried again. Still failing, it stays: leaving would lose
+                  // the changes without anyone having said to.
+                  if (!(await saveAllChanges())) return
                   setShowLeaveDialog(false)
                   leaveWithTransition()
                 }}

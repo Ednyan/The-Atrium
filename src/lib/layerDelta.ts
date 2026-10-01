@@ -9,7 +9,7 @@
 // can be tested.
 
 import type { Layer, Trace } from '../types/database'
-import { buildTraceInsertRow } from './traceInsert.ts'
+import { traceRow } from './traceInsert.ts'
 import { linkRow, type TraceLink } from './traceLinks.ts'
 
 export interface LayerSnapshot {
@@ -150,12 +150,7 @@ export async function applyLayerDelta(delta: LayerDelta, to: LayerDeltaTarget): 
   }
   for (const trace of delta.tracesAdded) {
     to.adopt(trace.id)
-    await db.from('traces').upsert({
-      ...buildTraceInsertRow(trace, trace.userId, trace.username, trace.lobbyId ?? undefined, 0, 0),
-      id: trace.id,
-      // The row as it was, not as a new trace starts out.
-      is_locked: !!trace.isLocked,
-    })
+    await db.from('traces').upsert(traceRow(trace))
     store().addTrace(trace)
   }
   for (const change of delta.tracesChanged) {

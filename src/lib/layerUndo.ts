@@ -2,8 +2,9 @@
 //
 // A layer change -- a group made, renamed, moved or removed, traces moved
 // between groups or reordered or locked from the Layer panel, a group deleted
-// with its traces -- is written to the database as it's made, unlike trace
-// edits, which wait for Save. So its undo is a write too. withLayerUndo runs
+// with its traces -- is written to the database as it's made, through the
+// layer queue rather than the save trace edits go by (lib/traceSave). So its
+// undo is a write too. withLayerUndo runs
 // a change and records what it did (lib/layerDelta) as one step in the
 // atrium's history (lib/actionHistory); undo and redo apply that difference
 // backwards and forwards, through the layer queue like any layer change.
@@ -27,7 +28,9 @@ const adopted = new Set<string>()
 let applying = 0
 export const layerChangeAdopts = (id: string) => adopted.delete(id) || applying > 0
 // The same for any other change that records its own step (a drawing's
-// strokes, LobbyScene): these traces are about to arrive by it.
+// strokes, LobbyScene): these traces are about to arrive by it. And for
+// traces that were never this user's to undo: an atrium's as it loads, and
+// others' new ones arriving over realtime (hooks/useTraces).
 export const adoptTraces = (ids: Iterable<string>) => { for (const id of ids) adopted.add(id) }
 
 // Makes the store and the database what `delta` leads to (lib/layerDelta).

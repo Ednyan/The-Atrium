@@ -1,264 +1,215 @@
-import { supabase, isDesktop } from './supabase'
-import { useGameStore } from '../store/gameStore'
-import { mapRowToTrace, fetchAllLobbyTraces } from '../hooks/useTraces'
-import { showToast } from './toast'
-import { tCount } from './i18n'
-import { linkRow, mapRowToLink } from './traceLinks'
-import { whenTracesWritten } from './traceWrites'
+// Changes save themselves, as Excalidraw's do: a moment after the last one
+// (startAutosave), never in the middle of a drag, and at once when the page
+// is hidden, the atrium left or the app closed. The undo history is the one
+// timeline -- an undo is a change like any other, and is saved the same way --
+// so there's no Save to press and nothing to discard.
 
-// Fired on window whenever a saveAllChanges() call completes successfully.
-// Undo/redo history (see TraceOverlay.tsx) listens for this to clear its
-// stacks, since a diff-based undo entry can no longer be safely replayed
-// once the underlying rows it was computed against have been persisted
-// (other collaborators' realtime edits may land in between).
+import { supabase } from './supabase'
+import { useGameStore } from '../store/gameStore'
+import { showToast } from './toast'
+import { t, tCount } from './i18n'
+import { linkRow } from './traceLinks'
+import { whenTracesWritten } from './traceWrites'
+import { traceColumns, traceRow } from './traceInsert'
+import type { Trace } from '../types/database'
+import type { TraceLink } from './traceLinks'
+
+// Fired on window whenever a save completes. TraceOverlay drops its local
+// drag-preview overrides then, so the store -- and so other people's edits
+// arriving over realtime -- is what's drawn.
 export const TRACE_SAVE_COMPLETED_EVENT = 'trace-save-completed'
 
-// Fired whenever discardAllChanges() successfully reverts unsaved edits.
-// TraceOverlay listens for this to clear its undo/redo stacks (same reason
-// as a real save -- diffs computed against pre-discard traces are no longer
-// valid) and to close any panel showing a stale snapshot of a reverted
-// trace (Customize / Batch Edit).
-export const TRACE_DISCARD_COMPLETED_EVENT = 'trace-discard-completed'
+type Db = NonNullable<typeof supabase>
 
-// Discard every unsaved trace change/deletion by re-fetching the atrium's
-// traces from the database (the last saved state) and replacing the store's
-// copy. setTraces() only replaces the traces array -- it does NOT clear
-// pendingChanges/deletedTraces on its own, so those are cleared explicitly
-// here too. After this the atrium reflects exactly what's persisted -- as
-// if the user had refreshed, but without actually reloading the page. Used
-// by the HUD "Don't Save" button. Returns false if there was nothing to
-// discard or the reload failed.
-export async function discardAllChanges(lobbyId: string): Promise<boolean> {
+// A row written as it now is: updated, or -- gone since, deleted and the
+// deletion undone -- put back whole. .select() so a refused update can't pass
+// for a written one: RLS doesn't raise on a forbidden UPDATE, it matches
+// nothing, and the insert after it then fails on the row that is there.
+async function writeRow(db: Db, table: string, id: string, columns: Record<string, any>, whole: () => Record<string, any>): Promise<boolean> {
+  const { data, error } = await (db.from(table) as any).update(columns).eq('id', id).select('id')
+  if (error) return false
+  if (Array.isArray(data) && data.length > 0) return true
+  return !(await (db.from(table) as any).insert(whole())).error
+}
+
+// What was written leaves the sets of what's to be written -- unless it changed
+// again while it was being written. Every change puts a new object for the
+// trace (or connection) in the store, so the same object means no change since.
+function settle(written: { traces: Trace[]; deleted: string[]; links: TraceLink[]; deletedLinks: string[]; gone: string[]; goneLinks: string[] }) {
+  useGameStore.setState(state => {
+    const traceNow = new Map(state.traces.map(tr => [tr.id, tr]))
+    const linkNow = new Map(state.links.map(l => [l.id, l]))
+    const pendingChanges = new Set(state.pendingChanges)
+    for (const trace of written.traces) if (traceNow.get(trace.id) === trace) pendingChanges.delete(trace.id)
+    // Marked changed, but not there to write: nothing to do for it.
+    for (const id of written.gone) if (!traceNow.has(id)) pendingChanges.delete(id)
+    const pendingLinks = new Set(state.pendingLinks)
+    for (const link of written.links) if (linkNow.get(link.id) === link) pendingLinks.delete(link.id)
+    for (const id of written.goneLinks) if (!linkNow.has(id)) pendingLinks.delete(id)
+    const deletedTraces = new Set(state.deletedTraces)
+    for (const id of written.deleted) deletedTraces.delete(id)
+    const deletedLinks = new Set(state.deletedLinks)
+    for (const id of written.deletedLinks) deletedLinks.delete(id)
+    const savedLinks = new Set(state.savedLinks)
+    for (const link of written.links) savedLinks.add(link.id)
+    return { pendingChanges, pendingLinks, deletedTraces, deletedLinks, savedLinks }
+  })
+}
+
+// Said once when saving starts failing, not at every retry after.
+let failing = false
+function failed(message: string) {
+  if (!failing) showToast(message)
+  failing = true
+  useGameStore.getState().setSaveFailed(true)
+}
+
+async function write(): Promise<boolean> {
   const store = useGameStore.getState()
-  if (!supabase || store.isSavingChanges) return false
-  if (!store.hasPendingChanges()) return false
-
+  if (!supabase || !store.hasPendingChanges()) return true
+  const db = supabase
+  store.setIsSavingChanges(true)
   try {
-    // Must load the whole atrium, not a capped page -- this REPLACES the
-    // store's traces, so a truncated read would silently drop everything past
-    // the cap from the session.
-    const data = await fetchAllLobbyTraces(supabase, lobbyId)
-    if (!data) return false
+    // Taken before anything is awaited: leaving an atrium clears the store,
+    // and the save that leaving starts must still have what it's to write.
+    const { pendingChanges, deletedTraces, traces, pendingLinks, deletedLinks, links, savedLinks } = useGameStore.getState()
+    // New traces still on their way to the database first (lib/traceWrites):
+    // an update to a row not there yet would put it there twice.
+    await whenTracesWritten()
+    const changed = traces.filter(tr => pendingChanges.has(tr.id))
+    const gone = [...pendingChanges].filter(id => !changed.some(tr => tr.id === id))
+    const linksChanged = links.filter(l => pendingLinks.has(l.id))
+    const goneLinks = [...pendingLinks].filter(id => !linksChanged.some(l => l.id === id))
+    const deleted = [...deletedTraces]
+    const linksDeleted = [...deletedLinks]
 
-    const traces = data.map(mapRowToTrace)
+    // Connections removed before their traces: on the web a trace's deletion
+    // takes its connections with it anyway, but the desktop shim doesn't
+    // cascade.
+    const linksGoneOk = await Promise.all(linksDeleted.map(async id => !(await (db.from('trace_links') as any).delete().eq('id', id)).error))
+    const deletedOk = await Promise.all(deleted.map(async id => !(await (db.from('traces') as any).delete().eq('id', id)).error))
+    const tracesOk = await Promise.all(changed.map(trace => writeRow(db, 'traces', trace.id, traceColumns(trace), () => traceRow(trace))))
+    // Connections after their traces, so a connection put back has both ends.
+    const linksOk = await Promise.all(linksChanged.map(async link => {
+      const row = linkRow(link)
+      if (!savedLinks.has(link.id)) return !(await (db.from('trace_links') as any).insert(row)).error
+      const { id: _id, ...fields } = row
+      return writeRow(db, 'trace_links', link.id, fields, () => row)
+    }))
 
-    // Desktop: re-warm the local media blob-URL cache for anything we just
-    // pulled back, mirroring the initial load in useTraces, so reverted
-    // image/audio/video traces still render immediately.
-    if (isDesktop) {
-      const localUrls = new Set<string>()
-      for (const trace of traces) {
-        for (const url of [trace.mediaUrl, trace.imageUrl]) {
-          if (url && url.startsWith('local://')) localUrls.add(url)
-        }
-      }
-      if (localUrls.size > 0) {
-        const { resolveLocalUrl } = await import('./localDb')
-        await Promise.allSettled(Array.from(localUrls).map(url => resolveLocalUrl(url)))
-      }
+    settle({
+      traces: changed.filter((_, i) => tracesOk[i]),
+      deleted: deleted.filter((_, i) => deletedOk[i]),
+      links: linksChanged.filter((_, i) => linksOk[i]),
+      deletedLinks: linksDeleted.filter((_, i) => linksGoneOk[i]),
+      gone,
+      goneLinks,
+    })
+    const refused = [tracesOk, deletedOk, linksOk, linksGoneOk].flat().filter(ok => !ok).length
+    if (refused > 0) {
+      // Left to be written: the next try may get through, and they're the
+      // user's work either way.
+      failed(tCount('atrium.error.changesRefused', refused))
+      return false
     }
-
-    useGameStore.getState().setTraces(traces)
-    // Connections too. Left as they are if they can't be read -- on the web,
-    // before add_trace_links.sql is applied, the table isn't there yet.
-    const { data: linkRows, error: linkError } = await (supabase.from('trace_links') as any).select('*').eq('lobby_id', lobbyId)
-    if (!linkError && Array.isArray(linkRows)) useGameStore.getState().setLinks(linkRows.map(mapRowToLink))
-    useGameStore.getState().clearPendingChanges()
-    window.dispatchEvent(new CustomEvent(TRACE_DISCARD_COMPLETED_EVENT))
+    failing = false
+    useGameStore.getState().setSaveFailed(false)
+    window.dispatchEvent(new CustomEvent(TRACE_SAVE_COMPLETED_EVENT))
     return true
-  } catch {
+  } catch (error) {
+    console.error('[save] could not save:', error)
+    failed(t('atrium.hud.notSaved'))
     return false
+  } finally {
+    useGameStore.getState().setIsSavingChanges(false)
   }
 }
 
-// Save every pending trace change/deletion to the database. Shared by the
-// Ctrl+S shortcut, the HUD save button, autosave, and the desktop
-// close-with-unsaved-changes prompt so they can't race each other.
-export async function saveAllChanges(): Promise<void> {
-  const store = useGameStore.getState()
-  if (!supabase || store.isSavingChanges) return
+// Everything changed up to now written, after any save already under way:
+// whether all of it was. For autosave, Ctrl+S, and leaving or closing.
+let inFlight: Promise<boolean> | null = null
+export function saveAllChanges(): Promise<boolean> {
+  if (inFlight) return inFlight.then(() => saveAllChanges())
+  const saving = write().finally(() => { inFlight = null })
+  inFlight = saving
+  return saving
+}
 
-  const db = supabase // Capture for use in closures
-  store.setIsSavingChanges(true)
+// ---- Autosave ----------------------------------------------------------------------
 
-  try {
-    // New traces still on their way to the database first (lib/traceWrites):
-    // an update to a row not there yet would be refused.
-    await whenTracesWritten()
-    const { pendingChanges, deletedTraces, traces, clearPendingChanges, pendingLinks, deletedLinks, links, savedLinks } = useGameStore.getState()
+// A second after the last change; at most ten after the first, so a long run
+// of typing is saved as it goes. While a pointer is held -- a drag, a slider --
+// it waits for the release: one write for the gesture, not one per frame
+// paused on. A save that fails is tried again, less and less often.
+const QUIET_MS = 1000
+const MAX_WAIT_MS = 10_000
+const RETRY_MS = [5_000, 15_000, 30_000, 60_000]
 
-    // Connections removed. Before the traces: on the web a trace's deletion
-    // takes its connections with it anyway, but the desktop shim doesn't
-    // cascade.
-    await Promise.all(Array.from(deletedLinks).map(async (id) => {
-      await (db.from('trace_links') as any).delete().eq('id', id)
-    }))
+export function startAutosave(): () => void {
+  let timer: number | undefined
+  let dirtySince: number | null = null
+  let failures = 0
+  let held = false
 
-    // Handle deletions first
-    const deletePromises = Array.from(deletedTraces).map(async (traceId) => {
-      await (db.from('traces') as any).delete().eq('id', traceId)
-    })
-    await Promise.all(deletePromises)
+  const schedule = () => {
+    window.clearTimeout(timer)
+    if (dirtySince === null) dirtySince = Date.now()
+    timer = window.setTimeout(run, Math.max(0, Math.min(QUIET_MS, dirtySince + MAX_WAIT_MS - Date.now())))
+  }
+  const retry = () => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(run, RETRY_MS[Math.min(failures, RETRY_MS.length) - 1])
+  }
+  const run = async () => {
+    if (!useGameStore.getState().hasPendingChanges()) { dirtySince = null; return }
+    if (held) return // the release saves
+    dirtySince = null
+    const ok = await saveAllChanges()
+    failures = ok ? 0 : failures + 1
+    if (!ok) retry()
+    else if (useGameStore.getState().hasPendingChanges()) schedule()
+  }
 
-    // Handle updates
-    const updatePromises = Array.from(pendingChanges).map(async (traceId) => {
-      const trace = traces.find(t => t.id === traceId)
-      if (!trace) return
-
-      const updateData: any = {
-        type: trace.type,
-        position_x: trace.x,
-        position_y: trace.y,
-        // scale_x/scale_y are authoritative and persisted independently so
-        // non-uniform (stretched) resizes survive a reload; `scale` is kept
-        // in sync as their average only for backward compatibility with any
-        // code still reading the legacy single-value column.
-        scale: ((trace.scaleX ?? 1) + (trace.scaleY ?? 1)) / 2,
-        scale_x: trace.scaleX ?? 1,
-        scale_y: trace.scaleY ?? 1,
-        rotation: trace.rotation ?? 0,
-        flip_horizontal: trace.flipHorizontal ?? false,
-        flip_vertical: trace.flipVertical ?? false,
-        show_border: trace.showBorder,
-        show_background: trace.showBackground,
-        border_color: trace.borderColor,
-        border_width: trace.borderWidth ?? 2,
-        border_opacity: trace.borderOpacity,
-        fill_color: trace.fillColor,
-        fill_opacity: trace.fillOpacity,
-        show_description: trace.showDescription,
-        show_filename: trace.showFilename,
-        font_size: trace.fontSize,
-        font_family: trace.fontFamily,
-        text_bold: trace.textBold,
-        text_italic: trace.textItalic,
-        text_scale_with_box: trace.textScaleWithBox ?? true,
-        show_shadow: trace.showShadow ?? true,
-        text_underline: trace.textUnderline,
-        text_align: trace.textAlign,
-        text_color: trace.textColor,
-        is_locked: trace.isLocked,
-        border_radius: trace.borderRadius,
-        // Defaulted the same way traceInsert does. Without the fallback an
-        // uncropped trace sends undefined here, which the web harmlessly drops
-        // from the JSON body (so the column default applies) but the desktop
-        // SQLite shim binds as a real NULL. Those nulls are invisible on
-        // desktop -- reads default them back to 0/1 -- and only surface when
-        // the atrium is exported and imported into Postgres, where these
-        // columns are NOT NULL and reject the whole row.
-        crop_x: trace.cropX ?? 0,
-        crop_y: trace.cropY ?? 0,
-        crop_width: trace.cropWidth ?? 1,
-        crop_height: trace.cropHeight ?? 1,
-        illuminate: trace.illuminate,
-        light_color: trace.lightColor,
-        light_intensity: trace.lightIntensity,
-        light_radius: trace.lightRadius,
-        light_offset_x: trace.lightOffsetX,
-        light_offset_y: trace.lightOffsetY,
-        light_pulse: trace.lightPulse,
-        light_pulse_speed: trace.lightPulseSpeed,
-        enable_interaction: trace.enableInteraction,
-        ignore_clicks: trace.ignoreClicks,
-        order_key: trace.orderKey ?? null,
-        layer_name: trace.layerName ?? null,
-        frame_id: trace.frameId ?? null,
-      }
-
-      // Add optional fields
-      if (trace.mediaUrl !== undefined) updateData.media_url = trace.mediaUrl
-      if (trace.linkUrl !== undefined) updateData.link_url = trace.linkUrl
-      if (trace.isClickable !== undefined) updateData.is_clickable = trace.isClickable
-      if (trace.content !== undefined) updateData.content = trace.content
-      // width/height apply to every trace type that can be resized (text,
-      // image, embed, video, shape) -- this used to be gated to shape only,
-      // which silently dropped every other type's resize (manual or
-      // auto-fit) on save, reverting to its creation-time size on reload.
-      if (trace.width !== undefined) updateData.width = trace.width
-      if (trace.height !== undefined) updateData.height = trace.height
-
-      // Shape properties
-      if (trace.type === 'shape') {
-        if (trace.shapeType !== undefined) updateData.shape_type = trace.shapeType
-        if (trace.shapeColor !== undefined) updateData.shape_color = trace.shapeColor
-        if (trace.shapeOpacity !== undefined) updateData.shape_opacity = trace.shapeOpacity
-        if (trace.cornerRadius !== undefined) updateData.corner_radius = trace.cornerRadius
-        if (trace.shapeOutlineOnly !== undefined) updateData.shape_outline_only = trace.shapeOutlineOnly
-        if (trace.shapeNoFill !== undefined) updateData.shape_no_fill = trace.shapeNoFill
-        if (trace.shapeOutlineColor !== undefined) updateData.shape_outline_color = trace.shapeOutlineColor
-        if (trace.shapeOutlineWidth !== undefined) updateData.shape_outline_width = trace.shapeOutlineWidth
-        if (trace.shapeOutlineOpacity !== undefined) updateData.shape_outline_opacity = trace.shapeOutlineOpacity
-        if (trace.shapePoints !== undefined) updateData.shape_points = trace.shapePoints
-        if (trace.pathCurveType !== undefined) updateData.path_curve_type = trace.pathCurveType
-        if (trace.pathArrowStart !== undefined) updateData.path_arrow_start = trace.pathArrowStart
-        if (trace.pathArrowEnd !== undefined) updateData.path_arrow_end = trace.pathArrowEnd
-      }
-
-      // Desktop takes the plain update: localDb's query builder has no
-      // .select() on an update chain, and calling it there throws a
-      // TypeError rather than returning an error -- which would escape the
-      // check below and take the whole save down. Nothing to detect there
-      // anyway: SQLite has no RLS, so a write either applies or throws.
-      if (isDesktop) {
-        await (db.from('traces') as any).update(updateData).eq('id', traceId)
-        return true
-      }
-
-      // .select() so a refused write can't pass for a successful one. RLS
-      // does not raise on a forbidden UPDATE -- the row simply isn't visible
-      // to the statement, so it matches nothing and returns cleanly. Without
-      // this, the save reported success, cleared the queue, and the edits
-      // were gone: the screen kept showing them because local state had
-      // already been updated, so the loss only appeared on the next reload.
-      const { data, error } = await (db.from('traces') as any)
-        .update(updateData)
-        .eq('id', traceId)
-        .select('id')
-
-      if (error) return false
-      return Array.isArray(data) && data.length > 0
-    })
-    const results = await Promise.all(updatePromises)
-
-    // Connections made or changed: inserted if they've never been saved,
-    // updated if they have -- the desktop shim has no upsert. Their traces
-    // exist by now, since traces are written the moment they're made.
-    const linkResults = await Promise.all(Array.from(pendingLinks).map(async (id) => {
-      const link = links.find(l => l.id === id)
-      if (!link) return true
-      const row = linkRow(link)
-      if (!savedLinks.has(id)) {
-        const { error } = await (db.from('trace_links') as any).insert(row)
-        if (error) return false
-        useGameStore.getState().markLinksSaved([id])
-        return true
-      }
-      const { id: _id, ...fields } = row
-      if (isDesktop) {
-        await (db.from('trace_links') as any).update(fields).eq('id', id)
-        return true
-      }
-      // .select(), for the same reason as the trace updates above.
-      const { data, error } = await (db.from('trace_links') as any).update(fields).eq('id', id).select('id')
-      return !error && Array.isArray(data) && data.length > 0
-    }))
-
-    const refused = results.filter(ok => ok === false).length + linkResults.filter(ok => !ok).length
-
-    if (refused > 0) {
-      // Deliberately does NOT clear pending changes: they were never written,
-      // so discarding them would destroy the user's work to make a failure
-      // look tidy. They stay queued and can be retried or discarded.
-      showToast(tCount('atrium.error.changesRefused', refused))
-      return
+  const stopWatching = useGameStore.subscribe((state, prev) => {
+    // Saved after all -- the HUD's Retry, or Ctrl+S: back to saving as it goes.
+    if (prev.saveFailed && !state.saveFailed) failures = 0
+    if (failures > 0) return // the retry has it
+    if (state.pendingChanges !== prev.pendingChanges || state.deletedTraces !== prev.deletedTraces
+      || state.pendingLinks !== prev.pendingLinks || state.deletedLinks !== prev.deletedLinks) {
+      if (state.hasPendingChanges()) schedule()
     }
+  })
+  const press = () => { held = true }
+  const release = () => {
+    if (!held) return
+    held = false
+    if (useGameStore.getState().hasPendingChanges() && failures === 0) schedule()
+  }
+  // Leaving the page, or the app hidden: now, not after the quiet.
+  const hidden = () => {
+    if (document.visibilityState !== 'hidden') return
+    window.clearTimeout(timer)
+    held = false
+    void run()
+  }
+  window.addEventListener('pointerdown', press, true)
+  window.addEventListener('pointerup', release, true)
+  window.addEventListener('pointercancel', release, true)
+  // A release outside the window may never arrive.
+  window.addEventListener('blur', release)
+  document.addEventListener('visibilitychange', hidden)
+  if (useGameStore.getState().hasPendingChanges()) schedule()
 
-    // Clear pending changes
-    clearPendingChanges()
-    window.dispatchEvent(new CustomEvent(TRACE_SAVE_COMPLETED_EVENT))
-  } catch (error) {
-    alert('Failed to save some changes. Please try again.')
-  } finally {
-    useGameStore.getState().setIsSavingChanges(false)
+  // Gone from the atrium some other way than its Leave button (which saves
+  // first) -- put out of it, say: what's waiting is written all the same.
+  return () => {
+    window.clearTimeout(timer)
+    if (useGameStore.getState().hasPendingChanges()) void saveAllChanges()
+    stopWatching()
+    window.removeEventListener('pointerdown', press, true)
+    window.removeEventListener('pointerup', release, true)
+    window.removeEventListener('pointercancel', release, true)
+    window.removeEventListener('blur', release)
+    document.removeEventListener('visibilitychange', hidden)
   }
 }

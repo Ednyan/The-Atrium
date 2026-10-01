@@ -238,10 +238,6 @@ export interface Lobby {
   createdAt: string
   updatedAt: string
   themeSettings?: ThemeSettings | null
-  // Atrium-wide autosave policy, configured by the owner in the Manage
-  // panel. Every collaborator's client honors this while in the atrium.
-  autosaveEnabled?: boolean
-  autosaveIntervalSeconds?: number
   // User ids promoted to admin by the owner (full Manage Atrium access, but
   // can't promote/demote other admins or transfer ownership). Stored
   // directly on the lobby row rather than as lobby_access_lists rows so
