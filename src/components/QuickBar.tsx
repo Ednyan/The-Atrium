@@ -14,6 +14,10 @@
 // Nothing is lost by it: a drawing's strokes are saved as they're drawn.
 //
 // Keys 1 to 9 pick the first nine, in the order shown; K the laser pointer.
+// Each tool's name slides out beside it under the pointer, as the atrium
+// menu's do (SlideLabel) -- or, for a tool with a flyout, at the flyout's
+// start. What the tool in hand does is said at the foot of the screen
+// (ToolHint, placed by LobbyScene).
 //
 // The laser pointer (LaserLayer) is in hand like Draw is, and has its
 // colour and particle effect in a flyout of its own.
@@ -28,6 +32,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useHistoryReach } from '../lib/actionHistory'
+import { SlideLabel } from './AtriumMenu'
 import { useTranslation } from '../lib/i18n'
 import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type LaserSettings } from '../lib/laser'
 import type { TranslationKey } from '../locales/en'
@@ -222,12 +227,6 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
     laser: t('atrium.tools.laser'),
     pinterest: t('atrium.canvas.pinterestBoards'),
   }
-  // What an armed tool does with the canvas, beside it.
-  const hint = armed === 'text' ? t('atrium.tools.hintText')
-    : armed === 'path' ? t('atrium.tools.hintPath')
-    : armed ? t('atrium.tools.hintBox')
-    : null
-
   return (
     <div
       data-ui-element="true"
@@ -245,10 +244,19 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
         const key = i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
+        const press = () => {
+          // A tool with kinds (or options) pressed while it's already in
+          // hand opens them -- the way to them without hovering (touch).
+          if (withFlyout && on) {
+            setFlyout(open => (open === action ? null : action))
+            return
+          }
+          onAction(action)
+        }
         return (
           <div
             key={action}
-            className="relative"
+            className="group relative"
             onMouseEnter={withFlyout ? () => keepFlyout(action) : undefined}
             onMouseLeave={withFlyout ? letFlyoutGo : undefined}
           >
@@ -261,17 +269,10 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
               aria-pressed={on}
               aria-haspopup={withFlyout ? 'true' : undefined}
               aria-expanded={withFlyout ? flyout === action : undefined}
-              title={key ? `${label[action]} — ${key}` : label[action]}
-              onClick={() => {
-                // A tool with kinds (or options) pressed while it's already in
-                // hand opens them -- the way to them without hovering (touch).
-                if (withFlyout && on) {
-                  setFlyout(open => (open === action ? null : action))
-                  return
-                }
-                onAction(action)
-              }}
-              className={`relative w-9 h-9 flex items-center justify-center border transition-colors ${
+              aria-label={label[action]}
+              aria-keyshortcuts={key ?? undefined}
+              onClick={press}
+              className={`peer relative w-9 h-9 flex items-center justify-center border transition-colors ${
                 on
                   ? 'bg-nier-bg text-nier-black border-nier-bg'
                   : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg'
@@ -286,13 +287,15 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
                 <span aria-hidden="true" className="absolute right-0.5 top-0.5 w-0 h-0 opacity-60" style={{ borderTop: '4px solid currentColor', borderLeft: '4px solid transparent' }} />
               )}
             </button>
+            {flyout !== action && <SlideLabel text={label[action]} hint={key ?? undefined} onPress={press} />}
             {withKinds && flyout === action && (
               <div
                 ref={flyoutRef}
                 data-quick-flyout={action}
-                className="absolute left-full top-0 ml-2 flex gap-1 p-1 border border-nier-border/40 z-10"
+                className="slide-in absolute left-full top-0 ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10"
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
+                <ToolName name={label[action]} keyName={key} />
                 {KIND[action].map((kind, second) => (
                   <button
                     key={kind.attr}
@@ -323,9 +326,10 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
               <div
                 ref={flyoutRef}
                 data-quick-flyout="laser"
-                className="absolute left-full top-0 ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono"
+                className="slide-in absolute left-full top-0 ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono"
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
+                <ToolName name={label.laser} keyName="K" />
                 <label className="flex items-center justify-between gap-2 text-[10px] tracking-[0.12em] uppercase text-nier-bg/80">
                   {t('atrium.tools.laserColour')}
                   <input
@@ -375,17 +379,40 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
                 </div>
               </div>
             )}
-            {(armed === action || (action === 'laser' && laser)) && (action === 'laser' ? t('atrium.tools.hintLaser') : hint) && flyout !== action && (
-              <div
-                className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2 py-1 border font-mono text-[10px] tracking-wider whitespace-nowrap pointer-events-none"
-                style={{ color: 'rgb(var(--c-fg))', background: 'rgb(var(--c-ground) / 0.92)', borderColor: 'rgb(var(--c-fg) / 0.3)' }}
-              >
-                {action === 'laser' ? t('atrium.tools.hintLaser') : hint}
-              </div>
-            )}
           </div>
         )
       })}
     </div>
+  )
+}
+
+// A tool's name at the start of its flyout, where the sliding name would be.
+function ToolName({ name, keyName }: { name: string; keyName: string | null }) {
+  return (
+    <span className="px-2 whitespace-nowrap text-nier-strong text-[11px] tracking-[0.15em] uppercase">
+      {name}
+      {keyName && <span className="ml-2 text-nier-bg/50 normal-case tracking-normal">{keyName}</span>}
+    </span>
+  )
+}
+
+// What the tool in hand does with the canvas, at the foot of the screen in
+// the middle (LobbyScene) while it's in hand.
+export function ToolHint({ armed, laser }: { armed: PlaceTool | null; laser: boolean }) {
+  const { t } = useTranslation()
+  const text = laser ? t('atrium.tools.hintLaser')
+    : armed === 'text' ? t('atrium.tools.hintText')
+    : armed === 'path' ? t('atrium.tools.hintPath')
+    : armed ? t('atrium.tools.hintBox')
+    : null
+  if (!text) return null
+  return (
+    <p
+      data-tool-hint=""
+      className="panel-in px-3 py-1.5 border font-mono text-[11px] tracking-wider whitespace-nowrap"
+      style={{ color: 'rgb(var(--c-fg))', background: 'rgb(var(--c-ground) / 0.92)', borderColor: 'rgb(var(--c-fg) / 0.3)' }}
+    >
+      {text}
+    </p>
   )
 }

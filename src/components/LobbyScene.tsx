@@ -49,8 +49,9 @@ import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
-import QuickBar, { HistoryButtons, QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
-import AtriumMenu, { MENU_ICONS, MenuIcon } from './AtriumMenu'
+import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction } from './QuickBar'
+import { formatSize } from '../lib/size'
+import AtriumMenu, { ControlsPanel, MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { LanguageList } from './LanguageToggle'
 import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
@@ -383,7 +384,7 @@ interface LobbySceneProps {
 }
 
 export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySceneProps) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const canvasRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const worldContainerRef = useRef<Container | null>(null)
@@ -696,19 +697,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The atrium's menu, and the two panels it opens beside itself.
   const [menuOpen, setMenuOpenState] = useState(false)
   const [showLanguages, setShowLanguages] = useState(false)
+  const [showControls, setShowControls] = useState(false)
+  // One of them at a time.
+  const showMenuPanel = (panel: 'share' | 'languages' | 'controls' | null) => {
+    setShowShare(open => panel === 'share' && !open)
+    setShowLanguages(open => panel === 'languages' && !open)
+    setShowControls(open => panel === 'controls' && !open)
+  }
   const setMenuOpen = (open: boolean) => {
     setMenuOpenState(open)
-    if (!open) {
-      setShowShare(false)
-      setShowLanguages(false)
-    }
+    if (!open) showMenuPanel(null)
   }
   // A choice that opens something elsewhere: the menu goes first.
   const fromMenu = (action: () => void) => () => {
     setMenuOpen(false)
     action()
   }
-  const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
 
   // Everything out of the way for a clean look at the atrium. The way out
@@ -4664,7 +4668,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           ...(currentLobby ? [{
             id: 'share', icon: MENU_ICONS.share, label: t('atrium.hud.share'),
             open: showShare,
-            onSelect: () => { setShowLanguages(false); setShowShare(open => !open) },
+            onSelect: () => showMenuPanel('share'),
             panel: (
               <SharePanel
                 atriumId={currentLobby.id}
@@ -4692,7 +4696,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           {
             id: 'language', icon: MENU_ICONS.language, label: t('welcome.language'),
             open: showLanguages,
-            onSelect: () => { setShowShare(false); setShowLanguages(open => !open) },
+            onSelect: () => showMenuPanel('languages'),
             panel: (
               <div
                 role="listbox"
@@ -4704,6 +4708,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 <LanguageList onChosen={() => setShowLanguages(false)} />
               </div>
             ),
+          },
+          {
+            id: 'controls', icon: MENU_ICONS.controls, label: t('atrium.controls.title'),
+            open: showControls,
+            onSelect: () => showMenuPanel('controls'),
+            panel: <ControlsPanel />,
           },
           // Desktop: linked pictures and videos kept in the vault. Stays open,
           // so its name -- on hover -- can show how far it has got.
@@ -4753,75 +4763,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           />
         )}
       </div>
-        {/* Along the bottom: undo and redo, then Controls -- which scrolls,
-            open, in what the column leaves it. */}
-        <div className="min-h-0 flex items-end gap-2">
+        {/* Along the bottom: undo and redo. */}
         {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
-        {/* Instructions. A click anywhere on it opens or closes it, not only on
-            its title -- open, it is a list to read, with nothing else to click. */}
-        <div
-          data-hud="true"
-          className="relative max-h-full overflow-y-auto px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto cursor-pointer select-none"
-          style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-          onClick={() => setControlsMinimized(!controlsMinimized)}
-          title={controlsMinimized ? t('common.open') : t('common.close')}
-        >
-          {/* Corner brackets */}
-          <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
-          <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>
-          <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg"></div>
-          <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
-
-          <div className="flex items-center justify-between gap-3 h-[1.375rem] leading-none">
-            <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.controls.title')}</p>
-            <span
-              className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
-              style={{ display: 'inline-block', transform: controlsMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-            >
-              ▾
-            </span>
-          </div>
-          {!controlsMinimized && (
-            <div className="panel-in space-y-1 mt-2">
-              {/* One row per shortcut, from a list, because twelve copies of the
-                  same paragraph differing only in their text is eight places to
-                  get the class list slightly wrong. */}
-              {([
-                'atrium.controls.pan',
-                'atrium.controls.leaveTrace',
-                'atrium.controls.draw',
-                'atrium.controls.laser',
-                'atrium.controls.quickBar',
-                'atrium.controls.editTrace',
-                'atrium.controls.multiSelect',
-                'atrium.controls.directSelect',
-                'atrium.controls.groupUngroup',
-                'atrium.controls.undoRedo',
-                'atrium.controls.copyPaste',
-                'atrium.controls.copyPasteStyle',
-                'atrium.controls.export',
-                'atrium.controls.deleteSelected',
-                'atrium.controls.saveChanges',
-              ] as const).map(key => (
-                <p key={key} className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-                  <span className="text-nier-bg/80">◇</span> {t(key)}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-        </div>
       </div>
 
-      {/* Atrium size indicator - bottom center */}
-      {(() => {
-        const sizeBytes = useGameStore.getState().getLobbySizeBytes()
-        const sizeMB = sizeBytes / (1024 * 1024)
-        const limitMB = LOBBY_SIZE_LIMIT / (1024 * 1024)
-        const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
-        const isFull = !isDesktop && sizeBytes >= LOBBY_SIZE_LIMIT
-        return (
-          <div data-hud="true" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+      {/* At the foot of the screen, in the middle: what's true of this visit
+          (hidden, view only), how many are selected, and what the tool in
+          hand does (QuickBar's ToolHint). */}
+      <div data-hud="true" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
             {/* Only the operator sees this, and only when actually hidden.
                 Without it there's no way to tell this atrium is being viewed
                 invisibly, which is exactly the state where acting as though
@@ -4850,22 +4799,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 {t('atrium.hud.tracesSelected', { count: multiSelectedTraceIds.length })}
               </p>
             )}
-            <div className="pointer-events-auto flex items-center gap-2 bg-nier-black/90 border border-nier-border/40 px-3 py-2" title={isDesktop ? t('atrium.hud.usageUsed', { size: sizeMB.toFixed(2) }) : t('atrium.hud.usageOf', { size: sizeMB.toFixed(2), limit: limitMB })}>
-              <span className={`text-xs font-mono tracking-[0.12em] uppercase ${isFull ? 'text-red-400' : 'text-nier-bg/70'}`}>
-                {t('atrium.hud.usage')}
-              </span>
-              {!isDesktop && (
-              <div className="w-20 h-2 bg-nier-blackLight border border-nier-border/30 overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-white/50'}`}
+        <ToolHint armed={placeTool} laser={laserActive} />
+      </div>
+
+      {/* How much the atrium holds, at the bottom right: the size alone, in
+          the unit it has reached (lib/size); its limit, on the web, when
+          pointed at -- and the thin line under it, how near that it is. */}
+      {(() => {
+        const sizeBytes = useGameStore.getState().getLobbySizeBytes()
+        const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+        const used = formatSize(sizeBytes, language)
+        const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
+        return (
+          <div
+            data-hud="true"
+            data-usage=""
+            tabIndex={0}
+            title={isDesktop ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
+            className="fixed bottom-4 right-4 z-[9999] pointer-events-auto font-mono flex flex-col gap-1 px-2.5 pt-1.5 pb-1 border border-nier-border/40"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          >
+            <span className="flex items-baseline justify-between gap-3 text-[10px] tracking-[0.15em] uppercase leading-none">
+              <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
+              <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
+            </span>
+            {!isDesktop && (
+              <span className="block h-[2px] bg-nier-border/20">
+                <span
+                  className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
                   style={{ width: `${pct}%` }}
                 />
-              </div>
-              )}
-              <span className={`text-xs font-mono tracking-wider ${isFull ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-bg/80'}`}>
-                {sizeMB.toFixed(1)}{isDesktop ? 'MB' : `/${limitMB}MB`}
               </span>
-            </div>
+            )}
           </div>
         )
       })()}
@@ -4877,27 +4842,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           atriumName={currentLobby?.name ?? lobbyId}
         />
       )}
-
-      {/* Trace Button -- hidden entirely when the atrium's edit permission
-          mode doesn't allow this user to create traces */}
-      {canEdit && (() => {
-        const isFull = useGameStore.getState().isLobbyFull()
-        return (
-      <button
-        onClick={() => {
-          // Open trace panel at current player position
-          setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
-          setShowTracePanel(!showTracePanel)
-        }}
-        data-hud="true"
-        className="atrium-btn fixed bottom-4 right-4 font-mono z-[9999] pointer-events-auto"
-        data-active={!isFull}
-      >
-        <span className="opacity-60 mr-2">◇</span>
-        {isFull ? t('atrium.trace.atriumFull') : showTracePanel ? t('common.close') : t('atrium.trace.submit')}
-      </button>
-        )
-      })()}
 
       {/* Layers Button */}
       <button

@@ -22,6 +22,7 @@ export const MENU_ICONS = {
   storeLocally: 'M19 18a3.5 3.5 0 0 0 0 -7h-1a5 4.5 0 0 0 -11 -2a4.6 4.4 0 0 0 -2.1 8.4M12 13v9M9 19l3 3l3 -3',
   report: 'M12 9v4M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0zM12 16h.01',
   users: 'M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0 -3 -3.85',
+  controls: 'M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2zM6 10v.01M10 10v.01M14 10v.01M18 10v.01M6 14v.01M18 14v.01M10 14h4',
 } as const
 
 export function MenuIcon({ d, size = 20 }: { d: string; size?: number }) {
@@ -29,6 +30,28 @@ export function MenuIcon({ d, size = 20 }: { d: string; size?: number }) {
     <svg width={size} height={size} className="shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={d} />
     </svg>
+  )
+}
+
+// A name drawn out from an icon's edge as the pointer arrives (or the
+// keyboard's focus): for the menu's icons and the quick bar's tools. It goes
+// beside a button marked `peer`, both inside a `group`; pressing it is
+// pressing the button.
+export function SlideLabel({ text, hint, onPress }: { text: string; hint?: string; onPress?: () => void }) {
+  return (
+    <span
+      aria-hidden="true"
+      onClick={onPress}
+      className="absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]"
+    >
+      <span
+        className="block whitespace-nowrap px-3 py-2 border border-nier-border/40 text-nier-strong text-[11px] tracking-[0.15em] uppercase cursor-pointer"
+        style={{ backgroundColor: 'rgb(var(--c-ground) / 0.96)' }}
+      >
+        {text}
+        {hint && <span className="ml-3 text-nier-bg/50 normal-case tracking-normal">{hint}</span>}
+      </span>
+    </span>
   )
 }
 
@@ -115,29 +138,53 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
               >
                 <MenuIcon d={item.icon} />
               </button>
-              {/* The name, drawn out from the icon's edge as the pointer
-                  arrives. Pressing it is pressing the icon. Not while the
-                  item's panel is open, which stands in the same place. */}
-              {!item.open && (
-                <span
-                  aria-hidden="true"
-                  onClick={() => { if (!item.disabled) item.onSelect() }}
-                  className="absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]"
-                >
-                  <span
-                    className="block whitespace-nowrap px-3 py-2 border border-nier-border/40 text-nier-strong text-[11px] tracking-[0.15em] uppercase cursor-pointer"
-                    style={{ backgroundColor: 'rgb(var(--c-ground) / 0.96)' }}
-                  >
-                    {item.label}
-                    {item.hint && <span className="ml-3 text-nier-bg/50 normal-case tracking-normal">{item.hint}</span>}
-                  </span>
-                </span>
-              )}
+              {/* Not while the item's panel is open, which stands in its place. */}
+              {!item.open && <SlideLabel text={item.label} hint={item.hint} onPress={item.disabled ? undefined : item.onSelect} />}
               {item.open && item.panel}
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Every control and shortcut in the atrium, each written "What : Keys" (a
+// full-width colon in Chinese and Japanese), shown as the two sides of a row.
+const CONTROLS = [
+  'atrium.controls.pan', 'atrium.controls.zoom', 'atrium.controls.zoomReset', 'atrium.controls.recenter', 'atrium.controls.fullscreen',
+  'atrium.controls.quickBar', 'atrium.controls.leaveTrace', 'atrium.controls.draw', 'atrium.controls.laser', 'atrium.controls.cancel', 'atrium.controls.finishPath',
+  'atrium.controls.editTrace', 'atrium.controls.multiSelect', 'atrium.controls.directSelect', 'atrium.controls.groupUngroup',
+  'atrium.controls.copyPaste', 'atrium.controls.copyPasteStyle', 'atrium.controls.deleteSelected', 'atrium.controls.undoRedo',
+  'atrium.controls.saveChanges', 'atrium.controls.export', 'atrium.controls.presenting',
+] as const
+
+// The list, beside the menu, from its top to the screen's foot at most, and
+// scrolled within that.
+export function ControlsPanel() {
+  const { t } = useTranslation()
+  return (
+    <div
+      data-ui-element="true"
+      data-controls-panel=""
+      onWheel={event => event.stopPropagation()}
+      className="panel-in fixed top-4 left-[4.375rem] z-[10000] w-[24rem] max-w-[calc(100vw-5.5rem)] max-h-[calc(100vh-2rem)] overflow-y-auto border border-nier-border/40 p-4 font-mono"
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.97)' }}
+    >
+      <h3 className="text-nier-strong text-xs tracking-[0.2em] uppercase mb-3"><span className="text-nier-bg/60 mr-2">◇</span>{t('atrium.controls.title')}</h3>
+      <dl className="space-y-1.5">
+        {CONTROLS.map(key => {
+          const text = t(key)
+          const at = text.search(/ : |：/)
+          const [what, keys] = at < 0 ? [text, ''] : [text.slice(0, at), text.slice(at).replace(/^ : |^：/, '')]
+          return (
+            <div key={key} className="flex items-baseline justify-between gap-4 text-xs tracking-wider">
+              <dt className="text-nier-bg/80">{what}</dt>
+              <dd className="text-nier-strong text-right shrink-0 max-w-[55%]">{keys}</dd>
+            </div>
+          )
+        })}
+      </dl>
     </div>
   )
 }

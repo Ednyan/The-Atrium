@@ -898,6 +898,13 @@ body.dragging * {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .panel-in { animation: panel-in 180ms cubic-bezier(0.22, 1, 0.36, 1); }
+/* Drawn out from the edge it stands beside, as the menu's and the quick bar's
+   names are (SlideLabel). */
+@keyframes slide-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); transform: translateX(-4px); }
+  to   { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(0); }
+}
+.slide-in { animation: slide-in 200ms ease-out; }
 
 @keyframes panel-in-right {
   from { opacity: 0; transform: translateX(10px); }
