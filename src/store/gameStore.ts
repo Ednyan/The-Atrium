@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import type { UserPresence, Trace, Layer } from '../types/database'
+import type { UserPresence, Trace, Layer, LobbyLocation } from '../types/database'
 import { isDesktop } from '../lib/supabase'
 import { t } from '../lib/i18n'
 import { recordTraceCreated } from '../lib/supportAppeal'
@@ -116,6 +116,12 @@ interface GameState {
   // From someone else, live: applied unless it's being edited here.
   receiveLink: (link: TraceLink) => void
   forgetLink: (id: string) => void
+
+  // The atrium's saved views, in their order, kept and saved like connections:
+  // changed through lib/locations, written by the save (lib/traceSave).
+  locations: LobbyLocation[]
+  pendingLocations: Set<string>
+  deletedLocations: Set<string>
 
   // The atrium's groups (the layers table), in no particular order -- sort
   // with inOrder (lib/order). One list for the canvas, which draws by it, and
@@ -324,6 +330,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       otherUsers: {},
       pendingChanges: new Set<string>(),
       deletedTraces: new Set<string>(),
+      locations: [],
+      pendingLocations: new Set<string>(),
+      deletedLocations: new Set<string>(),
       saveFailed: false,
       position: { x: 400, y: 300 },  // Reset position
       cursorState: 'default',
@@ -363,12 +372,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       deletedTraces: new Set<string>(),
       pendingLinks: new Set<string>(),
       deletedLinks: new Set<string>(),
+      pendingLocations: new Set<string>(),
+      deletedLocations: new Set<string>(),
     }),
 
   hasPendingChanges: () => {
     const state = get()
     return state.pendingChanges.size > 0 || state.deletedTraces.size > 0
       || state.pendingLinks.size > 0 || state.deletedLinks.size > 0
+      || state.pendingLocations.size > 0 || state.deletedLocations.size > 0
   },
 
   links: [],
@@ -407,6 +419,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     savedLinks.delete(id)
     return { links: state.links.filter(l => l.id !== id), savedLinks }
   }),
+  locations: [],
+  pendingLocations: new Set<string>(),
+  deletedLocations: new Set<string>(),
   layers: [],
   setLayers: (layers) => set({ layers }),
   putLayer: (layer) => set((state) => ({ layers: [...state.layers.filter(l => l.id !== layer.id), layer] })),

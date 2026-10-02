@@ -319,7 +319,6 @@ const ko: Catalogue = {
   'common.create': '만들기',
   'common.rename': '이름 바꾸기',
   'common.dragReorder': '끌어서 순서 바꾸기',
-  'common.discard': '버리기',
 
   // ------------------------------------------------------------- locations
   'atrium.locations.title': '위치',
@@ -338,8 +337,6 @@ const ko: Catalogue = {
   'atrium.locations.namePlaceholder': '위치 이름…',
   'atrium.locations.nameTitle': '위치 이름',
   'atrium.locations.renameTitle': '위치 이름 바꾸기',
-  'atrium.locations.saveChanges': '변경 사항 저장',
-  'atrium.locations.unsaved': '저장 안 됨',
   'atrium.locations.arrowHint': '← / → 키로 위치를 옮겨 다닐 수 있어요',
   'atrium.locations.present': '발표',
   'atrium.locations.startPresentation': '발표 모드 시작',
@@ -1058,7 +1055,6 @@ const ko: Catalogue = {
   'atrium.trace.placeEmbeds.one': '임베드 {count}개 놓기',
   'atrium.trace.placeEmbeds.few': '임베드 {count}개 놓기',
   'atrium.trace.placeEmbeds.many': '임베드 {count}개 놓기',
-  'atrium.locations.unsavedChanges': '저장하지 않은 변경이 있어요',
 
   // ----------------------------------------------------------- the layers
   'atrium.layers.title': '레이어',

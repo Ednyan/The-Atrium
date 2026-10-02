@@ -31,6 +31,7 @@ import { adoptTraces } from '../lib/layerUndo'
 import { cachedPicture, dropStrokes, holdDrawingFiles, loadDrawingPicture, paintedDrawing, pictureFieldsOf, pictureRow, pieceFields, placementOf, releaseDrawingFiles, restoreStrokes, saveDrawingPicture, writeDrawing, writePicture, type PictureFields } from '../lib/drawingFiles'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { saveAllChanges, startAutosave } from '../lib/traceSave'
+import { changeLocations, mapLocationRow, receiveLocations } from '../lib/locations'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { groupIdOf, inOrder, keyAt, keysOnTopOfGroup, newTraceOrderFields, topLevel } from '../lib/order'
 import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
@@ -99,21 +100,6 @@ const DRAW_SWATCHES = [
 
 const HUD_TEXT_OUTLINE =
   '0 0 4px rgb(var(--c-ground) / 0.95), 1px 0 2px rgb(var(--c-ground) / 0.94), -1px 0 2px rgb(var(--c-ground) / 0.94), 0 1px 2px rgb(var(--c-ground) / 0.94), 0 -1px 2px rgb(var(--c-ground) / 0.94)'
-
-function mapLocationRow(row: any): LobbyLocation {
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    lobbyId: row.lobby_id,
-    name: row.name,
-    positionX: row.position_x,
-    positionY: row.position_y,
-    zoom: row.zoom ?? 1,
-    orderIndex: row.order_index ?? 0,
-    userId: row.user_id,
-    isLocked: !!row.is_locked,
-  }
-}
 
 const formatTimeInAtrium = (joinedAt: number | undefined) => {
   if (!joinedAt) return '—'
@@ -599,22 +585,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setShowLayerPanel(false)
     setShowLocationsPanel(false)
   }, [])
-  // Saved (persisted) locations from the DB, and the local editable working
-  // copy. Edits (add/rename/delete/reorder) only touch the working copy and
-  // set locationsDirty; nothing is written -- and so nothing is broadcast
-  // over realtime -- until the user hits "Save Changes", which persists the
-  // whole diff at once. Both live here (not in LocationsPanel) so presentation
-  // mode keeps running after the panel is closed and the on-screen quick
-  // toggle can know whether any locations exist.
-  const [savedLocations, setSavedLocations] = useState<LobbyLocation[]>([])
-  const [workingLocations, setWorkingLocations] = useState<LobbyLocation[]>([])
-  const [locationsDirty, setLocationsDirty] = useState(false)
+  // The atrium's locations live in the store and save themselves, each change
+  // a step of undo (lib/locations). Presentation mode is here, not in
+  // LocationsPanel, so it keeps running after the panel is closed.
+  const { locations } = useGamePick('locations')
   const [presentationMode, setPresentationMode] = useState(false)
   const [presentationIndex, setPresentationIndex] = useState(0)
-  const workingLocationsRef = useRef<LobbyLocation[]>([])
   const presentationModeRef = useRef(false)
   const presentationIndexRef = useRef(0)
-  useEffect(() => { workingLocationsRef.current = workingLocations }, [workingLocations])
   useEffect(() => { presentationModeRef.current = presentationMode }, [presentationMode])
   useEffect(() => { presentationIndexRef.current = presentationIndex }, [presentationIndex])
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
@@ -2278,7 +2256,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }
 
-  // --- Locations state (shared per-atrium; edits deferred to Save) ---------
+  // --- Locations (lib/locations: in the store, saved like everything else) ---
   const loadLocations = useCallback(async () => {
     if (!supabase || !lobbyId) return
     const { data, error } = await supabase
@@ -2287,7 +2265,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       .eq('lobby_id', lobbyId)
       .order('order_index', { ascending: true })
     if (error || !data) return
-    setSavedLocations(data.map(mapLocationRow))
+    receiveLocations(data.map(mapLocationRow))
   }, [lobbyId])
 
   useEffect(() => {
@@ -2302,131 +2280,60 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => { channel.unsubscribe() }
   }, [loadLocations, lobbyId])
 
-  // Keep the working copy in sync with the saved list whenever there are no
-  // unsaved edits -- so a fresh load, or another user's saved change arriving
-  // over realtime, is reflected, but an in-progress local edit is never
-  // clobbered.
-  useEffect(() => {
-    if (!locationsDirty) {
-      setWorkingLocations(savedLocations.map(l => ({ ...l })))
-    }
-  }, [savedLocations, locationsDirty])
-
   const addLocation = (name: string) => {
     const cam = getCurrentCamera()
-    setWorkingLocations(prev => [
-      ...prev,
-      {
-        id: `temp_${crypto.randomUUID()}`,
-        createdAt: new Date().toISOString(),
-        lobbyId,
-        name: name.trim(),
-        positionX: cam.x,
-        positionY: cam.y,
-        zoom: cam.zoom,
-        orderIndex: prev.length,
-        userId: username,
-      },
-    ])
-    setLocationsDirty(true)
+    changeLocations('location added', list => [...list, {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      lobbyId,
+      name: name.trim(),
+      positionX: cam.x,
+      positionY: cam.y,
+      zoom: cam.zoom,
+      orderIndex: list.length,
+      userId: username,
+    }])
   }
 
   const renameLocation = (id: string, name: string) => {
-    setWorkingLocations(prev => prev.map(l => (l.id === id ? { ...l, name: name.trim() } : l)))
-    setLocationsDirty(true)
+    changeLocations('location renamed', list => list.map(l => (l.id === id ? { ...l, name: name.trim() } : l)))
   }
 
   // Re-shoots a saved location: overwrites its stored camera with wherever
-  // the user is currently looking. Same working-copy/dirty flow as every
-  // other location edit, so nothing persists until Save Changes.
+  // the user is currently looking.
   const updateLocationCamera = (id: string) => {
     const cam = getCurrentCamera()
     // Enforced here as well as disabled in the panel: the button being greyed
     // out is a hint, this is the actual guarantee.
-    if (workingLocationsRef.current.find(l => l.id === id)?.isLocked) return
-    setWorkingLocations(prev => prev.map(l => (
-      l.id === id ? { ...l, positionX: cam.x, positionY: cam.y, zoom: cam.zoom } : l
+    changeLocations('location moved', list => list.map(l => (
+      l.id === id && !l.isLocked ? { ...l, positionX: cam.x, positionY: cam.y, zoom: cam.zoom } : l
     )))
-    setLocationsDirty(true)
   }
 
   const toggleLocationLock = (id: string) => {
-    setWorkingLocations(prev => prev.map(l => (l.id === id ? { ...l, isLocked: !l.isLocked } : l)))
-    setLocationsDirty(true)
+    changeLocations('location locked', list => list.map(l => (l.id === id ? { ...l, isLocked: !l.isLocked } : l)))
   }
 
   const deleteLocation = (id: string) => {
-    setWorkingLocations(prev => prev.filter(l => l.id !== id))
-    setLocationsDirty(true)
+    changeLocations('location deleted', list => list.filter(l => l.id !== id))
   }
 
   const reorderLocations = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) return
-    setWorkingLocations(prev => {
-      const arr = [...prev]
+    changeLocations('locations reordered', list => {
+      const arr = [...list]
       const from = arr.findIndex(l => l.id === sourceId)
       const to = arr.findIndex(l => l.id === targetId)
-      if (from === -1 || to === -1) return prev
+      if (from === -1 || to === -1) return list
       const [moved] = arr.splice(from, 1)
       arr.splice(to, 0, moved)
       return arr
     })
-    setLocationsDirty(true)
-  }
-
-  const discardLocationChanges = () => {
-    setWorkingLocations(savedLocations.map(l => ({ ...l })))
-    setLocationsDirty(false)
-  }
-
-  // Persists the whole working/saved diff in one pass (deletes, inserts,
-  // updates), so all the session's location edits are written -- and
-  // broadcast over realtime -- only once, on demand, instead of on every edit.
-  const saveLocationChanges = async () => {
-    if (!supabase || !canEdit) return
-    const saved = savedLocations
-    const working = workingLocationsRef.current
-    const workingRealIds = new Set(working.filter(l => !l.id.startsWith('temp_')).map(l => l.id))
-
-    for (const s of saved) {
-      if (!workingRealIds.has(s.id)) {
-        await (supabase.from('lobby_locations') as any).delete().eq('id', s.id)
-      }
-    }
-    for (let i = 0; i < working.length; i++) {
-      const w = working[i]
-      if (w.id.startsWith('temp_')) {
-        await (supabase.from('lobby_locations') as any).insert({
-          lobby_id: lobbyId,
-          name: w.name,
-          position_x: w.positionX,
-          position_y: w.positionY,
-          zoom: w.zoom,
-          order_index: i,
-          user_id: username,
-          is_locked: !!w.isLocked,
-        })
-      } else {
-        const orig = saved.find(s => s.id === w.id)
-        if (!orig || orig.name !== w.name || orig.orderIndex !== i || orig.positionX !== w.positionX || orig.positionY !== w.positionY || orig.zoom !== w.zoom || !!orig.isLocked !== !!w.isLocked) {
-          await (supabase.from('lobby_locations') as any).update({
-            name: w.name,
-            order_index: i,
-            position_x: w.positionX,
-            position_y: w.positionY,
-            zoom: w.zoom,
-            is_locked: !!w.isLocked,
-          }).eq('id', w.id)
-        }
-      }
-    }
-    setLocationsDirty(false)
-    await loadLocations()
   }
 
   // --- Presentation mode (arrow-key navigation through working locations) --
   const goToPresentationIndex = useCallback((index: number) => {
-    const list = workingLocationsRef.current
+    const list = useGameStore.getState().locations
     if (list.length === 0) return
     const clamped = Math.max(0, Math.min(list.length - 1, index))
     setPresentationIndex(clamped)
@@ -2439,7 +2346,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       setPresentationMode(false)
       presentationModeRef.current = false
     } else {
-      if (workingLocationsRef.current.length === 0) return
+      if (useGameStore.getState().locations.length === 0) return
       setPresentationMode(true)
       presentationModeRef.current = true
       goToPresentationIndex(presentationIndexRef.current)
@@ -4709,7 +4616,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           when the HUD is expanded), collapsed to just the centered play icon;
           reveals the "Present" label on hover (where it may grow past square).
           Green while presentation mode is active. */}
-      {workingLocations.length > 0 && (
+      {locations.length > 0 && (
         <button
           onClick={togglePresentationMode}
           className="atrium-btn group pointer-events-auto font-mono w-[2.125rem] hover:w-auto px-0 hover:px-4"
@@ -5410,16 +5317,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <LocationsPanel
           onClose={() => setShowLocationsPanel(false)}
           canEdit={canEdit}
-          locations={workingLocations}
-          dirty={locationsDirty}
+          locations={locations}
           onAdd={addLocation}
           onRename={renameLocation}
           onUpdateCamera={updateLocationCamera}
           onToggleLock={toggleLocationLock}
           onDelete={deleteLocation}
           onReorder={reorderLocations}
-          onSave={saveLocationChanges}
-          onDiscard={discardLocationChanges}
           onGoToLocation={flyToLocation}
           presentationMode={presentationMode}
           onTogglePresentation={togglePresentationMode}

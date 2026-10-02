@@ -10,11 +10,10 @@ export const LOCATION_DRAG_DATA_KEY = 'application/x-atrium-location-id'
 interface LocationsPanelProps {
   onClose: () => void
   canEdit?: boolean
-  // The working (possibly-unsaved) locations list, owned by LobbyScene. All
-  // mutations go back up through the callbacks below and are only persisted
-  // when onSave is called -- this panel is purely presentational.
+  // The atrium's locations (the store's, lib/locations). Every change goes back
+  // up through the callbacks below, which save it and make it a step of undo
+  // -- this panel is purely presentational.
   locations: LobbyLocation[]
-  dirty: boolean
   onAdd: (name: string) => void
   onRename: (id: string, name: string) => void
   // Overwrites a saved location's camera with wherever the user is looking
@@ -25,8 +24,6 @@ interface LocationsPanelProps {
   onToggleLock: (id: string) => void
   onDelete: (id: string) => void
   onReorder: (sourceId: string, targetId: string) => void
-  onSave: () => void
-  onDiscard: () => void
   onGoToLocation: (location: LobbyLocation) => void
   presentationMode: boolean
   onTogglePresentation: () => void
@@ -101,15 +98,12 @@ export default function LocationsPanel({
   onClose,
   canEdit = true,
   locations,
-  dirty,
   onAdd,
   onRename,
   onUpdateCamera,
   onToggleLock,
   onDelete,
   onReorder,
-  onSave,
-  onDiscard,
   onGoToLocation,
   presentationMode,
   onTogglePresentation,
@@ -162,7 +156,6 @@ export default function LocationsPanel({
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rotate-45 border border-gray-400" />
           <h2 className="text-sm text-nier-strong tracking-[0.15em] uppercase">{t('atrium.locations.title')}</h2>
-          {dirty && <span className="text-amber-400 text-[11px] tracking-wider uppercase" title={t('atrium.locations.unsavedChanges')}>● {t('atrium.locations.unsaved')}</span>}
         </div>
         <div className="flex gap-2">
           {canEdit && (
@@ -305,24 +298,6 @@ export default function LocationsPanel({
           )
         })}
       </div>
-
-      {/* Save / Discard footer -- only while there are unsaved edits */}
-      {canEdit && dirty && (
-        <div className="bg-nier-black border-t border-nier-border/40 p-2 flex gap-2">
-          <button
-            onClick={onSave}
-            className="flex-1 bg-white hover:bg-nier-bg text-black py-1.5 text-xs tracking-wider uppercase transition-colors"
-          >
-            {t('atrium.locations.saveChanges')}
-          </button>
-          <button
-            onClick={onDiscard}
-            className="flex-1 border border-nier-border/40 hover:border-nier-bg text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
-          >
-            {t('common.discard')}
-          </button>
-        </div>
-      )}
 
       {/* Dialog for create/rename/delete */}
       {dialogMode && (

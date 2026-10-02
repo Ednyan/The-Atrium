@@ -318,7 +318,6 @@ const zh: Catalogue = {
   'common.create': '创建',
   'common.rename': '重命名',
   'common.dragReorder': '拖动可重新排序',
-  'common.discard': '放弃',
 
   // ------------------------------------------------------------- locations
   'atrium.locations.title': '位置',
@@ -337,8 +336,6 @@ const zh: Catalogue = {
   'atrium.locations.namePlaceholder': '位置名称…',
   'atrium.locations.nameTitle': '位置名称',
   'atrium.locations.renameTitle': '重命名位置',
-  'atrium.locations.saveChanges': '保存更改',
-  'atrium.locations.unsaved': '未保存',
   'atrium.locations.arrowHint': '用 ← / → 键在位置之间移动',
   'atrium.locations.present': '演示',
   'atrium.locations.startPresentation': '开始演示模式',
@@ -1057,7 +1054,6 @@ const zh: Catalogue = {
   'atrium.trace.placeEmbeds.one': '放置 {count} 个嵌入',
   'atrium.trace.placeEmbeds.few': '放置 {count} 个嵌入',
   'atrium.trace.placeEmbeds.many': '放置 {count} 个嵌入',
-  'atrium.locations.unsavedChanges': '有更改还没保存',
 
   // ----------------------------------------------------------- the layers
   'atrium.layers.title': '图层',

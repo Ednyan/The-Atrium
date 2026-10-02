@@ -315,7 +315,6 @@ const ja: Catalogue = {
   'common.create': '作成',
   'common.rename': '名前を変更',
   'common.dragReorder': 'ドラッグで並べ替え',
-  'common.discard': '破棄',
 
   // ------------------------------------------------------------- locations
   'atrium.locations.title': '位置',
@@ -334,8 +333,6 @@ const ja: Catalogue = {
   'atrium.locations.namePlaceholder': '位置の名前…',
   'atrium.locations.nameTitle': '位置の名前',
   'atrium.locations.renameTitle': '位置の名前を変更',
-  'atrium.locations.saveChanges': '変更を保存',
-  'atrium.locations.unsaved': '未保存',
   'atrium.locations.arrowHint': '← / → キーで位置を移動できます',
   'atrium.locations.present': 'プレゼン',
   'atrium.locations.startPresentation': 'プレゼンモードを始める',
@@ -1054,7 +1051,6 @@ const ja: Catalogue = {
   'atrium.trace.placeEmbeds.one': '埋め込みを {count} 件置く',
   'atrium.trace.placeEmbeds.few': '埋め込みを {count} 件置く',
   'atrium.trace.placeEmbeds.many': '埋め込みを {count} 件置く',
-  'atrium.locations.unsavedChanges': '保存していない変更があります',
 
   // ----------------------------------------------------------- the layers
   'atrium.layers.title': 'レイヤー',

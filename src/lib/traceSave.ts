@@ -1,4 +1,4 @@
-// Changes save themselves, as Excalidraw's do: a moment after the last one
+// Changes save themselves -- traces, connections, locations -- as Excalidraw's do: a moment after the last one
 // (startAutosave), never in the middle of a drag, and at once when the page
 // is hidden, the atrium left or the app closed. The undo history is the one
 // timeline -- an undo is a change like any other, and is saved the same way --
@@ -11,7 +11,8 @@ import { t, tCount } from './i18n'
 import { linkRow } from './traceLinks'
 import { whenTracesWritten } from './traceWrites'
 import { traceColumns, traceRow } from './traceInsert'
-import type { Trace } from '../types/database'
+import { locationColumns, locationRow } from './locations'
+import type { LobbyLocation, Trace } from '../types/database'
 import type { TraceLink } from './traceLinks'
 
 // Fired on window whenever a save completes. TraceOverlay drops its local
@@ -34,11 +35,18 @@ async function writeRow(db: Db, table: string, id: string, columns: Record<strin
 
 // What was written leaves the sets of what's to be written -- unless it changed
 // again while it was being written. Every change puts a new object for the
-// trace (or connection) in the store, so the same object means no change since.
-function settle(written: { traces: Trace[]; deleted: string[]; links: TraceLink[]; deletedLinks: string[]; gone: string[]; goneLinks: string[] }) {
+// trace (connection, location) in the store, so the same object means no
+// change since.
+type Written = {
+  traces: Trace[]; deleted: string[]; gone: string[]
+  links: TraceLink[]; deletedLinks: string[]; goneLinks: string[]
+  locations: LobbyLocation[]; deletedLocations: string[]
+}
+function settle(written: Written) {
   useGameStore.setState(state => {
     const traceNow = new Map(state.traces.map(tr => [tr.id, tr]))
     const linkNow = new Map(state.links.map(l => [l.id, l]))
+    const locationNow = new Map(state.locations.map(l => [l.id, l]))
     const pendingChanges = new Set(state.pendingChanges)
     for (const trace of written.traces) if (traceNow.get(trace.id) === trace) pendingChanges.delete(trace.id)
     // Marked changed, but not there to write: nothing to do for it.
@@ -52,7 +60,11 @@ function settle(written: { traces: Trace[]; deleted: string[]; links: TraceLink[
     for (const id of written.deletedLinks) deletedLinks.delete(id)
     const savedLinks = new Set(state.savedLinks)
     for (const link of written.links) savedLinks.add(link.id)
-    return { pendingChanges, pendingLinks, deletedTraces, deletedLinks, savedLinks }
+    const pendingLocations = new Set(state.pendingLocations)
+    for (const l of written.locations) if (locationNow.get(l.id) === l) pendingLocations.delete(l.id)
+    const deletedLocations = new Set(state.deletedLocations)
+    for (const id of written.deletedLocations) deletedLocations.delete(id)
+    return { pendingChanges, pendingLinks, deletedTraces, deletedLinks, savedLinks, pendingLocations, deletedLocations }
   })
 }
 
@@ -72,7 +84,7 @@ async function write(): Promise<boolean> {
   try {
     // Taken before anything is awaited: leaving an atrium clears the store,
     // and the save that leaving starts must still have what it's to write.
-    const { pendingChanges, deletedTraces, traces, pendingLinks, deletedLinks, links, savedLinks } = useGameStore.getState()
+    const { pendingChanges, deletedTraces, traces, pendingLinks, deletedLinks, links, savedLinks, locations, pendingLocations, deletedLocations } = useGameStore.getState()
     // New traces still on their way to the database first (lib/traceWrites):
     // an update to a row not there yet would put it there twice.
     await whenTracesWritten()
@@ -82,6 +94,8 @@ async function write(): Promise<boolean> {
     const goneLinks = [...pendingLinks].filter(id => !linksChanged.some(l => l.id === id))
     const deleted = [...deletedTraces]
     const linksDeleted = [...deletedLinks]
+    const locationsChanged = locations.filter(l => pendingLocations.has(l.id))
+    const locationsDeleted = [...deletedLocations]
 
     // Connections removed before their traces: on the web a trace's deletion
     // takes its connections with it anyway, but the desktop shim doesn't
@@ -96,6 +110,8 @@ async function write(): Promise<boolean> {
       const { id: _id, ...fields } = row
       return writeRow(db, 'trace_links', link.id, fields, () => row)
     }))
+    const locationsGoneOk = await Promise.all(locationsDeleted.map(async id => !(await (db.from('lobby_locations') as any).delete().eq('id', id)).error))
+    const locationsOk = await Promise.all(locationsChanged.map(l => writeRow(db, 'lobby_locations', l.id, locationColumns(l), () => locationRow(l))))
 
     settle({
       traces: changed.filter((_, i) => tracesOk[i]),
@@ -104,8 +120,10 @@ async function write(): Promise<boolean> {
       deletedLinks: linksDeleted.filter((_, i) => linksGoneOk[i]),
       gone,
       goneLinks,
+      locations: locationsChanged.filter((_, i) => locationsOk[i]),
+      deletedLocations: locationsDeleted.filter((_, i) => locationsGoneOk[i]),
     })
-    const refused = [tracesOk, deletedOk, linksOk, linksGoneOk].flat().filter(ok => !ok).length
+    const refused = [tracesOk, deletedOk, linksOk, linksGoneOk, locationsOk, locationsGoneOk].flat().filter(ok => !ok).length
     if (refused > 0) {
       // Left to be written: the next try may get through, and they're the
       // user's work either way.
@@ -175,7 +193,8 @@ export function startAutosave(): () => void {
     if (prev.saveFailed && !state.saveFailed) failures = 0
     if (failures > 0) return // the retry has it
     if (state.pendingChanges !== prev.pendingChanges || state.deletedTraces !== prev.deletedTraces
-      || state.pendingLinks !== prev.pendingLinks || state.deletedLinks !== prev.deletedLinks) {
+      || state.pendingLinks !== prev.pendingLinks || state.deletedLinks !== prev.deletedLinks
+      || state.pendingLocations !== prev.pendingLocations || state.deletedLocations !== prev.deletedLocations) {
       if (state.hasPendingChanges()) schedule()
     }
   })
