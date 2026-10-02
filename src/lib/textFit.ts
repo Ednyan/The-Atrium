@@ -110,3 +110,44 @@ export function computeAutoFitTextSize(
 
   return { width: Math.round(baseWidth * MAX_SCALE), height: Math.round(baseHeight * MAX_SCALE) }
 }
+
+// Maps a stored fontFamily value to the actual CSS font-family used to
+// render it. Generic keywords (sans/serif/mono) and the new web-safe OS
+// fonts get a real fallback stack; everything else (palatino, impact,
+// cursive, fantasy, system-ui, and any custom font name) passes through
+// unchanged -- those are already valid single-token CSS values on their own.
+// One shared function instead of four copies of the same lookup object (one
+// per place a font actually gets applied/measured) so adding a font only
+// means editing this one map.
+export const FONT_FAMILY_CSS_MAP: Record<string, string> = {
+  sans: 'sans-serif',
+  serif: 'serif',
+  mono: 'monospace',
+  arial: 'Arial, Helvetica, sans-serif',
+  times: "'Times New Roman', Times, serif",
+  georgia: "Georgia, 'Times New Roman', serif",
+  courier: "'Courier New', Courier, monospace",
+  verdana: 'Verdana, Geneva, sans-serif',
+  tahoma: 'Tahoma, Verdana, sans-serif',
+  trebuchet: "'Trebuchet MS', 'Lucida Grande', sans-serif",
+  segoe: "'Segoe UI', Tahoma, sans-serif",
+  calibri: 'Calibri, Candara, sans-serif',
+  consolas: "Consolas, 'Courier New', monospace",
+  'century-gothic': "'Century Gothic', 'Apple Gothic', sans-serif",
+}
+
+export function resolveFontFamilyCss(key: string): string {
+  return FONT_FAMILY_CSS_MAP[key] || key
+}
+
+// A text trace's font size in pixels: a number, or one of the names it was
+// once kept as.
+export function fontPxOf(fontSize: 'small' | 'medium' | 'large' | number | undefined): number {
+  return typeof fontSize === 'number' ? fontSize : fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12
+}
+
+// The box a text trace fits its text in, in its own font and size -- as when a
+// font is set on it (Customize, Batch Edit, Paste Style).
+export function fittedTextBox(trace: { content?: string | null; fontSize?: 'small' | 'medium' | 'large' | number; fontFamily?: string }): { width: number; height: number } {
+  return computeAutoFitTextSize(trace.content ?? '', fontPxOf(trace.fontSize), { fontFamily: resolveFontFamilyCss(trace.fontFamily ?? 'sans') })
+}

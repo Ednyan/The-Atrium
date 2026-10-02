@@ -22,7 +22,7 @@ async function resolveLocalStreamUrl(url: string): Promise<string> {
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { computeAutoFitTextSize } from '../lib/textFit'
+import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss } from '../lib/textFit'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
@@ -40,11 +40,12 @@ import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls, { Check } from './ShapeStyleControls'
 import BatchEditPanel from './BatchEditPanel'
 import { has } from '../lib/traceKinds'
+import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
-import { splitDrawing } from '../lib/drawingFiles'
+import { changeStrokes, splitDrawing } from '../lib/drawingFiles'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
@@ -147,35 +148,6 @@ const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
   { value: 'century-gothic', label: 'Century Gothic' },
   ...CUSTOM_FONTS.map(({ name }) => ({ value: name, label: name })),
 ].sort((a, b) => a.label.localeCompare(b.label))
-
-// Maps a stored fontFamily value to the actual CSS font-family used to
-// render it. Generic keywords (sans/serif/mono) and the new web-safe OS
-// fonts get a real fallback stack; everything else (palatino, impact,
-// cursive, fantasy, system-ui, and any custom font name) passes through
-// unchanged -- those are already valid single-token CSS values on their own.
-// One shared function instead of four copies of the same lookup object (one
-// per place a font actually gets applied/measured) so adding a font only
-// means editing this one map.
-const FONT_FAMILY_CSS_MAP: Record<string, string> = {
-  sans: 'sans-serif',
-  serif: 'serif',
-  mono: 'monospace',
-  arial: 'Arial, Helvetica, sans-serif',
-  times: "'Times New Roman', Times, serif",
-  georgia: "Georgia, 'Times New Roman', serif",
-  courier: "'Courier New', Courier, monospace",
-  verdana: 'Verdana, Geneva, sans-serif',
-  tahoma: 'Tahoma, Verdana, sans-serif',
-  trebuchet: "'Trebuchet MS', 'Lucida Grande', sans-serif",
-  segoe: "'Segoe UI', Tahoma, sans-serif",
-  calibri: 'Calibri, Candara, sans-serif',
-  consolas: "Consolas, 'Courier New', monospace",
-  'century-gothic': "'Century Gothic', 'Apple Gothic', sans-serif",
-}
-
-function resolveFontFamilyCss(key: string): string {
-  return FONT_FAMILY_CSS_MAP[key] || key
-}
 
 interface TraceOverlayProps {
   traces: Trace[]
@@ -3049,6 +3021,38 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   // `linkIds`: connections selected along with the traces (an area select
   // takes both), deleted with them as the same one step.
+  // Copy Style / Paste Style (lib/traceStyle), from the menu or Ctrl+Alt+C / V:
+  // one trace's look, given to others -- each takes what it has of it, as one
+  // step of undo. A text box fits its text again in a font or size pasted on
+  // it, as when one is set; a drawing's strokes go to drawings.
+  const copyTraceStyle = (id: string) => {
+    const trace = traces.find(tr => tr.id === id)
+    if (!trace) return
+    copyStyle(trace)
+    showToast(t('atrium.toast.styleCopied'))
+  }
+  const pasteTraceStyle = (ids: string[]) => {
+    const style = copiedStyle()
+    if (!style || !canEdit) return
+    const targets = traces.filter(tr => ids.includes(tr.id))
+    const changed = new Set<string>()
+    inOneStep(() => {
+      for (const trace of targets) {
+        const patch = stylePatchFor(trace, style)
+        if (Object.keys(patch).length === 0) continue
+        const refit = trace.type === 'text' && ('fontFamily' in patch || 'fontSize' in patch)
+        updateTraceCustomization(trace.id, refit ? { ...patch, ...fittedTextBox({ ...trace, ...patch }) } : patch)
+        changed.add(trace.id)
+      }
+    })
+    const drawings = style.strokes ? targets.filter(tr => has(tr, 'strokes')).map(tr => tr.id) : []
+    if (drawings.length > 0 && lobbyId) {
+      for (const id of drawings) changed.add(id)
+      void changeStrokes(drawings, style.strokes!, lobbyId, userId)
+    }
+    showToast(changed.size > 0 ? t('atrium.toast.stylePasted') : t('atrium.toast.styleNoMatch'))
+  }
+
   const deleteTraces = (traceIds: string[], linkIds: string[] = []) => {
     if (traceIds.length === 0) return
     const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
@@ -3258,9 +3262,11 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
 
+    // As it showed, defaults included: undone, a field that had no value
+    // gets its default written back (lib/traceStyle shownValue).
     const before: Partial<Trace> = {}
     for (const key of Object.keys(updates) as (keyof Trace)[]) {
-      (before as any)[key] = trace[key]
+      (before as any)[key] = shownValue(trace, key)
     }
     if (!options?.skipUndo) {
       pushUpdateOp(traceId, before, updates)
@@ -4714,6 +4720,17 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       if (connectFromRef.current && e.key === 'Escape') {
         setConnectFrom(null)
         setConnectPointer(null)
+        return
+      }
+      // Ctrl+Alt+C / Ctrl+Alt+V: Copy Style from the selected trace, Paste
+      // Style on the selection, as in Excalidraw. By the key's place, not its
+      // character: Alt changes the character on some layouts.
+      if ((e.ctrlKey || e.metaKey) && e.altKey && !typingHere && !isDrawingModeRef.current && (e.code === 'KeyC' || e.code === 'KeyV')) {
+        const selection = multiSelectedIds.size > 0 ? [...multiSelectedIds] : selectedTraceId ? [selectedTraceId] : []
+        if (selection.length === 0) return
+        e.preventDefault()
+        if (e.code === 'KeyC') copyTraceStyle(selectedTraceId ?? selection[0])
+        else pasteTraceStyle(selection)
         return
       }
       // Connections alone go here; with traces selected too, they go with
@@ -7033,7 +7050,7 @@ return (
         // Per-trace opt-out: with textScaleWithBox off the font size is
         // fixed and resizing the trace only changes how much room the
         // text has to reflow in.
-        const baseFontSize = typeof fontSize === 'number' ? fontSize : (fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12)
+        const baseFontSize = fontPxOf(fontSize)
         const rawScaleX = (transform as any).scaleX ?? 1
         const rawScaleY = (transform as any).scaleY ?? 1
         const scaleWithBox = trace.textScaleWithBox ?? true
@@ -8131,6 +8148,28 @@ return (
                 <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.customize')}
               </button>
             )}
+            {/* This trace's look, to give to others; the look copied, given to
+                this trace -- or, right-clicked in a selection, to all of it. */}
+            <button
+              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              onClick={() => {
+                copyTraceStyle(contextMenu.traceId)
+                setContextMenu(null)
+              }}
+            >
+              <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.copyStyle')}
+            </button>
+            {copiedStyle() && (
+              <button
+                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                onClick={() => {
+                  pasteTraceStyle(editingWholeSelection ? [...multiSelectedIds] : [contextMenu.traceId])
+                  setContextMenu(null)
+                }}
+              >
+                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.pasteStyle')}
+              </button>
+            )}
             {/* Back into drawing mode on this drawing -- all its strokes (lib/brushes
                 drawingOf) -- to draw on and erase from, where they are. */}
             {(() => {
@@ -8880,9 +8919,7 @@ return (
                   <textarea
                     value={editingTrace.content ?? ''}
                     onChange={(e) => {
-                      const effectiveFontSize = typeof editingTrace.fontSize === 'number'
-                        ? editingTrace.fontSize
-                        : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
+                      const effectiveFontSize = fontPxOf(editingTrace.fontSize)
                       const effectiveFontFamily = resolveFontFamilyCss(editingTrace.fontFamily ?? 'sans')
                       fitTextLive(traces.find(tr => tr.id === editingTrace.id) ?? editingTrace, e.target.value, effectiveFontSize, effectiveFontFamily)
                     }}
@@ -8986,9 +9023,7 @@ return (
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
-                        const effectiveFontSize = typeof editingTrace.fontSize === 'number'
-                          ? editingTrace.fontSize
-                          : (editingTrace.fontSize === 'small' ? 10 : editingTrace.fontSize === 'large' ? 14 : 12)
+                        const effectiveFontSize = fontPxOf(editingTrace.fontSize)
                         const effectiveFontFamily = resolveFontFamilyCss(e.target.value)
                         const textSize = computeAutoFitTextSize(editingTrace.content ?? '', effectiveFontSize, { fontFamily: effectiveFontFamily })
                         const updated = { ...editingTrace, fontFamily: e.target.value, width: textSize.width, height: textSize.height };
@@ -9701,8 +9736,7 @@ return (
           // Each fitted to its own text again: auto-fit depends on the words.
           onFont={(ids, family) => inOneStep(() => {
             for (const trace of traces.filter(tr => ids.includes(tr.id))) {
-              const fontSize = typeof trace.fontSize === 'number' ? trace.fontSize : trace.fontSize === 'small' ? 10 : trace.fontSize === 'large' ? 14 : 12
-              const size = computeAutoFitTextSize(trace.content ?? '', fontSize, { fontFamily: resolveFontFamilyCss(family) })
+              const size = fittedTextBox({ ...trace, fontFamily: family })
               updateTraceCustomization(trace.id, { fontFamily: family, width: size.width, height: size.height })
             }
           })}

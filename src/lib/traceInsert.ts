@@ -136,8 +136,11 @@ export function traceColumns(trace: Trace): Record<string, any> {
     text_underline: trace.textUnderline,
     text_align: trace.textAlign,
     text_color: trace.textColor,
-    is_locked: trace.isLocked,
-    border_radius: trace.borderRadius,
+    // Columns the database won't take empty get their defaults, should the
+    // store hold none (a value taken back by undo is its default; a new
+    // trace's row may leave them out).
+    is_locked: trace.isLocked ?? false,
+    border_radius: trace.borderRadius ?? 0,
     // Defaulted the same way traceInsert does. Without the fallback an
     // uncropped trace sends undefined here, which the web harmlessly drops
     // from the JSON body (so the column default applies) but the desktop
@@ -149,14 +152,14 @@ export function traceColumns(trace: Trace): Record<string, any> {
     crop_y: trace.cropY ?? 0,
     crop_width: trace.cropWidth ?? 1,
     crop_height: trace.cropHeight ?? 1,
-    illuminate: trace.illuminate,
-    light_color: trace.lightColor,
-    light_intensity: trace.lightIntensity,
-    light_radius: trace.lightRadius,
-    light_offset_x: trace.lightOffsetX,
-    light_offset_y: trace.lightOffsetY,
-    light_pulse: trace.lightPulse,
-    light_pulse_speed: trace.lightPulseSpeed,
+    illuminate: trace.illuminate ?? false,
+    light_color: trace.lightColor ?? '#ffffff',
+    light_intensity: trace.lightIntensity ?? 1,
+    light_radius: trace.lightRadius ?? 200,
+    light_offset_x: trace.lightOffsetX ?? 0,
+    light_offset_y: trace.lightOffsetY ?? 0,
+    light_pulse: trace.lightPulse ?? false,
+    light_pulse_speed: trace.lightPulseSpeed ?? 2,
     enable_interaction: trace.enableInteraction,
     ignore_clicks: trace.ignoreClicks,
     order_key: trace.orderKey ?? null,
@@ -167,7 +170,7 @@ export function traceColumns(trace: Trace): Record<string, any> {
   // Add optional fields
   if (trace.mediaUrl !== undefined) columns.media_url = trace.mediaUrl
   if (trace.linkUrl !== undefined) columns.link_url = trace.linkUrl
-  if (trace.isClickable !== undefined) columns.is_clickable = trace.isClickable
+  if (trace.isClickable !== undefined) columns.is_clickable = trace.isClickable ?? false
   if (trace.content !== undefined) columns.content = trace.content
   // width/height apply to every trace type that can be resized (text,
   // image, embed, video, shape) -- this used to be gated to shape only,

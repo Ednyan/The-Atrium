@@ -9,9 +9,12 @@
 // Customize panel's own list of which types had a frame had left audio and
 // video out, though they draw one like any other.
 //
-// A new kind of trace, or a new setting, is a line here -- both panels follow.
+// A new kind of trace, or a new setting, is a line here -- both panels follow,
+// and so does Copy Style (lib/traceStyle), which carries from one trace to
+// another the fields of every setting both have.
 
 import { isDrawingTrace } from './brushes.ts'
+import type { Trace } from '../types/database'
 
 export type TraceKind = 'text' | 'image' | 'drawing' | 'embed' | 'document' | 'audio' | 'video' | 'frame' | 'shape' | 'path'
 
@@ -47,6 +50,27 @@ export function kindOf(trace: Kinded): TraceKind {
   if (trace.type === 'shape') return trace.shapeType === 'path' ? 'path' : 'shape'
   if (trace.type === 'image' && isDrawingTrace(trace)) return 'drawing'
   return trace.type as TraceKind
+}
+
+// What each setting is made of: the fields a trace's look is kept in. Not a
+// link (each trace's own address) nor a drawing's strokes, which are kept in
+// its stroke data rather than in fields (lib/drawingFiles changeStrokes).
+export const SETTING_FIELDS: Record<Exclude<Setting, 'link' | 'strokes'>, readonly (keyof Trace)[]> = {
+  frame: ['showBorder', 'borderColor', 'borderOpacity', 'borderWidth', 'showBackground', 'fillColor', 'fillOpacity', 'borderRadius', 'showShadow'],
+  captions: ['showFilename', 'showDescription'],
+  font: ['fontFamily', 'fontSize', 'textColor', 'textBold', 'textItalic', 'textUnderline', 'textAlign', 'textScaleWithBox'],
+  shape: ['shapeColor', 'shapeOpacity', 'shapeNoFill', 'shapeOutlineOnly', 'shapeOutlineColor', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'cornerRadius'],
+  line: ['shapeColor', 'shapeOpacity', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'pathCurveType', 'pathArrowStart', 'pathArrowEnd'],
+  light: ['illuminate', 'lightColor', 'lightIntensity', 'lightRadius', 'lightPulse', 'lightPulseSpeed'],
+}
+
+// Every field of a trace's look, by its settings.
+export function styleFieldsOf(trace: Kinded): Set<keyof Trace> {
+  const fields = new Set<keyof Trace>()
+  for (const setting of SETTINGS[kindOf(trace)] ?? []) {
+    if (setting in SETTING_FIELDS) for (const field of SETTING_FIELDS[setting as keyof typeof SETTING_FIELDS]) fields.add(field)
+  }
+  return fields
 }
 
 // Whether a trace has a setting. A type nothing here knows has none.

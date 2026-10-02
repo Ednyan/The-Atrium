@@ -5443,6 +5443,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               'atrium.controls.groupUngroup',
               'atrium.controls.undoRedo',
               'atrium.controls.copyPaste',
+              'atrium.controls.copyPasteStyle',
               'atrium.controls.deleteSelected',
               'atrium.controls.saveChanges',
             ] as const).map(key => (
