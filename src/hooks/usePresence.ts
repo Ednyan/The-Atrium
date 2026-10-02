@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
+import { receiveLaser, setLaserSender } from '../lib/laser'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
@@ -196,6 +197,10 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
           updateOtherUserPosition(payload.userId, payload.x, payload.y)
         }
       })
+      // Someone's laser pointer (lib/laser): drawn, never kept.
+      .on('broadcast', { event: 'laser' }, ({ payload }: { payload: any }) => {
+        if (payload && payload.userId !== userId && isValidUserKey(payload.userId)) receiveLaser(payload)
+      })
       .on('broadcast', { event: 'kicked' }, ({ payload }: { payload: any }) => {
         if (payload && payload.targetUserId === userId) {
           // Stop being present the moment the removal lands, not when the
@@ -238,6 +243,12 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     const reconcileInterval = setInterval(reconcilePresenceState, 20000)
 
     channelRef.current = channel
+    // This person's laser out to the others -- not while invisible, like the
+    // cursor below.
+    setLaserSender(message => {
+      if (ghostRef.current !== false) return
+      void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
+    })
 
     // Send position updates only when position actually changes. Throttled
     // to max 1 update per 2 seconds to keep Realtime message usage minimal.
@@ -287,6 +298,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       // Disconnecting from presence channel
       clearInterval(updateInterval)
       clearInterval(reconcileInterval)
+      setLaserSender(null)
       channel.unsubscribe()
     }
   }, [userId, username, lobbyId])

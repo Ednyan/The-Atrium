@@ -13,7 +13,10 @@
 // being placed, text being typed -- ends when another tool is picked here.
 // Nothing is lost by it: a drawing's strokes are saved as they're drawn.
 //
-// Keys 1 to 9 pick the first nine, in the order shown.
+// Keys 1 to 9 pick the first nine, in the order shown; K the laser pointer.
+//
+// The laser pointer (LaserLayer) is in hand like Draw is, and has its
+// colour and particle effect in a flyout of its own.
 //
 // Two tools have kinds, in a flyout at their side (as the canvas menu's
 // Transformations has), the button showing the kind in use:
@@ -25,9 +28,11 @@
 
 import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
+import { LASER_EFFECTS, type LaserEffect, type LaserSettings } from '../lib/laser'
+import type { TranslationKey } from '../locales/en'
 
 export type PlaceTool = 'text' | 'rectangle' | 'circle' | 'path' | 'frame'
-export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'pinterest'
+export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest'
 
 // Drawn in a 24 box, stroked in the current colour.
 const ICONS: Record<QuickAction, ReactNode> = {
@@ -51,6 +56,14 @@ const ICONS: Record<QuickAction, ReactNode> = {
   ),
   embed: <path d="M9 7 L4 12 L9 17 M15 7 L20 12 L15 17" strokeLinecap="round" strokeLinejoin="round" />,
   frame: <path d="M8 3 V21 M16 3 V21 M3 8 H21 M3 16 H21" strokeLinecap="round" />,
+  // A pointer with its light at the tip.
+  laser: (
+    <>
+      <path d="M4.5 19.5 L12.5 11.5" strokeLinecap="round" />
+      <circle cx="15.5" cy="8.5" r="2.2" />
+      <path d="M15.5 3.5 V4.6 M20.5 8.5 H19.4 M19 5 L18.2 5.8 M19 12 L18.2 11.2" strokeLinecap="round" />
+    </>
+  ),
   pinterest: (
     <>
       <path d="M9 3.5 H15 L14 9 L17 12 H7 L10 9 Z" strokeLinejoin="round" />
@@ -75,26 +88,36 @@ const BOX_TEXT_ICON = (
 )
 
 // In the order shown; the first nine have number keys.
-export const QUICK_ORDER: QuickAction[] = ['select', 'text', 'rectangle', 'circle', 'path', 'draw', 'image', 'embed', 'frame', 'pinterest']
+export const QUICK_ORDER: QuickAction[] = ['select', 'text', 'rectangle', 'circle', 'path', 'draw', 'image', 'embed', 'frame', 'laser', 'pinterest']
+
+const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
+  none: 'atrium.tools.effectNone',
+  sparks: 'atrium.tools.effectSparks',
+  embers: 'atrium.tools.effectEmbers',
+  stardust: 'atrium.tools.effectStardust',
+}
 
 // The tools with kinds, and which kind is in use: Select's direct, Text's
 // plain -- both false for the first kind.
 export type ToolKinds = { select: boolean; text: boolean }
 type KindedTool = keyof ToolKinds
 
-export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
+export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, onAction, onKind, onLaserSettings }: {
   armed: PlaceTool | null
   drawing: boolean
+  laser: boolean
+  laserSettings: LaserSettings
   kinds: ToolKinds
   onAction: (action: QuickAction) => void
   onKind: (tool: KindedTool, second: boolean) => void
+  onLaserSettings: (settings: LaserSettings) => void
 }) {
   const { t } = useTranslation()
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
-  const [flyout, setFlyout] = useState<KindedTool | null>(null)
+  const [flyout, setFlyout] = useState<KindedTool | 'laser' | null>(null)
   const closeTimer = useRef<number | null>(null)
-  const keepFlyout = (tool: KindedTool) => {
+  const keepFlyout = (tool: KindedTool | 'laser') => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
     closeTimer.current = null
     setFlyout(tool)
@@ -115,6 +138,7 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
     ],
   }
   const kinded = (action: QuickAction): action is KindedTool => action === 'select' || action === 'text'
+  const hasFlyout = (action: QuickAction): action is KindedTool | 'laser' => kinded(action) || action === 'laser'
   const kindOf = (tool: KindedTool) => KIND[tool][kinds[tool] ? 1 : 0]
   const label: Record<QuickAction, string> = {
     select: kindOf('select').name,
@@ -126,6 +150,7 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
     image: t('atrium.trace.type.image'),
     embed: t('atrium.trace.type.embed'),
     frame: t('atrium.trace.type.frame'),
+    laser: t('atrium.tools.laser'),
     pinterest: t('atrium.canvas.pinterestBoards'),
   }
   // What an armed tool does with the canvas, beside it.
@@ -146,28 +171,29 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
     >
       {QUICK_ORDER.map((action, i) => {
-        const on = action === 'select' ? !armed && !drawing : action === 'draw' ? drawing : armed === action
-        const key = i < 9 ? String(i + 1) : null
+        const on = action === 'select' ? !armed && !drawing && !laser : action === 'draw' ? drawing : action === 'laser' ? laser : armed === action
+        const key = i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
         const withKinds = kinded(action)
+        const withFlyout = hasFlyout(action)
         return (
           <div
             key={action}
             className="relative"
-            onMouseEnter={withKinds ? () => keepFlyout(action) : undefined}
-            onMouseLeave={withKinds ? letFlyoutGo : undefined}
+            onMouseEnter={withFlyout ? () => keepFlyout(action) : undefined}
+            onMouseLeave={withFlyout ? letFlyoutGo : undefined}
           >
             {action === 'pinterest' && <div className="h-px mx-1 mb-1 bg-nier-border/30" />}
             <button
               type="button"
               data-quick={action}
               aria-pressed={on}
-              aria-haspopup={withKinds ? 'true' : undefined}
-              aria-expanded={withKinds ? flyout === action : undefined}
+              aria-haspopup={withFlyout ? 'true' : undefined}
+              aria-expanded={withFlyout ? flyout === action : undefined}
               title={key ? `${label[action]} — ${key}` : label[action]}
               onClick={() => {
-                // A tool with kinds pressed while it's already in hand opens
-                // them -- the way to them without hovering (touch).
-                if (withKinds && on) {
+                // A tool with kinds (or options) pressed while it's already in
+                // hand opens them -- the way to them without hovering (touch).
+                if (withFlyout && on) {
                   setFlyout(open => (open === action ? null : action))
                   return
                 }
@@ -184,7 +210,7 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
               </svg>
               {key && <span className="absolute right-0.5 bottom-0 text-[8px] leading-none font-mono opacity-50">{key}</span>}
               {/* More kinds, to the side. */}
-              {withKinds && (
+              {withFlyout && (
                 <span aria-hidden="true" className="absolute right-0.5 top-0.5 w-0 h-0 opacity-60" style={{ borderTop: '4px solid currentColor', borderLeft: '4px solid transparent' }} />
               )}
             </button>
@@ -220,12 +246,51 @@ export default function QuickBar({ armed, drawing, kinds, onAction, onKind }: {
                 ))}
               </div>
             )}
-            {armed === action && hint && flyout !== action && (
+            {action === 'laser' && flyout === 'laser' && (
+              <div
+                data-quick-flyout="laser"
+                className="absolute left-full top-0 ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono"
+                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
+              >
+                <label className="flex items-center justify-between gap-2 text-[10px] tracking-[0.12em] uppercase text-nier-bg/80">
+                  {t('atrium.tools.laserColour')}
+                  <input
+                    type="color"
+                    value={laserSettings.color}
+                    onChange={e => onLaserSettings({ ...laserSettings, color: e.target.value })}
+                    className="atrium-swatch w-14 h-6 cursor-pointer border border-nier-border/40"
+                  />
+                </label>
+                <span className="text-[10px] tracking-[0.12em] uppercase text-nier-bg/60">{t('atrium.tools.laserEffect')}</span>
+                <div className="grid grid-cols-2 gap-1">
+                  {LASER_EFFECTS.map(effect => (
+                    <button
+                      key={effect}
+                      type="button"
+                      data-effect={effect}
+                      aria-pressed={laserSettings.effect === effect}
+                      onClick={() => {
+                        onLaserSettings({ ...laserSettings, effect })
+                        if (!on) onAction('laser')
+                      }}
+                      className={`px-2 py-1.5 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                        laserSettings.effect === effect
+                          ? 'bg-nier-bg text-nier-black border-nier-bg'
+                          : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
+                      }`}
+                    >
+                      {t(EFFECT_LABEL[effect])}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(armed === action || (action === 'laser' && laser)) && (action === 'laser' ? t('atrium.tools.hintLaser') : hint) && flyout !== action && (
               <div
                 className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2 py-1 border font-mono text-[10px] tracking-wider whitespace-nowrap pointer-events-none"
                 style={{ color: 'rgb(var(--c-fg))', background: 'rgb(var(--c-ground) / 0.92)', borderColor: 'rgb(var(--c-fg) / 0.3)' }}
               >
-                {hint}
+                {action === 'laser' ? t('atrium.tools.hintLaser') : hint}
               </div>
             )}
           </div>

@@ -50,6 +50,8 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
+import LaserLayer from './LaserLayer'
+import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib/laser'
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
 import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
 import type { View } from '../lib/worldCamera'
@@ -634,6 +636,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The quick bar's armed tool (QuickBar): the next press on the canvas
   // places one of these, rather than panning or selecting.
   const [placeTool, setPlaceTool] = useState<PlaceTool | null>(null)
+  // The laser pointer (LaserLayer), in hand or not, and its look -- this
+  // person's own, kept on this device.
+  const [laserActive, setLaserActive] = useState(false)
+  const laserActiveRef = useRef(false)
+  laserActiveRef.current = laserActive
+  const [laserSettings, setLaserSettings] = useState<LaserSettings>(loadLaserSettings)
+  const [pointerOnLaser, setPointerOnLaser] = useState(false)
+  const changeLaserSettings = (next: LaserSettings) => {
+    setLaserSettings(next)
+    saveLaserSettings(next)
+  }
   // The quick bar's Direct select: a click takes the trace itself, even in a
   // group or a frame, rather than its group whole.
   const [directSelect, setDirectSelect] = useState(false)
@@ -830,6 +843,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // Freehand drawing mode
   const [isDrawingMode, setIsDrawingMode] = useState(false)
+  useEffect(() => { if (isDrawingMode || placeTool) setLaserActive(false) }, [isDrawingMode, placeTool])
 
   // Watches the two activities rather than patching each of the several places
   // that start them (the HUD buttons, the T key, the canvas context menu), so
@@ -1747,6 +1761,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The quick bar's keys: 1 to 9 pick its first nine tools, in the order
       // shown -- while drawing too, which a tool picked ends; Esc lets go of
       // an armed one.
+      if ((e.key === 'k' || e.key === 'K') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        if (isDrawingModeRef.current) drawingKeysRef.current.leaveDrawing()
+        setPlaceTool(null)
+        setLaserActive(on => !on)
+        return
+      }
+      if (e.key === 'Escape' && laserActiveRef.current) setLaserActive(false)
       if (e.key === 'Escape' && placeToolRef.current) {
         setPlaceTool(null)
         placeStartRef.current = null
@@ -1951,6 +1973,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setToolSwitch(n => n + 1)
     if (action !== 'draw' && isDrawingModeRef.current) leaveDrawing()
     if (shapeDragArmedRef.current && showTracePanel) handleCloseTracePanel()
+    if (action === 'laser') {
+      setPlaceTool(null)
+      setLaserActive(on => !on)
+      return
+    }
+    setLaserActive(false)
     if (action === 'select') {
       setPlaceTool(null)
       return
@@ -4265,7 +4293,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             directSelect={directSelect}
             frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
-            hideCursor={isDrawingMode && pointerOnDrawingCanvas}
+            hideCursor={(isDrawingMode && pointerOnDrawingCanvas) || (laserActive && pointerOnLaser)}
             placing={!!placeTool || shapeArmed}
             onEditDrawing={traceId => void startDrawing(traceId)}
             hiddenTraceIds={drawingMembers}
@@ -4743,9 +4771,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <QuickBar
           armed={placeTool}
           drawing={isDrawingMode}
+          laser={laserActive}
+          laserSettings={laserSettings}
           kinds={{ select: directSelect, text: plainText }}
           onAction={quickAction}
           onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
+          onLaserSettings={changeLaserSettings}
         />
       )}
 
@@ -5116,6 +5147,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </>
       )}
 
+      {/* The laser pointer: this person's while it's in hand, everyone's
+          always (lib/laser). After the drawing canvas, so someone pointing
+          shows over a drawing in progress. */}
+      <LaserLayer active={laserActive} settings={laserSettings} view={drawView} onPointerInside={setPointerOnLaser} />
+
       {/* Map Right-Click Context Menu */}
       {mapContextMenu && (
         <div
@@ -5436,6 +5472,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               'atrium.controls.pan',
               'atrium.controls.leaveTrace',
               'atrium.controls.draw',
+              'atrium.controls.laser',
               'atrium.controls.quickBar',
               'atrium.controls.editTrace',
               'atrium.controls.multiSelect',
