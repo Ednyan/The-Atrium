@@ -136,7 +136,7 @@ export function mapRowToTrace(row: any): Trace {
 // How long after a change the atrium's size is measured again: long enough
 // for a batch of changes to become one measurement.
 const SIZE_REFRESH_DELAY_MS = 1200
-// After a save, longer: changes save themselves as they're made (lib/traceSave),
+// After a save, longer: saves can come one after another (lib/traceSave),
 // and most -- a move, a colour -- hardly change the size, so a stretch of
 // editing is measured once, after it, not after every save in it.
 const SIZE_REFRESH_AFTER_SAVE_MS = 10_000

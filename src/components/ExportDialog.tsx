@@ -33,13 +33,17 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
   background: string
   // What was selected when it opened: offered first, when there's any.
   selection: string[]
-  // The format it opens on: an .atrium file, when asked for one to share.
+  // What it's for: an .atrium file (Save Atrium to…), or -- any other -- a
+  // picture (Export as image), which offers PNG and SVG.
   initialFormat?: Format
   onClose: () => void
 }) {
   const { t } = useTranslation()
   const { traces, links, layers, locations } = useGamePick('traces', 'links', 'layers', 'locations')
-  const [whole, setWhole] = useState(selection.length === 0)
+  const toFile = initialFormat === 'atrium'
+  const formats: Format[] = toFile ? ['atrium'] : ['png', 'svg']
+  // Saving the atrium means all of it, unless the selection is chosen.
+  const [whole, setWhole] = useState(toFile || selection.length === 0)
   const [format, setFormat] = useState<Format>(initialFormat)
   const [scale, setScale] = useState<ExportScale>(2)
   const [withBackground, setWithBackground] = useState(true)
@@ -118,7 +122,7 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
       className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] pointer-events-auto"
       onClick={() => { if (!busy) onClose() }}
       role="dialog"
-      aria-label={t('atrium.export.title')}
+      aria-label={toFile ? t('atrium.hud.saveAtrium') : t('atrium.menu.exportImage')}
     >
       <div
         className="bg-nier-blackLight border border-nier-border/40 p-6 w-[440px] max-w-[calc(100vw-32px)] max-h-[90vh] overflow-y-auto relative font-mono"
@@ -132,7 +136,7 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.export.title')}</h2>
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{toFile ? t('atrium.hud.saveAtrium') : t('atrium.menu.exportImage')}</h2>
         </div>
 
         <div className="space-y-4">
@@ -146,16 +150,16 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
             </div>
           </div>
 
-          <div>
+          {formats.length > 1 && <div>
             <span className={LABEL}>{t('atrium.export.format')}</span>
             <div className="flex gap-2">
-              {(['atrium', 'png', 'svg'] as const).map(f => (
+              {formats.map(f => (
                 <button key={f} type="button" data-format={f} onClick={() => setFormat(f)} className={choice(format === f)}>
                   {f === 'atrium' ? t('atrium.export.formatAtrium') : f.toUpperCase()}
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           {format === 'atrium' ? (
             <div className="space-y-1">

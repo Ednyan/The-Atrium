@@ -1,17 +1,20 @@
-// Changes save themselves -- traces, connections, locations -- as Excalidraw's do: a moment after the last one
-// (startAutosave), never in the middle of a drag, and at once when the page
-// is hidden, the atrium left or the app closed. The undo history is the one
-// timeline -- an undo is a change like any other, and is saved the same way --
-// so there's no Save to press and nothing to discard.
+// Saving changes -- traces, connections, locations -- when Save is pressed
+// (or Ctrl+S), and only then: leaving or closing with changes unsaved asks
+// first, and Don't Save puts the atrium back as it was last saved. The undo
+// history is the one timeline -- an undo is a change like any other, saved
+// the same way -- and it outlasts a save.
 
-import { supabase } from './supabase'
+import { isDesktop, supabase } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import { showToast } from './toast'
 import { t, tCount } from './i18n'
 import { linkRow } from './traceLinks'
 import { whenTracesWritten } from './traceWrites'
 import { traceColumns, traceRow } from './traceInsert'
-import { locationColumns, locationRow } from './locations'
+import { locationColumns, locationRow, mapLocationRow, receiveLocations } from './locations'
+import { mapRowToLink } from './traceLinks'
+import { fetchAllLobbyTraces, mapRowToTrace } from '../hooks/useTraces'
+import { adoptTraces } from './layerUndo'
 import type { LobbyLocation, Trace } from '../types/database'
 import type { TraceLink } from './traceLinks'
 
@@ -144,7 +147,7 @@ async function write(): Promise<boolean> {
 }
 
 // Everything changed up to now written, after any save already under way:
-// whether all of it was. For autosave, Ctrl+S, and leaving or closing.
+// whether all of it was. For Save, Ctrl+S, and leaving or closing.
 let inFlight: Promise<boolean> | null = null
 export function saveAllChanges(): Promise<boolean> {
   if (inFlight) return inFlight.then(() => saveAllChanges())
@@ -153,82 +156,46 @@ export function saveAllChanges(): Promise<boolean> {
   return saving
 }
 
-// ---- Autosave ----------------------------------------------------------------------
+// ---- Don't Save ------------------------------------------------------------------
 
-// A second after the last change; at most ten after the first, so a long run
-// of typing is saved as it goes. While a pointer is held -- a drag, a slider --
-// it waits for the release: one write for the gesture, not one per frame
-// paused on. A save that fails is tried again, less and less often.
-const QUIET_MS = 1000
-const MAX_WAIT_MS = 10_000
-const RETRY_MS = [5_000, 15_000, 30_000, 60_000]
+// Fired on window once changes are discarded: TraceOverlay's history goes with
+// them, its steps being from a state that is no longer there.
+export const TRACE_DISCARD_COMPLETED_EVENT = 'trace-discard-completed'
 
-export function startAutosave(): () => void {
-  let timer: number | undefined
-  let dirtySince: number | null = null
-  let failures = 0
-  let held = false
-
-  const schedule = () => {
-    window.clearTimeout(timer)
-    if (dirtySince === null) dirtySince = Date.now()
-    timer = window.setTimeout(run, Math.max(0, Math.min(QUIET_MS, dirtySince + MAX_WAIT_MS - Date.now())))
-  }
-  const retry = () => {
-    window.clearTimeout(timer)
-    timer = window.setTimeout(run, RETRY_MS[Math.min(failures, RETRY_MS.length) - 1])
-  }
-  const run = async () => {
-    if (!useGameStore.getState().hasPendingChanges()) { dirtySince = null; return }
-    if (held) return // the release saves
-    dirtySince = null
-    const ok = await saveAllChanges()
-    failures = ok ? 0 : failures + 1
-    if (!ok) retry()
-    else if (useGameStore.getState().hasPendingChanges()) schedule()
-  }
-
-  const stopWatching = useGameStore.subscribe((state, prev) => {
-    // Saved after all -- the HUD's Retry, or Ctrl+S: back to saving as it goes.
-    if (prev.saveFailed && !state.saveFailed) failures = 0
-    if (failures > 0) return // the retry has it
-    if (state.pendingChanges !== prev.pendingChanges || state.deletedTraces !== prev.deletedTraces
-      || state.pendingLinks !== prev.pendingLinks || state.deletedLinks !== prev.deletedLinks
-      || state.pendingLocations !== prev.pendingLocations || state.deletedLocations !== prev.deletedLocations) {
-      if (state.hasPendingChanges()) schedule()
+// Back to what was last saved: what's waiting to be written is dropped, and
+// the atrium's traces, connections and locations read again. The whole
+// atrium, not a capped page -- this replaces them all, and a truncated read
+// would drop everything past the cap. Groups and drawn strokes are written
+// as they're made (lib/layerQueue, lib/drawingFiles), so they stay.
+export async function discardAllChanges(lobbyId: string): Promise<boolean> {
+  const store = useGameStore.getState()
+  if (!supabase || store.isSavingChanges || !store.hasPendingChanges()) return false
+  try {
+    const [rows, links, places] = await Promise.all([
+      fetchAllLobbyTraces(supabase, lobbyId),
+      (supabase.from('trace_links') as any).select('*').eq('lobby_id', lobbyId),
+      (supabase.from('lobby_locations') as any).select('*').eq('lobby_id', lobbyId).order('order_index', { ascending: true }),
+    ])
+    if (!rows) return false
+    const traces = rows.map(mapRowToTrace)
+    // Desktop: each local file's URL worked out before it's drawn, as on entry.
+    if (isDesktop) {
+      const { resolveLocalStreamUrl } = await import('./localDb')
+      const local = new Set(traces.flatMap(tr => [tr.mediaUrl, tr.imageUrl]).filter((url): url is string => !!url?.startsWith('local://')))
+      await Promise.allSettled([...local].map(url => resolveLocalStreamUrl(url)))
     }
-  })
-  const press = () => { held = true }
-  const release = () => {
-    if (!held) return
-    held = false
-    if (useGameStore.getState().hasPendingChanges() && failures === 0) schedule()
-  }
-  // Leaving the page, or the app hidden: now, not after the quiet.
-  const hidden = () => {
-    if (document.visibilityState !== 'hidden') return
-    window.clearTimeout(timer)
-    held = false
-    void run()
-  }
-  window.addEventListener('pointerdown', press, true)
-  window.addEventListener('pointerup', release, true)
-  window.addEventListener('pointercancel', release, true)
-  // A release outside the window may never arrive.
-  window.addEventListener('blur', release)
-  document.addEventListener('visibilitychange', hidden)
-  if (useGameStore.getState().hasPendingChanges()) schedule()
-
-  // Gone from the atrium some other way than its Leave button (which saves
-  // first) -- put out of it, say: what's waiting is written all the same.
-  return () => {
-    window.clearTimeout(timer)
-    if (useGameStore.getState().hasPendingChanges()) void saveAllChanges()
-    stopWatching()
-    window.removeEventListener('pointerdown', press, true)
-    window.removeEventListener('pointerup', release, true)
-    window.removeEventListener('pointercancel', release, true)
-    window.removeEventListener('blur', release)
-    document.removeEventListener('visibilitychange', hidden)
+    useGameStore.getState().clearPendingChanges()
+    // Brought back, not made now: kept out of the undo history.
+    adoptTraces(traces.map(tr => tr.id))
+    useGameStore.getState().setTraces(traces)
+    // Left as they are if they can't be read.
+    if (!links.error && Array.isArray(links.data)) useGameStore.getState().setLinks(links.data.map(mapRowToLink))
+    if (!places.error && Array.isArray(places.data)) receiveLocations(places.data.map(mapLocationRow))
+    useGameStore.getState().setSaveFailed(false)
+    window.dispatchEvent(new CustomEvent(TRACE_DISCARD_COMPLETED_EVENT))
+    return true
+  } catch (err) {
+    console.error('[discard] could not read the atrium back:', err)
+    return false
   }
 }

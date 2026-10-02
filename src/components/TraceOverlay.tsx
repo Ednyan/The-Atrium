@@ -20,7 +20,7 @@ async function resolveLocalStreamUrl(url: string): Promise<string> {
 }
 
 import ProfileCustomization from './ProfileCustomization'
-import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
+import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss } from '../lib/textFit'
 import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, storedTransformOf, traceBox } from '../lib/traceGeometry'
@@ -1976,8 +1976,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return () => window.removeEventListener('lobby-undo-depth-changed', handleUndoDepthChanged as EventListener)
   }, [getStoredUndoDepth])
 
-  // History goes on across saves: changes save themselves (lib/traceSave),
-  // and an undo is a change like any other -- written over the row, or the row
+  // History goes on across saves (lib/traceSave): an undo is a change like
+  // any other, saved the same way -- written over the row, or the row
   // put back if it went. It used to be cleared at every save, when saving was
   // a button: an undo then wrote nothing, and a trace undeleted after its row
   // was gone had nothing to update.
@@ -1994,7 +1994,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       setLocalShapePoints({})
     }
     window.addEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
-    return () => window.removeEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
+    // Don't Save: the history's steps were from changes that are gone.
+    const handleDiscarded = () => {
+      handleSaveCompleted()
+      undoStackRef.current = []
+      redoStackRef.current = []
+      setHistoryReach(false, false)
+    }
+    window.addEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscarded)
+    return () => {
+      window.removeEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
+      window.removeEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscarded)
+    }
   }, [])
 
   // One action, one undo step: while `inOneStep` runs an action, the trace
@@ -2803,7 +2814,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || borderColourOf(trace.type), z: zOf(trace) }
   }
 
-  // Ctrl+S: saved now rather than a moment from now (lib/traceSave).
+  // Ctrl+S: Save (lib/traceSave).
   useEffect(() => {
     const handleSaveShortcut = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {

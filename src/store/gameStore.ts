@@ -62,7 +62,7 @@ interface GameState {
   pendingChanges: Set<string>  // Set of trace IDs with unsaved changes
   deletedTraces: Set<string>   // Set of trace IDs that should be deleted on save
   isSavingChanges: boolean     // True while a saveAllChanges() call is in flight (prevents concurrent saves)
-  saveFailed: boolean          // The last save didn't write everything; autosave is retrying (lib/traceSave)
+  saveFailed: boolean          // The last save didn't write everything; Save says so, and retries when pressed (lib/traceSave)
 
   // Server-reported lobby size (from Supabase RPC)
   serverLobbySize: number | null  // null = not yet fetched

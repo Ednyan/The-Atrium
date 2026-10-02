@@ -2492,10 +2492,10 @@ async function removeWithRetry(filePath: string): Promise<void> {
 //
 // Deleting a trace row once left its file behind in the vault, so removing
 // traces freed nothing on disk; then the file went with the row, at once --
-// and a delete undone after it had been saved (autosave saves within a
-// second) brought back a trace whose file was gone. Now its files are held
-// while undo could bring it back: for as long as its atrium is open, which is
-// as long as its history lasts (TraceOverlay). Leaving the atrium releases
+// and a delete undone after it had been saved brought back a trace whose
+// file was gone. Now its files are held while undo could bring it back: for
+// as long as its atrium is open, which is as long as its history lasts
+// (TraceOverlay). Leaving the atrium releases
 // them (releaseHeldMedia), and so does the next start, for an app closed or
 // lost with an atrium open. Released, a file goes only if no trace uses it.
 

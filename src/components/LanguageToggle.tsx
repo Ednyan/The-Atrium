@@ -168,41 +168,56 @@ export default function LanguageToggle({ className = '', variant = 'panel' }: {
           className="panel-in absolute right-0 top-[calc(100%+6px)] z-[10000200] min-w-[10rem] border border-nier-border/40 py-1 max-h-[60vh] overflow-y-auto"
           style={{ backgroundColor: 'rgb(var(--c-surface))' }}
         >
-          {languages.map(entry => {
-            const isActive = entry.code === language
-            return (
-              <button
-                key={entry.code}
-                type="button"
-                role="option"
-                aria-selected={isActive}
-                onClick={() => choose(entry.code)}
-                className={`w-full px-4 py-2 text-left text-[11px] tracking-[0.12em] uppercase transition-colors flex items-center justify-between gap-3 ${
-                  isActive ? 'text-nier-strong bg-nier-bg/10' : 'text-nier-bg/80 hover:text-nier-strong hover:bg-nier-bg/5'
-                }`}
-              >
-                <span>{entry.endonym}</span>
-                {isActive && <span className="text-[10px]">◇</span>}
-              </button>
-            )
-          })}
-
-          {/* Back to following the machine, the same third state the theme
-              switch has. Only worth offering once it has been left. */}
-          {!followingBrowser && (
-            <>
-              <div className="my-1 h-px bg-nier-border/25" />
-              <button
-                type="button"
-                onClick={() => choose('browser')}
-                className="w-full px-4 py-2 text-left text-[11px] tracking-[0.12em] uppercase text-nier-bg/70 hover:text-nier-strong hover:bg-nier-bg/5 transition-colors"
-              >
-                {t('welcome.useBrowserLanguage')}
-              </button>
-            </>
-          )}
+          <LanguageList onChosen={() => setOpen(false)} />
         </div>
       )}
     </div>
+  )
+}
+
+// The languages, each by its own name, and the way back to the browser's: the
+// dropdown above, and the atrium menu's Language.
+export function LanguageList({ onChosen }: { onChosen?: () => void }) {
+  const { t, language, languages, setLanguage, followingBrowser } = useTranslation()
+  const choose = (code: LanguageCode | 'browser') => {
+    setLanguage(code)
+    onChosen?.()
+  }
+  return (
+    <>
+      {languages.map(entry => {
+        const isActive = entry.code === language
+        return (
+          <button
+            key={entry.code}
+            type="button"
+            role="option"
+            aria-selected={isActive}
+            onClick={() => choose(entry.code)}
+            className={`w-full px-4 py-2 text-left text-[11px] tracking-[0.12em] uppercase transition-colors flex items-center justify-between gap-3 ${
+              isActive ? 'text-nier-strong bg-nier-bg/10' : 'text-nier-bg/80 hover:text-nier-strong hover:bg-nier-bg/5'
+            }`}
+          >
+            <span>{entry.endonym}</span>
+            {isActive && <span className="text-[10px]">◇</span>}
+          </button>
+        )
+      })}
+
+      {/* Back to following the machine, the same third state the theme
+          switch has. Only worth offering once it has been left. */}
+      {!followingBrowser && (
+        <>
+          <div className="my-1 h-px bg-nier-border/25" />
+          <button
+            type="button"
+            onClick={() => choose('browser')}
+            className="w-full px-4 py-2 text-left text-[11px] tracking-[0.12em] uppercase text-nier-bg/70 hover:text-nier-strong hover:bg-nier-bg/5 transition-colors"
+          >
+            {t('welcome.useBrowserLanguage')}
+          </button>
+        </>
+      )}
+    </>
   )
 }

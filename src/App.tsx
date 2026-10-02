@@ -2236,14 +2236,12 @@ function CloseSaveDialog() {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const win = getCurrentWindow()
-        // Changes save themselves (lib/traceSave); any still to be written are
-        // written before the window goes, and only if they can't be is
-        // anything asked.
+        // Changes not saved: asked whether to save them before the window
+        // goes (lib/traceSave).
         const unlisten = await win.onCloseRequested(async (event) => {
           if (!useGameStore.getState().hasPendingChanges()) return
           event.preventDefault()
-          if (await saveAllChanges()) await closeNow()
-          else setShowCloseSaveDialog(true)
+          setShowCloseSaveDialog(true)
         })
         if (cancelled) {
           unlisten()

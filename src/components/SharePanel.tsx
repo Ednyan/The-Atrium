@@ -25,10 +25,10 @@ export default function SharePanel({ atriumId, onSaveFile, onClose }: {
   const ref = useRef<HTMLDivElement>(null)
   // Away by a press outside it, or Esc.
   useEffect(() => {
-    // Its own button (data-share-toggle) closes it by its click.
+    // Its own button -- the menu's Share -- closes it by its click.
     const press = (e: PointerEvent) => {
       const target = e.target as Element | null
-      if (!ref.current?.contains(target) && !target?.closest?.('[data-share-toggle]')) onClose()
+      if (!ref.current?.contains(target) && !target?.closest?.('[data-panel-toggle="share"]')) onClose()
     }
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('pointerdown', press, true)

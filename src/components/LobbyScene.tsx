@@ -30,7 +30,7 @@ import { recordAction } from '../lib/actionHistory'
 import { adoptTraces } from '../lib/layerUndo'
 import { cachedPicture, dropStrokes, holdDrawingFiles, loadDrawingPicture, paintedDrawing, pictureFieldsOf, pictureRow, pieceFields, placementOf, releaseDrawingFiles, restoreStrokes, saveDrawingPicture, writeDrawing, writePicture, type PictureFields } from '../lib/drawingFiles'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
-import { saveAllChanges, startAutosave } from '../lib/traceSave'
+import { discardAllChanges, saveAllChanges } from '../lib/traceSave'
 import { changeLocations, mapLocationRow, receiveLocations } from '../lib/locations'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { groupIdOf, inOrder, keyAt, keysOnTopOfGroup, newTraceOrderFields, topLevel } from '../lib/order'
@@ -50,6 +50,8 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { HistoryButtons, QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
+import AtriumMenu, { MENU_ICONS, MenuIcon } from './AtriumMenu'
+import { LanguageList } from './LanguageToggle'
 import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
 import SharePanel from './SharePanel'
@@ -64,18 +66,6 @@ import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../li
 import type { View } from '../lib/worldCamera'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
-
-// Where the cursor is in the world, and the zoom, in the HUD. A component of
-// its own, subscribed on its own: the position changes with every movement of
-// the mouse, and nothing else on screen needs drawing again for it.
-function CursorReadout({ zoom }: { zoom: number }) {
-  const position = useGameStore(state => state.position)
-  return (
-    <p className="text-nier-bg/80 text-[11px] tracking-wider">
-      ({Math.round(position.x)}, {Math.round(position.y)}) • {zoom.toFixed(2)}x
-    </p>
-  )
-}
 
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.40
@@ -596,7 +586,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setShowLayerPanel(false)
     setShowLocationsPanel(false)
   }, [])
-  // The atrium's locations live in the store and save themselves, each change
+  // The atrium's locations live in the store and are saved with the rest, each change
   // a step of undo (lib/locations). Presentation mode is here, not in
   // LocationsPanel, so it keeps running after the panel is closed.
   const { locations } = useGamePick('locations')
@@ -682,7 +672,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   selectionRef.current = multiSelectedTraceIds.length > 0 ? multiSelectedTraceIds : selectedTraceId ? [selectedTraceId] : []
 
   // The saving indicator follows the store's isSavingChanges, set by every
-  // save (lib/traceSave) -- autosave, Ctrl+S, leaving -- so none has to opt
+  // save (lib/traceSave) -- Save, Ctrl+S, leaving -- so none has to opt
   // in. Exactly, with no floor: the fade below keeps a fast save from
   // flashing past without saying it's still working once it isn't.
   // A save that has just finished, held for a moment so the button can
@@ -703,7 +693,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (isSavingChanges) wasSavingRef.current = true
   }, [isSavingChanges])
 
-  const [hudMinimized, setHudMinimized] = useState(true)
+  // The atrium's menu, and the two panels it opens beside itself.
+  const [menuOpen, setMenuOpenState] = useState(false)
+  const [showLanguages, setShowLanguages] = useState(false)
+  const setMenuOpen = (open: boolean) => {
+    setMenuOpenState(open)
+    if (!open) {
+      setShowShare(false)
+      setShowLanguages(false)
+    }
+  }
+  // A choice that opens something elsewhere: the menu goes first.
+  const fromMenu = (action: () => void) => () => {
+    setMenuOpen(false)
+    action()
+  }
   const [controlsMinimized, setControlsMinimized] = useState(true)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
 
@@ -737,7 +741,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // so it is held mounted for the length of the fade after the last state that
   // wanted it on screen has gone.
   const SAVE_FADE_MS = 1000
-  const saveBarActive = saveFailed || isSavingChanges || justSaved
+  // How many changes wait for Save: re-rendered when the number changes, not
+  // on every change marked.
+  const unsaved = useGameStore(s => s.pendingChanges.size + s.deletedTraces.size + s.pendingLinks.size
+    + s.deletedLinks.size + s.pendingLocations.size + s.deletedLocations.size)
+  const saveBarActive = unsaved > 0 || saveFailed || isSavingChanges || justSaved
   const [saveBarMounted, setSaveBarMounted] = useState(false)
   const [saveBarShown, setSaveBarShown] = useState(false)
   useEffect(() => {
@@ -765,9 +773,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     ? `◇ ${t('atrium.hud.saving')}`
     : saveFailed
       ? `◇ ${t('atrium.hud.notSaved')}`
-      : `◇ ${t('atrium.hud.saved')}`
-  // Quiet while all is well; bright, and a button, when it isn't.
-  const saveDim = !saveFailed || isSavingChanges
+      : unsaved > 0
+        ? `◇ ${t('atrium.hud.saveChanges', { count: unsaved })}`
+        : `◇ ${t('atrium.hud.saved')}`
+  // A button, and bright, while there's something to save; quiet otherwise.
+  const canSave = (unsaved > 0 || saveFailed) && !isSavingChanges
+  const saveDim = !canSave
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
+  useEffect(() => { if (unsaved === 0) setConfirmDiscard(false) }, [unsaved])
   const lastSaveLookRef = useRef({ label: saveLabel, dim: saveDim })
   if (saveBarActive) lastSaveLookRef.current = { label: saveLabel, dim: saveDim }
   const shownSave = saveBarActive ? { label: saveLabel, dim: saveDim } : lastSaveLookRef.current
@@ -808,13 +822,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The top-right bar the Leave button is in, for the leave prompt to open under.
   const sessionBarRef = useRef<HTMLDivElement>(null)
 
-  // Leaving or refreshing the page with changes not yet written: written now
-  // -- the moment after the last change autosave waits for may be too late --
-  // and the browser asked to hold the page for it.
+  // Leaving or refreshing the page with changes not saved: the browser asks
+  // first. Nothing is saved that Save wasn't pressed for.
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (useGameStore.getState().hasPendingChanges()) {
-        void saveAllChanges()
         e.preventDefault()
         e.returnValue = '' // Required for Chrome
       }
@@ -1672,10 +1684,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       window.removeEventListener('lobby-packing-shape-changed', handlePackingShapeChanged as EventListener)
     }
   }, [lobbyId])
-
-  // Changes save themselves (lib/traceSave): a moment after the last one, and
-  // at once when the page is hidden.
-  useEffect(() => startAutosave(), [])
 
   // Password-session heartbeat: keeps this lobby's lobby_sessions row fresh
   // (see check_and_touch_lobby_access in App.tsx) as long as the user shows
@@ -2681,9 +2689,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const result = await convertEmbedToInternalImage(embedTraces[i].id)
         if (result.ok) converted++
         else skipped++
-      }
-      if (converted > 0) {
-        await saveAllChanges()
       }
       const message = tCount('atrium.toast.embedsConverted', converted)
       showToast(skipped > 0 ? t('atrium.toast.embedsSkipped', { message, count: skipped }) : message)
@@ -4451,22 +4456,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         )}
       </div>
 
-      {/* Saving, at the top: changes save themselves (lib/traceSave), so this
-          only says so -- Saving, then Saved for a moment before it fades --
-          and becomes a button, Not saved, retry, when a save fails. */}
+      {/* Save, at the top (lib/traceSave): a button while there are changes
+          to save -- with Don't Save beside it -- then Saving, then Saved for a
+          moment before it fades; Not saved, retry, when a save fails. */}
       {!uiHidden && saveBarMounted && (
         <div
           data-hud="true"
-          // Only a failure is something to click; otherwise it lets clicks
-          // through to the canvas under it, shown as it is after every save.
-          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono flex items-stretch gap-2 ${saveFailed ? 'pointer-events-auto' : 'pointer-events-none'}`}
+          // Something to save is something to click; otherwise -- Saving,
+          // Saved -- it lets clicks through to the canvas under it.
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono flex items-stretch gap-2 ${canSave ? 'pointer-events-auto' : 'pointer-events-none'}`}
           style={{ opacity: saveBarShown ? 1 : 0, transition: `opacity ${SAVE_FADE_MS}ms ease-out` }}
         >
           <button
             type="button"
             data-ui-element="true"
+            data-save=""
             onClick={() => { void saveAllChanges() }}
-            disabled={isSavingChanges || !saveFailed}
+            disabled={!canSave}
+            title="Ctrl+S"
             className="px-6 py-2.5 text-xs tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
             style={{
               clipPath: DONATE_CUT,
@@ -4480,6 +4487,44 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           >
             {shownSave.label}
           </button>
+          {/* Don't Save, beside Save: back to the atrium as last saved, after
+              a second press to be sure (lib/traceSave discardAllChanges). */}
+          {unsaved > 0 && !isSavingChanges && (
+            <>
+              <button
+                type="button"
+                data-ui-element="true"
+                data-discard={confirmDiscard ? 'confirm' : ''}
+                disabled={discarding}
+                onClick={async () => {
+                  if (!confirmDiscard) { setConfirmDiscard(true); return }
+                  setDiscarding(true)
+                  if (!(await discardAllChanges(lobbyId))) showToast(t('atrium.toast.discardFailed'))
+                  setDiscarding(false)
+                  setConfirmDiscard(false)
+                }}
+                title={t('atrium.hud.discardHint')}
+                className={`px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 ${confirmDiscard ? '' : 'border-nier-border/40 text-nier-bg/80 hover:text-nier-bg'}`}
+                style={{
+                  backgroundColor: 'rgb(var(--c-ground) / 0.94)',
+                  ...(confirmDiscard && { borderColor: 'rgb(var(--c-danger) / 0.7)', color: 'rgb(var(--c-danger))' }),
+                }}
+              >
+                {discarding ? t('atrium.hud.discarding') : confirmDiscard ? t('atrium.hud.confirmDiscard') : t('atrium.hud.dontSave')}
+              </button>
+              {confirmDiscard && !discarding && (
+                <button
+                  type="button"
+                  data-ui-element="true"
+                  onClick={() => setConfirmDiscard(false)}
+                  className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border border-nier-border/40 text-nier-bg/80 transition-colors hover:text-nier-bg"
+                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+                >
+                  {t('common.cancel')}
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -4490,6 +4535,57 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       <div ref={sessionBarRef} className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
         {!uiHidden && (
           <>
+            {/* Who's here: how many, and pressed, the list -- with Kick, for
+                the atrium's owner and admins. */}
+            <div className="relative">
+              <button
+                type="button"
+                data-ui-element="true"
+                data-online-toggle=""
+                onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
+                data-active={showOnlineUsersList}
+                aria-expanded={showOnlineUsersList}
+                title={t('atrium.hud.online', { count: onlinePlayerCount })}
+                aria-label={t('atrium.hud.online', { count: onlinePlayerCount })}
+                className="atrium-btn flex items-center gap-1.5"
+              >
+                <MenuIcon d={MENU_ICONS.users} size={16} />
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--c-emerald))' }} />
+                <span className="tabular-nums" style={{ color: 'rgb(var(--c-emerald))' }}>{onlinePlayerCount}</span>
+              </button>
+              {/* Online users list */}
+              {showOnlineUsersList && (
+                <div
+                  data-ui-element="true"
+                  className="panel-in absolute right-0 top-full mt-2 w-64 border-2 border-nier-border/50 z-[10000] font-mono"
+                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.97)' }}
+                >
+                  <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-nier-strong text-xs tracking-wide truncate">{username} {t('atrium.hud.you')}</span>
+                      <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
+                    </div>
+                    {Object.values(otherUsers).map(user => (
+                      <div key={user.userId} className="flex items-center justify-between gap-2">
+                        <span className="text-nier-bg/80 text-xs tracking-wide truncate">{user.username}</span>
+                        <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
+                        {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
+                          <button
+                            onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
+                            className="text-red-500 hover:text-red-400 text-xs tracking-wider uppercase transition-colors flex-shrink-0"
+                          >
+                            {t('atrium.hud.kick')}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {Object.keys(otherUsers).length === 0 && (
+                      <p className="text-nier-bg/70 text-xs tracking-wide">{t('atrium.hud.noOneElse')}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               data-ui-element="true"
@@ -4517,9 +4613,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           data-ui-element="true"
           onClick={async () => {
             if (uiHidden) { setUiHidden(false); return }
-            // What's still to be written goes first; asked about only if it
-            // can't be.
-            if (useGameStore.getState().hasPendingChanges() && !(await saveAllChanges())) setShowLeaveDialog(true)
+            // Changes not saved: asked whether to save them first.
+            if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
             else leaveWithTransition()
           }}
           className={`atrium-btn ${uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}`}
@@ -4543,197 +4638,86 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {/* HUD + presentation quick-toggle, in one row so the toggle always
           sits just to the right of the HUD regardless of its width. */}
       <div data-hud="true" className="shrink-0 flex items-start gap-2 pointer-events-none">
-      {/* Closed, this is a button among buttons, so it is the height of one:
-          a 22px header inside 6px of padding and a 1px rule. It was two-pixel
-          borders and 8px padding, which made it eight pixels taller than
-          everything standing beside it. */}
-      <div data-ui-element="true" className="relative px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)', maxWidth: '190px' }}>
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-nier-bg"></div>
-        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-nier-bg"></div>
-        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-nier-bg"></div>
-        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-nier-bg"></div>
-        
-        {/* Header with username, online count, and minimize toggle */}
-        {/* The whole header opens it. A chevron the width of a character is a
-            target you have to aim at; the row you are already reading is not. */}
-        <div
-          className="flex items-center justify-between gap-2 cursor-pointer select-none h-[1.375rem] leading-none"
-          onClick={() => setHudMinimized(!hudMinimized)}
-          title={hudMinimized ? t('atrium.hud.openPanel') : t('common.close')}
-        >
-          <p className="text-nier-strong text-xs tracking-[0.1em] uppercase font-bold truncate">
-            {username}
-          </p>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* A readout, not a button. It was both, which meant the one
-                thing on this panel that only ever reports something also
-                opened a panel when clicked. The list has its own row below. */}
-            <div className="flex items-center gap-1 px-1 py-0.5 -mx-1" title={t('atrium.hud.peopleHere')}>
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--c-emerald))' }} />
-              <span className="text-[11px] tabular-nums" style={{ color: 'rgb(var(--c-emerald))' }}>{onlinePlayerCount}</span>
-            </div>
-            <span
-              className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
-              style={{ display: 'inline-block', transform: hudMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-            >
-              ▾
-            </span>
-          </div>
-        </div>
-
-        {/* Online users list */}
-        {showOnlineUsersList && (
-          <div
-            data-ui-element="true"
-            className="panel-in absolute left-0 top-full mt-1 w-64 border-2 border-nier-border/50 z-[10000] font-mono"
-            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.97)' }}
-          >
-            <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-nier-strong text-xs tracking-wide truncate">{username} {t('atrium.hud.you')}</span>
-                <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(getJoinedAt())}</span>
-              </div>
-              {Object.values(otherUsers).map(user => (
-                <div key={user.userId} className="flex items-center justify-between gap-2">
-                  <span className="text-nier-bg/80 text-xs tracking-wide truncate">{user.username}</span>
-                  <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
-                  {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
-                    <button
-                      onClick={() => setKickTarget({ userId: user.userId, username: user.username })}
-                      className="text-red-500 hover:text-red-400 text-xs tracking-wider uppercase transition-colors flex-shrink-0"
-                    >
-                      {t('atrium.hud.kick')}
-                    </button>
-                  )}
-                </div>
-              ))}
-              {Object.keys(otherUsers).length === 0 && (
-                <p className="text-nier-bg/70 text-xs tracking-wide">{t('atrium.hud.noOneElse')}</p>
-              )}
-            </div>
-          </div>
-        )}
-        {!hudMinimized && (
-          <div className="panel-in">
-        {currentLobby && (
-          <p className="text-nier-bg/80 text-[11px] tracking-wider truncate">
-            {currentLobby.name} {isLobbyOwner && t('atrium.hud.owner')}{!isLobbyOwner && isLobbyAdmin && t('atrium.hud.admin')}
-          </p>
-        )}
-        <CursorReadout zoom={zoom} />
-        {/* Save Atrium: the atrium out as a file or a picture (ExportDialog). */}
-        {currentLobby && (
-          <button
-            type="button"
-            onClick={() => setExportOf({ ids: selectionRef.current })}
-            className="atrium-btn w-full mt-1.5 text-center"
-          >
-            {t('atrium.hud.saveAtrium')}
-          </button>
-        )}
-        <div className="flex gap-1 mt-1">
-          {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
-            <button
-              onClick={() => setShowLobbyManagement(true)}
-              className="atrium-btn flex-1"
-            >
-              {t('atrium.hud.manage')}
-            </button>
-          )}
-        </div>
-        {/* Another atrium's traces in, where the view is. */}
-        {currentLobby && canEdit && (
-          <button
-            type="button"
-            onClick={() => {
+      {/* The atrium's menu: three lines, and open, a column of icons whose
+          names slide out beside them (AtriumMenu). Choosing one that opens
+          something elsewhere closes it; Share and Language open beside it. */}
+      <AtriumMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        items={[
+          ...(currentLobby ? [{
+            id: 'save', icon: MENU_ICONS.save, label: t('atrium.hud.saveAtrium'),
+            onSelect: fromMenu(() => setExportOf({ ids: selectionRef.current, format: 'atrium' })),
+          }] : []),
+          ...(currentLobby && canEdit ? [{
+            id: 'import', icon: MENU_ICONS.open, label: t('atrium.import.file'),
+            // Another atrium's traces in, where the view is.
+            onSelect: fromMenu(() => {
               importAnchorRef.current = screenToWorld(window.innerWidth / 2, window.innerHeight / 2)
               atriumFileInputRef.current?.click()
-            }}
-            className="atrium-btn w-full mt-1 text-center"
-          >
-            {t('atrium.import.file')}
-          </button>
-        )}
-        {/* Share: a link straight into this atrium, and its ID. */}
-        {currentLobby && (
-          <div className="relative">
-            <button
-              type="button"
-              data-share-toggle=""
-              onClick={() => setShowShare(open => !open)}
-              aria-expanded={showShare}
-              className="atrium-btn w-full mt-1 text-center"
-            >
-              {t('atrium.hud.share')}
-            </button>
-            {showShare && (
+            }),
+          }] : []),
+          ...(currentLobby ? [{
+            id: 'export', icon: MENU_ICONS.image, label: t('atrium.menu.exportImage'), hint: 'Ctrl+Shift+E',
+            onSelect: fromMenu(() => setExportOf({ ids: selectionRef.current })),
+          }] : []),
+          ...(currentLobby ? [{
+            id: 'share', icon: MENU_ICONS.share, label: t('atrium.hud.share'),
+            open: showShare,
+            onSelect: () => { setShowLanguages(false); setShowShare(open => !open) },
+            panel: (
               <SharePanel
                 atriumId={currentLobby.id}
-                onSaveFile={() => setExportOf({ ids: [], format: 'atrium' })}
+                onSaveFile={fromMenu(() => setExportOf({ ids: [], format: 'atrium' }))}
                 onClose={() => setShowShare(false)}
               />
-            )}
-          </div>
-        )}
-        {isDesktop && (
-          <button
-            onClick={handleConvertAllEmbeds}
-            disabled={isConvertingEmbeds}
-            className="atrium-btn w-full mt-1 text-center disabled:opacity-40 disabled:cursor-not-allowed"
-            title={t('atrium.hud.convertEmbedsHint')}
-          >
-            {isConvertingEmbeds ? convertEmbedsProgress || t('atrium.hud.convertingPlain') : t('atrium.hud.convertEmbeds')}
-          </button>
-        )}
-        {canEdit && pinterestConnected && (
-          <button
-            onClick={() => { setPinterestImportAnchor(null); setShowPinterestImport(true) }}
-            className="atrium-btn w-full mt-1 text-center"
-            title={t('atrium.hud.importPinterestHint')}
-          >
-            {t('atrium.hud.importPinterest')}
-          </button>
-        )}
-        <button
-          onClick={() => setShowProfileCustomization(true)}
-          className="atrium-btn w-full mt-1 text-center"
-        >
-          {t('atrium.hud.profile')}
-        </button>
-        <button
-          onClick={recenter}
-          className="atrium-btn w-full mt-1 text-center"
-          title="Shift+1"
-        >
-          {t('atrium.hud.recenter')}
-        </button>
-        {(isLobbyOwner || isLobbyAdmin) && (
-          <button
-            onClick={() => setShowThemeCustomization(true)}
-            className="atrium-btn w-full mt-1 text-center"
-          >
-            {t('atrium.hud.theme')}
-          </button>
-        )}
-        {/* The list of people here, given its own row. The green readout above
-            states how many; this is the thing you press to see who. */}
-        <button
-          onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
-          className="atrium-btn w-full mt-1 text-center"
-          data-active={showOnlineUsersList}
-        >
-          {t('atrium.hud.online', { count: onlinePlayerCount })}
-        </button>
-        <button
-          onClick={() => setShowReportForm(true)}
-          className="atrium-btn w-full mt-1 text-center"
-        >
-          {t('atrium.hud.reportProblem')}
-        </button>
-          </div>
-        )}
-      </div>
+            ),
+          }] : []),
+          ...(isLobbyOwner || isLobbyAdmin ? [{
+            id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true,
+            onSelect: fromMenu(() => setShowThemeCustomization(true)),
+          }] : []),
+          {
+            id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), apart: !(isLobbyOwner || isLobbyAdmin),
+            onSelect: fromMenu(() => setShowProfileCustomization(true)),
+          },
+          ...((isLobbyOwner || isLobbyAdmin) && currentLobby ? [{
+            id: 'permissions', icon: MENU_ICONS.permissions, label: t('atrium.hud.manage'),
+            onSelect: fromMenu(() => setShowLobbyManagement(true)),
+          }] : []),
+          {
+            id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true,
+            onSelect: fromMenu(recenter),
+          },
+          {
+            id: 'language', icon: MENU_ICONS.language, label: t('welcome.language'),
+            open: showLanguages,
+            onSelect: () => { setShowShare(false); setShowLanguages(open => !open) },
+            panel: (
+              <div
+                role="listbox"
+                data-ui-element="true"
+                onWheel={event => event.stopPropagation()}
+                className="panel-in absolute left-full top-0 ml-2 z-[10000] min-w-[10rem] border border-nier-border/40 py-1 max-h-[60vh] overflow-y-auto"
+                style={{ backgroundColor: 'rgb(var(--c-surface))' }}
+              >
+                <LanguageList onChosen={() => setShowLanguages(false)} />
+              </div>
+            ),
+          },
+          // Desktop: linked pictures and videos kept in the vault. Stays open,
+          // so its name -- on hover -- can show how far it has got.
+          ...(isDesktop ? [{
+            id: 'storeLocally', icon: MENU_ICONS.storeLocally, disabled: isConvertingEmbeds,
+            label: isConvertingEmbeds ? convertEmbedsProgress || t('atrium.hud.convertingPlain') : t('atrium.hud.convertEmbeds'),
+            onSelect: () => { void handleConvertAllEmbeds() },
+          }] : []),
+          {
+            id: 'report', icon: MENU_ICONS.report, label: t('atrium.hud.reportProblem'),
+            onSelect: fromMenu(() => setShowReportForm(true)),
+          },
+        ]}
+      />
 
       {/* Presentation quick-toggle -- only shown when locations exist. A fixed
           square matching the HUD header's height (so it stays that size even
