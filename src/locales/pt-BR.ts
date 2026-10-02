@@ -504,6 +504,7 @@ const ptBR: Catalogue = {
   'atrium.tools.laser': 'Ponteiro laser',
   'atrium.tools.hintLaser': 'Arraste para apontar · todos aqui veem · K ou Esc guarda',
   'atrium.tools.laserColour': 'Cor',
+  'atrium.tools.laserTrail': 'Rastro',
   'atrium.tools.laserEffect': 'Efeito',
   'atrium.tools.effectNone': 'Nenhum',
   'atrium.tools.effectSparks': 'Faíscas',

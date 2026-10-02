@@ -406,6 +406,7 @@ export const en = {
   'atrium.tools.laser': 'Laser pointer',
   'atrium.tools.hintLaser': 'Drag to point · everyone here sees it · K or Esc puts it away',
   'atrium.tools.laserColour': 'Colour',
+  'atrium.tools.laserTrail': 'Trail',
   'atrium.tools.laserEffect': 'Effect',
   'atrium.tools.effectNone': 'None',
   'atrium.tools.effectSparks': 'Sparks',

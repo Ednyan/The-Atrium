@@ -10,8 +10,16 @@
 export type LaserEffect = 'none' | 'sparks' | 'embers' | 'stardust'
 export const LASER_EFFECTS: LaserEffect[] = ['none', 'sparks', 'embers', 'stardust']
 
-export interface LaserSettings { color: string; effect: LaserEffect }
-const DEFAULT_SETTINGS: LaserSettings = { color: '#ff3b3b', effect: 'none' }
+// How long a point of the trail lasts, and so how long it takes to fade: a
+// short trail or a long one, each person's choice -- sent with their points,
+// so everyone sees the trail as long as it was meant.
+export const TRAIL_MIN_MS = 250
+export const TRAIL_MAX_MS = 4000
+const TRAIL_DEFAULT_MS = 900
+const trailOf = (ms: unknown) => (typeof ms === 'number' && Number.isFinite(ms) ? Math.min(TRAIL_MAX_MS, Math.max(TRAIL_MIN_MS, ms)) : TRAIL_DEFAULT_MS)
+
+export interface LaserSettings { color: string; effect: LaserEffect; trail: number }
+const DEFAULT_SETTINGS: LaserSettings = { color: '#ff3b3b', effect: 'none', trail: TRAIL_DEFAULT_MS }
 const SETTINGS_KEY = 'atrium.laser'
 
 export function loadLaserSettings(): LaserSettings {
@@ -20,6 +28,7 @@ export function loadLaserSettings(): LaserSettings {
     return {
       color: /^#[0-9a-f]{6}$/i.test(stored?.color) ? stored.color : DEFAULT_SETTINGS.color,
       effect: LASER_EFFECTS.includes(stored?.effect) ? stored.effect : DEFAULT_SETTINGS.effect,
+      trail: trailOf(stored?.trail),
     }
   } catch {
     return DEFAULT_SETTINGS
@@ -29,11 +38,8 @@ export function saveLaserSettings(settings: LaserSettings) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch { /* kept for this visit only */ }
 }
 
-// How long a point of the trail lasts, and so how long it takes to fade.
-export const TRAIL_MS = 900
-
 export interface LaserPoint { x: number; y: number; t: number }
-export interface LaserTrail { color: string; effect: LaserEffect; points: LaserPoint[]; seen: number }
+export interface LaserTrail { color: string; effect: LaserEffect; trail: number; points: LaserPoint[]; seen: number }
 
 // What's received from others: their trails, by who's pointing. Read by
 // LaserLayer each frame; points older than the trail drop off as it draws.
@@ -43,14 +49,16 @@ let wake: (() => void) | null = null
 export const onLaserActivity = (fn: (() => void) | null) => { wake = fn }
 
 // What a batch looks like on the wire: points as [x, y, ms before sending].
-export interface LaserMessage { userId: string; color: string; effect: LaserEffect; points: [number, number, number][] }
+// `trail` is missing from versions from before it could be chosen.
+export interface LaserMessage { userId: string; color: string; effect: LaserEffect; trail?: number; points: [number, number, number][] }
 
 export function receiveLaser(message: LaserMessage) {
   if (!message || typeof message.userId !== 'string' || !Array.isArray(message.points)) return
   const now = performance.now()
-  const trail = remoteTrails.get(message.userId) ?? { color: '#ff3b3b', effect: 'none' as LaserEffect, points: [], seen: now }
+  const trail = remoteTrails.get(message.userId) ?? { color: '#ff3b3b', effect: 'none' as LaserEffect, trail: TRAIL_DEFAULT_MS, points: [], seen: now }
   trail.color = /^#[0-9a-f]{6}$/i.test(message.color) ? message.color : trail.color
   trail.effect = LASER_EFFECTS.includes(message.effect) ? message.effect : 'none'
+  trail.trail = trailOf(message.trail)
   trail.seen = now
   for (const p of message.points.slice(0, 64)) {
     if (!Array.isArray(p) || !p.every(Number.isFinite)) continue

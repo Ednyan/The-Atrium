@@ -424,6 +424,7 @@ const ko: Catalogue = {
   'atrium.tools.laser': '레이저 포인터',
   'atrium.tools.hintLaser': '끌어서 가리켜요 · 여기 있는 모두가 봐요 · K나 Esc로 넣어요',
   'atrium.tools.laserColour': '색',
+  'atrium.tools.laserTrail': '꼬리',
   'atrium.tools.laserEffect': '효과',
   'atrium.tools.effectNone': '없음',
   'atrium.tools.effectSparks': '불꽃',

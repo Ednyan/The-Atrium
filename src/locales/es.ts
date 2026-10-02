@@ -500,6 +500,7 @@ const es: Catalogue = {
   'atrium.tools.laser': 'Puntero láser',
   'atrium.tools.hintLaser': 'Arrastra para señalar · todos aquí lo ven · K o Esc lo guarda',
   'atrium.tools.laserColour': 'Color',
+  'atrium.tools.laserTrail': 'Estela',
   'atrium.tools.laserEffect': 'Efecto',
   'atrium.tools.effectNone': 'Ninguno',
   'atrium.tools.effectSparks': 'Chispas',

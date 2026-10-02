@@ -506,6 +506,7 @@ const ru: Catalogue = {
   'atrium.tools.laser': 'Лазерная указка',
   'atrium.tools.hintLaser': 'Потяните, чтобы указать · это видят все здесь · K или Esc убирает',
   'atrium.tools.laserColour': 'Цвет',
+  'atrium.tools.laserTrail': 'След',
   'atrium.tools.laserEffect': 'Эффект',
   'atrium.tools.effectNone': 'Нет',
   'atrium.tools.effectSparks': 'Искры',

@@ -502,6 +502,7 @@ const fr: Catalogue = {
   'atrium.tools.laser': 'Pointeur laser',
   'atrium.tools.hintLaser': 'Faites glisser pour pointer · tout le monde ici le voit · K ou Échap le range',
   'atrium.tools.laserColour': 'Couleur',
+  'atrium.tools.laserTrail': 'Traînée',
   'atrium.tools.laserEffect': 'Effet',
   'atrium.tools.effectNone': 'Aucun',
   'atrium.tools.effectSparks': 'Étincelles',

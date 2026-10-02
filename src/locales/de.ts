@@ -503,6 +503,7 @@ const de: Catalogue = {
   'atrium.tools.laser': 'Laserpointer',
   'atrium.tools.hintLaser': 'Ziehen zum Zeigen · alle hier sehen es · K oder Esc legt ihn weg',
   'atrium.tools.laserColour': 'Farbe',
+  'atrium.tools.laserTrail': 'Spur',
   'atrium.tools.laserEffect': 'Effekt',
   'atrium.tools.effectNone': 'Keiner',
   'atrium.tools.effectSparks': 'Funken',

@@ -504,6 +504,7 @@ const it: Catalogue = {
   'atrium.tools.laser': 'Puntatore laser',
   'atrium.tools.hintLaser': 'Trascina per indicare · tutti qui lo vedono · K o Esc lo mette via',
   'atrium.tools.laserColour': 'Colore',
+  'atrium.tools.laserTrail': 'Scia',
   'atrium.tools.laserEffect': 'Effetto',
   'atrium.tools.effectNone': 'Nessuno',
   'atrium.tools.effectSparks': 'Scintille',

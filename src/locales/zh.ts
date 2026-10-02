@@ -423,6 +423,7 @@ const zh: Catalogue = {
   'atrium.tools.laser': '激光笔',
   'atrium.tools.hintLaser': '拖动来指示 · 这里的所有人都能看到 · 按 K 或 Esc 收起',
   'atrium.tools.laserColour': '颜色',
+  'atrium.tools.laserTrail': '拖尾',
   'atrium.tools.laserEffect': '效果',
   'atrium.tools.effectNone': '无',
   'atrium.tools.effectSparks': '火花',

@@ -26,9 +26,9 @@
 //     no border, background or shadow, just the words (LobbyScene colours
 //     them to stand out from the atrium's background).
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { LASER_EFFECTS, type LaserEffect, type LaserSettings } from '../lib/laser'
+import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type LaserSettings } from '../lib/laser'
 import type { TranslationKey } from '../locales/en'
 
 export type PlaceTool = 'text' | 'rectangle' | 'circle' | 'path' | 'frame'
@@ -116,16 +116,47 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
   const [flyout, setFlyout] = useState<KindedTool | 'laser' | null>(null)
+
+  // As many tools down as the room it's in is tall, and the rest in more
+  // columns beside them. Counted here rather than left to the grid's
+  // auto-fill, which sizes the bar's width as though every tool were in one
+  // row.
+  const barRef = useRef<HTMLDivElement>(null)
+  const [rows, setRows] = useState(QUICK_ORDER.length)
+  useLayoutEffect(() => {
+    const room = barRef.current?.parentElement
+    if (!room) return
+    // A tool is 36px with 4 between; the bar adds 10 (padding and border).
+    const fit = () => setRows(Math.max(1, Math.min(QUICK_ORDER.length, Math.floor((room.clientHeight - 6) / 40))))
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(room)
+    return () => observer.disconnect()
+  }, [])
   const closeTimer = useRef<number | null>(null)
   const keepFlyout = (tool: KindedTool | 'laser') => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
     closeTimer.current = null
     setFlyout(tool)
   }
+  // Not while something in it is in use: picking a colour opens the system's
+  // picker, which takes the pointer off the page -- and closing the flyout
+  // under it took the colour input away before its colour came back, so the
+  // colour picked was never set.
+  const flyoutRef = useRef<HTMLDivElement>(null)
   const letFlyoutGo = () => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    closeTimer.current = window.setTimeout(() => setFlyout(null), 250)
+    closeTimer.current = window.setTimeout(() => {
+      if (!flyoutRef.current?.contains(document.activeElement)) setFlyout(null)
+    }, 250)
   }
+  // A press anywhere off the bar puts it away, in use or not.
+  useEffect(() => {
+    if (!flyout) return
+    const press = (e: PointerEvent) => { if (!barRef.current?.contains(e.target as Node)) setFlyout(null) }
+    window.addEventListener('pointerdown', press, true)
+    return () => window.removeEventListener('pointerdown', press, true)
+  }, [flyout])
   // Each kinded tool's two kinds: icon, name, and what it does.
   const KIND: Record<KindedTool, { icon: ReactNode; name: string; hint: string; attr: string }[]> = {
     select: [
@@ -167,8 +198,9 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
       role="toolbar"
       aria-label={t('atrium.tools.title')}
       aria-orientation="vertical"
-      className="fixed left-4 top-1/2 -translate-y-1/2 z-[9999] pointer-events-auto flex flex-col gap-1 p-1 border border-nier-border/40"
-      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
+      ref={barRef}
+      className="pointer-events-auto grid grid-flow-col gap-1 p-1 border border-nier-border/40"
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)', gridTemplateRows: `repeat(${rows}, 2.25rem)` }}
     >
       {QUICK_ORDER.map((action, i) => {
         const on = action === 'select' ? !armed && !drawing && !laser : action === 'draw' ? drawing : action === 'laser' ? laser : armed === action
@@ -182,7 +214,9 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
             onMouseEnter={withFlyout ? () => keepFlyout(action) : undefined}
             onMouseLeave={withFlyout ? letFlyoutGo : undefined}
           >
-            {action === 'pinterest' && <div className="h-px mx-1 mb-1 bg-nier-border/30" />}
+            {/* In the gap above, so every tool keeps its row's height -- and
+                only with a tool above it to set it apart from. */}
+            {action === 'pinterest' && i % rows !== 0 && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
             <button
               type="button"
               data-quick={action}
@@ -216,6 +250,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
             </button>
             {withKinds && flyout === action && (
               <div
+                ref={flyoutRef}
                 data-quick-flyout={action}
                 className="absolute left-full top-0 ml-2 flex gap-1 p-1 border border-nier-border/40 z-10"
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
@@ -248,6 +283,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
             )}
             {action === 'laser' && flyout === 'laser' && (
               <div
+                ref={flyoutRef}
                 data-quick-flyout="laser"
                 className="absolute left-full top-0 ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono"
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
@@ -259,6 +295,22 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
                     value={laserSettings.color}
                     onChange={e => onLaserSettings({ ...laserSettings, color: e.target.value })}
                     className="atrium-swatch w-14 h-6 cursor-pointer border border-nier-border/40"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[10px] tracking-[0.12em] uppercase text-nier-bg/80">
+                  <span className="flex items-center justify-between gap-2">
+                    {t('atrium.tools.laserTrail')}
+                    <span className="text-nier-bg/60 tabular-nums">{(laserSettings.trail / 1000).toFixed(1)} s</span>
+                  </span>
+                  <input
+                    type="range"
+                    data-laser-trail=""
+                    min={TRAIL_MIN_MS}
+                    max={TRAIL_MAX_MS}
+                    step={50}
+                    value={laserSettings.trail}
+                    onChange={e => onLaserSettings({ ...laserSettings, trail: Number(e.target.value) })}
+                    className="w-full accent-nier-bg"
                   />
                 </label>
                 <span className="text-[10px] tracking-[0.12em] uppercase text-nier-bg/60">{t('atrium.tools.laserEffect')}</span>

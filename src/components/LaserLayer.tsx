@@ -8,7 +8,7 @@
 // pointer's dot. Otherwise no frame is asked for at all.
 
 import { useEffect, useRef } from 'react'
-import { onLaserActivity, remoteTrails, sendLaser, TRAIL_MS, type LaserEffect, type LaserPoint, type LaserSettings } from '../lib/laser'
+import { onLaserActivity, remoteTrails, sendLaser, type LaserEffect, type LaserPoint, type LaserSettings } from '../lib/laser'
 
 type View = { x: number; y: number; zoom: number }
 
@@ -46,7 +46,7 @@ function spawn(into: Particle[], kind: LaserEffect, at: { x: number; y: number }
   }
 }
 
-function drawTrail(ctx: CanvasRenderingContext2D, points: LaserPoint[], color: string, now: number, v: View, dpr: number) {
+function drawTrail(ctx: CanvasRenderingContext2D, points: LaserPoint[], color: string, trail: number, now: number, v: View, dpr: number) {
   if (points.length === 0) return
   const sx = (p: LaserPoint) => (p.x * v.zoom + v.x) * dpr
   const sy = (p: LaserPoint) => (p.y * v.zoom + v.y) * dpr
@@ -58,7 +58,7 @@ function drawTrail(ctx: CanvasRenderingContext2D, points: LaserPoint[], color: s
     ctx.strokeStyle = pass === 0 ? color : toward(color, white)
     ctx.shadowColor = color
     for (let i = 1; i < points.length; i++) {
-      const f = Math.max(0, 1 - (now - points[i].t) / TRAIL_MS)
+      const f = Math.max(0, 1 - (now - points[i].t) / trail)
       if (f <= 0) continue
       ctx.globalAlpha = f
       ctx.shadowBlur = pass === 0 ? 14 * f * dpr : 0
@@ -157,7 +157,7 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
 
     // Other people's trails, and the particles their effects make.
     for (const [userId, trail] of remoteTrails) {
-      trail.points = trail.points.filter(p => now - p.t < TRAIL_MS)
+      trail.points = trail.points.filter(p => now - p.t < trail.trail)
       if (!still.current && trail.effect !== 'none') {
         const from = spawnedTo.current.get(userId) ?? 0
         for (let i = 1; i < trail.points.length; i++) {
@@ -168,16 +168,17 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
         }
         spawnedTo.current.set(userId, trail.points[trail.points.length - 1]?.t ?? from)
       }
-      if (trail.points.length === 0 && now - trail.seen > TRAIL_MS) {
+      if (trail.points.length === 0 && now - trail.seen > trail.trail) {
         remoteTrails.delete(userId)
         spawnedTo.current.delete(userId)
         continue
       }
-      drawTrail(ctx, trail.points, trail.color, now, v, dpr)
+      drawTrail(ctx, trail.points, trail.color, trail.trail, now, v, dpr)
     }
     // This person's.
-    local.current = local.current.filter(p => now - p.t < TRAIL_MS)
-    drawTrail(ctx, local.current, settingsRef.current.color, now, v, dpr)
+    const mine = settingsRef.current
+    local.current = local.current.filter(p => now - p.t < mine.trail)
+    drawTrail(ctx, local.current, mine.color, mine.trail, now, v, dpr)
 
     const alive: Particle[] = []
     for (const p of particles.current) {
@@ -231,8 +232,8 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
   const flush = () => {
     if (outbox.current.length === 0) return
     const now = performance.now()
-    const { color, effect } = settingsRef.current
-    sendLaser({ color, effect, points: outbox.current.map(p => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10, Math.round(now - p.t)]) })
+    const { color, effect, trail } = settingsRef.current
+    sendLaser({ color, effect, trail, points: outbox.current.map(p => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10, Math.round(now - p.t)]) })
     outbox.current = []
   }
   useEffect(() => {

@@ -4535,9 +4535,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </button>
       </div>
 
-      {/* HUD + presentation quick-toggle, in one top-left row so the toggle
-          always sits just to the right of the HUD regardless of its width. */}
-      <div data-hud="true" className="fixed top-4 left-4 z-[9999] flex items-start gap-2 pointer-events-none">
+      {/* The left edge, one column: the atrium's menu at the top, the quick
+          bar in what's left, Controls at the bottom. Each was placed on the
+          screen by itself, so the menu opened over the quick bar, and Controls
+          opened under it; in one column, each opening makes room. */}
+      <div className="fixed top-4 bottom-4 left-4 z-[9999] flex flex-col items-start gap-2 pointer-events-none">
+      {/* HUD + presentation quick-toggle, in one row so the toggle always
+          sits just to the right of the HUD regardless of its width. */}
+      <div data-hud="true" className="shrink-0 flex items-start gap-2 pointer-events-none">
       {/* Closed, this is a button among buttons, so it is the height of one:
           a 22px header inside 6px of padding and a 1px rule. It was two-pixel
           borders and 8px padding, which made it eight pixels taller than
@@ -4747,6 +4752,77 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </button>
       )}
       </div>
+      {/* Never less than a row of tools: Controls gives way first. */}
+      <div className="flex-1 min-h-[2.875rem] flex items-center">
+        {/* The quick bar: a tool for each kind of trace, in the middle of what
+            the menu and Controls leave -- in more columns, when that is short. */}
+        {canEdit && (
+          <QuickBar
+            armed={placeTool}
+            drawing={isDrawingMode}
+            laser={laserActive}
+            laserSettings={laserSettings}
+            kinds={{ select: directSelect, text: plainText }}
+            onAction={quickAction}
+            onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
+            onLaserSettings={changeLaserSettings}
+          />
+        )}
+      </div>
+        {/* Instructions. A click anywhere on it opens or closes it, not only on
+            its title -- open, it is a list to read, with nothing else to click. */}
+        <div
+          data-hud="true"
+          className="relative min-h-0 overflow-y-auto px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto cursor-pointer select-none"
+          style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          onClick={() => setControlsMinimized(!controlsMinimized)}
+          title={controlsMinimized ? t('common.open') : t('common.close')}
+        >
+          {/* Corner brackets */}
+          <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
+          <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>
+          <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg"></div>
+          <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
+
+          <div className="flex items-center justify-between gap-3 h-[1.375rem] leading-none">
+            <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.controls.title')}</p>
+            <span
+              className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
+              style={{ display: 'inline-block', transform: controlsMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+            >
+              ▾
+            </span>
+          </div>
+          {!controlsMinimized && (
+            <div className="panel-in space-y-1 mt-2">
+              {/* One row per shortcut, from a list, because twelve copies of the
+                  same paragraph differing only in their text is eight places to
+                  get the class list slightly wrong. */}
+              {([
+                'atrium.controls.pan',
+                'atrium.controls.leaveTrace',
+                'atrium.controls.draw',
+                'atrium.controls.laser',
+                'atrium.controls.quickBar',
+                'atrium.controls.editTrace',
+                'atrium.controls.multiSelect',
+                'atrium.controls.directSelect',
+                'atrium.controls.groupUngroup',
+                'atrium.controls.undoRedo',
+                'atrium.controls.copyPaste',
+                'atrium.controls.copyPasteStyle',
+                'atrium.controls.export',
+                'atrium.controls.deleteSelected',
+                'atrium.controls.saveChanges',
+              ] as const).map(key => (
+                <p key={key} className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
+                  <span className="text-nier-bg/80">◇</span> {t(key)}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Atrium size indicator - bottom center */}
       {(() => {
@@ -4857,19 +4933,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {showLocationsPanel ? t('common.close') : t('atrium.locations.title')}
       </button>
 
-      {/* The quick bar, down the left edge: a tool for each kind of trace. */}
-      {canEdit && (
-        <QuickBar
-          armed={placeTool}
-          drawing={isDrawingMode}
-          laser={laserActive}
-          laserSettings={laserSettings}
-          kinds={{ select: directSelect, text: plainText }}
-          onAction={quickAction}
-          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
-          onLaserSettings={changeLaserSettings}
-        />
-      )}
+
 
       {/* Draw Button */}
       {canEdit && (
@@ -5591,59 +5655,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />
       )}
 
-      {/* Instructions. A click anywhere on it opens or closes it, not only on
-          its title -- open, it is a list to read, with nothing else to click. */}
-      <div
-        data-hud="true"
-        className="fixed bottom-4 left-4 px-4 py-[0.3125rem] border border-nier-border/40 z-[9999] font-mono pointer-events-auto cursor-pointer select-none"
-        style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-        onClick={() => setControlsMinimized(!controlsMinimized)}
-        title={controlsMinimized ? t('common.open') : t('common.close')}
-      >
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg"></div>
-        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg"></div>
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg"></div>
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg"></div>
 
-        <div className="flex items-center justify-between gap-3 h-[1.375rem] leading-none">
-          <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.controls.title')}</p>
-          <span
-            className="text-nier-bg/70 text-[14px] leading-none px-0.5 transition-transform duration-200 pointer-events-none"
-            style={{ display: 'inline-block', transform: controlsMinimized ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-          >
-            ▾
-          </span>
-        </div>
-        {!controlsMinimized && (
-          <div className="panel-in space-y-1 mt-2">
-            {/* One row per shortcut, from a list, because twelve copies of the
-                same paragraph differing only in their text is eight places to
-                get the class list slightly wrong. */}
-            {([
-              'atrium.controls.pan',
-              'atrium.controls.leaveTrace',
-              'atrium.controls.draw',
-              'atrium.controls.laser',
-              'atrium.controls.quickBar',
-              'atrium.controls.editTrace',
-              'atrium.controls.multiSelect',
-              'atrium.controls.directSelect',
-              'atrium.controls.groupUngroup',
-              'atrium.controls.undoRedo',
-              'atrium.controls.copyPaste',
-              'atrium.controls.copyPasteStyle',
-              'atrium.controls.export',
-              'atrium.controls.deleteSelected',
-              'atrium.controls.saveChanges',
-            ] as const).map(key => (
-              <p key={key} className="text-nier-bg/80 text-xs tracking-wider flex items-center gap-2">
-                <span className="text-nier-bg/80">◇</span> {t(key)}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Theme Customization Modal */}
       {showThemeCustomization && currentLobby && (

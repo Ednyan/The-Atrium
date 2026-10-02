@@ -420,6 +420,7 @@ const ja: Catalogue = {
   'atrium.tools.laser': 'レーザーポインター',
   'atrium.tools.hintLaser': 'ドラッグで指し示す · ここにいる全員に見える · K か Esc でしまう',
   'atrium.tools.laserColour': '色',
+  'atrium.tools.laserTrail': '軌跡',
   'atrium.tools.laserEffect': 'エフェクト',
   'atrium.tools.effectNone': 'なし',
   'atrium.tools.effectSparks': '火花',
