@@ -13,7 +13,7 @@ import { fileNameOf, saveFile } from '../lib/fileSave'
 import { heldBy } from '../lib/frames'
 import { showToast } from '../lib/toast'
 
-type Format = 'atrium' | 'png' | 'svg'
+export type Format = 'atrium' | 'png' | 'svg'
 
 const FILTERS: Record<Format, { name: string; extensions: string[] }> = {
   atrium: { name: 'Atrium', extensions: ['atrium'] },
@@ -26,19 +26,21 @@ const choice = (on: boolean) => `flex-1 px-2 py-2 text-[10px] tracking-[0.12em] 
 }`
 const LABEL = 'block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2'
 
-export default function ExportDialog({ lobbyName, lobbyMeta, background, selection, onClose }: {
+export default function ExportDialog({ lobbyName, lobbyMeta, background, selection, initialFormat = 'png', onClose }: {
   lobbyName: string
   lobbyMeta: { themeSettings: unknown; isPublic: boolean; maxPlayers: number }
   // The atrium's background, for a picture that keeps it.
   background: string
   // What was selected when it opened: offered first, when there's any.
   selection: string[]
+  // The format it opens on: an .atrium file, when asked for one to share.
+  initialFormat?: Format
   onClose: () => void
 }) {
   const { t } = useTranslation()
   const { traces, links, layers, locations } = useGamePick('traces', 'links', 'layers', 'locations')
   const [whole, setWhole] = useState(selection.length === 0)
-  const [format, setFormat] = useState<Format>('png')
+  const [format, setFormat] = useState<Format>(initialFormat)
   const [scale, setScale] = useState<ExportScale>(2)
   const [withBackground, setWithBackground] = useState(true)
   const [preview, setPreview] = useState<{ url: string; width: number; height: number } | null>(null)

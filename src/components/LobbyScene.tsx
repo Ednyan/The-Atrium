@@ -22,7 +22,6 @@ import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
-import { copyLobbyId } from '../lib/clipboard'
 import { showToast } from '../lib/toast'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
@@ -51,7 +50,8 @@ import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
 import LaserLayer from './LaserLayer'
-import ExportDialog from './ExportDialog'
+import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
+import SharePanel from './SharePanel'
 import { ImportTooLargeError, importIntoAtrium } from '../lib/atriumFile'
 import { createPdfTrace, pageRows } from '../lib/pdfTraces'
 import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
@@ -617,8 +617,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }, [currentLobby?.themeSettings?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
-  // Export (ExportDialog), open on what was selected when it was asked for.
-  const [exportOf, setExportOf] = useState<string[] | null>(null)
+  // Export (ExportDialog), open on what was selected when it was asked for --
+  // and on a format, when it's an .atrium file to share.
+  const [exportOf, setExportOf] = useState<{ ids: string[]; format?: ExportFormat } | null>(null)
+  // The HUD's Save Atrium choices, and its Share panel.
+  const [showSaveOptions, setShowSaveOptions] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   const selectionRef = useRef<string[]>([])
   // One-shot request for TraceOverlay to multi-select a set of trace ids,
   // fired when the user clicks a group in the Layer panel. TraceOverlay owns
@@ -1768,7 +1772,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // an armed one.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault()
-        setExportOf(selectionRef.current)
+        setExportOf({ ids: selectionRef.current })
         return
       }
       if ((e.key === 'k' || e.key === 'K') && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -4304,7 +4308,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             hiddenTraceIds={drawingMembers}
             toolSwitch={toolSwitch}
             onMultiSelectionChange={setMultiSelectedTraceIds}
-            onExport={ids => setExportOf(ids)}
+            onExport={ids => setExportOf({ ids })}
             onCustomizeOpen={() => { closeSidePanels(); setShowTracePanel(false) }}
             canEdit={canEdit}
           />
@@ -4563,7 +4567,48 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           </p>
         )}
         <CursorReadout zoom={zoom} />
-        <div className="flex gap-1 mt-1.5">
+        {/* Save Atrium: out as a file or a picture, or another atrium's
+            traces in, where the view is. */}
+        {currentLobby && (
+          <div className="mt-1.5">
+            <button
+              type="button"
+              onClick={() => setShowSaveOptions(open => !open)}
+              aria-expanded={showSaveOptions}
+              className="atrium-btn w-full text-center"
+            >
+              {t('atrium.hud.saveAtrium')}
+            </button>
+            {showSaveOptions && (
+              <div className="flex gap-1 mt-1">
+                <button
+                  type="button"
+                  className="atrium-btn flex-1"
+                  onClick={() => {
+                    setShowSaveOptions(false)
+                    setExportOf({ ids: selectionRef.current })
+                  }}
+                >
+                  {t('atrium.export.open')}
+                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="atrium-btn flex-1"
+                    onClick={() => {
+                      setShowSaveOptions(false)
+                      importAnchorRef.current = screenToWorld(window.innerWidth / 2, window.innerHeight / 2)
+                      atriumFileInputRef.current?.click()
+                    }}
+                  >
+                    {t('atrium.import.file')}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex gap-1 mt-1">
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
             <button
               onClick={() => setShowLobbyManagement(true)}
@@ -4573,13 +4618,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             </button>
           )}
         </div>
+        {/* Share: a link straight into this atrium, and its ID. */}
         {currentLobby && (
-          <button
-            onClick={() => copyLobbyId(currentLobby.id)}
-            className="atrium-btn w-full mt-1 text-center"
-          >
-            {t('atrium.hud.copyAtriumId')}
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              data-share-toggle=""
+              onClick={() => setShowShare(open => !open)}
+              aria-expanded={showShare}
+              className="atrium-btn w-full mt-1 text-center"
+            >
+              {t('atrium.hud.share')}
+            </button>
+            {showShare && (
+              <SharePanel
+                atriumId={currentLobby.id}
+                onSaveFile={() => setExportOf({ ids: [], format: 'atrium' })}
+                onClose={() => setShowShare(false)}
+              />
+            )}
+          </div>
         )}
         {isDesktop && (
           <button
@@ -5306,7 +5364,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
                 onClick={() => {
                   setMapContextMenu(null)
-                  setExportOf(selectionRef.current)
+                  setExportOf({ ids: selectionRef.current })
                 }}
               >
                 ◇ {t('atrium.export.open')}
@@ -5342,7 +5400,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           lobbyName={currentLobby?.name ?? 'atrium'}
           lobbyMeta={{ themeSettings: currentLobby?.themeSettings ?? null, isPublic: !!currentLobby?.isPublic, maxPlayers: currentLobby?.maxPlayers ?? 50 }}
           background={currentLobby?.themeSettings?.backgroundColor || '#0a0a0f'}
-          selection={exportOf}
+          selection={exportOf.ids}
+          initialFormat={exportOf.format}
           onClose={() => setExportOf(null)}
         />
       )}
