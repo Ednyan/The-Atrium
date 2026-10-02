@@ -255,15 +255,26 @@ const readAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   reader.readAsDataURL(blob)
 })
 
-// A file a trace points at, as bytes: from the vault on desktop, the network
-// on the web -- through the app's image proxy when the host won't share it.
+// What a file is, from its name, for one read as bare bytes.
+const MIME: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+  svg: 'image/svg+xml', avif: 'image/avif', ico: 'image/x-icon', pdf: 'application/pdf',
+  mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+}
+
+// A file a trace points at, as bytes: read straight from the vault on desktop
+// (fetching a vault file's blob: URL is refused there -- the desktop's CSP
+// allows no blob: requests), from the network on the web, through the app's
+// image proxy when the host won't share it.
 export async function fetchMedia(url: string): Promise<Blob | null> {
-  let href = url
+  const href = url
   try {
     if (href.startsWith('local://')) {
-      const { resolveLocalUrl } = await import('./localDb')
-      href = await resolveLocalUrl(href)
-      if (href.startsWith('local://')) return null
+      const { readLocalFileBytes } = await import('./localDb')
+      const bytes = await readLocalFileBytes(href)
+      if (!bytes) return null
+      const ext = href.split(/[?#]/)[0].split('.').pop()?.toLowerCase() ?? ''
+      return new Blob([bytes as unknown as BlobPart], { type: MIME[ext] ?? 'application/octet-stream' })
     }
     const response = await fetch(href)
     if (response.ok) return await response.blob()

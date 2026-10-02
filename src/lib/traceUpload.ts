@@ -39,7 +39,9 @@ export const inferFileExtension = (file: File) => {
 // URL on the web, or the file as a data URL when neither is available.
 export async function uploadTraceFile(file: File, lobbyId: string, userId: string): Promise<string> {
   const fileExt = inferFileExtension(file)
-  const fileName = `${userId}_${Date.now()}.${fileExt}`
+  // The time and a few random letters: two files saved in the same
+  // millisecond -- pages of a PDF, a handful dropped at once -- each keep their own.
+  const fileName = `${userId}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${fileExt}`
   const storagePath = `${lobbyId}/${fileName}`
 
   if (isDesktop && supabase) {

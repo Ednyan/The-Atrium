@@ -178,52 +178,78 @@ export async function renderPdfPages(
 // change flashed "Rendering". Keeping the document open makes a page turn just
 // a render.
 //
-// Bounded, because an open document holds its worker and parsed structure.
-// Two is enough for the realistic case of reading one document while another
-// sits on the canvas.
+// Bounded, because an open document holds its worker and parsed structure --
+// but only ever by closing one nobody is using. Closing the oldest whatever
+// it was doing, as this did, destroyed documents halfway through counting
+// their pages or rendering one: with three PDFs on the canvas (and the next
+// page being fetched ahead) one of them failed, its page count never came,
+// and it showed no arrows to turn its pages with. Two asking for the same
+// document at once now share the one being opened, too, rather than each
+// opening it.
 const MAX_OPEN_DOCUMENTS = 2
-const openDocuments = new Map<string, { task: any; doc: any }>()
+interface OpenDocument { task: any; doc: any; users: number; used: number }
+const opening = new Map<string, Promise<OpenDocument>>()
+const openDocuments = new Map<string, OpenDocument>()
 
-async function acquireDocument(id: string, load: () => Promise<ArrayBuffer>) {
-  const existing = openDocuments.get(id)
-  if (existing) {
-    // Re-inserted so the map's insertion order doubles as least-recently-used.
+function acquire(id: string, load: () => Promise<ArrayBuffer>): Promise<OpenDocument> {
+  const known = opening.get(id)
+  if (known) return known
+  const pending = (async () => {
+    const { task, doc } = await openDocument(await load())
+    const entry: OpenDocument = { task, doc, users: 0, used: Date.now() }
+    openDocuments.set(id, entry)
+    return entry
+  })()
+  opening.set(id, pending)
+  pending.catch(() => { if (opening.get(id) === pending) opening.delete(id) })
+  return pending
+}
+
+// The least recently used documents nobody is using, closed while more are
+// open than the bound.
+function closeIdle() {
+  const idle = [...openDocuments].filter(([, e]) => e.users === 0).sort((a, b) => a[1].used - b[1].used)
+  let excess = openDocuments.size - MAX_OPEN_DOCUMENTS
+  for (const [id, entry] of idle) {
+    if (excess <= 0) break
     openDocuments.delete(id)
-    openDocuments.set(id, existing)
-    return existing.doc
+    opening.delete(id)
+    void entry.task.destroy()
+    excess--
   }
+}
 
-  const entry = await openDocument(await load())
-  openDocuments.set(id, entry)
-
-  while (openDocuments.size > MAX_OPEN_DOCUMENTS) {
-    const oldest = openDocuments.keys().next().value as string | undefined
-    if (oldest === undefined) break
-    const evicted = openDocuments.get(oldest)
-    openDocuments.delete(oldest)
-    void evicted?.task.destroy()
+// `use` with the document open, held open until it's done.
+async function withDocument<T>(id: string, load: () => Promise<ArrayBuffer>, use: (doc: any) => Promise<T>): Promise<T> {
+  const entry = await acquire(id, load)
+  entry.users++
+  try {
+    return await use(entry.doc)
+  } finally {
+    entry.users--
+    entry.used = Date.now()
+    closeIdle()
   }
-
-  return entry.doc
 }
 
 export function releasePdfDocument(id: string) {
   const entry = openDocuments.get(id)
-  if (!entry) return
+  if (!entry || entry.users > 0) return
   openDocuments.delete(id)
+  opening.delete(id)
   void entry.task.destroy()
 }
 
 export function releaseAllPdfDocuments() {
   for (const [, entry] of openDocuments) void entry.task.destroy()
   openDocuments.clear()
+  opening.clear()
 }
 
 // Page count for an already-open (or newly opened) document, without the
 // separate open getPdfInfo would do.
-export async function getOpenPdfPageCount(id: string, load: () => Promise<ArrayBuffer>): Promise<number> {
-  const doc = await acquireDocument(id, load)
-  return doc.numPages
+export function getOpenPdfPageCount(id: string, load: () => Promise<ArrayBuffer>): Promise<number> {
+  return withDocument(id, load, async doc => doc.numPages)
 }
 
 // Renders a single page from a document kept open across calls. Used by the
@@ -233,10 +259,11 @@ export async function renderPdfPage(
   load: () => Promise<ArrayBuffer>,
   pageNumber: number,
 ): Promise<RenderedPage | null> {
-  const doc = await acquireDocument(id, load)
-  if (pageNumber < 1 || pageNumber > doc.numPages) return null
-  const page = await doc.getPage(pageNumber)
-  const rendered = await renderPageToBlob(page, VIEWER_RENDER_WIDTH)
-  page.cleanup()
-  return rendered
+  return withDocument(id, load, async doc => {
+    if (pageNumber < 1 || pageNumber > doc.numPages) return null
+    const page = await doc.getPage(pageNumber)
+    const rendered = await renderPageToBlob(page, VIEWER_RENDER_WIDTH)
+    page.cleanup()
+    return rendered
+  })
 }

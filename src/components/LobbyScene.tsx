@@ -53,6 +53,7 @@ import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './Quick
 import LaserLayer from './LaserLayer'
 import ExportDialog from './ExportDialog'
 import { ImportTooLargeError, importIntoAtrium } from '../lib/atriumFile'
+import { createPdfTrace, pageRows } from '../lib/pdfTraces'
 import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
 import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib/laser'
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
@@ -532,9 +533,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
   const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
-  // A PDF dropped on the canvas, handed to the panel so it opens with the
-  // file already chosen instead of asking for it again.
-  const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null)
 
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
 
@@ -1898,8 +1896,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setClickedTracePosition(null)
     setTracePanelInitialType(undefined)
     setTracePanelInitialShapeType(undefined)
-    // Or the next panel opened would reload the last dropped PDF.
-    setPendingPdfFile(null)
   }
 
   // Creating a path used to insert a static 2-point line and leave the user
@@ -2464,68 +2460,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     handleCloseTracePanel()
 
+    if (!userId) return
     const anchor = clickedTracePosition || positionRef.current
-    const cols = Math.max(1, Math.min(columns, pages.length))
-    // Derived, not taken from the panel: the requested rows are a hint, and if
-    // columns x rows can't hold the document the remainder has to go
-    // somewhere rather than be dropped.
-    const rowCount = Math.ceil(pages.length / cols)
-
-    // One pitch for every page, from the widest and tallest, so pages stay in
-    // line even when a document mixes portrait and landscape.
-    // Twice the usual image cap. A page is meant to be read, and at the
-    // standard 300-unit cap the text was too small to make out without
-    // zooming in on every single one.
-    const boxes = pages.map(p => scaleToDisplayBox({ width: p.width, height: p.height }, 600))
-    const cellWidth = Math.max(...boxes.map(b => b.width)) + 24
-    const cellHeight = Math.max(...boxes.map(b => b.height)) + 24
-
-    // Centred on the placement point rather than starting there, matching how
-    // every other multi-trace placement behaves.
-    const originX = anchor.x - ((cols - 1) * cellWidth) / 2
-    const originY = anchor.y - ((rowCount - 1) * cellHeight) / 2
-
-    // On top of the group, in page order. (Placed in a group, the pages used
-    // to be numbered 1 upwards -- below the group's own range.)
+    // In reading order, centred where it was placed, on top of everything
+    // (lib/pdfTraces pageRows -- Extract Pages lays pages out the same way).
     const orderFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers, pages.length)
-
-    const { preCacheLocalUrl } = await import('../lib/localDb')
-    const stamp = Date.now()
-    const rows: any[] = []
-
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i]
-      // Extension follows what the encoder actually produced -- it falls back
-      // to PNG where WebP isn't available, and resolveLocalUrl picks the MIME
-      // type off the extension.
-      const ext = page.blob.type === 'image/webp' ? 'webp' : 'png'
-      const storagePath = `${lobbyId}/${userId}_${stamp}_p${i + 1}.${ext}`
-      const localUrl = `local://traces/${storagePath}`
-
-      // Cached before the write so the page renders immediately, rather than
-      // waiting on disk -- same trick the single-file upload path uses.
-      preCacheLocalUrl(localUrl, URL.createObjectURL(page.blob))
-      await supabase.storage.from('traces').upload(storagePath, page.blob)
-
-      rows.push({
-        user_id: userId,
-        username,
-        type: 'image',
-        content: `Page ${i + 1}`,
-        position_x: originX + (i % cols) * cellWidth,
-        position_y: originY + Math.floor(i / cols) * cellHeight,
-        media_url: localUrl,
-        scale: 1.0,
-        rotation: 0.0,
-        border_radius: 0,
-        lobby_id: lobbyId,
-        show_description: false,
-        show_filename: false,
-        width: boxes[i].width,
-        height: boxes[i].height,
-        ...orderFields[i],
-      })
-    }
+    const rows = await pageRows(pages, anchor, columns, { lobbyId, userId, username }, 600, i => orderFields[i])
 
     // One insert for the whole document rather than one per page.
     const { data, error } = await (supabase.from('traces') as any).insert(rows).select()
@@ -4025,26 +3965,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
 
-    // A dropped PDF opens the Create Trace panel on the PDF type with the
-    // file already loaded, rather than being uploaded as an opaque
-    // attachment. The whole point of the type is choosing how to place it --
-    // as pages or as a paged viewer -- and that decision can't be made for
-    // the user. Desktop only, matching where the type exists at all.
+    // A dropped PDF is placed at once as a document trace, paged with arrows
+    // (lib/pdfTraces); Extract Pages on its menu turns it into one picture a
+    // page. Several are placed side by side. Desktop only, matching where the
+    // type exists at all.
     const droppedPdfs = isDesktop
       ? droppedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
       : []
-    if (droppedPdfs.length > 0) {
-      setClickedTracePosition({ x: worldX, y: worldY })
-      setTracePanelInitialType('document')
-      setTracePanelInitialShapeType(undefined)
-      setPendingPdfFile(droppedPdfs[0])
-      setShowTracePanel(true)
-      // Only the first is opened. Every PDF needs its own answer to "as pages
-      // or as a viewer, and in what grid", and there's no sensible way to ask
-      // that once for a batch -- but silently dropping the rest looked like
-      // they'd failed to register.
-      if (droppedPdfs.length > 1) {
-        showToast(t('atrium.toast.pdfOneAtATime', { name: droppedPdfs[0].name }))
+    if (droppedPdfs.length > 0 && userId) {
+      for (const [i, pdf] of droppedPdfs.entries()) {
+        try {
+          await createPdfTrace(pdf, { x: worldX + i * 640, y: worldY }, { lobbyId, userId, username })
+        } catch (err) {
+          console.error('PDF trace failed:', pdf.name, err)
+          showToast(t('atrium.trace.pdfUnreadable'))
+        }
       }
       return
     }
@@ -5420,7 +5355,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           onCreateBatchEmbeds={handleCreateBatchEmbeds}
           onCreateFileBatch={handleCreateFileBatch}
           onCreatePdfPages={handleCreatePdfPages}
-          initialPdfFile={pendingPdfFile}
           onOpenPinterestImport={pinterestConnected ? () => {
             // The trace panel closes as the board picker opens, so the two
             // read as one panel giving way to another rather than stacking.

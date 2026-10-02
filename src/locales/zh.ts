@@ -714,7 +714,6 @@ const zh: Catalogue = {
   'atrium.toast.embedsConverted.few': '已将 {count} 个嵌入转换为图片',
   'atrium.toast.embedsConverted.many': '已将 {count} 个嵌入转换为图片',
   'atrium.toast.embedsSkipped': '{message}——跳过了 {count} 个',
-  'atrium.toast.pdfOneAtATime': '正在打开 {name}——PDF 一次只能放一个',
 
   // ------------------------------------------------- batch links and grids
   'atrium.trace.gridLayout': '网格 —— {columns} × {rows}',
@@ -1032,6 +1031,9 @@ const zh: Catalogue = {
   'atrium.menu.convertToImage': '转换成图片',
   'atrium.menu.editDrawing': '编辑这幅画',
   'atrium.menu.splitStrokes': '拆分为笔画',
+  'atrium.menu.extractPages': '提取页面',
+  'atrium.trace.pageN': '第 {n} 页',
+  'atrium.error.extractFailed': '无法提取页面：{message}',
   'atrium.menu.connectTo': '连接到…',
   'atrium.menu.wrapInFrame': '用框架包住',
   'atrium.links.pickTarget': '选择要连接的 Trace',

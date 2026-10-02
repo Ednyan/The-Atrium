@@ -47,6 +47,7 @@ import TraceNameField from './TraceNameField'
 import { previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, splitDrawing } from '../lib/drawingFiles'
+import { extractPages } from '../lib/pdfTraces'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
@@ -8113,6 +8114,30 @@ return (
                   }}
                 >
                   <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.splitStrokes')}
+                </button>
+              )
+            })()}
+            {/* A PDF shown a page at a time, apart into one picture a page, in
+                a group where it was (lib/pdfTraces extractPages). */}
+            {(() => {
+              const trace = traces.find(t => t.id === contextMenu.traceId)
+              if (!canEdit || !trace || trace.type !== 'document' || !trace.mediaUrl || !lobbyId || !userId) return null
+              if (editingWholeSelection && !(multiSelectedIds.size === 1 && multiSelectedIds.has(trace.id))) return null
+              return (
+                <button
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    setContextMenu(null)
+                    setSelectedTraceId(null)
+                    setMultiSelectedIds(new Set())
+                    showToast(t('atrium.controls.rendering'))
+                    void extractPages(trace.id, { lobbyId, userId, username }).catch(err => {
+                      console.error('[pdf] could not extract pages:', err)
+                      showToast(t('atrium.error.extractFailed', { message: err?.message ?? '' }))
+                    })
+                  }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.extractPages')}
                 </button>
               )
             })()}

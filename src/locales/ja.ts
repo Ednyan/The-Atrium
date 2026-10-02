@@ -711,7 +711,6 @@ const ja: Catalogue = {
   'atrium.toast.embedsConverted.few': '埋め込み {count} 件を画像に変換しました',
   'atrium.toast.embedsConverted.many': '埋め込み {count} 件を画像に変換しました',
   'atrium.toast.embedsSkipped': '{message}——{count} 件はスキップ',
-  'atrium.toast.pdfOneAtATime': '{name} を開きます——PDF は一度に一つずつ配置します',
 
   // ------------------------------------------- batch links and grids
   'atrium.trace.gridLayout': 'グリッド —— {columns} × {rows}',
@@ -1029,6 +1028,9 @@ const ja: Catalogue = {
   'atrium.menu.convertToImage': '画像に変換',
   'atrium.menu.editDrawing': '描いたものを編集',
   'atrium.menu.splitStrokes': 'ストロークに分割',
+  'atrium.menu.extractPages': 'ページを取り出す',
+  'atrium.trace.pageN': '{n} ページ',
+  'atrium.error.extractFailed': 'ページを取り出せませんでした：{message}',
   'atrium.menu.connectTo': 'つなぐ…',
   'atrium.menu.wrapInFrame': 'フレームで囲む',
   'atrium.links.pickTarget': 'つなぎたい Trace を選んでください',

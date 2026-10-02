@@ -7,6 +7,7 @@ import { nextShapeStyle, rememberShapeStyle, shapeStyleColumns, type ShapeDraft,
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { isDesktop } from '../lib/supabase'
+import { createPdfTrace } from '../lib/pdfTraces'
 import { uploadTraceFile } from '../lib/traceUpload'
 import { exrFileToPng, isExr } from '../lib/exr'
 import { newTraceOrderFields } from '../lib/order'
@@ -14,7 +15,6 @@ import { nextShapeName, nextTextName } from '../lib/traceNames'
 import { insertTrace } from '../lib/traceWrites'
 import { computeAutoFitTextSize } from '../lib/textFit'
 import { currentTracePreset } from '../lib/tracePresets'
-import { scaleToDisplayBox } from '../lib/binPack'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 
@@ -65,9 +65,6 @@ interface TracePanelProps {
   // are -- it creates many traces at once, which is placement work this panel
   // has no business doing.
   onCreatePdfPages?: (pages: { blob: Blob; width: number; height: number }[], columns: number) => void
-  // A PDF dropped onto the canvas, so the panel opens with it already loaded
-  // rather than asking the user to pick the file they just dropped.
-  initialPdfFile?: File | null
   // Absent unless Pinterest is connected, which is what decides whether the
   // button below the type grid appears at all.
   onOpenPinterestImport?: () => void
@@ -109,7 +106,7 @@ function parseBatchLinks(text: string): ParsedBatchLink[] {
     })
 }
 
-export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, initialPdfFile, onOpenPinterestImport, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
+export default function TracePanel({ onClose, tracePosition, lobbyId, initialType, initialShapeType, onCreatePath, onCreateBatchEmbeds, onCreateFileBatch, onCreatePdfPages, onOpenPinterestImport, shapeDraftSize, onShapeDraftChange, onShapeModeChange }: TracePanelProps) {
   const { t } = useTranslation()
   const formRef = useRef<HTMLFormElement>(null)
   const [content, setContent] = useState('')
@@ -143,8 +140,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
   // continue past the last row rather than being dropped.
   const [pdfRows, setPdfRows] = useState(1)
   const [pdfBusy, setPdfBusy] = useState('')
-  // Display box for a paged document trace, at the PDF's own aspect ratio.
-  const [pdfPageSize, setPdfPageSize] = useState<{ width: number; height: number } | null>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
   const handlePdfSelected = async (selected: File | null) => {
@@ -161,10 +156,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       const count = info.pageCount
       setPdfBuffer(buffer)
       setPdfPageCount(count)
-      // The document's real proportions, so an A4 trace is A4-shaped. Sized
-      // through the same 600-unit cap page-per-trace uses, since a paged
-      // document at the old 300x424 was far too small to read.
-      setPdfPageSize(scaleToDisplayBox({ width: info.width, height: info.height }, 600))
       // A sensible default arrangement rather than always 3 across: a 4-page
       // document reads better as 2x2 than 3+1.
       const columns = Math.min(count, Math.max(1, Math.round(Math.sqrt(count))))
@@ -213,15 +204,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
     window.addEventListener('keydown', handleKey, true)
     return () => window.removeEventListener('keydown', handleKey, true)
   }, [onClose])
-
-  // Load a dropped PDF exactly as if it had been chosen through the file
-  // input, so the page count and both placement modes are available with no
-  // second step.
-  useEffect(() => {
-    if (!initialPdfFile) return
-    handlePdfSelected(initialPdfFile)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPdfFile])
 
   // Shape-specific state
   // Every option a shape has, the same set the customize panel edits -- see
@@ -359,8 +341,22 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         }
         return
       }
-      // 'single' falls through: it's an ordinary one-trace insert, with the
-      // PDF itself stored like any other media file.
+      // 'single': one document trace, paged with arrows (lib/pdfTraces) --
+      // made the way a PDF dropped on the canvas is.
+      if (!userId) return
+      setIsSubmitting(true)
+      try {
+        await createPdfTrace(file, finalPosition, { lobbyId, userId, username }, content)
+        setContent('')
+        setFile(null)
+        onClose()
+      } catch (err) {
+        console.error('PDF trace failed:', err)
+        alert(t('atrium.trace.pdfUnreadable'))
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
     }
 
     // Validate based on trace type
@@ -389,9 +385,8 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
       const initialPathPoints = shapeType === 'path' ? getDefaultPathPoints(finalPosition) : undefined
       const textSize = traceType === 'text' ? computeAutoFitTextSize(content, DEFAULT_TEXT_FONT_SIZE) : null
       
-      // Upload file if provided. 'document' rides the same path: the PDF is
-      // stored exactly like any other media file, and the trace keeps its URL.
-      if (media && (traceType === 'image' || traceType === 'audio' || traceType === 'video' || traceType === 'document')) {
+      // Upload file if provided.
+      if (media && (traceType === 'image' || traceType === 'audio' || traceType === 'video')) {
         uploadedUrl = await uploadTraceFile(media, lobbyId, userId)
       }
 
@@ -443,8 +438,6 @@ export default function TracePanel({ onClose, tracePosition, lobbyId, initialTyp
         // Auto-fit the box to the content so long text isn't clipped and
         // doesn't need a resize right after creating it.
         ...(textSize && { width: textSize.width, height: textSize.height }),
-        // Roughly A4 portrait, readable on the canvas without dominating it.
-        ...(traceType === 'document' && pdfPageSize && { width: pdfPageSize.width, height: pdfPageSize.height }),
         // A starting box suited to what's embedded -- a Drive PDF or Doc in the
         // 16:9 embed default is a page letterboxed into a strip.
         ...(traceType === 'embed' && (defaultEmbedBox(mediaUrl) ?? {})),

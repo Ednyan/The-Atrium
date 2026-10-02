@@ -715,7 +715,6 @@ const ko: Catalogue = {
   'atrium.toast.embedsConverted.few': '임베드 {count}개를 이미지로 바꿨어요',
   'atrium.toast.embedsConverted.many': '임베드 {count}개를 이미지로 바꿨어요',
   'atrium.toast.embedsSkipped': '{message} — {count}개는 건너뜀',
-  'atrium.toast.pdfOneAtATime': '{name} 열기 — PDF는 한 번에 하나씩 놓여요',
 
   // ------------------------------------------- batch links and grids
   'atrium.trace.gridLayout': '격자 — {columns} × {rows}',
@@ -1033,6 +1032,9 @@ const ko: Catalogue = {
   'atrium.menu.convertToImage': '이미지로 바꾸기',
   'atrium.menu.editDrawing': '그림 편집',
   'atrium.menu.splitStrokes': '획으로 나누기',
+  'atrium.menu.extractPages': '페이지 추출',
+  'atrium.trace.pageN': '{n}쪽',
+  'atrium.error.extractFailed': '페이지를 추출하지 못했어요: {message}',
   'atrium.menu.connectTo': '연결하기…',
   'atrium.menu.wrapInFrame': '프레임으로 감싸기',
   'atrium.links.pickTarget': '연결할 Trace를 선택하세요',
