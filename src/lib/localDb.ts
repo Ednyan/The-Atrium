@@ -1529,6 +1529,9 @@ export async function initLocalDb(): Promise<void> {
     // Column already exists — ignore
   }
 
+  // Deleted traces' files, kept while undo could bring them back (holdTraceMedia).
+  await db.execute('CREATE TABLE IF NOT EXISTS held_trace_media (trace_id TEXT PRIMARY KEY, lobby_id TEXT, type TEXT, media_url TEXT, image_url TEXT)')
+
   await makeLayersOneStack(db)
 
   await dropTraceTypeCheckConstraint(db)
@@ -1538,6 +1541,10 @@ export async function initLocalDb(): Promise<void> {
   await migrateLegacyLocalMediaIntoAtriumFolders()
 
   void syncAllLobbiesToVault()
+
+  // No atrium is open yet, so no history: whatever was held when the app last
+  // closed can go.
+  void releaseHeldMedia()
 }
 
 // flattenLegacyOrder (lib/order) for rows as they're stored.
@@ -1967,11 +1974,10 @@ async function executeQuery(opts: QueryOptions): Promise<{ data: any; error: any
         await db!.execute(sql, params)
         void handleVaultSyncAfterMutation(opts, previousRows)
 
-        // Deleting a trace row left its file behind in the vault, so removing
-        // traces freed nothing on disk and the folder grew with every deleted
-        // image. Runs after the DELETE so the "is anything else still using
-        // this?" check inside sees the rows that remain.
-        if (opts.table === 'traces') void removeOrphanedTraceMedia(previousRows)
+        // A deleted trace's file is kept while undo could bring the trace
+        // back, and removed once it can't (holdTraceMedia). Awaited, so it's
+        // recorded by the time the save that deleted the trace is done.
+        if (opts.table === 'traces') await holdTraceMedia(previousRows)
 
         // Deleting an atrium left its rows, its media and its vault mirror
         // behind -- see removeDeletedLobbyData.
@@ -2482,8 +2488,58 @@ async function removeWithRetry(filePath: string): Promise<void> {
   }
 }
 
+// ---- A deleted trace's files, kept for undo ----------------------------------------------
+//
+// Deleting a trace row once left its file behind in the vault, so removing
+// traces freed nothing on disk; then the file went with the row, at once --
+// and a delete undone after it had been saved (autosave saves within a
+// second) brought back a trace whose file was gone. Now its files are held
+// while undo could bring it back: for as long as its atrium is open, which is
+// as long as its history lasts (TraceOverlay). Leaving the atrium releases
+// them (releaseHeldMedia), and so does the next start, for an app closed or
+// lost with an atrium open. Released, a file goes only if no trace uses it.
+
+async function holdTraceMedia(deletedRows: any[]): Promise<void> {
+  if (!db) return
+  for (const row of deletedRows) {
+    const files = [row?.media_url, row?.image_url].some(u => typeof u === 'string' && u.startsWith('local://'))
+    if (!row?.id || !(files || row?.type === 'document')) continue
+    try {
+      await db.execute(
+        'INSERT OR REPLACE INTO held_trace_media (trace_id, lobby_id, type, media_url, image_url) VALUES (?, ?, ?, ?, ?)',
+        [row.id, row.lobby_id ?? null, row.type ?? null, row.media_url ?? null, row.image_url ?? null],
+      )
+    } catch (error) {
+      // Not holding it only means its file stays on disk: wasted space, never
+      // a lost file.
+      console.warn('[vault] could not hold media for a deleted trace:', row.id, error)
+    }
+  }
+}
+
+// The held files of `lobbyId`'s deleted traces -- of every atrium's, when
+// none is given -- removed now that undo can't bring them back, unless their
+// trace came back after all. Never throws.
+export async function releaseHeldMedia(lobbyId?: string): Promise<void> {
+  if (!db) return
+  try {
+    const held = await db.select<any[]>(
+      `SELECT h.*, t.id AS back FROM held_trace_media h LEFT JOIN traces t ON t.id = h.trace_id${lobbyId ? ' WHERE h.lobby_id = ?' : ''}`,
+      lobbyId ? [lobbyId] : [],
+    )
+    for (const h of held) await db.execute('DELETE FROM held_trace_media WHERE trace_id = ?', [h.trace_id])
+    await removeOrphanedTraceMedia(held.filter(h => !h.back).map(h => ({
+      id: h.trace_id, lobby_id: h.lobby_id, type: h.type, media_url: h.media_url, image_url: h.image_url,
+    })))
+  } catch (error) {
+    console.warn('[vault] could not release the media of deleted traces:', error)
+  }
+}
+
 // Never throws into the caller. A file that can't be removed is wasted disk,
-// which is a far better outcome than a delete that appears to fail.
+// which is a far better outcome than a delete that appears to fail. Runs
+// once the rows are gone, so the "is anything else still using this?" check
+// sees the rows that remain.
 async function removeOrphanedTraceMedia(deletedRows: any[]): Promise<void> {
   if (!db || deletedRows.length === 0) return
 
@@ -2569,7 +2625,7 @@ async function removeDeletedLobbyData(deletedRows: any[]): Promise<void> {
     // reads the lobbies table, and by now the row is gone.
     const lobbyName = typeof row?.name === 'string' ? row.name : null
 
-    for (const table of ['traces', 'layers', 'lobby_locations', 'lobby_access_lists', 'trace_links']) {
+    for (const table of ['traces', 'layers', 'lobby_locations', 'lobby_access_lists', 'trace_links', 'held_trace_media']) {
       try {
         await db.execute(`DELETE FROM ${table} WHERE lobby_id = ?`, [lobbyId])
       } catch {

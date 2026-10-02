@@ -1931,6 +1931,15 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const undoStackRef = useRef<UndoOp[]>([])
   const redoStackRef = useRef<UndoOp[]>([])
   const maxUndoDepthRef = useRef(getStoredUndoDepth())
+
+  // The history is its atrium's, and ends when the atrium is left. With it go
+  // the files of traces deleted there, kept until now in case an undo brought
+  // them back (lib/localDb releaseHeldMedia).
+  useEffect(() => () => {
+    undoStackRef.current = []
+    redoStackRef.current = []
+    if (isDesktop && lobbyId) void import('../lib/localDb').then(m => m.releaseHeldMedia(lobbyId))
+  }, [lobbyId])
   const knownTraceIdsRef = useRef<Set<string> | null>(null)
 
   // Keep the configured history depth in sync with the per-atrium profile setting
