@@ -2865,9 +2865,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // other, and different at every step of a zoom. The lines are still
       // where the world's are: a line every spacing * zoom pixels, from the
       // world's offset.
+      //
+      // Drawn again whenever what it's drawn from has changed -- the view, the
+      // canvas's size, the atrium's grid settings -- which the render loop
+      // checks every frame (a string compared). It used to be redrawn only
+      // when told: when the view moved, on a resize it heard about, on a
+      // theme change. A signal that didn't come -- the desktop's webview
+      // doesn't always say when a window is restored or its scaling changes
+      // -- left it drawn for a canvas that was no longer there, and the grid
+      // was gone until the view next moved.
+      let drawnFor = ''
       const drawGrid = () => {
-        grid.clear()
         const theme = themeSettingsRef.current
+        const width = app.screen.width, height = app.screen.height
+        const key = [worldContainer.x, worldContainer.y, zoomRef.current, width, height,
+          theme?.gridEnabled, theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing].join('|')
+        if (key === drawnFor) return
+        drawnFor = key
+        grid.clear()
         if (theme?.gridEnabled === false) return
         const color = theme?.gridColor ? parseInt(theme.gridColor.replace('#', ''), 16) : 0x3b82f6
         // From the atrium's own settings, so the lines are the ones the user
@@ -2880,7 +2895,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const fade = Math.min(1, (step - 12) / 20)
         if (fade <= 0) return
         grid.lineStyle(1, color, (theme?.gridOpacity ?? 0.2) * fade)
-        const width = window.innerWidth, height = window.innerHeight
         const at = (offset: number) => ((offset % step) + step) % step
         // +0.5: a 1px line centred on a pixel covers it exactly.
         for (let x = at(worldContainer.x); x <= width; x += step) {
@@ -3301,7 +3315,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         }),
       })
       
+      // A frame that throws is that frame lost, not every one after it: Pixi
+      // asks for the next frame only once this one has run without an error,
+      // so one exception here used to stop the canvas for good -- frozen,
+      // and blank at the next resize.
+      let frameFailed = false
       app.ticker.add(() => {
+        try {
+          frame()
+        } catch (error) {
+          if (!frameFailed) console.error('[atrium] a frame failed:', error)
+          frameFailed = true
+        }
+      })
+      const frame = () => {
         frameCounter++
 
         // Camera fly-to (Locations panel jump / presentation mode): eased
@@ -3358,7 +3385,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // pan itself: a trace being dragged moves by the view it was laid out
         // at.
         const now = performance.now()
-        const viewMoved = worldCamera.frame({
+        worldCamera.frame({
           layer: traceWorldLayerRef.current,
           view: { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current },
           now,
@@ -3367,9 +3394,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           canScale: !mouseHeld || isPanningRef.current,
         })
 
-        // The grid is in screen space (drawGrid), so it's redrawn on every
-        // frame the view moves, and not otherwise.
-        if (viewMoved) updateGridRef.current?.()
+        // The grid is in screen space (drawGrid): drawn again on any frame
+        // where what it's drawn from has changed, and not otherwise.
+        updateGridRef.current?.()
         // A drawing in progress is in the world, and is painted through the
         // view (renderDrawingCanvas), so it moves with it.
         if (drawingLiveRef.current && !sameView(committedLayerRef.current?.view ?? null, { x: newOffsetX, y: newOffsetY, zoom: zoomRef.current })) {
@@ -3611,8 +3638,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           })
           } // end showIndicators else
         }
-
-      })
+      }
     }
 
     return () => {
