@@ -398,9 +398,10 @@ function ToolName({ name, keyName }: { name: string; keyName: string | null }) {
 
 // What the tool in hand does with the canvas, at the foot of the screen in
 // the middle (LobbyScene) while it's in hand.
-export function ToolHint({ armed, laser }: { armed: PlaceTool | null; laser: boolean }) {
+export function ToolHint({ armed, laser, drawing }: { armed: PlaceTool | null; laser: boolean; drawing: boolean }) {
   const { t } = useTranslation()
-  const text = laser ? t('atrium.tools.hintLaser')
+  const text = drawing ? t('atrium.draw.hint')
+    : laser ? t('atrium.tools.hintLaser')
     : armed === 'text' ? t('atrium.tools.hintText')
     : armed === 'path' ? t('atrium.tools.hintPath')
     : armed ? t('atrium.tools.hintBox')

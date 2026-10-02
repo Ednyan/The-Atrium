@@ -42,7 +42,7 @@ import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapePaint, shapeSt
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
-import { asStrokeData, BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, eraseStrokeData, fitBox, localToWorldDelta, strokeToLocal, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type BuiltinBrush, type CustomBrush, type Piece, type Stroke, type StrokeData, type StrokePoint } from '../lib/brushes'
+import { asStrokeData, BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, eraseStrokeData, fitBox, localToWorldDelta, strokeToLocal, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type CustomBrush, type Piece, type Stroke, type StrokeData, type StrokePoint } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
@@ -98,6 +98,28 @@ const KEYBOARD_ZOOM_STEP_FINE = 0.12
 // The five ranks the contributors wall uses, the accent, the two ends of the
 // greyscale and the two warm markers -- ten colours that already belong
 // together because everything else here is drawn from them.
+// One of drawing's settings as a slider: its name, the slider, its value --
+// in three columns, so the three settings line up.
+function DrawSlider({ label, value, min, max, unit = '', onChange }: {
+  label: string
+  value: number
+  min: number
+  max: number
+  unit?: string
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="grid grid-cols-[4.5rem_1fr_2.5rem] items-center gap-2">
+      <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase truncate">{label}</span>
+      <input type="range" min={min} max={max} value={value} onChange={e => onChange(Number(e.target.value))} className="w-full h-1 cursor-pointer accent-nier-bg" />
+      <span className="text-nier-bg/80 text-xs text-right tabular-nums">{value}{unit}</span>
+    </label>
+  )
+}
+
+// Any colour at all: the palette's hues round a wheel.
+const ANY_COLOUR = 'conic-gradient(#e87a6d, #e8c15a, #7fd1a6, #9ad4c4, #a8b6d9, #c77dff, #e87a6d)'
+
 const DRAW_SWATCHES = [
   '#CBCBCB', '#191919', '#8F8F8F', '#FF8A3D', '#E8C15A',
   '#9AD4C4', '#A8B6D9', '#C77DFF', '#E87A6D', '#7FD1A6',
@@ -1261,18 +1283,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Position is updated directly via the ref in the canvas mouse handlers (not React
   // state) to avoid a re-render on every pixel of mouse movement.
   //
-  // Black or white by the atrium's background, never the brush colour: a
-  // colour close to the background -- or the background colour itself --
-  // made the circle vanish. The same near-black/white the shape preview uses.
-  const brushRingColour = `#${previewFrameColour(currentLobby?.themeSettings?.backgroundColor).toString(16).padStart(6, '0')}`
+  // White, taking the difference with what's under it (mix-blend-mode, below):
+  // dark over light, light over dark, as the cursor's outline is. Never the
+  // brush colour -- one close to what's beneath made the circle vanish -- and
+  // no longer black or white by the atrium's background alone, which did the
+  // same over a trace of that lightness.
   useEffect(() => {
     const el = brushCursorRef.current
     if (!el) return
     el.style.width = `${drawingWidth}px`
     el.style.height = `${drawingWidth}px`
-    el.style.borderColor = brushRingColour
     el.style.borderStyle = isEraserMode ? 'dashed' : 'solid'
-  }, [drawingWidth, isEraserMode, brushRingColour, isDrawingMode])
+  }, [drawingWidth, isEraserMode, isDrawingMode])
   // The drawing's strokes are traces: painted again when they change.
   useEffect(() => {
     if (drawingLiveRef.current) redrawDrawing()
@@ -4728,6 +4750,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           },
         ]}
       />
+      {/* Undo and redo, beside the menu's button. */}
+      {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
 
       {/* Presentation quick-toggle -- only shown when locations exist. A fixed
           square matching the HUD header's height (so it stays that size even
@@ -4763,8 +4787,37 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           />
         )}
       </div>
-        {/* Along the bottom: undo and redo. */}
-        {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
+        {/* At the foot of the column, how much the atrium holds: the size
+            alone, in the unit it has reached (lib/size); its limit, on the
+            web, when pointed at -- and the thin line along its foot, how near
+            that it is. As tall as a button, its words the size of theirs. */}
+        {(() => {
+          const sizeBytes = useGameStore.getState().getLobbySizeBytes()
+          const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+          const used = formatSize(sizeBytes, language)
+          const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
+          return (
+            <div
+              data-hud="true"
+              data-usage=""
+              tabIndex={0}
+              title={isDesktop ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
+              className="relative shrink-0 h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+            >
+              <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
+              <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
+              {!isDesktop && (
+                <span className="absolute inset-x-0 bottom-0 h-[2px] bg-nier-border/20">
+                  <span
+                    className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* At the foot of the screen, in the middle: what's true of this visit
@@ -4799,41 +4852,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 {t('atrium.hud.tracesSelected', { count: multiSelectedTraceIds.length })}
               </p>
             )}
-        <ToolHint armed={placeTool} laser={laserActive} />
+        <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} />
       </div>
 
-      {/* How much the atrium holds, at the bottom right: the size alone, in
-          the unit it has reached (lib/size); its limit, on the web, when
-          pointed at -- and the thin line under it, how near that it is. */}
-      {(() => {
-        const sizeBytes = useGameStore.getState().getLobbySizeBytes()
-        const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
-        const used = formatSize(sizeBytes, language)
-        const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
-        return (
-          <div
-            data-hud="true"
-            data-usage=""
-            tabIndex={0}
-            title={isDesktop ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
-            className="fixed bottom-4 right-4 z-[9999] pointer-events-auto font-mono flex flex-col gap-1 px-2.5 pt-1.5 pb-1 border border-nier-border/40"
-            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-          >
-            <span className="flex items-baseline justify-between gap-3 text-[10px] tracking-[0.15em] uppercase leading-none">
-              <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
-              <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
-            </span>
-            {!isDesktop && (
-              <span className="block h-[2px] bg-nier-border/20">
-                <span
-                  className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </span>
-            )}
-          </div>
-        )
-      })()}
 
       {showReportForm && (
         <ReportFeedbackModal
@@ -4847,7 +4868,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
         data-hud="true"
-        className="atrium-btn fixed bottom-36 right-4 font-mono z-[9999] pointer-events-auto"
+        className="atrium-btn fixed bottom-[3.625rem] right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLayerPanel ? t('common.close') : t('atrium.layers.title')}
@@ -4860,7 +4881,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       <button
         onClick={() => setShowLocationsPanel(!showLocationsPanel)}
         data-hud="true"
-        className="atrium-btn fixed bottom-20 right-4 font-mono z-[9999] pointer-events-auto"
+        className="atrium-btn fixed bottom-4 right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLocationsPanel ? t('common.close') : t('atrium.locations.title')}
@@ -4868,36 +4889,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
 
 
-      {/* Draw Button */}
-      {canEdit && (
-      <button
-        onClick={toggleDrawing}
-        data-hud="true"
-        className="atrium-btn fixed bottom-52 right-4 font-mono z-[9999] pointer-events-auto"
-        data-active={isDrawingMode}
-      >
-        <span className="opacity-60 mr-2">✎</span>
-        {isDrawingMode ? t('atrium.draw.exit') : t('atrium.draw.button')}
-      </button>
-      )}
-
       {/* Drawing Mode Overlay. The canvas outlasts drawing mode until its last
           strokes are saved (drawingLive), taking no pointer by then. */}
       {drawingLive && (
         <>
           {isDrawingMode && (
           <>
-          {/* Drawing controls panel */}
+          {/* Drawing's panel, down the right edge -- out of the way of the
+              Save at the top. Its way out at its top right; what drawing does
+              with the canvas said at the foot of the screen, as every tool's
+              is (QuickBar's ToolHint). */}
           <div
             data-ui-element="true"
-            // Down the right edge rather than across the top. It was sitting
-            // exactly where the save control belongs, and a toolbar of stacked
-            // groups reads better as a column anyway -- each group becomes a
-            // row instead of another thing competing for the same strip.
+            data-draw-panel=""
             className="panel-in-right fixed right-4 top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
           >
-            <div className="relative border-2 border-nier-bg px-4 py-3 w-[210px]">
+            <div className="relative border-2 border-nier-bg px-4 pt-3 pb-4 w-[220px]">
               {/* Corner brackets */}
               <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg" />
               <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg" />
@@ -4906,66 +4914,76 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
               <div className="flex flex-col items-stretch gap-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase">{editingDrawing ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}</p>
+                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase truncate">{editingDrawing ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}</p>
+                  <button
+                    type="button"
+                    data-draw-exit=""
+                    onClick={leaveDrawing}
+                    title={`${t('atrium.draw.exit')} — Esc`}
+                    aria-label={t('atrium.draw.exit')}
+                    className="shrink-0 w-7 h-7 flex items-center justify-center border border-nier-bg/70 text-nier-strong hover:bg-nier-bg hover:text-nier-black transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M6 6l12 12M18 6l-12 12" />
+                    </svg>
+                  </button>
                 </div>
-
-                <>
 
                 {/* Draw / Eraser toggle */}
                 <div className="flex border border-nier-border/40">
                   <button
                     onClick={() => setIsEraserMode(false)}
-                    className={`px-3 py-1 text-xs tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
+                    className={`flex-1 px-3 py-1 text-xs tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
                   >
                     ✎ {t('atrium.draw.brush')}
                   </button>
                   <button
                     onClick={() => setIsEraserMode(true)}
-                    className={`px-3 py-1 text-xs tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
+                    className={`flex-1 px-3 py-1 text-xs tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
                   >
                     ◻ {t('atrium.draw.eraser')}
                   </button>
                 </div>
 
-                {/* Which brush. The built-ins as small pictures of their mark,
-                    then any imported ones as their own tip, and on desktop the
-                    way to import one. The name of the chosen one underneath,
-                    since five pictures at this size are not self-explanatory. */}
+                {/* Which brush: each a row, the picture of its mark beside its
+                    name. The name was a line of text under a grid of pictures,
+                    which read as a caption for nothing in particular. Imported
+                    brushes as their tip, and on desktop the way to import one. */}
                 {!isEraserMode && (
-                  <div className="flex flex-col gap-1.5">
-                    <div className="grid grid-cols-5 gap-1">
-                      {BUILTIN_BRUSHES.map(brush => (
+                  <div role="radiogroup" aria-label={t('atrium.draw.brush')} className="flex flex-col gap-0.5">
+                    {BUILTIN_BRUSHES.map(brush => (
+                      <button
+                        key={brush}
+                        type="button"
+                        role="radio"
+                        data-brush={brush}
+                        aria-checked={drawingBrush === brush}
+                        onClick={() => setDrawingBrush(brush)}
+                        className={`flex items-center gap-2 h-8 px-1.5 border text-left transition-colors ${
+                          drawingBrush === brush
+                            ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                            : 'border-transparent text-nier-bg/70 hover:border-nier-border/50 hover:text-nier-strong'
+                        }`}
+                      >
+                        <span className="w-9 shrink-0 flex justify-center"><BrushGlyph brush={brush} /></span>
+                        <span className="text-[11px] tracking-[0.12em] uppercase truncate">{t(BRUSH_LABELS[brush])}</span>
+                      </button>
+                    ))}
+                    {customBrushes.map(brush => (
+                      <div key={brush.id} className="relative group">
                         <button
-                          key={brush}
                           type="button"
-                          onClick={() => setDrawingBrush(brush)}
-                          title={t(BRUSH_LABELS[brush])}
-                          aria-label={t(BRUSH_LABELS[brush])}
-                          aria-pressed={drawingBrush === brush}
-                          className={`h-7 flex items-center justify-center border transition-colors ${
-                            drawingBrush === brush
+                          role="radio"
+                          aria-checked={drawingBrush === customBrushKey(brush.id)}
+                          onClick={() => setDrawingBrush(customBrushKey(brush.id))}
+                          className={`w-full flex items-center gap-2 h-8 px-1.5 pr-6 border text-left transition-colors ${
+                            drawingBrush === customBrushKey(brush.id)
                               ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
-                              : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'
+                              : 'border-transparent text-nier-bg/70 hover:border-nier-border/50 hover:text-nier-strong'
                           }`}
                         >
-                          <BrushGlyph brush={brush} />
-                        </button>
-                      ))}
-                      {customBrushes.map(brush => (
-                        <div key={brush.id} className="relative group">
-                          <button
-                            type="button"
-                            onClick={() => setDrawingBrush(customBrushKey(brush.id))}
-                            title={brush.name}
-                            aria-label={brush.name}
-                            aria-pressed={drawingBrush === customBrushKey(brush.id)}
-                            className={`w-full h-7 flex items-center justify-center border transition-colors ${
-                              drawingBrush === customBrushKey(brush.id)
-                                ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
-                                : 'border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong'
-                            }`}
-                          >
-                            {/* The tip itself, in the text colour. */}
+                          {/* The tip itself, in the text colour. */}
+                          <span className="w-9 shrink-0 flex justify-center">
                             <span
                               className="block w-5 h-5"
                               style={{
@@ -4980,136 +4998,104 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                                 maskPosition: 'center',
                               }}
                             />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void removeCustomBrush(brush.id)}
-                            title={t('atrium.draw.removeBrush')}
-                            aria-label={t('atrium.draw.removeBrush')}
-                            className="absolute -top-1.5 -right-1.5 hidden group-hover:flex group-focus-within:flex w-3.5 h-3.5 items-center justify-center text-[9px] leading-none border border-nier-border/60 text-nier-strong"
-                            style={{ backgroundColor: 'rgb(var(--c-ground))' }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      {isDesktop && (
+                          </span>
+                          <span className="text-[11px] tracking-[0.12em] uppercase truncate">{brush.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeCustomBrush(brush.id)}
+                          title={t('atrium.draw.removeBrush')}
+                          aria-label={t('atrium.draw.removeBrush')}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-within:flex w-5 h-5 items-center justify-center text-[11px] leading-none text-nier-bg/70 hover:text-nier-strong"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {isDesktop && (
+                      <>
                         <button
                           type="button"
                           onClick={() => brushFileInputRef.current?.click()}
                           title={t('atrium.draw.importBrushHint')}
-                          aria-label={t('atrium.draw.importBrush')}
-                          className="h-7 flex items-center justify-center border border-dashed border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong transition-colors"
+                          className="flex items-center gap-2 h-8 px-1.5 border border-dashed border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong transition-colors"
                         >
-                          +
+                          <span className="w-9 shrink-0 text-center">+</span>
+                          <span className="text-[11px] tracking-[0.12em] uppercase truncate">{t('atrium.draw.importBrush')}</span>
                         </button>
-                      )}
-                    </div>
-                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase truncate">
-                      {(BUILTIN_BRUSHES as readonly string[]).includes(drawingBrush)
-                        ? t(BRUSH_LABELS[drawingBrush as BuiltinBrush])
-                        : customBrushes.find(b => customBrushKey(b.id) === drawingBrush)?.name ?? t(BRUSH_LABELS.pen)}
-                    </span>
-                    {isDesktop && (
-                      <input
-                        ref={brushFileInputRef}
-                        type="file"
-                        accept="image/png,image/webp,image/gif,image/jpeg,image/bmp"
-                        className="hidden"
-                        onChange={importBrush}
-                      />
+                        <input
+                          ref={brushFileInputRef}
+                          type="file"
+                          accept="image/png,image/webp,image/gif,image/jpeg,image/bmp"
+                          className="hidden"
+                          onChange={importBrush}
+                        />
+                      </>
                     )}
                   </div>
                 )}
 
-                {/* Color picker - only shown in brush mode */}
-                {!isEraserMode && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.colour')}</span>
-                    <input
-                      type="color"
-                      value={drawingColor}
-                      onChange={(e) => setDrawingColor(e.target.value)}
-                      title={t('atrium.draw.anyColour')}
-                      className="atrium-swatch flex-1 h-7 cursor-pointer border border-nier-border/40"
-                    />
-                  </div>
-                )}
+                {/* The colour, in one place: the atrium's own palette, and
+                    beside it any colour at all -- which shows the colour in
+                    use when that's none of the palette's. They were two
+                    groups apart, the picker above the sliders and the palette
+                    below them. */}
+                {!isEraserMode && (() => {
+                  const fromPalette = DRAW_SWATCHES.some(c => c.toLowerCase() === drawingColor.toLowerCase())
+                  return (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.colour')}</span>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {DRAW_SWATCHES.map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            data-swatch={color}
+                            onClick={() => setDrawingColor(color)}
+                            title={color}
+                            aria-label={color}
+                            aria-pressed={drawingColor.toLowerCase() === color.toLowerCase()}
+                            className={`h-6 border transition-all ${
+                              drawingColor.toLowerCase() === color.toLowerCase()
+                                ? 'border-nier-bg scale-110'
+                                : 'border-nier-border/40 hover:border-nier-border/70'
+                            }`}
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                        <label
+                          title={t('atrium.draw.anyColour')}
+                          className={`relative col-span-2 h-6 border cursor-pointer transition-all ${
+                            fromPalette ? 'border-nier-border/40 hover:border-nier-border/70' : 'border-nier-bg scale-105'
+                          }`}
+                          style={{ background: fromPalette ? ANY_COLOUR : drawingColor }}
+                        >
+                          {/* Filled with the colour in use, still a picker. */}
+                          {!fromPalette && (
+                            <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-black/30" style={{ background: ANY_COLOUR }} />
+                          )}
+                          <input
+                            type="color"
+                            data-any-colour=""
+                            value={drawingColor}
+                            onChange={(e) => setDrawingColor(e.target.value)}
+                            aria-label={t('atrium.draw.anyColour')}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )
+                })()}
 
-                {/* Stroke width */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')}</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="60"
-                    value={drawingWidth}
-                    onChange={(e) => setDrawingWidth(Number(e.target.value))}
-                    className="w-16 h-1 cursor-pointer accent-white"
-                  />
-                  <span className="text-nier-bg/80 text-xs w-4">{drawingWidth}</span>
-                </div>
-
-                {/* Smoothing */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.smooth')}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={drawingSmoothing}
-                    onChange={(e) => setDrawingSmoothing(Number(e.target.value))}
-                    className="w-16 h-1 cursor-pointer accent-white"
-                  />
-                  <span className="text-nier-bg/80 text-xs w-4">{drawingSmoothing}%</span>
-                </div>
-
+                <DrawSlider label={isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')} value={drawingWidth} min={1} max={60} onChange={setDrawingWidth} />
+                <DrawSlider label={t('atrium.draw.smooth')} value={drawingSmoothing} min={0} max={100} unit="%" onChange={setDrawingSmoothing} />
                 {/* Hardness: how sharp the edge is. The eraser has one too. */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.hardness')}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={drawingHardness}
-                    onChange={(e) => setDrawingHardness(Number(e.target.value))}
-                    className="w-16 h-1 cursor-pointer accent-white"
-                  />
-                  <span className="text-nier-bg/80 text-xs w-4">{drawingHardness}%</span>
-                </div>
+                <DrawSlider label={t('atrium.draw.hardness')} value={drawingHardness} min={0} max={100} unit="%" onChange={setDrawingHardness} />
 
-                {/* Quick colours.
-
-                    They were the corners of the RGB cube -- pure red, pure
-                    green, pure cyan, pure magenta -- which is what a colour
-                    picker defaults to and what nothing else in this app looks
-                    like. These are the palette the rest of the atrium is drawn
-                    from: the contribution ranks, the accent, and the two ends
-                    of its own greyscale. Anything drawn with them belongs to
-                    the room it is drawn in. */}
-                {!isEraserMode && (
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {DRAW_SWATCHES.map(color => (
-                      <button
-                        key={color}
-                        onClick={() => setDrawingColor(color)}
-                        title={color}
-                        className={`h-5 border transition-all ${
-                          drawingColor.toLowerCase() === color.toLowerCase()
-                            ? 'border-nier-bg scale-110'
-                            : 'border-nier-border/40 hover:border-nier-border/70'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Nothing to save, and nothing to leave by here: every
-                    stroke keeps itself, and the quick bar, the Draw button or
-                    Esc end drawing. Undo and redo are the buttons at the
-                    bottom left, each stroke and erasure a step. */}
-                {/* Every stroke of the drawing, as one step. */}
+                {/* Every stroke of the drawing, as one step. Nothing to save
+                    here: every stroke keeps itself. Undo and redo are the
+                    buttons at the bottom left, each stroke and erasure a step. */}
                 {drawingMembers.size > 0 && (
                   <button
                     onClick={clearDrawing}
@@ -5118,10 +5104,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                     {t('common.clear')}
                   </button>
                 )}
-                </>
-
               </div>
-              <p className="text-nier-bg/80 text-[11px] tracking-wider mt-1 text-center">{t('atrium.draw.hint')}</p>
             </div>
           </div>
 
@@ -5132,7 +5115,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             style={{
               width: `${drawingWidth}px`,
               height: `${drawingWidth}px`,
-              border: `1px solid ${brushRingColour}`,
+              border: '1px solid #fff',
+              mixBlendMode: 'difference',
               borderStyle: isEraserMode ? 'dashed' : 'solid',
               transform: 'translate(-50%, -50%)',
               display: 'none',

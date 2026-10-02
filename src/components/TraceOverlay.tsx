@@ -428,9 +428,8 @@ function parseTraceClipboardPayload(rawValue: string): TraceClipboardPayload | n
 // when it's shown again.
 let pointerAt: { x: number; y: number } | null = null
 
-function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow, crosshair }: {
+function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair }: {
   hidden: boolean
-  atriumBackground?: string
   zIndex: number
   pointerInWindow: boolean
   // Something is being placed or picked on the canvas: a crosshair over it,
@@ -439,25 +438,29 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow, crosshai
 }) {
   const { username, playerColor, cursorState, hideOwnNameTag } = useGamePick('username', 'playerColor', 'cursorState', 'hideOwnNameTag')
   const elRef = useRef<HTMLDivElement | null>(null)
+  // The outline's layer, beside the cursor's rather than in it (see below).
+  const edgeRef = useRef<HTMLDivElement | null>(null)
   // Whether the pointer is over the canvas; a render only when that changes.
   const [overCanvas, setOverCanvas] = useState(true)
   const overCanvasRef = useRef(true)
-  const place = useCallback((el: HTMLDivElement | null) => {
-    elRef.current = el
+  // Unseen until the pointer has been somewhere, rather than in the corner.
+  const putAtPointer = (el: HTMLDivElement | null) => {
     if (!el) return
-    // Unseen until the pointer has been somewhere, rather than in the corner.
     el.style.visibility = pointerAt ? '' : 'hidden'
     if (pointerAt) el.style.transform = `translate(${pointerAt.x}px, ${pointerAt.y}px)`
-  }, [])
+  }
+  const place = useCallback((el: HTMLDivElement | null) => { elRef.current = el; putAtPointer(el) }, [])
+  const placeEdge = useCallback((el: HTMLDivElement | null) => { edgeRef.current = el; putAtPointer(el) }, [])
   useEffect(() => {
     const follow = (e: PointerEvent) => {
       pointerAt = { x: e.clientX, y: e.clientY }
       const onCanvas = isCanvasTarget(e.target)
       if (onCanvas !== overCanvasRef.current) setOverCanvas(overCanvasRef.current = onCanvas)
-      const el = elRef.current
-      if (!el) return
-      el.style.visibility = ''
-      el.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`
+      for (const el of [elRef.current, edgeRef.current]) {
+        if (!el) continue
+        el.style.visibility = ''
+        el.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`
+      }
     }
     const options = { capture: true, passive: true }
     window.addEventListener('pointermove', follow, options)
@@ -473,126 +476,104 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow, crosshai
     // on the drawing panel, a button -- the cursor is needed again.
     if (hidden) return null
     const rgb = hexToRgb(playerColor)
-    // The cursor used to be readable because of a drop shadow under it.
-    // With that gone, its outline follows the atrium instead.
-    const cursorEdge = cursorEdgeOn(atriumBackground)
 
-    // Get cursor SVG based on state
-    const getCursorSvg = () => {
-      const size = 24 // Fixed size regardless of zoom
-      const baseProps = {
-        width: size,
-        height: size,
-        viewBox: "0 0 24 24",
-        style: { 
-          transform: 'translate(-2px, -2px)',
-          transition: 'transform 0.1s ease-out',
-        } as React.CSSProperties
-      }
+    // Two layers. The outline, white, on a layer of its own that takes the
+    // difference with whatever is under it -- dark over light, light over
+    // dark, as Windows' inverted pointer -- and over it the body in the
+    // player's colour, which hides the outline's inner half. It was black or
+    // white by the atrium's background alone, and vanished over a trace of
+    // the same lightness. Beside the cursor's layer, not in it: that layer is
+    // moved by a transform, and what's inside one blends only with the rest
+    // of it, never with the traces and ground beneath.
+    //
+    // Grabbing and not-allowed keep their coloured edges: those say something.
+    const at = (transform: string) => ({
+      width: 24,
+      height: 24,
+      viewBox: '0 0 24 24',
+      style: { transform, transition: 'transform 0.1s ease-out' } as React.CSSProperties,
+    })
+    const ARROW = 'M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z'
+    let outline: React.ReactNode = null
+    let body: React.ReactNode
+    if (crosshair && overCanvas) {
+      // Centred on the point, where the arrow's tip is at it.
+      const arms = 'M12 2v6M12 16v6M2 12h6M16 12h6'
+      outline = (
+        <svg {...at('translate(-12px, -12px)')}>
+          <path d={arms} stroke="#fff" strokeWidth="3.5" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="1.6" fill="#fff" />
+        </svg>
+      )
+      body = (
+        <svg {...at('translate(-12px, -12px)')}>
+          <path d={arms} stroke={playerColor} strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="1" fill={playerColor} />
+        </svg>
+      )
+    } else if (cursorState === 'pointer') {
+      // Paint-drop cursor (for clickable items) -- an abstract blob with
+      // trailing streaks, as if a drop of paint were falling upward against
+      // gravity. See src/assets/cursors/hand-pointer.svg for the editable
+      // source (open in Illustrator to tweak further).
+      const drop = 'M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5'
+      outline = (
+        <svg {...at('translate(-2px, -2px)')}>
+          <path d={drop} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+      body = (
+        <svg {...at('translate(-2px, -2px)')}>
+          <path d={drop} fill={playerColor} />
+        </svg>
+      )
+    } else if (cursorState === 'grab' || cursorState === 'grabbing' || cursorState === 'not-allowed') {
+      // Open hand (draggable), closed (dragging), or a red edge (not allowed).
+      const look = cursorState === 'grab' ? { edge: '#90EE90', scale: 1.1 }
+        : cursorState === 'grabbing' ? { edge: '#FFD700', scale: 0.95 }
+        : { edge: '#FF4444', scale: 1 }
+      body = (
+        <svg {...at(`translate(-2px, -2px) scale(${look.scale})`)}>
+          <path d={ARROW} fill={playerColor} stroke={look.edge} strokeWidth="2" />
+        </svg>
+      )
+    } else {
+      outline = (
+        <svg {...at('translate(-2px, -2px)')}>
+          <path d={ARROW} fill="none" stroke="#fff" strokeWidth="3" strokeLinejoin="round" />
+        </svg>
+      )
+      body = (
+        <svg {...at('translate(-2px, -2px)')}>
+          <path d={ARROW} fill={playerColor} />
+        </svg>
+      )
+    }
 
-      if (crosshair && overCanvas) {
-        // Centred on the point, where the arrow's tip is at it. Drawn twice,
-        // the edge colour under the player's, so it reads on any ground.
-        const arms = 'M12 2v6M12 16v6M2 12h6M16 12h6'
-        return (
-          <svg {...baseProps} style={{ transform: 'translate(-12px, -12px)' }}>
-            <path d={arms} stroke={cursorEdge} strokeWidth="3.5" strokeLinecap="round" />
-            <path d={arms} stroke={playerColor} strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx="12" cy="12" r="1" fill={playerColor} stroke={cursorEdge} strokeWidth="0.6" />
-          </svg>
-        )
-      }
-
-      switch (cursorState) {
-        case 'pointer':
-          // Paint-drop cursor (for clickable items) -- an abstract
-          // blob with trailing streaks, as if a drop of paint were
-          // falling upward against gravity. See
-          // src/assets/cursors/hand-pointer.svg for the editable
-          // source (open in Illustrator to tweak further).
-          return (
-            <svg {...baseProps}>
-              <path
-                d="M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5"
-                fill={playerColor}
-                stroke={cursorEdge}
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )
-        case 'grab':
-          // Open hand (for draggable items)
-          return (
-            <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(1.1)' }}>
-              <path
-                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                fill={playerColor}
-                stroke="#90EE90"
-                strokeWidth="2"
-              />
-            </svg>
-          )
-        case 'grabbing':
-          // Closed hand (while dragging)
-          return (
-            <svg {...baseProps} style={{ ...baseProps.style, transform: 'translate(-2px, -2px) scale(0.95)' }}>
-              <path
-                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                fill={playerColor}
-                stroke="#FFD700"
-                strokeWidth="2"
-              />
-            </svg>
-          )
-        case 'not-allowed':
-          // Red X indicator
-          return (
-            <svg {...baseProps}>
-              <path
-                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                fill={playerColor}
-                stroke="#FF4444"
-                strokeWidth="2"
-              />
-            </svg>
-          )
-        default:
-          // Default arrow cursor
-          return (
-            <svg {...baseProps}>
-              <path
-                d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                fill={playerColor}
-                stroke={cursorEdge}
-                strokeWidth="1.5"
-              />
-            </svg>
-          )
-      }
+    // Moved by putAtPointer and the pointer's own events, not by a render.
+    const layer: React.CSSProperties = {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      willChange: 'transform',
+      pointerEvents: 'none',
+      zIndex,
+      // Out of the window, it fades away rather than standing where the
+      // pointer left; back in, it's there at once.
+      opacity: pointerInWindow ? 1 : 0,
+      transition: pointerInWindow ? undefined : 'opacity 700ms ease',
     }
 
     // Player cursor
     return (
+      <>
+      {outline && <div ref={placeEdge} data-cursor-edge="" style={{ ...layer, mixBlendMode: 'difference' }}>{outline}</div>}
       <div
         key="player-cursor"
         ref={place}
-        style={{
-          // Moved by placeOwnCursor, not by a render.
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          willChange: 'transform',
-          pointerEvents: 'none',
-          zIndex,
-          // Out of the window, it fades away rather than standing where the
-          // pointer left; back in, it's there at once.
-          opacity: pointerInWindow ? 1 : 0,
-          transition: pointerInWindow ? undefined : 'opacity 700ms ease',
-        }}
+        style={layer}
       >
-        {getCursorSvg()}
+        {body}
         {/* Player label -- a user-chosen dark/near-black color used
             to glow/blend into the also-dark background+canvas,
             making the tag unreadable. Perceived luminance decides
@@ -630,6 +611,7 @@ function OwnCursor({ hidden, atriumBackground, zIndex, pointerInWindow, crosshai
           )
         })()}
       </div>
+      </>
     )
 }
 
@@ -5762,7 +5744,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
         <OwnCursor
           key="player-cursor"
           hidden={!!hideCursor}
-          atriumBackground={atriumBackground}
           zIndex={item.zIndex}
           pointerInWindow={pointerInWindow}
           crosshair={placing || pathCreationMode || !!colorPickerCallback}
