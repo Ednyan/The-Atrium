@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { localClient, resolveLocalUrl } from '../lib/localDb'
 import { useTranslation } from '../lib/i18n'
 import { atriumEnvelope } from '../lib/atriumDownload'
+import { fileNameOf, saveFile } from '../lib/fileSave'
 
 interface ExportDatabaseProps {
   onClose: () => void
@@ -133,25 +134,13 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       const jsonString = JSON.stringify(exportData)
       const sizeMB = (new Blob([jsonString]).size / (1024 * 1024)).toFixed(1)
 
-      // Use Tauri dialog to pick save location
       setProgress(t('desktop.export.saving', { size: sizeMB }))
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const { writeTextFile } = await import('@tauri-apps/plugin-fs')
-
-      const safeName = lobby.name.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 40)
-      const filePath = await save({
-        title: 'Export Atrium',
-        defaultPath: `${safeName}.atrium.json`,
-        filters: [{ name: 'Atrium Export', extensions: ['json'] }],
-      })
-
-      if (!filePath) {
+      const saved = await saveFile(new Blob([jsonString], { type: 'application/json' }), `${fileNameOf(lobby.name)}.atrium`, { name: 'Atrium', extensions: ['atrium', 'json'] })
+      if (!saved) {
         setStatus('select')
         setProgress('')
         return
       }
-
-      await writeTextFile(filePath, jsonString)
 
       setStatus('done')
       setProgress(t('desktop.export.done', { name: lobby.name, traces: lobbyTraces.length, layers: layers.length, locations: locations.length, size: sizeMB }))

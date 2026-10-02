@@ -3,15 +3,17 @@ import { tCount, useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
-import { flattenLegacyOrder, keysFromNumbers } from '../lib/order'
-import { firstFreeName, placeholderNames } from '../lib/traceNames'
+import { AtriumFileError, fileOrderKeys, parseAtriumFile, type AtriumFile } from '../lib/atriumFormat'
+import { nameFileTraces } from '../lib/atriumFile'
 
 interface ImportAtriumProps {
   onClose: () => void
   onImported: () => void
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+// An atrium on the web holds 10 MB; a file carries its pictures as text, a
+// third bigger. Desktop atriums have no limit but the machine's.
+const MAX_FILE_SIZE = (isDesktop ? 512 : 14) * 1024 * 1024
 
 // Enough names to go looking with, not so many that the notice becomes a wall.
 const MISSING_NAMES_SHOWN = 4
@@ -33,45 +35,10 @@ function describeTrace(trace: Record<string, any>): string {
   return `${trace.type ?? 'trace'} trace`
 }
 
-interface AtriumExport {
-  version: number
-  exportedAt: string
-  app: string
-  lobby: {
-    name: string
-    theme_settings: any
-    is_public: boolean | number
-    max_players: number
-  }
-  layers: Array<{
-    name: string
-    z_index: number
-    // From files made since order keys (lib/order); older ones have only z_index.
-    order_key?: string | null
-    is_group: boolean | number
-    parent_id: string | null
-    _local_id: string
-  }>
-  // Only present from version 3 onward. Older files simply have none.
-  locations?: Array<{
-    name: string
-    position_x: number
-    position_y: number
-    zoom: number
-    order_index: number
-    is_locked?: boolean | number
-  }>
-  traces: Array<Record<string, any>>
-  // 'flat' in files keyed as one stack (lib/order); older ones need lifting.
-  layerOrder?: string
-  // Threads between traces, by the traces' ids in this file. Newer files only.
-  links?: Array<Record<string, any>>
-}
-
 export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<'select' | 'preview' | 'importing' | 'done' | 'error'>('select')
-  const [parsed, setParsed] = useState<AtriumExport | null>(null)
+  const [parsed, setParsed] = useState<AtriumFile | null>(null)
   const [atriumName, setAtriumName] = useState('')
   const [fileSizeMB, setFileSizeMB] = useState('')
   const [progress, setProgress] = useState('')
@@ -95,28 +62,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
     setFileSizeMB((file.size / (1024 * 1024)).toFixed(1))
 
     try {
-      const text = await file.text()
-      const data = JSON.parse(text) as AtriumExport
-
-      if (!data.lobby || !data.traces || !Array.isArray(data.traces)) {
-        setError(t('transfer.import.badFormat'))
-        return
-      }
-
-      // Accept version 1 exports too (from older desktop builds) -- the
-      // import logic below already tolerates missing/extra fields via
-      // spreads and `||`/`??` fallbacks, so there's no real reason to hard-
-      // reject anything except a genuinely unrecognized/future format.
-      if (typeof data.version !== 'number' || data.version < 1 || data.version > 3) {
-        setError(t('transfer.import.badVersion'))
-        return
-      }
-
+      const data = parseAtriumFile(await file.text())
       setParsed(data)
       setAtriumName(data.lobby.name)
       setStatus('preview')
-    } catch {
-      setError(t('transfer.import.parseFailed'))
+    } catch (e) {
+      const reason = e instanceof AtriumFileError ? e.reason : 'parseFailed'
+      setError(t(reason === 'badFormat' ? 'transfer.import.badFormat' : reason === 'badVersion' ? 'transfer.import.badVersion' : 'transfer.import.parseFailed'))
     }
   }
 
@@ -168,42 +120,9 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
       // Create layers and build ID mapping
       const layerIdMap: Record<string, string> = {}
-      // An older file orders by number only: keys from those, in its order.
-      const layerKeys = keysFromNumbers(parsed.layers, l => l.z_index ?? 0)
-      const traceKeys = keysFromNumbers(parsed.traces, tr => tr.z_index ?? 0, tr => tr._local_layer_id ?? null)
-      const layerKeyOf = new Map(parsed.layers.map(l => [l, l.order_key ?? layerKeys.get(l) ?? null]))
-      const traceKeyOf = new Map(parsed.traces.map(tr => [tr, tr.order_key ?? traceKeys.get(tr) ?? null]))
-      // One from before groups and loose traces were one stack (lib/order)
-      // has its groups lifted above its loose traces, as it was drawn.
-      if (parsed.layerOrder !== 'flat') {
-        const lifted = flattenLegacyOrder(
-          parsed.traces.map((tr, i) => ({ id: String(i), layerId: tr._local_layer_id ?? null, orderKey: traceKeyOf.get(tr) })),
-          parsed.layers.map(l => ({ id: l._local_id, orderKey: layerKeyOf.get(l) })),
-        )
-        parsed.traces.forEach((tr, i) => { const key = lifted.traces.get(String(i)); if (key) traceKeyOf.set(tr, key) })
-        parsed.layers.forEach(l => { const key = lifted.layers.get(l._local_id); if (key) layerKeyOf.set(l, key) })
-      }
-      // Text traces from a file made before they had names are numbered here.
-      const textNames = new Map<Record<string, any>, string>()
-      const namesTaken: string[] = parsed.traces.filter(tr => tr.type === 'text' && tr.layer_name).map(tr => tr.layer_name)
-      for (const tr of parsed.traces) {
-        if (tr.type !== 'text' || tr.layer_name) continue
-        const name = firstFreeName(namesTaken, n => t('atrium.layers.numberedText', { n }))
-        namesTaken.push(name)
-        textNames.set(tr, name)
-      }
-      // So are shapes and drawings saved under a placeholder (lib/traceNames).
-      const placeheld = placeholderNames(
-        parsed.traces.map((tr, i) => ({ id: String(i), type: tr.type, shapeType: tr.shape_type, content: tr.content, layerId: tr._local_layer_id ?? null, mediaUrl: tr.media_url, strokeData: tr.stroke_data })),
-        parsed.layers.map(l => l.name),
-        {
-          shape: n => t('atrium.layers.numberedShape', { n }),
-          path: n => t('atrium.layers.numberedPath', { n }),
-          stroke: n => t('atrium.layers.numberedStroke', { n }),
-          drawing: n => t('atrium.layers.numberedDrawing', { n }),
-        },
-      )
-      parsed.traces.forEach((tr, i) => { const name = placeheld.get(String(i)); if (name) tr.content = name })
+      const { traceKeyOf, layerKeyOf } = fileOrderKeys(parsed)
+      // Its traces from before they had names, named (lib/atriumFile).
+      const textNames = nameFileTraces(parsed)
       if (parsed.layers.length > 0) {
         setProgress(t('transfer.import.layers'))
         for (const layer of parsed.layers) {
@@ -532,7 +451,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             <input
               ref={fileRef}
               type="file"
-              accept=".json"
+              accept=".atrium,.json"
               onChange={handleFileSelect}
               className="hidden"
             />

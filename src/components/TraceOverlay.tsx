@@ -23,6 +23,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss } from '../lib/textFit'
+import { baseSizeOf, borderColourOf, FRAME_DEFAULT, roundedPolygonPath, storedTransformOf, traceBox } from '../lib/traceGeometry'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
@@ -228,6 +229,8 @@ interface TraceOverlayProps {
   // Layer panel (a sibling, not a child, of this component) can highlight
   // every multi-selected trace/group, not just the single selectedTraceId.
   onMultiSelectionChange?: (ids: string[]) => void
+  // Export (LobbyScene's ExportDialog), on these traces.
+  onExport?: (ids: string[]) => void
   // A trace's customize panel (or the batch one) opened -- LobbyScene clears
   // the Layer, Locations and Create Trace panels from around it.
   onCustomizeOpen?: () => void
@@ -334,20 +337,10 @@ const CROP_HANDLES = [
 
 // The shape being placed (TraceOverlay's shapeDraft), drawn as a trace: its
 // id, and its level -- over every trace and thread, under the handles.
-// A trace's transform as the store holds it, whatever is being drawn over it.
-const storedTransformOf = (trace: Trace) => ({
-  x: trace.x ?? 0,
-  y: trace.y ?? 0,
-  scaleX: trace.scaleX ?? trace.scale ?? 1.0,
-  scaleY: trace.scaleY ?? trace.scale ?? 1.0,
-  rotation: trace.rotation ?? 0.0,
-})
 
 
 const SHAPE_DRAFT_ID = '__shape-draft__'
 const SHAPE_DRAFT_Z = 999_999
-// A frame placed from the canvas menu, until it's resized to what it holds.
-const FRAME_DEFAULT = { width: 480, height: 320 }
 // Room left around a selection wrapped in a frame, in world units.
 const FRAME_PADDING = 40
 // How far either side of its border a press takes a frame, in screen pixels.
@@ -419,41 +412,6 @@ function parseTraceClipboardPayload(rawValue: string): TraceClipboardPayload | n
   } catch {
     return null
   }
-}
-
-// Builds an SVG path `d` string that traces the given polygon with each
-// corner cut and rounded by `radius` (in the same units as the points) --
-// SVG polygons have no rx/ry equivalent the way <rect> does, so a shape
-// like the triangle needs its own path built by hand to get a Corner
-// Radius option. Clamps each corner's radius to half its shorter adjacent
-// edge so radius can't be dragged past where opposite roundings would meet
-// and overlap/invert.
-function roundedPolygonPath(points: { x: number; y: number }[], radius: number): string {
-  if (radius <= 0) {
-    return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ') + ' Z'
-  }
-  const n = points.length
-  const segments: string[] = []
-  for (let i = 0; i < n; i++) {
-    const curr = points[i]
-    const prev = points[(i - 1 + n) % n]
-    const next = points[(i + 1) % n]
-
-    const toPrev = { x: prev.x - curr.x, y: prev.y - curr.y }
-    const toNext = { x: next.x - curr.x, y: next.y - curr.y }
-    const distPrev = Math.hypot(toPrev.x, toPrev.y) || 1
-    const distNext = Math.hypot(toNext.x, toNext.y) || 1
-    const rPrev = Math.min(radius, distPrev / 2)
-    const rNext = Math.min(radius, distNext / 2)
-
-    const startPoint = { x: curr.x + (toPrev.x / distPrev) * rPrev, y: curr.y + (toPrev.y / distPrev) * rPrev }
-    const endPoint = { x: curr.x + (toNext.x / distNext) * rNext, y: curr.y + (toNext.y / distNext) * rNext }
-
-    segments.push(i === 0 ? `M${startPoint.x},${startPoint.y}` : `L${startPoint.x},${startPoint.y}`)
-    segments.push(`Q${curr.x},${curr.y} ${endPoint.x},${endPoint.y}`)
-  }
-  segments.push('Z')
-  return segments.join(' ')
 }
 
 // Your own cursor. A component of its own, subscribed on its own: its look
@@ -706,7 +664,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -2820,7 +2778,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       : traceBoxFor(trace, localTraceTransforms[id])
     // A path's box is its points', already turned; anything else turns about its centre.
     const turn = isPathTrace(trace) ? 0 : (((localTraceTransforms[id] || getTraceTransform(trace)).rotation ?? 0) * Math.PI) / 180
-    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || getBorderColor(trace.type), z: zOf(trace) }
+    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || borderColourOf(trace.type), z: zOf(trace) }
   }
 
   // Ctrl+S: saved now rather than a moment from now (lib/traceSave).
@@ -4984,74 +4942,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     return () => window.removeEventListener('pointermove', move)
   }, [pathCreationMode])
 
-  const getTraceSize = useCallback((trace: Trace) => {
-    // For shapes, use their custom dimensions
-    if (trace.type === 'shape') {
-      return { 
-        width: trace.width || 200, 
-        height: trace.height || 200 
-      }
-    }
-    
-    // For images, use a container that will adapt to content
-    // We'll use inline styles on the image container to handle aspect ratio
-    switch (trace.type) {
-      case 'text':
-        // Text traces use width/height as their base size
-        // Text content conforms to the box (like Excel's wrap text)
-        return { width: trace.width || 150, height: trace.height || 80 }
-      case 'image':
-        // Use custom dimensions if user resized, then detected dimensions, then default
-        if (trace.width && trace.height) {
-          return { width: trace.width, height: trace.height }
-        }
-        if (imageDimensions[trace.id]) {
-          const dim = imageDimensions[trace.id]
-          // Scale down to reasonable base size using the longest edge
-          const maxBase = 300
-          const longest = Math.max(dim.width, dim.height)
-          const scale = longest > maxBase ? maxBase / longest : 1
-          return { width: Math.round(dim.width * scale), height: Math.round(dim.height * scale) }
-        }
-        return { width: 200, height: 200 }
-      case 'audio':
-        return { width: trace.width || 120, height: trace.height || 100 }
-      case 'video':
-        // Use detected dimensions if available
-        if (imageDimensions[trace.id]) {
-          const dim = imageDimensions[trace.id]
-          const maxSize = 200
-          const scale = Math.min(maxSize / dim.width, maxSize / dim.height, 1)
-          return { width: Math.round(dim.width * scale), height: Math.round(dim.height * scale) }
-        }
-        return { width: 200, height: 150 }
-      case 'embed':
-        // Use custom dimensions if user resized, then detected dimensions, then default
-        if (trace.width && trace.height) {
-          return { width: trace.width, height: trace.height }
-        }
-        if (imageDimensions[trace.id]) {
-          const dim = imageDimensions[trace.id]
-          // Scale down to reasonable base size using the longest edge
-          const maxBase = 300
-          const longest = Math.max(dim.width, dim.height)
-          const scale = longest > maxBase ? maxBase / longest : 1
-          return { width: Math.round(dim.width * scale), height: Math.round(dim.height * scale) }
-        }
-        // Default 16:9 aspect ratio
-        return { width: 300, height: 169 }
-      case 'frame':
-        return { width: trace.width || FRAME_DEFAULT.width, height: trace.height || FRAME_DEFAULT.height }
-      case 'document':
-        // Without this a PDF fell through to the 120x80 default below, which
-        // ignored the width/height stored at creation -- so it rendered small
-        // and in the wrong shape no matter what the document's real
-        // proportions were. The fallback is A4 portrait.
-        return { width: trace.width || 424, height: trace.height || 600 }
-      default:
-        return { width: 120, height: 80 }
-    }
-  }, [imageDimensions])
+  // Its base size (lib/traceGeometry), a picture's or video's from the natural
+  // size measured as it loaded.
+  const getTraceSize = useCallback((trace: Trace) => baseSizeOf(trace, imageDimensions[trace.id]), [imageDimensions])
 
   // The axis-aligned box a trace occupies in world units.
   //
@@ -5061,69 +4954,18 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // see. A rotated trace is aligned by its centre, which is the one point
   // rotation does not move.
   const traceBoxFor = useCallback((trace: Trace, at?: { x: number; y: number }, _zoom = 1, stored = false) => {
-    // A path is where its points are, not where it was drawn.
-    //
-    // Every other trace keeps its extent in x/y/width/height. A path keeps
-    // only its points, in world space, and they are what moves when one is
-    // edited -- dragging a point, adding one, extending the line -- while
-    // x/y/width/height stay at whatever they were when it was created. So the
-    // box for a path that has been worked on describes a rectangle nothing is
-    // in any more, and it sits wherever the path first happened to start.
-    //
-    // Measured from the points instead. Handled here rather than in
-    // getTraceSize because that one is also read by the scale drag, and its
-    // arithmetic is written against the stored width and height -- changing
-    // what it means there is a separate question from where the box is.
-    if (isPathTrace(trace)) {
-      // Stroke included, so the box holds the line rather than its centre.
-      const box = pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2)
-      if (box) {
-        return {
-          cx: at?.x ?? (box.minX + box.maxX) / 2,
-          cy: at?.y ?? (box.minY + box.maxY) / 2,
-          halfW: (box.maxX - box.minX) / 2,
-          halfH: (box.maxY - box.minY) / 2,
-          rotated: (trace.rotation ?? 0) % 360 !== 0,
-        }
-      }
-    }
-
-    const size = getTraceSize(trace)
-    // `stored`: as the store holds it, not as it's drawn -- for a drag's own
-    // handlers, which see what is drawn as it was when the drag began.
-    const transform = stored ? storedTransformOf(trace) : getTraceTransform(trace)
-    const w = (trace.type === 'shape' ? (trace.width || 200) : size.width * (trace.cropWidth ?? 1))
-      * ((transform as any).scaleX ?? 1)
-    const h = (trace.type === 'shape' ? (trace.height || 200) : size.height * (trace.cropHeight ?? 1))
-      * ((transform as any).scaleY ?? 1)
-    const cx = at?.x ?? transform.x
-    const cy = at?.y ?? transform.y
-    const rotated = (trace.rotation ?? 0) % 360 !== 0
-
-    // The frame sits OUTSIDE the box, so alignment has to include it.
-    //
-    // The bordered container is explicitly boxSizing: 'content-box' -- it
-    // overrides the global border-box on purpose -- so the width above is the
-    // content and the border is drawn beyond it on every side. Aligning
-    // without it lines up the content edges and leaves the visible frames
-    // adrift by exactly the border's thickness, which is what somebody
-    // dragging a trace actually sees.
-    //
-    // Not divided by zoom: the border is drawn at borderWidth * zoom, so it is
-    // a fixed number of WORLD units and the same figure works at every camera
-    // distance. It used to be a flat pixel value -- which is why it appeared
-    // to thicken as you zoomed out -- and this measurement had to divide it
-    // back out. Shapes are excluded: their branch draws no border
-    // container at all, only a selection outline that is not part of the
-    // trace.
-    const hasFrame = trace.type !== 'shape' && (trace.showBorder ?? true)
-    const frame = hasFrame ? (trace.borderWidth ?? 2) : 0
-
+    // Its box in the world, border included (lib/traceGeometry traceBox) -- a
+    // path's from its points, which are what moves when one is edited, while
+    // its x/y/width/height stay as they were made. `stored`: as the store
+    // holds it, not as it's drawn -- for a drag's own handlers, which see
+    // what is drawn as it was when the drag began.
+    const box = traceBox(trace, getTraceSize(trace), stored ? storedTransformOf(trace) : getTraceTransform(trace))
     return {
-      cx, cy,
-      halfW: w / 2 + frame,
-      halfH: h / 2 + frame,
-      rotated,
+      cx: at?.x ?? box.cx,
+      cy: at?.y ?? box.cy,
+      halfW: box.halfW,
+      halfH: box.halfH,
+      rotated: (trace.rotation ?? 0) % 360 !== 0,
     }
   }, [getTraceSize, getTraceTransform])
 
@@ -5444,23 +5286,6 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     if (!isFinite(minX)) return null
     return { minX, minY, maxX, maxY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2 }
   }, [traces, localTraceTransforms, localShapePoints, getTraceTransform, getTraceSize])
-
-  const getBorderColor = useCallback((type: string) => {
-    switch (type) {
-      case 'text':
-        return '#b9b39d'
-      case 'image':
-        return '#a8a287'
-      case 'audio':
-        return '#9f987c'
-      case 'video':
-        return '#958f75'
-      case 'embed':
-        return '#8e886f'
-      default:
-        return '#b9b39d'
-    }
-  }, [])
 
   const getTraceTypeLabel = useCallback((type: string) => {
     switch (type) {
@@ -5955,7 +5780,7 @@ if (trace.type === 'shape' && trace.shapeType === 'path') {
   }
 }
 const { width, height } = getTraceSize(trace)
-const borderColor = trace.borderColor || getBorderColor(trace.type)
+const borderColor = trace.borderColor || borderColourOf(trace.type)
 // Handles stay hidden while a clickable trace is being pressed.
 //
 // Selection still happens on mousedown -- the move handler reads it to
@@ -8170,6 +7995,19 @@ return (
                 <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.pasteStyle')}
               </button>
             )}
+            {/* This trace -- or, right-clicked in a selection, all of it -- out
+                as a picture or an .atrium file. */}
+            {onExport && (
+              <button
+                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                onClick={() => {
+                  onExport(editingWholeSelection ? [...multiSelectedIds] : [contextMenu.traceId])
+                  setContextMenu(null)
+                }}
+              >
+                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.export.open')}
+              </button>
+            )}
             {/* Back into drawing mode on this drawing -- all its strokes (lib/brushes
                 drawingOf) -- to draw on and erase from, where they are. */}
             {(() => {
@@ -9266,7 +9104,7 @@ return (
                       <div className="flex gap-2 items-center mb-2">
                         <input
                           type="color"
-                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
+                          value={editingTrace.borderColor || borderColourOf(editingTrace.type)}
                           onChange={(e) => {
                             const updated = { ...editingTrace, borderColor: e.target.value };
                             setEditingTrace(updated);
@@ -9276,7 +9114,7 @@ return (
                         />
                         <input
                           type="text"
-                          value={editingTrace.borderColor || getBorderColor(editingTrace.type)}
+                          value={editingTrace.borderColor || borderColourOf(editingTrace.type)}
                           onChange={(e) => {
                             const updated = { ...editingTrace, borderColor: e.target.value };
                             setEditingTrace(updated);
@@ -9729,7 +9567,7 @@ return (
           userId={userId}
           zIndex={MENU_PANEL_Z_INDEX}
           fontOptions={FONT_FAMILY_OPTIONS}
-          borderColourOf={getBorderColor}
+          borderColourOf={borderColourOf}
           onChange={changes => inOneStep(() => {
             for (const { ids, patch } of changes) for (const id of ids) updateTraceCustomization(id, patch)
           })}
@@ -9769,7 +9607,7 @@ return (
                 ? "bg-nier-blackLight border p-6 flex flex-col relative overflow-hidden"
                 : "bg-nier-blackLight border p-6 max-w-3xl max-h-[80vh] overflow-auto relative"
             }
-            style={{ borderColor: getBorderColor(modalTrace.type) }}
+            style={{ borderColor: borderColourOf(modalTrace.type) }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}

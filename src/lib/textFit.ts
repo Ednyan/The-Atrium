@@ -24,59 +24,60 @@ function getMeasureContext(): CanvasRenderingContext2D | null {
   return measureCtx
 }
 
-// Simulates the on-canvas text box's `whitespace-pre-wrap break-words`
-// wrapping char-by-char, not just word-by-word: a single word/URL longer
-// than the box's own width still has to break-words mid-word in the real
-// CSS, so a word-only simulation would report far fewer lines than what
-// actually renders (and the box would come out too short).
-function countWrappedLines(ctx: CanvasRenderingContext2D, content: string, boxWidth: number): number {
-  const availableWidth = Math.max(1, boxWidth - PADDING * 2)
-  let totalLines = 0
+// The lines a text box's `whitespace-pre-wrap break-words` wrapping makes of
+// `content` in `availableWidth`, in the font set on `ctx`: word by word, and
+// a word longer than a whole line broken character by character, as
+// break-words does. Counted to fit a box to its text (below) and drawn by
+// the image export (lib/exportImage). A line keeps the space after its last
+// word, as the wrapping measures it.
+export function wrapLines(ctx: CanvasRenderingContext2D, content: string, availableWidth: number): string[] {
+  const width = Math.max(1, availableWidth)
+  const lines: string[] = []
   for (const paragraph of content.split('\n')) {
     if (paragraph === '') {
-      totalLines += 1
+      lines.push('')
       continue
     }
     const words = paragraph.split(' ')
+    let line = ''
     let lineWidth = 0
-    let linesForParagraph = 1
     words.forEach((word, i) => {
       const isLastWord = i === words.length - 1
       const wordWithSpace = isLastWord ? word : `${word} `
       const wordWidth = ctx.measureText(wordWithSpace).width
-
-      if (wordWidth <= availableWidth) {
-        if (lineWidth > 0 && lineWidth + wordWidth > availableWidth) {
-          linesForParagraph += 1
+      if (wordWidth <= width) {
+        if (lineWidth > 0 && lineWidth + wordWidth > width) {
+          lines.push(line)
+          line = wordWithSpace
           lineWidth = wordWidth
         } else {
+          line += wordWithSpace
           lineWidth += wordWidth
         }
         return
       }
-
-      // The word itself doesn't fit on any line -- break it character by
-      // character, same as CSS break-words/overflow-wrap would.
-      if (lineWidth > 0) {
-        linesForParagraph += 1
-        lineWidth = 0
-      }
+      // The word itself doesn't fit on any line -- broken character by
+      // character, as break-words does.
+      if (lineWidth > 0) lines.push(line)
       let chunk = ''
       for (const ch of word) {
-        const chunkWidth = ctx.measureText(chunk + ch).width
-        if (chunkWidth > availableWidth && chunk !== '') {
-          linesForParagraph += 1
+        if (ctx.measureText(chunk + ch).width > width && chunk !== '') {
+          lines.push(chunk)
           chunk = ch
         } else {
           chunk += ch
         }
       }
-      lineWidth = ctx.measureText(chunk + (isLastWord ? '' : ' ')).width
+      line = chunk + (isLastWord ? '' : ' ')
+      lineWidth = ctx.measureText(line).width
     })
-    totalLines += linesForParagraph
+    lines.push(line)
   }
-  return totalLines
+  return lines
 }
+
+const countWrappedLines = (ctx: CanvasRenderingContext2D, content: string, boxWidth: number) =>
+  wrapLines(ctx, content, boxWidth - PADDING * 2).length
 
 export interface AutoFitTextOptions {
   fontFamily?: string // CSS font-family value, e.g. 'sans-serif' | 'serif' | 'monospace'

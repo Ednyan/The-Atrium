@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { fetchAllLobbyTraces } from '../hooks/useTraces'
 import { drawRanks, inOrder } from './order'
+import { fileNameOf, saveFile } from './fileSave'
 
 // Produces the same version-2 export envelope ExportDatabase writes on
 // desktop, so a web download drops straight into the desktop app's existing
@@ -155,17 +156,7 @@ export async function downloadAtrium(
   const sizeMB = (blob.size / (1024 * 1024)).toFixed(1)
 
   onProgress?.(`Saving file (${sizeMB} MB)...`)
-  const safeName = String(lobby.name).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 40) || 'atrium'
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${safeName}.atrium.json`
-  document.body.appendChild(anchor)
-  anchor.click()
-  document.body.removeChild(anchor)
-  // Revoked on a delay: revoking synchronously can cancel the download in
-  // some browsers before it has read the blob.
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  await saveFile(blob, `${fileNameOf(lobby.name)}.atrium`, { name: 'Atrium', extensions: ['atrium'] })
 
   return {
     traceCount: traces.length,

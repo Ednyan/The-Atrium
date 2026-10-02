@@ -51,6 +51,9 @@ import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
 import LaserLayer from './LaserLayer'
+import ExportDialog from './ExportDialog'
+import { ImportTooLargeError, importIntoAtrium } from '../lib/atriumFile'
+import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
 import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib/laser'
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
 import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
@@ -616,6 +619,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }, [currentLobby?.themeSettings?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  // Export (ExportDialog), open on what was selected when it was asked for.
+  const [exportOf, setExportOf] = useState<string[] | null>(null)
+  const selectionRef = useRef<string[]>([])
   // One-shot request for TraceOverlay to multi-select a set of trace ids,
   // fired when the user clicks a group in the Layer panel. TraceOverlay owns
   // its own selection state internally, so this is passed down rather than
@@ -664,6 +670,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // onMultiSelectionChange) so the Layer panel can highlight every
   // multi-selected trace/group, not just the single selectedTraceId.
   const [multiSelectedTraceIds, setMultiSelectedTraceIds] = useState<string[]>([])
+  selectionRef.current = multiSelectedTraceIds.length > 0 ? multiSelectedTraceIds : selectedTraceId ? [selectedTraceId] : []
 
   // The saving indicator follows the store's isSavingChanges, set by every
   // save (lib/traceSave) -- autosave, Ctrl+S, leaving -- so none has to opt
@@ -1761,6 +1768,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The quick bar's keys: 1 to 9 pick its first nine tools, in the order
       // shown -- while drawing too, which a tool picked ends; Esc lets go of
       // an armed one.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault()
+        setExportOf(selectionRef.current)
+        return
+      }
       if ((e.key === 'k' || e.key === 'K') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
         if (isDrawingModeRef.current) drawingKeysRef.current.leaveDrawing()
@@ -1962,6 +1974,31 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setPinterestImportAnchor(anchor)
     if (pinterestConnected) setShowPinterestImport(true)
     else setShowPinterestConnect(true)
+  }
+
+  // An .atrium file's traces added to this atrium, centred on `at`, as one
+  // step of undo (lib/atriumFile importIntoAtrium); said how it went.
+  const atriumFileInputRef = useRef<HTMLInputElement>(null)
+  const importAnchorRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const importAtriumHere = async (file: File, at: { x: number; y: number }) => {
+    if (!canEditRef.current || !userId) return
+    try {
+      const parsed = parseAtriumFile(await file.text())
+      showToast(t('atrium.import.importing'))
+      const result = await importIntoAtrium(parsed, at, lobbyId, userId)
+      const said = [tCount('atrium.import.added', result.added)]
+      if (result.missing > 0) said.push(t('atrium.import.missing', { count: result.missing }))
+      if (result.failed > 0) said.push(t('atrium.import.refused', { count: result.failed }))
+      showToast(said.join(' · '))
+    } catch (e: any) {
+      if (e instanceof ImportTooLargeError) {
+        showToast(t('atrium.import.tooLarge', { needed: (e.needed / (1024 * 1024)).toFixed(1), free: (e.free / (1024 * 1024)).toFixed(1) }))
+      } else if (e instanceof AtriumFileError) {
+        showToast(t(e.reason === 'badVersion' ? 'transfer.import.badVersion' : e.reason === 'badFormat' ? 'transfer.import.badFormat' : 'transfer.import.parseFailed'))
+      } else {
+        showToast(t('atrium.import.failed', { message: e?.message ?? '' }))
+      }
+    }
   }
 
   const quickAction = (action: QuickAction) => {
@@ -3955,6 +3992,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     const droppedFiles = Array.from(e.dataTransfer.files)
 
+    // An .atrium file's traces, added to this atrium where it's dropped.
+    const project = droppedFiles.find(f => /\.atrium(\.json)?$/i.test(f.name))
+    if (project) {
+      void importAtriumHere(project, { x: worldX, y: worldY })
+      return
+    }
+
     // A dropped PDF opens the Create Trace panel on the PDF type with the
     // file already loaded, rather than being uploaded as an opaque
     // attachment. The whole point of the type is choosing how to place it --
@@ -4299,6 +4343,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             hiddenTraceIds={drawingMembers}
             toolSwitch={toolSwitch}
             onMultiSelectionChange={setMultiSelectedTraceIds}
+            onExport={ids => setExportOf(ids)}
             onCustomizeOpen={() => { closeSidePanels(); setShowTracePanel(false) }}
             canEdit={canEdit}
           />
@@ -5294,8 +5339,51 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 ◇ {t('atrium.canvas.pinterestBoards')}
               </button>
             </div>
+            {/* What's here, out; another atrium's traces, in, where the menu was opened. */}
+            <div className="border-t border-nier-border/20 mt-1 pt-1">
+              <button
+                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                onClick={() => {
+                  setMapContextMenu(null)
+                  setExportOf(selectionRef.current)
+                }}
+              >
+                ◇ {t('atrium.export.open')}
+              </button>
+              <button
+                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                onClick={() => {
+                  importAnchorRef.current = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                  setMapContextMenu(null)
+                  atriumFileInputRef.current?.click()
+                }}
+              >
+                ◇ {t('atrium.import.here')}
+              </button>
+            </div>
           </div>
         </div>
+      )}
+      <input
+        ref={atriumFileInputRef}
+        type="file"
+        accept=".atrium,.json"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) void importAtriumHere(file, importAnchorRef.current)
+        }}
+      />
+
+      {exportOf && (
+        <ExportDialog
+          lobbyName={currentLobby?.name ?? 'atrium'}
+          lobbyMeta={{ themeSettings: currentLobby?.themeSettings ?? null, isPublic: !!currentLobby?.isPublic, maxPlayers: currentLobby?.maxPlayers ?? 50 }}
+          background={currentLobby?.themeSettings?.backgroundColor || '#0a0a0f'}
+          selection={exportOf}
+          onClose={() => setExportOf(null)}
+        />
       )}
 
       {/* Trace Panel */}
@@ -5481,6 +5569,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               'atrium.controls.undoRedo',
               'atrium.controls.copyPaste',
               'atrium.controls.copyPasteStyle',
+              'atrium.controls.export',
               'atrium.controls.deleteSelected',
               'atrium.controls.saveChanges',
             ] as const).map(key => (
