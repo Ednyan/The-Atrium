@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLandingTheme } from '../lib/useLandingTheme'
+import { themeSeenIn } from '../lib/atriumThemePresets'
 import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
@@ -622,7 +624,25 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
-  themeSettingsRef.current = currentLobby?.themeSettings
+  // The atrium's theme as you see it. Once you've chosen light or dark inside
+  // an atrium, a preset theme there is shown as Whiteboard or Abyss to match
+  // (lib/atriumThemePresets themeSeenIn) -- for you alone, remembered for
+  // that atrium on this device; a theme of the atrium's own stays as it is.
+  // Not before: a room left in Soft Sepia would otherwise never show it.
+  const { resolved: uiTheme } = useLandingTheme()
+  const followKey = `atrium.followTheme.${lobbyId}`
+  const [followTheme, setFollowTheme] = useState(() => {
+    try { return localStorage.getItem(followKey) === '1' } catch { return false }
+  })
+  const followMyTheme = () => {
+    setFollowTheme(true)
+    try { localStorage.setItem(followKey, '1') } catch { /* for this visit only */ }
+  }
+  const viewTheme = useMemo(
+    () => (followTheme ? themeSeenIn(currentLobby?.themeSettings, uiTheme === 'light') : currentLobby?.themeSettings),
+    [followTheme, uiTheme, currentLobby?.themeSettings],
+  )
+  themeSettingsRef.current = viewTheme
 
   // Fills in indicatorColorRef (declared above, since the ticker reads it).
   // Lives here rather than beside the ref because the dependency array is
@@ -633,8 +653,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // than pure black on a light background, so it reads as drawn on the
     // canvas rather than as a hole punched in it. Shared with the frame a
     // shape wears while its customize panel is open -- see shapeStyle.
-    indicatorColorRef.current = { primary: previewFrameColour(currentLobby?.themeSettings?.backgroundColor) }
-  }, [currentLobby?.themeSettings?.backgroundColor])
+    indicatorColorRef.current = { primary: previewFrameColour(viewTheme?.backgroundColor) }
+  }, [viewTheme?.backgroundColor])
   const [isLobbyOwner, setIsLobbyOwner] = useState(false)
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
   // Export (ExportDialog), open on what was selected when it was asked for --
@@ -2152,7 +2172,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Plain text: just the words, in whichever of black and white stands
       // out from the atrium's background as it is now.
       const look = plainText
-        ? { showBorder: false, showBackground: false, showShadow: false, textColor: textColourOn(currentLobby?.themeSettings?.backgroundColor) }
+        ? { showBorder: false, showBackground: false, showShadow: false, textColor: textColourOn(viewTheme?.backgroundColor) }
         : undefined
       const id = dragged
         ? await insertDroppedTrace('text', '', undefined, centre.x, centre.y, undefined, { width, height }, look)
@@ -2850,8 +2870,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const viewportHeight = window.innerHeight
 
     // Get theme settings from current lobby
-    const bgColor = currentLobby?.themeSettings?.backgroundColor ? 
-      parseInt(currentLobby.themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
+    const bgColor = viewTheme?.backgroundColor ? parseInt(viewTheme.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
 
     const app = new Application({
       width: viewportWidth,
@@ -3755,8 +3774,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!appRef.current || !updateGridRef.current || !currentLobby) return
 
     // Update background color
-    const bgColor = currentLobby.themeSettings?.backgroundColor ? 
-      parseInt(currentLobby.themeSettings.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
+    const bgColor = viewTheme?.backgroundColor ? parseInt(viewTheme.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
     appRef.current.renderer.background.color = bgColor
 
     // The grid reads the theme when it draws (themeSettingsRef).
@@ -3764,7 +3782,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     // Update ThemeManager settings
     if (themeManagerRef.current) {
-      const themeSettings = currentLobby.themeSettings
+      const themeSettings = viewTheme
 
       themeManagerRef.current.updateConfig({
         particleColor:themeSettings?.particleColor ? parseInt(themeSettings.particleColor.replace('#', ''), 16) : 0xffffff,
@@ -3777,7 +3795,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // Recreate particles with new settings
       themeManagerRef.current.createParticles(window.innerWidth, window.innerHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
     }
-  }, [currentLobby?.themeSettings])
+  }, [viewTheme])
 
   // Fullscreen toggle
   const toggleFullscreen = async () => {
@@ -4364,7 +4382,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
       // The atrium's own colour behind the grid, so the sliver the floating
       // view uncovers at the screen's edge matches it instead of showing black.
-      style={{ touchAction: 'none', backgroundColor: currentLobby?.themeSettings?.backgroundColor || undefined }}
+      style={{ touchAction: 'none', backgroundColor: viewTheme?.backgroundColor || undefined }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -4381,8 +4399,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
           <TraceOverlay
             traces={traces}
-            atriumBackground={currentLobby?.themeSettings?.backgroundColor}
-            gridLineSpacing={currentLobby?.themeSettings?.gridLineSpacing}
+            atriumBackground={viewTheme?.backgroundColor}
+            gridLineSpacing={viewTheme?.gridLineSpacing}
             zoom={zoom}
             worldOffset={worldOffset}
             worldLayerRef={traceWorldLayerRef}
@@ -4623,7 +4641,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               onClick={() => setUiHidden(true)}
               data-hide-ui=""
             />
-            <ThemeToggle variant="atrium" />
+            <ThemeToggle variant="atrium" onToggle={followMyTheme} />
           </>
         )}
 
@@ -5391,7 +5409,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <ExportDialog
           lobbyName={currentLobby?.name ?? 'atrium'}
           lobbyMeta={{ themeSettings: currentLobby?.themeSettings ?? null, isPublic: !!currentLobby?.isPublic, maxPlayers: currentLobby?.maxPlayers ?? 50 }}
-          background={currentLobby?.themeSettings?.backgroundColor || '#0a0a0f'}
+          background={viewTheme?.backgroundColor || '#0a0a0f'}
           selection={exportOf.ids}
           initialFormat={exportOf.format}
           onClose={() => setExportOf(null)}

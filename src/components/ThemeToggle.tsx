@@ -13,8 +13,10 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import { useTranslation } from '../lib/i18n'
 import { HudIconButton, MENU_ICONS } from './AtriumMenu'
 
-export default function ThemeToggle({ className = '', variant = 'panel' }: {
+export default function ThemeToggle({ className = '', variant = 'panel', onToggle }: {
   className?: string
+  // Pressed: after the switch has changed (the atrium follows it, LobbyScene).
+  onToggle?: () => void
   // Inside an atrium every control shares one definition, so the toggle is
   // the HUD's icon button there, as everything standing next to it is.
   variant?: 'panel' | 'atrium'
@@ -30,7 +32,7 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
       <HudIconButton
         icon={resolved === 'dark' ? MENU_ICONS.moon : MENU_ICONS.sun}
         label={t('theme.label', { mode: label })}
-        onClick={cycle}
+        onClick={() => { cycle(); onToggle?.() }}
         data-theme-toggle=""
         className={className}
       />
