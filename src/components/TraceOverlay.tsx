@@ -2,7 +2,7 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
@@ -2494,11 +2494,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     dragFeelRef.current?.stop()
     const strength = dragBounceRef.current / 100
     if (!strength || ids.length === 0) return
-    // One spring per trace, chasing where the trace is actually drawn right
-    // now -- its own left/top -- rather than the pointer. The pointer and the
-    // position React last drew can be a frame apart, and a spring chasing one
-    // while being added to the other made the trace twitch.
-    const springs = new Map<string, FeelSpring>()
+    // One spring for everything dragged together, as one body: it chases the
+    // middle of their box as they're drawn right now -- their own left/top --
+    // rather than the pointer (the pointer and the position React last drew
+    // can be a frame apart, and a spring chasing one while added to the other
+    // made it twitch). Sized by their box, so a group is a bigger, heavier
+    // thing that trails and leans as one, turning about its own middle --
+    // not each of its traces swinging on a spring of its own.
+    let spring: FeelSpring | null = null
     const moved = new Set<HTMLElement>()
     let raf = 0, last = performance.now()
     const feel = {
@@ -2515,39 +2518,49 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const tick = (now: number) => {
       const dt = Math.min(now - last, 48)
       last = now
-      // Shift is for placing a trace exactly -- snapping, centring, lining it
-      // up -- so while it's held the trace moves rigidly, as it always did,
-      // and lets go of any trail at once. Released mid-drag, the feel starts
-      // again from rest.
-      const rigid = dragShiftRef.current
-      let stirring = false
+      const boxes: { id: string; el: HTMLElement; x: number; y: number; w: number; h: number }[] = []
       for (const id of ids) {
-        const box = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
-        if (!box) continue
-        const tx = parseFloat(box.style.left), ty = parseFloat(box.style.top)
-        let sp = springs.get(id)
-        if (!sp) springs.set(id, sp = feelSpring(tx, ty, box.offsetWidth, box.offsetHeight, strength))
-        if (rigid) {
-          feelRest(sp, tx, ty)
-          box.style.translate = ''
-          box.style.rotate = ''
-          dragOffsetsRef.current.delete(id)
-          continue
+        const el = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
+        if (el) boxes.push({ id, el, x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: el.offsetWidth, h: el.offsetHeight })
+      }
+      if (boxes.length === 0) { raf = requestAnimationFrame(tick); return }
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const b of boxes) {
+        minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2)
+        minY = Math.min(minY, b.y - b.h / 2); maxY = Math.max(maxY, b.y + b.h / 2)
+      }
+      const gx = (minX + maxX) / 2, gy = (minY + maxY) / 2
+      if (!spring) spring = feelSpring(gx, gy, maxX - minX, maxY - minY, strength)
+      // Shift is for placing exactly -- snapping, centring, lining up -- so
+      // while it's held the drag is rigid, as it always was, and lets go of
+      // any trail at once. Released mid-drag, the feel starts again from rest.
+      if (dragShiftRef.current) {
+        feelRest(spring, gx, gy)
+        for (const b of boxes) {
+          b.el.style.translate = ''
+          b.el.style.rotate = ''
+          dragOffsetsRef.current.delete(b.id)
         }
-        const { ox, oy, lean, moving } = feelStep(sp, tx, ty, dt)
-        if (moving) stirring = true
-        const cos = Math.cos(lean), sin = Math.sin(lean)
-        // A rotate pivots on the element's layout box's centre, but the trace
-        // is drawn shifted back half its size from there; the extra translate
-        // turns it about its own centre instead.
-        const dx = -sp.width / 2, dy = -sp.height / 2
-        box.style.translate = `${dx - (dx * cos - dy * sin) + ox}px ${dy - (dx * sin + dy * cos) + oy}px`
-        box.style.rotate = `${lean}rad`
-        moved.add(box)
-        dragOffsetsRef.current.set(id, { x: ox, y: oy })
+        raf = requestAnimationFrame(tick)
+        return
+      }
+      const { ox, oy, lean, moving } = feelStep(spring, gx, gy, dt)
+      const cos = Math.cos(lean), sin = Math.sin(lean)
+      for (const b of boxes) {
+        // Where the body's turn about its middle carries this trace's centre,
+        const rx = b.x - gx, ry = b.y - gy
+        const sx = rx * cos - ry * sin - rx, sy = rx * sin + ry * cos - ry
+        // and the trace turned with it: a rotate pivots on the element's
+        // layout box's centre, but the trace is drawn shifted back half its
+        // size from there, which the extra translate undoes.
+        const dx = -b.w / 2, dy = -b.h / 2
+        b.el.style.translate = `${dx - (dx * cos - dy * sin) + ox + sx}px ${dy - (dx * sin + dy * cos) + oy + sy}px`
+        b.el.style.rotate = `${lean}rad`
+        moved.add(b.el)
+        dragOffsetsRef.current.set(b.id, { x: ox + sx, y: oy + sy })
       }
       wakeLinksRef.current()
-      if (!feel.held && !stirring) {
+      if (!feel.held && !moving) {
         feel.stop()
         return
       }
@@ -5249,6 +5262,26 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // around. Path shapes are measured from their points (their x/y only
   // records where they were last moved as a whole, not where the points
   // actually are); everything else from its rotated size box.
+  // The groups selected whole, and the traces in them. A group selected is
+  // shown as a group -- its outline -- not as every trace in it lit up; a
+  // selection of loose traces still lights each one.
+  const wholeGroups = useMemo(() => {
+    const byGroup = new Map<string, string[]>()
+    for (const trace of traces) {
+      const group = groupIdOf(trace, layers)
+      if (!group) continue
+      const list = byGroup.get(group)
+      if (list) list.push(trace.id)
+      else byGroup.set(group, [trace.id])
+    }
+    const groups = new Map<string, string[]>()
+    if (multiSelectedIds.size > 1) {
+      for (const [group, members] of byGroup) if (members.every(id => multiSelectedIds.has(id))) groups.set(group, members)
+    }
+    return { groups, members: new Set([...groups.values()].flat()) }
+  }, [traces, layers, multiSelectedIds])
+  const inWholeGroup = wholeGroups.members
+
   const getGroupBounds = useCallback((ids: string[]) => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
 
@@ -5531,7 +5564,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // Show the selection glow whether this path is the single selected
     // trace or part of a multi-selection (previously only multi-select
     // showed any highlight at all, so a singly-selected path had none).
-    const isPathMultiSelected = selectedTraceId === trace.id || multiSelectedIds.has(trace.id)
+    const isPathMultiSelected = (selectedTraceId === trace.id || multiSelectedIds.has(trace.id)) && !inWholeGroup.has(trace.id)
 
     return (
       <svg
@@ -5720,7 +5753,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       failedImages.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
       playingMedia.has(id), movingIds.has(id), glidingIds.has(id),
       // The selected trace's frame, and crop mode, which only it shows.
-      selected, multiSelectedIds.has(id), selected ? selectedPointIndex : null, selected && isCropMode, !!hiddenTraceIds?.has(id),
+      selected, multiSelectedIds.has(id), inWholeGroup.has(id), selected ? selectedPointIndex : null, selected && isCropMode, !!hiddenTraceIds?.has(id),
       editingTrace?.id === id ? editingTrace : null, editing, editing ? inlineEditText : null,
       pressedClickableId === id, pendingLinkTraceId === id,
       documentError[id], page, documentPageCount[id], documentPages[`${id}:${page}`],
@@ -5794,8 +5827,11 @@ const borderColor = trace.borderColor || borderColourOf(trace.type)
 // is what makes the press visible at all, since the button is already
 // back up by the time the click resolves.
 const isPressed = pressedClickableId === trace.id || pendingLinkTraceId === trace.id
-const isSelected = selectedTraceId === trace.id && !isPressed
-const isMultiSelected = multiSelectedIds.has(trace.id)
+// In a group selected whole, a trace is lit by its group's outline alone.
+const isSelected = selectedTraceId === trace.id && !isPressed && !inWholeGroup.has(trace.id)
+const isMultiSelected = multiSelectedIds.has(trace.id) && !inWholeGroup.has(trace.id)
+// Selected at all, lit or not: held still rather than floating.
+const isInSelection = selectedTraceId === trace.id || multiSelectedIds.has(trace.id)
 
 // Apply customization defaults
 const showBorder = trace.showBorder ?? true
@@ -5947,7 +5983,7 @@ return (
         // grip and caret around it stay where they are, and something
         // being worked with shouldn't drift out from under the pointer.
         // Not the shape being placed: it would drift while being sized.
-        ...(traceFloat > 0 && !isSelected && !isMultiSelected && !isPressed && trace.id !== SHAPE_DRAFT_ID
+        ...(traceFloat > 0 && !isInSelection && !isPressed && trace.id !== SHAPE_DRAFT_ID
           && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
           && !(trace.type === 'embed' && trace.enableInteraction) ? {
           animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
@@ -7711,9 +7747,26 @@ return (
           const boxWidth = bottomRight.screenX - topLeft.screenX
           const boxHeight = bottomRight.screenY - topLeft.screenY
 
+          // The box is the group's outline when a group alone is selected; with
+          // more selected, each group selected whole has an outline of its own.
+          const several = [...multiSelectedIds].some(id => !inWholeGroup.has(id)) || wholeGroups.groups.size > 1
           return (
             <>
+              {several && [...wholeGroups.groups].map(([group, members]) => {
+                const b = getGroupBounds(members)
+                if (!b) return null
+                const tl = getScreenPosition(b.minX, b.minY), br = getScreenPosition(b.maxX, b.maxY)
+                return (
+                  <div
+                    key={`outline-${group}`}
+                    data-group-outline={group}
+                    className="absolute pointer-events-none z-[999998]"
+                    style={{ left: `${tl.screenX}px`, top: `${tl.screenY}px`, width: `${br.screenX - tl.screenX}px`, height: `${br.screenY - tl.screenY}px`, border: '1px solid rgba(134, 239, 172, 0.55)' }}
+                  />
+                )
+              })}
               <div
+                data-selection-box=""
                 className="absolute pointer-events-none z-[999998]"
                 style={{
                   left: `${boxLeft}px`,
