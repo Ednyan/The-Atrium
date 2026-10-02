@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { createWorldCamera, layerTransform, layoutHolds, type View } from '../src/lib/worldCamera.ts'
+import { contentView, createWorldCamera, edgeInsets, layerTransform, layoutHolds, type View } from '../src/lib/worldCamera.ts'
 
 const W = 1000, H = 600, MARGIN = 500
 
@@ -112,4 +112,59 @@ test('it reports whether the view moved since the last frame', () => {
   assert.equal(frame({ x: 0, y: 0, zoom: 1 }), true)
   assert.equal(frame({ x: 0, y: 0, zoom: 1 }), false)
   assert.equal(frame({ x: 5, y: 0, zoom: 1 }), true)
+})
+
+// ---- Recenter ----
+
+const ROOM = { left: 100, top: 100, right: 100, bottom: 100 }
+const box = (x: number, y: number, w = 200, h = 200) => ({ minX: x - w / 2, minY: y - h / 2, maxX: x + w / 2, maxY: y + h / 2 })
+
+test('recenter: traces near each other are all framed, centred, with room around them', () => {
+  const view = contentView([box(0, 0), box(1000, 0), box(500, 600)], 1600, 900, ROOM, 0.25, 1)!
+  assert.deepEqual([view.cx, view.cy], [500, 300])
+  // 1200 x 800 of traces into 1400 x 700 of room: the height decides.
+  assert.equal(view.zoom, 700 / 800)
+})
+
+test('recenter: one small trace is shown at 100%, not blown up', () => {
+  assert.deepEqual(contentView([box(40, -30, 100, 50)], 1600, 900, ROOM, 0.25, 1), { cx: 40, cy: -30, zoom: 1 })
+})
+
+test('recenter: a trace far off from the rest leaves them framed where they are', () => {
+  const cluster = [box(0, 0), box(400, 0), box(0, 400), box(400, 400)]
+  const view = contentView([...cluster, box(50000, 50000)], 1600, 900, ROOM, 0.25, 1)!
+  assert.deepEqual([view.cx, view.cy], [200, 200])
+  // 600 x 600 fits at more than 100%: shown at 100%.
+  assert.equal(view.zoom, 1)
+})
+
+test('recenter: two far-apart groups -- the bigger one is framed', () => {
+  const small = [box(0, 0), box(300, 0)]
+  const big = [box(20000, 0), box(20400, 0), box(20000, 400)]
+  const view = contentView([...small, ...big], 1600, 900, ROOM, 0.25, 1)!
+  assert.deepEqual([view.cx, view.cy], [20200, 200])
+})
+
+test('recenter: nothing to frame', () => {
+  assert.equal(contentView([], 1600, 900, ROOM, 0.25, 1), null)
+})
+
+test('recenter: framed in the room the menus leave, not under them', () => {
+  // A 300-wide menu down the left: the traces' middle is the room's middle.
+  const view = contentView([box(0, 0), box(1000, 0)], 1600, 900, { left: 300, top: 0, right: 0, bottom: 0 }, 0.25, 1)!
+  assert.equal(view.zoom, 1)
+  const screenX = (0 + 1000) / 2 - view.cx + 800
+  assert.equal(screenX, 300 + 1300 / 2)
+})
+
+test('menus count against the edge they cover least of', () => {
+  const insets = edgeInsets([
+    { left: 16, top: 16, right: 220, bottom: 430 },     // the atrium menu, top left: tall, so the left
+    { left: 16, top: 270, right: 62, bottom: 630 },     // the quick bar: the left
+    { left: 1070, top: 16, right: 1584, bottom: 50 },   // the top-right bar: the top
+    { left: 680, top: 760, right: 900, bottom: 792 },   // the usage bar: the bottom
+    { left: 1460, top: 560, right: 1584, bottom: 600 }, // Draw, at the right: the right
+    { left: 0, top: 0, right: 1600, bottom: 900 },      // a layer over everything: not a menu
+  ], 1600, 900)
+  assert.deepEqual(insets, { left: 220, top: 50, right: 140, bottom: 140 })
 })

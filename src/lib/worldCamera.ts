@@ -142,3 +142,69 @@ export function createWorldCamera({ commit, margin, settleMs = 120, maxGrowth = 
     },
   }
 }
+
+// ---- Recenter ----------------------------------------------------------------------------
+
+export interface Bounds { minX: number; minY: number; maxX: number; maxY: number }
+export interface Insets { left: number; top: number; right: number; bottom: number }
+
+// How far the menus at a `width` x `height` screen's edges reach into it,
+// edge by edge: each menu counted against the edge it covers least of -- a
+// tall one at the left against the left, a wide one at the top against the
+// top. Something over most of the screen is a layer, not a menu, and is left out.
+export function edgeInsets(rects: { left: number; top: number; right: number; bottom: number }[], width: number, height: number): Insets {
+  const insets: Insets = { left: 0, top: 0, right: 0, bottom: 0 }
+  for (const r of rects) {
+    if (r.right <= r.left || r.bottom <= r.top || r.right - r.left > width * 0.6 || r.bottom - r.top > height * 0.6) continue
+    const cover: Insets = { left: r.right, top: r.bottom, right: width - r.left, bottom: height - r.top }
+    const side = (Object.keys(cover) as (keyof Insets)[]).reduce((a, b) => (cover[a] <= cover[b] ? a : b))
+    insets[side] = Math.max(insets[side], cover[side])
+  }
+  return insets
+}
+
+// Where Recenter takes the camera: the world point for the middle of the
+// screen, and the zoom. Every trace's box shown in the screen less `insets`,
+// as Excalidraw's zoom to fit, no closer than `maxZoom`. When that would draw
+// them smaller than `minZoom` -- a trace or two far off from the rest -- it's
+// the room's worth at `minZoom` that holds the most of them instead, fitted to
+// those. Null when there's nothing to show.
+export function contentView(
+  boxes: Bounds[], width: number, height: number, insets: Insets, minZoom: number, maxZoom: number,
+): { cx: number; cy: number; zoom: number } | null {
+  if (boxes.length === 0) return null
+  const roomW = Math.max(width / 2, width - insets.left - insets.right)
+  const roomH = Math.max(height / 2, height - insets.top - insets.bottom)
+  const fit = (some: Bounds[]) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const b of some) {
+      minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY)
+      maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY)
+    }
+    const zoom = Math.min(maxZoom, roomW / Math.max(1, maxX - minX), roomH / Math.max(1, maxY - minY))
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom }
+  }
+  let view = fit(boxes)
+  if (view.zoom < minZoom) {
+    // The room's worth at minZoom, centred on each trace in turn, that has the
+    // most traces' middles in it.
+    // ponytail: O(n^2) over the traces, and windows centred on a trace only --
+    // count into a grid if atriums reach tens of thousands of traces.
+    const halfW = roomW / minZoom / 2, halfH = roomH / minZoom / 2
+    const middles = boxes.map(b => ({ x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }))
+    let most: Bounds[] = []
+    for (const m of middles) {
+      const inside = boxes.filter((_, i) => Math.abs(middles[i].x - m.x) <= halfW && Math.abs(middles[i].y - m.y) <= halfH)
+      if (inside.length > most.length) most = inside
+    }
+    view = fit(most)
+    view.zoom = Math.max(minZoom, view.zoom)
+  }
+  // The room's middle is off the screen's by half the difference of its
+  // insets; the camera looks at the screen's.
+  return {
+    cx: view.x - (insets.left - insets.right) / 2 / view.zoom,
+    cy: view.y - (insets.top - insets.bottom) / 2 / view.zoom,
+    zoom: view.zoom,
+  }
+}

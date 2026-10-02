@@ -23,7 +23,7 @@ import { arrowhead, curveMiddle, restOf, visiblePart, type TraceLink } from './t
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, roundedPath, trimEnds } from './elbow'
 import { curvePath, handlesAt, type PathPoint } from './pathGeometry'
 import { drawRanks } from './order'
-import { baseSizeOf, borderColourOf, roundedPolygonPath, storedTransformOf, traceBox } from './traceGeometry'
+import { baseSizeOf, borderColourOf, boundsOf, roundedPolygonPath, storedTransformOf, traceBox } from './traceGeometry'
 import { shapePaint, shapeStyleOf } from './shapeStyle'
 import { fontPxOf, resolveFontFamilyCss, wrapLines } from './textFit'
 import { asStrokeData, renderStrokeData, strokeDensity } from './brushes'
@@ -605,13 +605,11 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       take(box.minX - reach, box.minY - reach)
       take(box.maxX + reach, box.maxY + reach)
     } else {
-      const box = traceBox(trace, size)
-      const cos = Math.abs(Math.cos(box.turn)), sin = Math.abs(Math.sin(box.turn))
-      const ex = box.halfW * cos + box.halfH * sin, ey = box.halfW * sin + box.halfH * cos
-      take(box.cx - ex, box.cy - ey)
-      take(box.cx + ex, box.cy + ey)
+      const box = boundsOf(traceBox(trace, size))
+      take(box.minX, box.minY)
+      take(box.maxX, box.maxY)
       // A frame's title above it.
-      if (trace.type === 'frame' && trace.content) take(box.cx - ex, box.cy - ey - 18)
+      if (trace.type === 'frame' && trace.content) take(box.minX, box.minY - 18)
     }
     const box = traceBox(trace, size)
     ends.set(trace.id, { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn: box.turn, colour: trace.borderColor || borderColourOf(trace.type) })

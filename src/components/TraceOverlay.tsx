@@ -23,7 +23,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss } from '../lib/textFit'
-import { baseSizeOf, borderColourOf, FRAME_DEFAULT, roundedPolygonPath, storedTransformOf, traceBox } from '../lib/traceGeometry'
+import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, storedTransformOf, traceBox } from '../lib/traceGeometry'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
@@ -5292,16 +5292,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       }
 
       const { width, height } = getTraceSize(trace)
-      const halfW = (width * transform.scaleX) / 2
-      const halfH = (height * transform.scaleY) / 2
-      const rad = (transform.rotation * Math.PI) / 180
-      const cos = Math.abs(Math.cos(rad))
-      const sin = Math.abs(Math.sin(rad))
-      const extentX = halfW * cos + halfH * sin
-      const extentY = halfW * sin + halfH * cos
-
-      minX = Math.min(minX, transform.x - extentX); maxX = Math.max(maxX, transform.x + extentX)
-      minY = Math.min(minY, transform.y - extentY); maxY = Math.max(maxY, transform.y + extentY)
+      const box = boundsOf({
+        cx: transform.x, cy: transform.y,
+        halfW: (width * transform.scaleX) / 2, halfH: (height * transform.scaleY) / 2,
+        turn: (transform.rotation * Math.PI) / 180,
+      })
+      minX = Math.min(minX, box.minX); maxX = Math.max(maxX, box.maxX)
+      minY = Math.min(minY, box.minY); maxY = Math.max(maxY, box.maxY)
     }
 
     if (!isFinite(minX)) return null

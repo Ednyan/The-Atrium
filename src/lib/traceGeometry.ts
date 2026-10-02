@@ -91,6 +91,13 @@ export function traceBox(
   return { cx: transform.x, cy: transform.y, halfW: w / 2 + frame, halfH: h / 2 + frame, turn: ((transform.rotation ?? 0) * Math.PI) / 180 }
 }
 
+// The upright box a turned one covers.
+export function boundsOf(box: { cx: number; cy: number; halfW: number; halfH: number; turn: number }) {
+  const cos = Math.abs(Math.cos(box.turn)), sin = Math.abs(Math.sin(box.turn))
+  const ex = box.halfW * cos + box.halfH * sin, ey = box.halfW * sin + box.halfH * cos
+  return { minX: box.cx - ex, minY: box.cy - ey, maxX: box.cx + ex, maxY: box.cy + ey }
+}
+
 // A polygon's outline as an SVG path with each corner rounded by `radius`
 // (in the points' units) -- a triangle's corner radius, which SVG has no
 // rx/ry for. Each corner's radius stops at half its shorter edge, so

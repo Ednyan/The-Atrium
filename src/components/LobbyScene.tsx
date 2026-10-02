@@ -11,7 +11,8 @@ import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
 import TracePanel from './TracePanel'
 import TraceOverlay, { CULL_MARGIN } from './TraceOverlay'
-import { createWorldCamera } from '../lib/worldCamera'
+import { contentView, createWorldCamera, edgeInsets } from '../lib/worldCamera'
+import { boundsOf, traceBox } from '../lib/traceGeometry'
 import { type Box } from '../lib/traceLinks'
 import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
@@ -78,6 +79,11 @@ function CursorReadout({ zoom }: { zoom: number }) {
 
 const MIN_ZOOM = 0.15
 const MAX_ZOOM = 1.40
+// Recenter shows every trace unless that draws them smaller than this, and
+// keeps this much room, in pixels, between them and the menus at the
+// screen's edges (or the edges themselves).
+const RECENTER_MIN_ZOOM = 0.25
+const RECENTER_MARGIN = 32
 // One keypress of zoom, and the same with Ctrl held.
 //
 // The coarse step was 0.6, which a repeating key turned into a lurch -- sized
@@ -622,8 +628,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Export (ExportDialog), open on what was selected when it was asked for --
   // and on a format, when it's an .atrium file to share.
   const [exportOf, setExportOf] = useState<{ ids: string[]; format?: ExportFormat } | null>(null)
-  // The HUD's Save Atrium choices, and its Share panel.
-  const [showSaveOptions, setShowSaveOptions] = useState(false)
+  // The HUD's Share panel.
   const [showShare, setShowShare] = useState(false)
   const selectionRef = useRef<string[]>([])
   // One-shot request for TraceOverlay to multi-select a set of trace ids,
@@ -1768,6 +1773,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         targetZoomRef.current = 1
         return
       }
+      // Shift+1 frames the traces, as Excalidraw's zoom to fit.
+      if (e.code === 'Digit1' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        recenter()
+        return
+      }
 
       // The quick bar's keys: 1 to 9 pick its first nine tools, in the order
       // shown -- while drawing too, which a tool picked ends; Esc lets go of
@@ -2322,17 +2333,34 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     zoom: zoomRef.current,
   })
 
-  const flyToLocation = (location: LobbyLocation) => {
+  // The camera flown to `x`, `y` (the world point for the screen's middle) at `zoom`.
+  const flyTo = (x: number, y: number, zoom: number) => {
     cameraFlyToRef.current = {
       startX: cameraPositionRef.current.x,
       startY: cameraPositionRef.current.y,
       startZoom: zoomRef.current,
-      targetX: location.positionX,
-      targetY: location.positionY,
-      targetZoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, location.zoom)),
+      targetX: x,
+      targetY: y,
+      targetZoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)),
       startTime: performance.now(),
       duration: 900,
     }
+  }
+  const flyToLocation = (location: LobbyLocation) => flyTo(location.positionX, location.positionY, location.zoom)
+
+  // Recenter: the atrium's traces framed (lib/worldCamera contentView) -- all
+  // of them, or where most of them are when a few lie far off. An empty
+  // atrium goes back to its origin.
+  // Framed in what the menus at the screen's edges leave of it, measured
+  // as they are now (open or closed), with room to spare.
+  const recenter = () => {
+    const width = window.innerWidth, height = window.innerHeight
+    const menus = [...document.querySelectorAll('[data-hud]'), sessionBarRef.current].filter((el): el is Element => !!el)
+    const reach = edgeInsets(menus.map(el => el.getBoundingClientRect()), width, height)
+    const insets = { left: reach.left + RECENTER_MARGIN, top: reach.top + RECENTER_MARGIN, right: reach.right + RECENTER_MARGIN, bottom: reach.bottom + RECENTER_MARGIN }
+    const boxes = useGameStore.getState().traces.map(tr => boundsOf(traceBox(tr)))
+    const view = contentView(boxes, width, height, insets, RECENTER_MIN_ZOOM, 1)
+    flyTo(view?.cx ?? 0, view?.cy ?? 0, view?.zoom ?? 1)
   }
 
   // --- Locations (lib/locations: in the store, saved like everything else) ---
@@ -4589,46 +4617,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           </p>
         )}
         <CursorReadout zoom={zoom} />
-        {/* Save Atrium: out as a file or a picture, or another atrium's
-            traces in, where the view is. */}
+        {/* Save Atrium: the atrium out as a file or a picture (ExportDialog). */}
         {currentLobby && (
-          <div className="mt-1.5">
-            <button
-              type="button"
-              onClick={() => setShowSaveOptions(open => !open)}
-              aria-expanded={showSaveOptions}
-              className="atrium-btn w-full text-center"
-            >
-              {t('atrium.hud.saveAtrium')}
-            </button>
-            {showSaveOptions && (
-              <div className="flex gap-1 mt-1">
-                <button
-                  type="button"
-                  className="atrium-btn flex-1"
-                  onClick={() => {
-                    setShowSaveOptions(false)
-                    setExportOf({ ids: selectionRef.current })
-                  }}
-                >
-                  {t('atrium.export.open')}
-                </button>
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="atrium-btn flex-1"
-                    onClick={() => {
-                      setShowSaveOptions(false)
-                      importAnchorRef.current = screenToWorld(window.innerWidth / 2, window.innerHeight / 2)
-                      atriumFileInputRef.current?.click()
-                    }}
-                  >
-                    {t('atrium.import.file')}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setExportOf({ ids: selectionRef.current })}
+            className="atrium-btn w-full mt-1.5 text-center"
+          >
+            {t('atrium.hud.saveAtrium')}
+          </button>
         )}
         <div className="flex gap-1 mt-1">
           {(isLobbyOwner || isLobbyAdmin) && currentLobby && (
@@ -4640,6 +4637,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             </button>
           )}
         </div>
+        {/* Another atrium's traces in, where the view is. */}
+        {currentLobby && canEdit && (
+          <button
+            type="button"
+            onClick={() => {
+              importAnchorRef.current = screenToWorld(window.innerWidth / 2, window.innerHeight / 2)
+              atriumFileInputRef.current?.click()
+            }}
+            className="atrium-btn w-full mt-1 text-center"
+          >
+            {t('atrium.import.file')}
+          </button>
+        )}
         {/* Share: a link straight into this atrium, and its ID. */}
         {currentLobby && (
           <div className="relative">
@@ -4687,14 +4697,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           {t('atrium.hud.profile')}
         </button>
         <button
-          onClick={() => {
-            // Reset camera to center of map. Only the camera: the ticker
-            // places everything from it, and the traces' layout belongs to
-            // lib/worldCamera -- set here, it was set to the wrong offset (the
-            // world's origin at the screen's corner, not its middle) for a frame.
-            cameraPositionRef.current = { x: 0, y: 0 }
-          }}
+          onClick={recenter}
           className="atrium-btn w-full mt-1 text-center"
+          title="Shift+1"
         >
           {t('atrium.hud.recenter')}
         </button>
