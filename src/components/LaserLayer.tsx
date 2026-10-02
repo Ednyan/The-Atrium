@@ -8,7 +8,7 @@
 // pointer's dot. Otherwise no frame is asked for at all.
 
 import { useEffect, useRef } from 'react'
-import { onLaserActivity, remoteTrails, sendLaser, type LaserEffect, type LaserPoint, type LaserSettings } from '../lib/laser'
+import { onLaserActivity, remoteTrails, SEND_EVERY_MS, sendLaser, type LaserEffect, type LaserPoint, type LaserSettings } from '../lib/laser'
 
 type View = { x: number; y: number; zoom: number }
 
@@ -19,7 +19,12 @@ interface Particle {
 }
 
 const MAX_PARTICLES = 500
-const SEND_EVERY_MS = 50
+// The trail's width at its head, in screen pixels: the glow, and the hot core.
+const GLOW = 6
+const CORE = 2.2
+// How quickly the line catches up with the pointer: most of the way in this
+// many milliseconds (add, below).
+const STREAMLINE_MS = 10
 
 // A colour some way toward white, for the hot core of the line and sparks.
 function toward(hex: string, white: number): string {
@@ -46,31 +51,114 @@ function spawn(into: Particle[], kind: LaserEffect, at: { x: number; y: number }
   }
 }
 
-function drawTrail(ctx: CanvasRenderingContext2D, points: LaserPoint[], color: string, trail: number, now: number, v: View, dpr: number) {
-  if (points.length === 0) return
-  const sx = (p: LaserPoint) => (p.x * v.zoom + v.x) * dpr
-  const sy = (p: LaserPoint) => (p.y * v.zoom + v.y) * dpr
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  // A glow in the colour, then a hotter core: thick and bright at the head,
-  // thinning and fading toward the tail.
-  for (const [pass, white] of [[0, 0], [1, 0.75]] as const) {
-    ctx.strokeStyle = pass === 0 ? color : toward(color, white)
-    ctx.shadowColor = color
-    for (let i = 1; i < points.length; i++) {
-      const f = Math.max(0, 1 - (now - points[i].t) / trail)
-      if (f <= 0) continue
-      ctx.globalAlpha = f
-      ctx.shadowBlur = pass === 0 ? 14 * f * dpr : 0
-      ctx.lineWidth = (pass === 0 ? 1.5 + 4.5 * f : 0.6 + 1.6 * f) * dpr
-      ctx.beginPath()
-      ctx.moveTo(sx(points[i - 1]), sy(points[i - 1]))
-      ctx.lineTo(sx(points[i]), sy(points[i]))
-      ctx.stroke()
+// A Catmull-Rom curve from b to c, a and d either side: through every point
+// drawn, bending between them rather than turning at each.
+const curve = (a: number, b: number, c: number, d: number, u: number) =>
+  b + 0.5 * u * (c - a + u * (2 * a - 5 * b + 4 * c - d + u * (3 * (b - c) + d - a)))
+
+// The width along a trail, as a share of the full width: kept, then lost
+// fast at the end of a point's life (as Excalidraw's laser does), and pointed
+// over the last few pixels of the tail, so a trail just begun isn't blunt.
+const ease = (k: number) => 1 - (1 - k) ** 3
+const TAPER = 40
+
+type Spot = { x: number; y: number; f: number }
+
+// One stroke's spots, oldest first: every few pixels along a curve through
+// its points, each with the share of the full width the trail has there.
+function strokeSpots(at: Spot[], dpr: number): Spot[] {
+  const spots: Spot[] = []
+  let run = 0
+  const put = (x: number, y: number, f: number) => {
+    const last = spots[spots.length - 1]
+    if (last) run += Math.hypot(x - last.x, y - last.y)
+    spots.push({ x, y, f: Math.min(ease(f), ease(Math.min(1, run / (TAPER * dpr)))) })
+  }
+  for (let i = 0; i + 1 < at.length; i++) {
+    const [a, b, c, d] = [at[Math.max(0, i - 1)], at[i], at[i + 1], at[Math.min(at.length - 1, i + 2)]]
+    const steps = Math.max(1, Math.ceil(Math.hypot(c.x - b.x, c.y - b.y) / (3 * dpr)))
+    for (let s = 0; s < steps; s++) {
+      const u = s / steps
+      put(curve(a.x, b.x, c.x, d.x, u), curve(a.y, b.y, c.y, d.y, u), b.f + (c.f - b.f) * u)
     }
   }
-  ctx.globalAlpha = 1
-  ctx.shadowBlur = 0
+  const head = at[at.length - 1]
+  put(head.x, head.y, head.f)
+  return spots
+}
+
+// Each stretch of the strokes at the width it has there, rounded to one of
+// LEVELS widths: a stroke call a width rather than one a stretch. Opaque, so
+// where stretches meet nothing doubles up. A stroke of one spot is a dot.
+const LEVELS = 16
+function strokePass(ctx: CanvasRenderingContext2D, strokes: Spot[][], width: number) {
+  for (let level = 1; level <= LEVELS; level++) {
+    ctx.lineWidth = (width * level) / LEVELS
+    ctx.beginPath()
+    let any = false
+    for (const spots of strokes) {
+      let open = false
+      for (let i = spots.length === 1 ? 0 : 1; i < spots.length; i++) {
+        const from = spots[Math.max(0, i - 1)]
+        if (Math.ceil(Math.max(from.f, spots[i].f) * LEVELS) !== level) {
+          open = false
+          continue
+        }
+        if (!open) ctx.moveTo(from.x, from.y)
+        ctx.lineTo(spots[i].x, spots[i].y)
+        open = any = true
+      }
+    }
+    if (any) ctx.stroke()
+  }
+}
+
+// Where the trail's glow is drawn first, to go onto the canvas in one piece.
+let glowCanvas: HTMLCanvasElement | null = null
+
+// Each stroke a curve, narrowing toward its tail, glowing as one. It was
+// drawn a segment at a time, each faded on its own: where two met, their
+// round ends overlapped and doubled up, beading the line, a fast flick turned
+// corners, and every segment cast a glow of its own. And strokes are apart: a
+// stroke begun while the last still showed was joined to it by a line from
+// where that one ended.
+function drawTrail(ctx: CanvasRenderingContext2D, points: LaserPoint[], color: string, trail: number, now: number, v: View, dpr: number) {
+  const strokes: Spot[][] = []
+  let stroke: Spot[] = []
+  for (const p of points) {
+    if (p.start && stroke.length) {
+      strokes.push(strokeSpots(stroke, dpr))
+      stroke = []
+    }
+    stroke.push({ x: (p.x * v.zoom + v.x) * dpr, y: (p.y * v.zoom + v.y) * dpr, f: Math.max(0, 1 - (now - p.t) / trail) })
+  }
+  if (stroke.length) strokes.push(strokeSpots(stroke, dpr))
+  if (strokes.length === 0) return
+
+  // The glow: the trail's shape in its colour, drawn apart, then put on the
+  // canvas once with its blur -- one glow for the whole trail.
+  const glow = (glowCanvas ??= document.createElement('canvas'))
+  if (glow.width !== ctx.canvas.width || glow.height !== ctx.canvas.height) {
+    glow.width = ctx.canvas.width
+    glow.height = ctx.canvas.height
+  }
+  const g = glow.getContext('2d')
+  if (g) {
+    g.clearRect(0, 0, glow.width, glow.height)
+    g.lineCap = 'round'
+    g.lineJoin = 'round'
+    g.strokeStyle = color
+    strokePass(g, strokes, GLOW * dpr)
+    ctx.shadowColor = color
+    ctx.shadowBlur = 14 * dpr
+    ctx.drawImage(glow, 0, 0)
+    ctx.shadowBlur = 0
+  }
+  // A hotter core over it.
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = toward(color, 0.75)
+  strokePass(ctx, strokes, CORE * dpr)
 }
 
 function drawParticle(ctx: CanvasRenderingContext2D, p: Particle, v: View, dpr: number) {
@@ -158,22 +246,25 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
     // Other people's trails, and the particles their effects make.
     for (const [userId, trail] of remoteTrails) {
       trail.points = trail.points.filter(p => now - p.t < trail.trail)
+      // Only the points whose moment has come (lib/laser plays them back).
+      const due = trail.points.findIndex(p => p.t > now)
+      const shown = due === -1 ? trail.points : trail.points.slice(0, due)
       if (!still.current && trail.effect !== 'none') {
         const from = spawnedTo.current.get(userId) ?? 0
-        for (let i = 1; i < trail.points.length; i++) {
-          const p = trail.points[i]
+        for (let i = 1; i < shown.length; i++) {
+          const p = shown[i]
           if (p.t <= from) continue
-          const q = trail.points[i - 1]
-          spawn(particles.current, trail.effect, p, Math.hypot(p.x - q.x, p.y - q.y) * v.zoom, trail.color, v.zoom)
+          const q = shown[i - 1]
+          spawn(particles.current, trail.effect, p, p.start ? 0 : Math.hypot(p.x - q.x, p.y - q.y) * v.zoom, trail.color, v.zoom)
         }
-        spawnedTo.current.set(userId, trail.points[trail.points.length - 1]?.t ?? from)
+        spawnedTo.current.set(userId, shown[shown.length - 1]?.t ?? from)
       }
       if (trail.points.length === 0 && now - trail.seen > trail.trail) {
         remoteTrails.delete(userId)
         spawnedTo.current.delete(userId)
         continue
       }
-      drawTrail(ctx, trail.points, trail.color, trail.trail, now, v, dpr)
+      drawTrail(ctx, shown, trail.color, trail.trail, now, v, dpr)
     }
     // This person's.
     const mine = settingsRef.current
@@ -233,7 +324,7 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
     if (outbox.current.length === 0) return
     const now = performance.now()
     const { color, effect, trail } = settingsRef.current
-    sendLaser({ color, effect, trail, points: outbox.current.map(p => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10, Math.round(now - p.t)]) })
+    sendLaser({ color, effect, trail, points: outbox.current.map(p => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10, Math.round(now - p.t), ...(p.start ? [1] : [])]) })
     outbox.current = []
   }
   useEffect(() => {
@@ -245,11 +336,25 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
     }
   }, [active])
 
-  const add = (clientX: number, clientY: number) => {
+  // A sample of the pointer, at the moment it was taken. `start`: a press,
+  // beginning a stroke of its own.
+  const add = (sample: PointerEvent, start = false) => {
     const v = viewRef.current()
-    const at = { x: (clientX - v.x) / v.zoom, y: (clientY - v.y) / v.zoom, t: performance.now() }
-    const prev = local.current[local.current.length - 1]
-    if (prev && Math.hypot(at.x - prev.x, at.y - prev.y) * v.zoom < 1) return
+    const now = performance.now()
+    const t = Math.min(now, sample.timeStamp || now)
+    const prev = start ? undefined : local.current[local.current.length - 1]
+    let x = (sample.clientX - v.x) / v.zoom
+    let y = (sample.clientY - v.y) / v.zoom
+    // Eased toward the pointer rather than put on it, the hand's tremor taken
+    // out of the line, as Excalidraw's laser does. By time, not per sample:
+    // a mouse giving a thousand samples a second is eased as one giving 125.
+    if (prev) {
+      const k = 1 - Math.exp(-Math.max(0, t - prev.t) / STREAMLINE_MS)
+      x = prev.x + (x - prev.x) * k
+      y = prev.y + (y - prev.y) * k
+      if (Math.hypot(x - prev.x, y - prev.y) * v.zoom < 1) return
+    }
+    const at: LaserPoint = { x, y, t, ...(start && { start }) }
     local.current.push(at)
     outbox.current.push(at)
     if (!still.current) spawn(particles.current, settingsRef.current.effect, at, prev ? Math.hypot(at.x - prev.x, at.y - prev.y) * v.zoom : 0, settingsRef.current.color, v.zoom)
@@ -274,7 +379,7 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
         e.currentTarget.setPointerCapture(e.pointerId)
         held.current = true
         pointer.current = { x: e.clientX, y: e.clientY }
-        add(e.clientX, e.clientY)
+        add(e.nativeEvent, true)
         kick()
       }}
       onPointerMove={e => {
@@ -284,7 +389,7 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
           // Every sample the pointer gave, not just the last of the frame:
           // a fast flick is a line, not a few dots.
           const samples = e.nativeEvent.getCoalescedEvents?.() ?? []
-          for (const s of samples.length ? samples : [e.nativeEvent]) add(s.clientX, s.clientY)
+          for (const s of samples.length ? samples : [e.nativeEvent]) add(s)
         }
         kick()
       }}

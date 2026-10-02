@@ -57,7 +57,7 @@ import { insertTrace } from '../lib/traceWrites'
 import { cropClip, flipInBox } from '../lib/traceFlip'
 import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
 import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
-import { setActionRecorder, type ActionEntry } from '../lib/actionHistory'
+import { setActionRecorder, setHistoryReach, type ActionEntry } from '../lib/actionHistory'
 import { layerChangeAdopts, withLayerUndo } from '../lib/layerUndo'
 import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
@@ -1558,6 +1558,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       store.unmarkTraceDeleted(id)
       knownTraceIdsRef.current?.delete(id)
       undoStackRef.current = undoStackRef.current.filter(op => !((op.kind === 'add' || op.kind === 'update') && op.traceId === id))
+      showReach()
       // Then'd, not just called: a query is only sent once it's awaited.
       if (supabase) (supabase.from('traces') as any).delete().eq('id', id).then(({ error }: { error: unknown }) => {
         if (error) console.error('[text] could not remove an empty text:', error)
@@ -1899,6 +1900,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // small/bounded to avoid unbounded memory growth in a browser tab.
   const UNDO_COALESCE_WINDOW_MS = 800
   const MAX_UNDO_DEPTH = 100
+  // Whether an update changes anything. A click on a trace ends a drag that
+  // took it nowhere, and that was a step: the next Ctrl+Z took back nothing.
+  const changesSomething = (before: Partial<Trace>, after: Partial<Trace>) =>
+    (Object.keys(after) as (keyof Trace)[]).some(k => before[k] !== after[k] && JSON.stringify(before[k]) !== JSON.stringify(after[k]))
 
   // Read from the profile rather than from this atrium. It used to be keyed by
   // lobby, so every new atrium quietly reset it to twenty.
@@ -1931,6 +1936,16 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const undoStackRef = useRef<UndoOp[]>([])
   const redoStackRef = useRef<UndoOp[]>([])
   const maxUndoDepthRef = useRef(getStoredUndoDepth())
+  // Whether there's a step to undo or redo, for the buttons (lib/actionHistory).
+  const showReach = () => setHistoryReach(undoStackRef.current.length > 0, redoStackRef.current.length > 0)
+  // A new step: the oldest goes past the depth kept, and what was undone can
+  // no longer be redone.
+  const pushUndo = useCallback((op: UndoOp) => {
+    undoStackRef.current.push(op)
+    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
+    redoStackRef.current = []
+    showReach()
+  }, [])
 
   // The history is its atrium's, and ends when the atrium is left. With it go
   // the files of traces deleted there, kept until now in case an undo brought
@@ -1938,6 +1953,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   useEffect(() => () => {
     undoStackRef.current = []
     redoStackRef.current = []
+    setHistoryReach(false, false)
     if (isDesktop && lobbyId) void import('../lib/localDb').then(m => m.releaseHeldMedia(lobbyId))
   }, [lobbyId])
   const knownTraceIdsRef = useRef<Set<string> | null>(null)
@@ -1954,6 +1970,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       while (undoStackRef.current.length > maxUndoDepthRef.current) {
         undoStackRef.current.shift()
       }
+      showReach()
     }
     window.addEventListener('lobby-undo-depth-changed', handleUndoDepthChanged as EventListener)
     return () => window.removeEventListener('lobby-undo-depth-changed', handleUndoDepthChanged as EventListener)
@@ -2009,15 +2026,14 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       last.ts = now
       return
     }
-    stack.push({ kind: 'update', traceId, before, after: { ...after }, ts: now })
-    if (stack.length > maxUndoDepthRef.current) stack.shift()
-    redoStackRef.current = []
+    if (changesSomething(before, after)) pushUndo({ kind: 'update', traceId, before, after: { ...after }, ts: now })
   }, [])
 
   // Pushes every trace moved together in a multi-select drag as ONE undo
   // step (see the 'batch' UndoOp comment above). Falls back to a plain
   // 'update' push for the trivial single-trace case.
-  const pushBatchUpdateOp = useCallback((ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[], coalesce = false) => {
+  const pushBatchUpdateOp = useCallback((all: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[], coalesce = false) => {
+    const ops = all.filter(op => changesSomething(op.before, op.after))
     if (ops.length === 0) return
     // The same traces changed again straight after (a colour picker dragged
     // across a selection): still the one step, as pushUpdateOp does for one.
@@ -2033,16 +2049,10 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       return
     }
     if (ops.length === 1) {
-      const stack = undoStackRef.current
-      stack.push({ kind: 'update', traceId: ops[0].traceId, before: ops[0].before, after: { ...ops[0].after }, ts: Date.now() })
-      if (stack.length > maxUndoDepthRef.current) stack.shift()
-      redoStackRef.current = []
+      pushUndo({ kind: 'update', traceId: ops[0].traceId, before: ops[0].before, after: { ...ops[0].after }, ts: Date.now() })
       return
     }
-    const stack = undoStackRef.current
-    stack.push({ kind: 'batch', ops, ts: Date.now() })
-    if (stack.length > maxUndoDepthRef.current) stack.shift()
-    redoStackRef.current = []
+    pushUndo({ kind: 'batch', ops, ts: Date.now() })
   }, [])
 
   const inOneStep = (action: () => void) => {
@@ -2067,15 +2077,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // single-trace case, matching pushBatchUpdateOp's pattern.
   const pushBatchAddOp = useCallback((newTraces: Trace[]) => {
     if (newTraces.length === 0) return
-    if (newTraces.length === 1) {
-      undoStackRef.current.push({ kind: 'add', traceId: newTraces[0].id, trace: cloneTraceSnapshot(newTraces[0]) })
-      if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
-      redoStackRef.current = []
-      return
-    }
-    undoStackRef.current.push({ kind: 'batchAdd', traces: newTraces.map(cloneTraceSnapshot) })
-    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
-    redoStackRef.current = []
+    pushUndo(newTraces.length === 1
+      ? { kind: 'add', traceId: newTraces[0].id, trace: cloneTraceSnapshot(newTraces[0]) }
+      : { kind: 'batchAdd', traces: newTraces.map(cloneTraceSnapshot) })
   }, [])
 
   // One undo step for everything deleted at once: a single trace as a plain
@@ -2083,11 +2087,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   // deleting a selected group of twelve took twelve Ctrl+Z to bring back.
   const pushDeleteOp = useCallback((items: { trace: Trace; links: TraceLink[] }[]) => {
     if (items.length === 0) return
-    undoStackRef.current.push(items.length === 1
+    pushUndo(items.length === 1
       ? { kind: 'delete', trace: cloneTraceSnapshot(items[0].trace), links: items[0].links }
       : { kind: 'batchDelete', items: items.map(item => ({ trace: cloneTraceSnapshot(item.trace), links: item.links })) })
-    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
-    redoStackRef.current = []
   }, [])
 
   // Detect newly-created traces (via the "Leave a Trace" panel, duplication,
@@ -2262,16 +2264,13 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
 
   // Actions done elsewhere -- the Layer panel's, the group changes below --
   // take their place in this history as they happen.
-  useEffect(() => setActionRecorder(entry => {
-    undoStackRef.current.push({ kind: 'action', entry })
-    if (undoStackRef.current.length > maxUndoDepthRef.current) undoStackRef.current.shift()
-    redoStackRef.current = []
-  }), [])
+  useEffect(() => setActionRecorder(entry => pushUndo({ kind: 'action', entry })), [])
 
   const undo = useCallback(() => {
     const op = undoStackRef.current.pop()
     if (!op) return
     redoStackRef.current.push(op)
+    showReach()
     applyUndoOp(op, 'undo')
   }, [applyUndoOp])
 
@@ -2279,6 +2278,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const op = redoStackRef.current.pop()
     if (!op) return
     undoStackRef.current.push(op)
+    showReach()
     applyUndoOp(op, 'redo')
   }, [applyUndoOp])
 
@@ -2631,9 +2631,7 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       top.ts = now
       return
     }
-    stack.push({ kind: 'links', before, after, ts: now })
-    if (stack.length > maxUndoDepthRef.current) stack.shift()
-    redoStackRef.current = []
+    pushUndo({ kind: 'links', before, after, ts: now })
   }, [])
 
   const clearLinkSelection = () => {

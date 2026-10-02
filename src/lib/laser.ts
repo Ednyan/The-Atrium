@@ -38,7 +38,8 @@ export function saveLaserSettings(settings: LaserSettings) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch { /* kept for this visit only */ }
 }
 
-export interface LaserPoint { x: number; y: number; t: number }
+// `start`: the first point of a stroke, not joined to the one before it.
+export interface LaserPoint { x: number; y: number; t: number; start?: boolean }
 export interface LaserTrail { color: string; effect: LaserEffect; trail: number; points: LaserPoint[]; seen: number }
 
 // What's received from others: their trails, by who's pointing. Read by
@@ -48,9 +49,19 @@ let wake: (() => void) | null = null
 // LaserLayer, to be woken when something arrives while it's idle.
 export const onLaserActivity = (fn: (() => void) | null) => { wake = fn }
 
-// What a batch looks like on the wire: points as [x, y, ms before sending].
-// `trail` is missing from versions from before it could be chosen.
-export interface LaserMessage { userId: string; color: string; effect: LaserEffect; trail?: number; points: [number, number, number][] }
+// How often the points drawn are sent, a batch at a time.
+export const SEND_EVERY_MS = 50
+// How far behind the sender someone else's trail is played: a batch is drawn
+// over the time it took to make, as its points were drawn, rather than all at
+// once when it arrives -- which moved the trail in jumps, twenty a second. Two
+// batches' worth, so one arriving a little late still has its turn.
+const PLAYBACK_MS = SEND_EVERY_MS * 2
+
+// What a batch looks like on the wire: points as [x, y, ms before sending],
+// and a fourth number, 1, on a stroke's first. Both that and `trail` are
+// missing from versions from before them -- which, given them, read the
+// first three numbers and pass over the rest.
+export interface LaserMessage { userId: string; color: string; effect: LaserEffect; trail?: number; points: number[][] }
 
 export function receiveLaser(message: LaserMessage) {
   if (!message || typeof message.userId !== 'string' || !Array.isArray(message.points)) return
@@ -62,7 +73,9 @@ export function receiveLaser(message: LaserMessage) {
   trail.seen = now
   for (const p of message.points.slice(0, 64)) {
     if (!Array.isArray(p) || !p.every(Number.isFinite)) continue
-    trail.points.push({ x: p[0], y: p[1], t: now - Math.max(0, Math.min(500, p[2])) })
+    // Its moment may be still to come: LaserLayer shows only those whose has.
+    if (p.length < 3) continue
+    trail.points.push({ x: p[0], y: p[1], t: now + PLAYBACK_MS - Math.max(0, Math.min(500, p[2])), start: p[3] === 1 })
   }
   remoteTrails.set(message.userId, trail)
   wake?.()

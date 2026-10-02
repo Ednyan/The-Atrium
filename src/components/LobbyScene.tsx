@@ -49,7 +49,7 @@ import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
-import QuickBar, { QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
+import QuickBar, { HistoryButtons, QUICK_ORDER, type PlaceTool, type QuickAction } from './QuickBar'
 import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
 import SharePanel from './SharePanel'
@@ -1142,9 +1142,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     })
   }
 
-  // Undo and redo while drawing: TraceOverlay's, once every stroke drawn so
-  // far is written -- each is a step from then.
-  const stepDrawing = async (direction: 'undo' | 'redo') => {
+  // Undo and redo: TraceOverlay's, once every stroke drawn so far is written
+  // -- each is a step from then. For the buttons, and the keys while drawing.
+  const stepHistory = async (direction: 'undo' | 'redo') => {
     await sessionRef.current?.queue
     window.dispatchEvent(new Event(direction === 'undo' ? 'atrium:undo' : 'atrium:redo'))
   }
@@ -1214,8 +1214,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     else void startDrawing()
   }
   // The key handler is registered once; these change every render.
-  const drawingKeysRef = useRef({ toggleDrawing, leaveDrawing, stepDrawing })
-  drawingKeysRef.current = { toggleDrawing, leaveDrawing, stepDrawing }
+  const drawingKeysRef = useRef({ toggleDrawing, leaveDrawing, stepHistory })
+  drawingKeysRef.current = { toggleDrawing, leaveDrawing, stepHistory }
 
   // Keep drawing mode ref in sync
   useEffect(() => {
@@ -1833,20 +1833,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The drawing's own keys. TraceOverlay's Ctrl+Z (trace undo/redo) and
       // its Delete (remove selected traces) both step aside while
       // isDrawingMode is active -- see the isDrawingModeRef guards there. Undo
-      // is TraceOverlay's still, once the strokes drawn are saved (stepDrawing).
+      // is TraceOverlay's still, once the strokes drawn are saved (stepHistory).
       if (isDrawingModeRef.current) {
         const mod = e.ctrlKey || e.metaKey
         if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
           e.preventDefault()
           e.stopPropagation()
-          void drawingKeysRef.current.stepDrawing('undo')
+          void drawingKeysRef.current.stepHistory('undo')
         }
         // Ctrl+Y as well as Ctrl+Shift+Z: the first is what Windows apps use,
         // the second what design tools do, and people arrive from both.
         if (mod && ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y')) {
           e.preventDefault()
           e.stopPropagation()
-          void drawingKeysRef.current.stepDrawing('redo')
+          void drawingKeysRef.current.stepHistory('redo')
         }
         // Escape leaves. Every stroke is kept already.
         if (e.key === 'Escape') {
@@ -4769,11 +4769,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           />
         )}
       </div>
+        {/* Along the bottom: undo and redo, then Controls -- which scrolls,
+            open, in what the column leaves it. */}
+        <div className="min-h-0 flex items-end gap-2">
+        {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
         {/* Instructions. A click anywhere on it opens or closes it, not only on
             its title -- open, it is a list to read, with nothing else to click. */}
         <div
           data-hud="true"
-          className="relative min-h-0 overflow-y-auto px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto cursor-pointer select-none"
+          className="relative max-h-full overflow-y-auto px-4 py-[0.3125rem] border border-nier-border/40 font-mono pointer-events-auto cursor-pointer select-none"
           style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
           onClick={() => setControlsMinimized(!controlsMinimized)}
           title={controlsMinimized ? t('common.open') : t('common.close')}
@@ -4821,6 +4825,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
 
@@ -5172,23 +5177,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   </div>
                 )}
 
-                {/* Undo and redo: the atrium's own, each stroke and erasure a
-                    step of it. Nothing to save, and nothing to leave by here:
-                    every stroke keeps itself, and the quick bar, the Draw
-                    button or Esc end drawing. */}
-                <button
-                  onClick={() => void stepDrawing('undo')}
-                  className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
-                >
-                  {t('common.undo')}
-                </button>
-                <button
-                  onClick={() => void stepDrawing('redo')}
-                  className="bg-nier-blackLight hover:bg-nier-bg/10 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
-                >
-                  {t('common.redo')}
-                </button>
-
+                {/* Nothing to save, and nothing to leave by here: every
+                    stroke keeps itself, and the quick bar, the Draw button or
+                    Esc end drawing. Undo and redo are the buttons at the
+                    bottom left, each stroke and erasure a step. */}
                 {/* Every stroke of the drawing, as one step. */}
                 {drawingMembers.size > 0 && (
                   <button

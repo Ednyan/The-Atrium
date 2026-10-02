@@ -7,6 +7,8 @@
 // closures, undo and redo, through recordAction. Without a recorder (nothing
 // mounted to undo into) an action simply isn't recorded.
 
+import { useSyncExternalStore } from 'react'
+
 export interface ActionEntry {
   label: string
   undo: () => void | Promise<void>
@@ -26,3 +28,20 @@ export function setActionRecorder(next: (entry: ActionEntry) => void): () => voi
 export function recordAction(entry: ActionEntry) {
   recorder?.(entry)
 }
+
+// Whether the history has a step to undo, and one to redo: set by
+// TraceOverlay as it changes, read by the undo and redo buttons (LobbyScene).
+let reach = { undo: false, redo: false }
+const watchers = new Set<() => void>()
+const watch = (fn: () => void) => {
+  watchers.add(fn)
+  return () => { watchers.delete(fn) }
+}
+
+export function setHistoryReach(undo: boolean, redo: boolean) {
+  if (reach.undo === undo && reach.redo === redo) return
+  reach = { undo, redo }
+  watchers.forEach(fn => fn())
+}
+
+export const useHistoryReach = () => useSyncExternalStore(watch, () => reach)

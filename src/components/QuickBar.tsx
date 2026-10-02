@@ -27,6 +27,7 @@
 //     them to stand out from the atrium's background).
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useHistoryReach } from '../lib/actionHistory'
 import { useTranslation } from '../lib/i18n'
 import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type LaserSettings } from '../lib/laser'
 import type { TranslationKey } from '../locales/en'
@@ -101,6 +102,43 @@ const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
 // plain -- both false for the first kind.
 export type ToolKinds = { select: boolean; text: boolean }
 type KindedTool = keyof ToolKinds
+
+// Undo and redo as buttons, for the history Ctrl+Z walks, each greyed out
+// with nothing to take back or bring back. A component of its own, so the
+// history changing redraws these two and nothing else.
+const HISTORY = [
+  { direction: 'undo', label: 'common.undo', keys: 'Ctrl+Z', icon: 'M9 14l-4 -4l4 -4M5 10h11a4 4 0 1 1 0 8h-1' },
+  { direction: 'redo', label: 'common.redo', keys: 'Ctrl+Shift+Z', icon: 'M15 14l4 -4l-4 -4M19 10h-11a4 4 0 1 0 0 8h1' },
+] as const
+
+export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo') => void }) {
+  const { t } = useTranslation()
+  const reach = useHistoryReach()
+  return (
+    <div
+      data-hud="true"
+      className="shrink-0 flex border border-nier-border/40 pointer-events-auto"
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
+    >
+      {HISTORY.map(({ direction, label, keys, icon }) => (
+        <button
+          key={direction}
+          type="button"
+          data-history={direction}
+          disabled={!reach[direction]}
+          onClick={() => onStep(direction)}
+          aria-label={t(label)}
+          title={`${t(label)} — ${keys}`}
+          className="w-9 h-8 flex items-center justify-center text-nier-bg/80 transition-colors hover:text-nier-bg hover:bg-nier-bg/10 disabled:opacity-30 disabled:pointer-events-none"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d={icon} />
+          </svg>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, onAction, onKind, onLaserSettings }: {
   armed: PlaceTool | null
