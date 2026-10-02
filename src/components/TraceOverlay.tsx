@@ -33,7 +33,7 @@ import { throughRelay, toEmbedUrl } from '../lib/embedUrl'
 import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, siblingsOf, topLevel, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
-import { boxContains, frameAround, heldBy, isFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
+import { boxContains, frameAround, heldBy, isFrame, newFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -63,6 +63,7 @@ import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
+import SheetTrace from './SheetTrace'
 
 // Custom fonts: drop a font file -- or a whole Google-Fonts-style family
 // folder -- into src/assets/fonts. Each family becomes ONE Font Family
@@ -5107,32 +5108,9 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     const store = useGameStore.getState()
     const groups = new Set(store.layers.map(l => l.id))
     const stack = topLevel(store.traces, store.layers)
-    const preset = currentTracePreset(lobbyId)
-    const draft: Trace = {
-      id: '',
-      userId,
-      username,
-      type: 'frame',
-      content: firstFreeName(store.traces.filter(isFrame).map(f => f.content), n => t('atrium.frame.numbered', { n })),
-      x: box.cx,
-      y: box.cy,
-      width: Math.round(box.halfW * 2),
-      height: Math.round(box.halfH * 2),
-      scaleX: 1,
-      scaleY: 1,
-      rotation: 0,
-      createdAt: '',
-      showBorder: true,
-      showBackground: false,
-      showShadow: false,
-      showFilename: false,
-      borderColor: preset.border,
-      fillColor: preset.fill,
-      borderWidth: 2,
-      borderRadius: 8,
-      // Under everything, so what it holds is drawn over it.
-      orderKey: keyAt(stack, 0) ?? keysOnTop(stack)[0],
-    }
+    const name = firstFreeName(store.traces.filter(isFrame).map(f => f.content), n => t('atrium.frame.numbered', { n }))
+    // Under everything, so what it holds is drawn over it.
+    const draft = newFrame(box, name, { userId, username }, currentTracePreset(lobbyId), keyAt(stack, 0) ?? keysOnTop(stack)[0])
     // There at once (lib/traceWrites), written behind.
     const frame = insertTrace(buildTraceInsertRow(draft, userId, username, lobbyId, 0, 0), message => showToast(t('atrium.error.frameFailed', { message })))
     const all = useGameStore.getState().traces
@@ -6644,6 +6622,9 @@ return (
         </div>
       )}
 
+
+      {/* A spreadsheet's sheet or chart, drawn from its file. */}
+      {(trace.type === 'sheet' || trace.type === 'chart') && <SheetTrace trace={trace} />}
 
       {/* Paged PDF. The page image is rendered on demand and cached
           per trace+page (see documentPages), so only the page being

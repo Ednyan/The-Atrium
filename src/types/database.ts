@@ -8,7 +8,7 @@ export interface Database {
           created_at: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame' | 'sheet' | 'chart'
           content: string
           position_x: number
           position_y: number
@@ -22,7 +22,7 @@ export interface Database {
           created_at?: string
           user_id: string
           username: string
-          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
+          type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame' | 'sheet' | 'chart'
           content: string
           position_x: number
           position_y: number
@@ -36,7 +36,7 @@ export interface Database {
           created_at?: string
           user_id?: string
           username?: string
-          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
+          type?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame' | 'sheet' | 'chart'
           content?: string
           position_x?: number
           position_y?: number
@@ -67,7 +67,7 @@ export interface Trace {
   id: string
   userId: string
   username: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame'
+  type: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | 'frame' | 'sheet' | 'chart'
   content: string
   x: number
   y: number

@@ -28,6 +28,8 @@ const KIND_LABEL: Record<TraceKind, TranslationKey> = {
   frame: 'atrium.trace.type.frame',
   shape: 'atrium.trace.type.shape',
   path: 'atrium.trace.shape.path',
+  sheet: 'atrium.trace.type.sheet',
+  chart: 'atrium.trace.type.chart',
 }
 
 const SELECT = 'w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60'

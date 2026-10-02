@@ -54,6 +54,8 @@ import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
 import SharePanel from './SharePanel'
 import { ImportTooLargeError, importIntoAtrium } from '../lib/atriumFile'
 import { createPdfTrace, pageRows } from '../lib/pdfTraces'
+import { importSpreadsheet } from '../lib/sheetTraces'
+import { SPREADSHEET_FILE } from '../lib/spreadsheet'
 import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
 import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib/laser'
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
@@ -1998,6 +2000,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       } else {
         showToast(t('atrium.import.failed', { message: e?.message ?? '' }))
       }
+    }
+  }
+
+  // A spreadsheet's sheets and charts, placed centred on `at` (lib/sheetTraces).
+  const spreadsheetInputRef = useRef<HTMLInputElement>(null)
+  const importSpreadsheetHere = async (file: File, at: { x: number; y: number }) => {
+    if (!canEditRef.current || !userId) return
+    try {
+      await importSpreadsheet(file, at, { lobbyId, userId, username })
+    } catch (e: any) {
+      console.error('Spreadsheet import failed:', file.name, e)
+      showToast(t('atrium.sheet.failed', { name: file.name, message: e?.message ?? '' }))
     }
   }
 
@@ -3988,6 +4002,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
 
+    // A dropped spreadsheet becomes its sheets and charts, in a frame of
+    // their own (lib/sheetTraces). Desktop only, as PDFs are.
+    const droppedSheets = isDesktop ? droppedFiles.filter(f => SPREADSHEET_FILE.test(f.name)) : []
+    if (droppedSheets.length > 0) {
+      for (const sheet of droppedSheets) await importSpreadsheetHere(sheet, { x: worldX, y: worldY })
+      return
+    }
+
     const processDroppedFiles = () => placeFilesAsTraces(droppedFiles, worldX, worldY)
 
     // Anything dragged straight off a webpage (an <img>, a link, a URL) is a
@@ -5301,6 +5323,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.document')}`, type: 'document' as const, shape: undefined },
+                { label: `◇ ${t('atrium.trace.type.spreadsheet')}`, type: 'sheet' as const, shape: undefined },
               ] : []),
             ]).map((item) => (
               <button
@@ -5323,6 +5346,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   // opened, taking in what lies loose there (TraceOverlay).
                   if (item.type === 'frame') {
                     setFrameRequest({ x: anchor.x, y: anchor.y })
+                    return
+                  }
+                  // A spreadsheet: picked, then placed where the menu was opened.
+                  if (item.type === 'sheet') {
+                    importAnchorRef.current = anchor
+                    spreadsheetInputRef.current?.click()
                     return
                   }
 
@@ -5392,6 +5421,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           const file = e.target.files?.[0]
           e.target.value = ''
           if (file) void importAtriumHere(file, importAnchorRef.current)
+        }}
+      />
+      <input
+        ref={spreadsheetInputRef}
+        type="file"
+        accept=".xlsx,.xlsm,.ods,.csv"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) void importSpreadsheetHere(file, importAnchorRef.current)
         }}
       />
 

@@ -13,6 +13,8 @@
 // A deleted frame leaves its traces' frameId behind, pointing at nothing,
 // which reads as no frame; undo brings the frame back holding what it held.
 
+import type { Trace } from '../types/database'
+
 export interface FrameBox {
   cx: number
   cy: number
@@ -28,6 +30,39 @@ export interface Framed {
 }
 
 export const isFrame = (trace: { type: string }) => trace.type === 'frame'
+
+// A new frame over `box`, as every frame starts: titled `name`, outlined in
+// the atrium's colours, no background, its id the database's to give. At
+// `orderKey` -- the bottom of the stack, so what it holds is drawn over it.
+export function newFrame(
+  box: FrameBox, name: string, who: { userId: string; username: string },
+  colours: { border: string; fill: string }, orderKey: string,
+): Trace {
+  return {
+    id: '',
+    userId: who.userId,
+    username: who.username,
+    type: 'frame',
+    content: name,
+    x: box.cx,
+    y: box.cy,
+    width: Math.round(box.halfW * 2),
+    height: Math.round(box.halfH * 2),
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    createdAt: '',
+    showBorder: true,
+    showBackground: false,
+    showShadow: false,
+    showFilename: false,
+    borderColor: colours.border,
+    fillColor: colours.fill,
+    borderWidth: 2,
+    borderRadius: 8,
+    orderKey,
+  }
+}
 
 export const boxContains = (box: FrameBox, x: number, y: number) =>
   Math.abs(x - box.cx) <= box.halfW && Math.abs(y - box.cy) <= box.halfH

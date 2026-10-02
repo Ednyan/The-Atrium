@@ -11,7 +11,8 @@
 // selection is that selection alone, whatever else is near it.
 //
 // Embeds, audio, video and documents show as cards with their name: what
-// plays or loads inside them can't be pictured. Lights are drawn; usernames
+// plays or loads inside them can't be pictured. Sheets and charts are drawn as
+// the canvas draws them (lib/sheetDraw). Lights are drawn; usernames
 // and descriptions are left off, as labels rather than part of the picture.
 //
 // One scene, drawn through a Painter: onto a canvas for PNG, into markup for
@@ -28,6 +29,8 @@ import { fontPxOf, resolveFontFamilyCss, wrapLines } from './textFit'
 import { asStrokeData, renderStrokeData, strokeDensity } from './brushes'
 import { isPathTrace, pathWorldBounds } from './pathBounds'
 import { cropOf } from './traceCrop'
+import { chartSvg, sheetFile, sheetRows, sheetSvg } from './sheetDraw'
+import { currentLanguage } from './i18n'
 import { isDesktop } from './supabase'
 
 export type ExportScale = 1 | 2 | 3
@@ -258,7 +261,7 @@ const readAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
 // What a file is, from its name, for one read as bare bytes.
 const MIME: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
-  svg: 'image/svg+xml', avif: 'image/avif', ico: 'image/x-icon', pdf: 'application/pdf',
+  svg: 'image/svg+xml', avif: 'image/avif', ico: 'image/x-icon', pdf: 'application/pdf', json: 'application/json',
   mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
 }
 
@@ -290,7 +293,10 @@ export async function fetchMedia(url: string): Promise<Blob | null> {
 
 async function loadPicture(url: string): Promise<Picture | null> {
   const blob = await fetchMedia(url)
-  if (!blob) return null
+  return blob ? pictureOf(blob) : null
+}
+
+async function pictureOf(blob: Blob): Promise<Picture | null> {
   const objectUrl = URL.createObjectURL(blob)
   try {
     const img = new Image()
@@ -301,6 +307,18 @@ async function loadPicture(url: string): Promise<Picture | null> {
     URL.revokeObjectURL(objectUrl)
     return null
   }
+}
+
+// A sheet or chart trace, drawn `density` pixels to a unit and stretched to
+// its box, as the canvas stretches it.
+async function sheetPicture(trace: Trace, density: number): Promise<Picture | null> {
+  const data = trace.mediaUrl ? await sheetFile(trace.mediaUrl) : null
+  if (!data) return null
+  const { width, height } = baseSizeOf(trace)
+  const markup = data.kind === 'chart'
+    ? chartSvg(data, width, height, density, currentLanguage())
+    : sheetSvg(data, 0, sheetRows(data), { width: width * density, height: height * density })
+  return pictureOf(new Blob([markup], { type: 'image/svg+xml' }))
 }
 
 const canvasPicture = (canvas: HTMLCanvasElement): Picture => ({
@@ -565,6 +583,8 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       picture = canvasPicture(renderStrokeData(data, trace.width!, trace.height!, ppw))
     } else if (trace.type === 'image' && (trace.mediaUrl || trace.imageUrl)) {
       picture = await loadPicture((trace.mediaUrl || trace.imageUrl)!)
+    } else if (trace.type === 'sheet' || trace.type === 'chart') {
+      picture = await sheetPicture(trace, options.scale * Math.max(Math.abs(t.scaleX), Math.abs(t.scaleY)))
     } else if ((trace.type === 'embed' || trace.type === 'video') && trace.imageUrl) {
       // A preview it keeps, where it has one.
       picture = await loadPicture(trace.imageUrl)

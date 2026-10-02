@@ -64,6 +64,9 @@ export function baseSizeOf(trace: Trace, natural?: { width: number; height: numb
     case 'document':
       // A4 portrait, for one that kept no size.
       return { width: trace.width || 424, height: trace.height || 600 }
+    case 'sheet':
+    case 'chart':
+      return { width: trace.width || 600, height: trace.height || 400 }
     default:
       return { width: 120, height: 80 }
   }
