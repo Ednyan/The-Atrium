@@ -3,7 +3,7 @@
 // keyboard's focus). It closes by its own button, Escape, or a press anywhere
 // off it; what it opens elsewhere -- a dialog -- closes it too (LobbyScene).
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
 
 // Each icon one path on a 24-unit grid, stroked like the quick bar's
@@ -22,6 +22,16 @@ export const MENU_ICONS = {
   storeLocally: 'M19 18a3.5 3.5 0 0 0 0 -7h-1a5 4.5 0 0 0 -11 -2a4.6 4.4 0 0 0 -2.1 8.4M12 13v9M9 19l3 3l3 -3',
   report: 'M12 9v4M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0zM12 16h.01',
   users: 'M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2M16 3.13a4 4 0 0 1 0 7.75M21 21v-2a4 4 0 0 0 -3 -3.85',
+  maximize: 'M16 4h4v4M14 10l6 -6M8 20h-4v-4M4 20l6 -6M16 20h4v-4M14 14l6 6M8 4h-4v4M4 4l6 6',
+  minimize: 'M5 9h4v-4M3 3l6 6M5 15h4v4M3 21l6 -6M19 9h-4v-4M15 9l6 -6M19 15h-4v4M15 15l6 6',
+  hide: 'M10.585 10.587a2 2 0 0 0 2.829 2.828M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87M3 3l18 18',
+  show: 'M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6',
+  sun: 'M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M3 12h1M12 3v1M20 12h1M12 20v1M5.6 5.6l.7 .7M18.4 5.6l-.7 .7M17.7 17.7l.7 .7M6.3 17.7l-.7 .7',
+  moon: 'M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z',
+  leave: 'M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2M9 12h12l-3 -3M18 15l3 -3',
+  check: 'M5 12l5 5l10 -10',
+  discard: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M10 10l4 4m0 -4l-4 4',
+  close: 'M18 6l-12 12M6 6l12 12',
   controls: 'M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2zM6 10v.01M10 10v.01M14 10v.01M18 10v.01M6 14v.01M18 14v.01M10 14h4',
 } as const
 
@@ -34,16 +44,28 @@ export function MenuIcon({ d, size = 20 }: { d: string; size?: number }) {
 }
 
 // A name drawn out from an icon's edge as the pointer arrives (or the
-// keyboard's focus): for the menu's icons and the quick bar's tools. It goes
-// beside a button marked `peer`, both inside a `group`; pressing it is
-// pressing the button.
-export function SlideLabel({ text, hint, onPress }: { text: string; hint?: string; onPress?: () => void }) {
+// keyboard's focus): beside the icons of the left edge -- the menu, the quick
+// bar -- and below those along the top, which have no room beside them. It
+// goes after a button marked `peer`, both inside a `group`; pressing it is
+// pressing the button. `shown` keeps it out without the pointer.
+const SLIDE = {
+  right: 'absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
+  below: 'absolute top-full right-0 pt-2 z-10 opacity-0 pointer-events-none -translate-y-1 [clip-path:inset(0_0_100%_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
+}
+const SLIDE_SHOWN = {
+  right: 'absolute left-full top-1/2 -translate-y-1/2 pl-2 z-10',
+  below: 'absolute top-full right-0 pt-2 z-10',
+}
+
+export function SlideLabel({ text, hint, onPress, side = 'right', shown = false }: {
+  text: string
+  hint?: string
+  onPress?: () => void
+  side?: 'right' | 'below'
+  shown?: boolean
+}) {
   return (
-    <span
-      aria-hidden="true"
-      onClick={onPress}
-      className="absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]"
-    >
+    <span aria-hidden="true" onClick={onPress} className={shown ? SLIDE_SHOWN[side] : SLIDE[side]}>
       <span
         className="block whitespace-nowrap px-3 py-2 border border-nier-border/40 text-nier-strong text-[11px] tracking-[0.15em] uppercase cursor-pointer"
         style={{ backgroundColor: 'rgb(var(--c-ground) / 0.96)' }}
@@ -52,6 +74,44 @@ export function SlideLabel({ text, hint, onPress }: { text: string; hint?: strin
         {hint && <span className="ml-3 text-nier-bg/50 normal-case tracking-normal">{hint}</span>}
       </span>
     </span>
+  )
+}
+
+// A square button of the HUD that is only its icon, its name drawn out below
+// it under the pointer: the session's controls at the top right, and Save.
+export function HudIconButton({ icon, label, hint, onClick, active, holdLabel, badge, iconClassName, className = '', style, ...rest }: {
+  icon: string
+  label: string
+  hint?: string
+  onClick: () => void
+  active?: boolean
+  // Its name kept out, not only under the pointer: a press that asks to be
+  // sure (Don't Save's second).
+  holdLabel?: boolean
+  // Drawn over the icon: a count.
+  badge?: ReactNode
+  iconClassName?: string
+  className?: string
+  style?: CSSProperties
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'style' | 'className' | 'type'>) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        data-ui-element="true"
+        {...rest}
+        onClick={onClick}
+        aria-label={hint ? `${label} (${hint})` : label}
+        data-active={active}
+        className={`peer atrium-btn relative w-[2.125rem] ${className}`}
+        // Square: .atrium-btn's own padding outranks px-0.
+        style={{ padding: 0, ...style }}
+      >
+        <span className={`flex ${iconClassName ?? ''}`}><MenuIcon d={icon} size={18} /></span>
+        {badge}
+      </button>
+      <SlideLabel text={label} hint={hint} side="below" shown={holdLabel} onPress={rest.disabled ? undefined : onClick} />
+    </div>
   )
 }
 

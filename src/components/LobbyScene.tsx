@@ -4,7 +4,6 @@ import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
-import { DONATE_CUT } from './DonateButton'
 import { currentTracePreset } from '../lib/tracePresets'
 import { readPackingShape } from '../lib/atriumPreferences'
 import { usePresence } from '../hooks/usePresence'
@@ -51,7 +50,7 @@ import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction } from './QuickBar'
 import { formatSize } from '../lib/size'
-import AtriumMenu, { ControlsPanel, MENU_ICONS, MenuIcon } from './AtriumMenu'
+import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel } from './AtriumMenu'
 import { LanguageList } from './LanguageToggle'
 import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
@@ -795,22 +794,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // leaving it to fade out saying the opposite of what had just happened.
   // Frozen at its last live value so the fade finishes the sentence it
   // started.
+  // Its state is in its icon -- a count to save, a pulse while saving, a tick
+  // once saved, a warning when it failed -- since its name shows only under
+  // the pointer.
   const saveLabel = isSavingChanges
-    ? `◇ ${t('atrium.hud.saving')}`
+    ? t('atrium.hud.saving')
     : saveFailed
-      ? `◇ ${t('atrium.hud.notSaved')}`
+      ? t('atrium.hud.notSaved')
       : unsaved > 0
-        ? `◇ ${t('atrium.hud.saveChanges', { count: unsaved })}`
-        : `◇ ${t('atrium.hud.saved')}`
+        ? t('atrium.hud.saveChanges', { count: unsaved })
+        : t('atrium.hud.saved')
+  const saveIcon = isSavingChanges || unsaved > 0 ? MENU_ICONS.save : saveFailed ? MENU_ICONS.report : MENU_ICONS.check
   // A button, and bright, while there's something to save; quiet otherwise.
   const canSave = (unsaved > 0 || saveFailed) && !isSavingChanges
   const saveDim = !canSave
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [discarding, setDiscarding] = useState(false)
   useEffect(() => { if (unsaved === 0) setConfirmDiscard(false) }, [unsaved])
-  const lastSaveLookRef = useRef({ label: saveLabel, dim: saveDim })
-  if (saveBarActive) lastSaveLookRef.current = { label: saveLabel, dim: saveDim }
-  const shownSave = saveBarActive ? { label: saveLabel, dim: saveDim } : lastSaveLookRef.current
+  const lastSaveLookRef = useRef({ label: saveLabel, dim: saveDim, icon: saveIcon })
+  if (saveBarActive) lastSaveLookRef.current = { label: saveLabel, dim: saveDim, icon: saveIcon }
+  const shownSave = saveBarActive ? { label: saveLabel, dim: saveDim, icon: saveIcon } : lastSaveLookRef.current
 
   const [showReportForm, setShowReportForm] = useState(false)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
@@ -928,10 +931,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // while the view pans and zooms around it.
   const committedLayerRef = useRef<{ canvas: HTMLCanvasElement; version: number; view: View | null } | null>(null)
   const [drawingColor, setDrawingColor] = useState('#ffffff')
-  const [drawingWidth, setDrawingWidth] = useState(3)
-  const [drawingSmoothing, setDrawingSmoothing] = useState(30)
-  // 100 is a hard edge, 0 as soft as it goes -- see drawStroke.
-  const [drawingHardness, setDrawingHardness] = useState(100)
+  // Size, smoothing and hardness, the brush's and the eraser's apart: going
+  // from one to the other keeps each as it was left. The eraser starts larger
+  // than the brush. Hardness 100 is a hard edge, 0 as soft as it goes (see
+  // drawStroke).
+  const [toolSettings, setToolSettings] = useState({
+    brush: { width: 3, smoothing: 30, hardness: 100 },
+    eraser: { width: 20, smoothing: 30, hardness: 100 },
+  })
+  const drawingTool = isEraserMode ? 'eraser' : 'brush'
+  const { width: drawingWidth, smoothing: drawingSmoothing, hardness: drawingHardness } = toolSettings[drawingTool]
+  const setToolSetting = (key: 'width' | 'smoothing' | 'hardness') => (value: number) =>
+    setToolSettings(all => ({ ...all, [drawingTool]: { ...all[drawingTool], [key]: value } }))
   const drawingHardnessRef = useRef(100)
   const [pointerOnDrawingCanvas, setPointerOnDrawingCanvas] = useState(false)
   const currentStrokeRef = useRef<StrokePoint[]>([])
@@ -2061,6 +2072,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
 
   const quickAction = (action: QuickAction) => {
+    // Its panel, open or shut: for anyone, and no tool put down for it.
+    if (action === 'locations') {
+      setShowLocationsPanel(open => !open)
+      return
+    }
     if (!canEdit) return
     // The bar always wins: a tool picked here ends whatever tool or mode was
     // under way -- drawing, a shape being placed from the panel, and, in
@@ -4493,35 +4509,31 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono flex items-stretch gap-2 ${canSave ? 'pointer-events-auto' : 'pointer-events-none'}`}
           style={{ opacity: saveBarShown ? 1 : 0, transition: `opacity ${SAVE_FADE_MS}ms ease-out` }}
         >
-          <button
-            type="button"
-            data-ui-element="true"
+          <HudIconButton
+            icon={shownSave.icon}
+            label={shownSave.label}
+            hint={canSave ? 'Ctrl+S' : undefined}
             data-save=""
             onClick={() => { void saveAllChanges() }}
             disabled={!canSave}
-            title="Ctrl+S"
-            className="px-6 py-2.5 text-xs tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
-            style={{
-              clipPath: DONATE_CUT,
-              background: shownSave.dim ? 'rgb(var(--c-accent) / 0.35)' : 'rgb(var(--c-accent))',
-              color: 'rgb(var(--c-ground))',
-              // Carries the colour change between states instead of cutting to
-              // it. Written inline because the shorthand has to replace the
-              // class's transform-only transition rather than sit beside it.
-              transition: 'background-color 400ms ease, transform 150ms ease',
-            }}
-          >
-            {shownSave.label}
-          </button>
+            active={canSave && !saveFailed}
+            iconClassName={isSavingChanges ? 'animate-pulse' : undefined}
+            style={saveFailed && !isSavingChanges ? { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' } : shownSave.dim ? { opacity: 0.6 } : undefined}
+            badge={unsaved > 0 && !isSavingChanges && (
+              <span className="absolute top-0.5 right-1 text-[9px] leading-none tabular-nums font-bold">{unsaved}</span>
+            )}
+          />
           {/* Don't Save, beside Save: back to the atrium as last saved, after
-              a second press to be sure (lib/traceSave discardAllChanges). */}
+              a second press -- its name held out, asking to be sure (lib/traceSave
+              discardAllChanges). */}
           {unsaved > 0 && !isSavingChanges && (
             <>
-              <button
-                type="button"
-                data-ui-element="true"
+              <HudIconButton
+                icon={MENU_ICONS.discard}
+                label={discarding ? t('atrium.hud.discarding') : confirmDiscard ? t('atrium.hud.confirmDiscard') : t('atrium.hud.dontSave')}
                 data-discard={confirmDiscard ? 'confirm' : ''}
                 disabled={discarding}
+                holdLabel={confirmDiscard}
                 onClick={async () => {
                   if (!confirmDiscard) { setConfirmDiscard(true); return }
                   setDiscarding(true)
@@ -4529,41 +4541,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   setDiscarding(false)
                   setConfirmDiscard(false)
                 }}
-                title={t('atrium.hud.discardHint')}
-                className={`px-4 py-2.5 text-xs tracking-[0.2em] uppercase border transition-colors disabled:opacity-40 ${confirmDiscard ? '' : 'border-nier-border/40 text-nier-bg/80 hover:text-nier-bg'}`}
-                style={{
-                  backgroundColor: 'rgb(var(--c-ground) / 0.94)',
-                  ...(confirmDiscard && { borderColor: 'rgb(var(--c-danger) / 0.7)', color: 'rgb(var(--c-danger))' }),
-                }}
-              >
-                {discarding ? t('atrium.hud.discarding') : confirmDiscard ? t('atrium.hud.confirmDiscard') : t('atrium.hud.dontSave')}
-              </button>
+                style={confirmDiscard ? { borderColor: 'rgb(var(--c-danger) / 0.7)', color: 'rgb(var(--c-danger))' } : undefined}
+              />
               {confirmDiscard && !discarding && (
-                <button
-                  type="button"
-                  data-ui-element="true"
-                  onClick={() => setConfirmDiscard(false)}
-                  className="px-4 py-2.5 text-xs tracking-[0.2em] uppercase border border-nier-border/40 text-nier-bg/80 transition-colors hover:text-nier-bg"
-                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-                >
-                  {t('common.cancel')}
-                </button>
+                <HudIconButton icon={MENU_ICONS.close} label={t('common.cancel')} onClick={() => setConfirmDiscard(false)} />
               )}
             </>
           )}
         </div>
       )}
 
-      {/* The three things that are about the session rather than the canvas.
-          Hide UI, the interface's light or dark, and the way out -- in that
-          order, so the one you press by accident least often is furthest from
-          the corner. */}
+      {/* The things that are about the session rather than the canvas: who's
+          here, fullscreen, Hide UI, the interface's light or dark, and the way
+          out -- in that order, so the one you press by accident least often is
+          furthest from the corner. Each its icon, its name drawn out below it
+          under the pointer (HudIconButton). */}
       <div ref={sessionBarRef} className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
         {!uiHidden && (
           <>
             {/* Who's here: how many, and pressed, the list -- with Kick, for
                 the atrium's owner and admins. */}
-            <div className="relative">
+            <div className="group relative">
               <button
                 type="button"
                 data-ui-element="true"
@@ -4571,14 +4569,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 onClick={() => setShowOnlineUsersList(!showOnlineUsersList)}
                 data-active={showOnlineUsersList}
                 aria-expanded={showOnlineUsersList}
-                title={t('atrium.hud.online', { count: onlinePlayerCount })}
                 aria-label={t('atrium.hud.online', { count: onlinePlayerCount })}
-                className="atrium-btn flex items-center gap-1.5"
+                className="peer atrium-btn flex items-center gap-1.5"
               >
                 <MenuIcon d={MENU_ICONS.users} size={16} />
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'rgb(var(--c-emerald))' }} />
                 <span className="tabular-nums" style={{ color: 'rgb(var(--c-emerald))' }}>{onlinePlayerCount}</span>
               </button>
+              {!showOnlineUsersList && <SlideLabel side="below" text={t('atrium.hud.online', { count: onlinePlayerCount })} />}
               {/* Online users list */}
               {showOnlineUsersList && (
                 <div
@@ -4612,48 +4610,40 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              data-ui-element="true"
+            <HudIconButton
+              icon={isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize}
+              label={isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen')}
+              hint="F11"
               onClick={toggleFullscreen}
-              className="atrium-btn"
-              title={isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen')}
-            >
-              ◇ {isFullscreen ? t('atrium.hud.windowed') : t('atrium.hud.fullscreen')}
-            </button>
-            <button
-              type="button"
-              data-ui-element="true"
+              data-fullscreen=""
+            />
+            <HudIconButton
+              icon={MENU_ICONS.hide}
+              label={t('atrium.hud.hideUi')}
               onClick={() => setUiHidden(true)}
-              className="atrium-btn"
-              title={t('atrium.hud.hideInterface')}
-            >
-              ◇ {t('atrium.hud.hideUi')}
-            </button>
+              data-hide-ui=""
+            />
             <ThemeToggle variant="atrium" />
           </>
         )}
 
-        <button
-          type="button"
-          data-ui-element="true"
-          onClick={async () => {
+        {/* The way out; with the interface hidden, the way back to it, faint
+            until reached for. */}
+        <HudIconButton
+          icon={uiHidden ? MENU_ICONS.show : MENU_ICONS.leave}
+          label={uiHidden ? t('atrium.hud.showUi') : t('atrium.hud.leaveAtrium')}
+          data-leave=""
+          onClick={() => {
             if (uiHidden) { setUiHidden(false); return }
             // Changes not saved: asked whether to save them first.
             if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
             else leaveWithTransition()
           }}
-          className={`atrium-btn ${uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}`}
-          style={{
-            // red-300 is 1.65:1 on paper -- a warning nobody can read. The
-            // token carries the red each theme can actually show.
-            borderColor: uiHidden ? undefined : 'rgb(var(--c-danger) / 0.55)',
-            color: uiHidden ? undefined : 'rgb(var(--c-danger))',
-          }}
-          title={uiHidden ? t('atrium.hud.showInterface') : t('atrium.hud.leaveThisAtrium')}
-        >
-          {uiHidden ? `◇ ${t('atrium.hud.showUi')}` : `◇ ${t('atrium.hud.leaveAtrium')}`}
-        </button>
+          className={uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}
+          // red-300 is 1.65:1 on paper -- a warning nobody can read. The token
+          // carries the red each theme can actually show.
+          style={uiHidden ? undefined : { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' }}
+        />
       </div>
 
       {/* The left edge, one column: the atrium's menu at the top, the quick
@@ -4772,20 +4762,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </div>
       {/* Never less than a row of tools: Controls gives way first. */}
       <div className="flex-1 min-h-[2.875rem] flex items-center">
-        {/* The quick bar: a tool for each kind of trace, in the middle of what
-            the menu and Controls leave -- in more columns, when that is short. */}
-        {canEdit && (
-          <QuickBar
-            armed={placeTool}
-            drawing={isDrawingMode}
-            laser={laserActive}
-            laserSettings={laserSettings}
-            kinds={{ select: directSelect, text: plainText }}
-            onAction={quickAction}
-            onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
-            onLaserSettings={changeLaserSettings}
-          />
-        )}
+        {/* The quick bar: a tool for each kind of trace, and Locations, in
+            the middle of what the menu and the usage leave -- in more columns,
+            when that is short. Only Locations, for an atrium only looked at. */}
+        <QuickBar
+          armed={placeTool}
+          drawing={isDrawingMode}
+          laser={laserActive}
+          laserSettings={laserSettings}
+          kinds={{ select: directSelect, text: plainText }}
+          onAction={quickAction}
+          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
+          onLaserSettings={changeLaserSettings}
+          locationsOpen={showLocationsPanel}
+          viewOnly={!canEdit}
+        />
       </div>
         {/* At the foot of the column, how much the atrium holds: the size
             alone, in the unit it has reached (lib/size); its limit, on the
@@ -4868,24 +4859,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       <button
         onClick={() => setShowLayerPanel(!showLayerPanel)}
         data-hud="true"
-        className="atrium-btn fixed bottom-[3.625rem] right-4 font-mono z-[9999] pointer-events-auto"
+        className="atrium-btn fixed bottom-4 right-4 font-mono z-[9999] pointer-events-auto"
       >
         <span className="opacity-60 mr-2">◇</span>
         {showLayerPanel ? t('common.close') : t('atrium.layers.title')}
       </button>
 
-      {/* Locations Button -- directly below Layers (both open panels);
-          visible to everyone (viewing/presenting saved camera views doesn't
-          require edit permission; the panel hides its mutating controls when
-          canEdit is false) */}
-      <button
-        onClick={() => setShowLocationsPanel(!showLocationsPanel)}
-        data-hud="true"
-        className="atrium-btn fixed bottom-4 right-4 font-mono z-[9999] pointer-events-auto"
-      >
-        <span className="opacity-60 mr-2">◇</span>
-        {showLocationsPanel ? t('common.close') : t('atrium.locations.title')}
-      </button>
 
 
 
@@ -5088,10 +5067,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   )
                 })()}
 
-                <DrawSlider label={isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')} value={drawingWidth} min={1} max={60} onChange={setDrawingWidth} />
-                <DrawSlider label={t('atrium.draw.smooth')} value={drawingSmoothing} min={0} max={100} unit="%" onChange={setDrawingSmoothing} />
+                <DrawSlider label={isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')} value={drawingWidth} min={1} max={60} onChange={setToolSetting('width')} />
+                <DrawSlider label={t('atrium.draw.smooth')} value={drawingSmoothing} min={0} max={100} unit="%" onChange={setToolSetting('smoothing')} />
                 {/* Hardness: how sharp the edge is. The eraser has one too. */}
-                <DrawSlider label={t('atrium.draw.hardness')} value={drawingHardness} min={0} max={100} unit="%" onChange={setDrawingHardness} />
+                <DrawSlider label={t('atrium.draw.hardness')} value={drawingHardness} min={0} max={100} unit="%" onChange={setToolSetting('hardness')} />
 
                 {/* Every stroke of the drawing, as one step. Nothing to save
                     here: every stroke keeps itself. Undo and redo are the

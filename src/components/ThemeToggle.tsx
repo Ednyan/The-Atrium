@@ -11,12 +11,12 @@
 
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { useTranslation } from '../lib/i18n'
+import { HudIconButton, MENU_ICONS } from './AtriumMenu'
 
 export default function ThemeToggle({ className = '', variant = 'panel' }: {
   className?: string
-  // Inside an atrium every control shares one definition, so the toggle drops
-  // its own styling and takes that instead -- otherwise it is a different
-  // height from everything standing next to it.
+  // Inside an atrium every control shares one definition, so the toggle is
+  // the HUD's icon button there, as everything standing next to it is.
   variant?: 'panel' | 'atrium'
 }) {
   const { resolved, cycle } = useLandingTheme()
@@ -24,19 +24,30 @@ export default function ThemeToggle({ className = '', variant = 'panel' }: {
 
   const label = resolved === 'dark' ? t('theme.dark') : t('theme.light')
 
+  // In the atrium, an icon among icons, its name drawn out below it.
+  if (variant === 'atrium') {
+    return (
+      <HudIconButton
+        icon={resolved === 'dark' ? MENU_ICONS.moon : MENU_ICONS.sun}
+        label={t('theme.label', { mode: label })}
+        onClick={cycle}
+        data-theme-toggle=""
+        className={className}
+      />
+    )
+  }
+
   return (
     <button
       type="button"
       onClick={cycle}
       title={t('theme.label', { mode: label })}
       aria-label={t('theme.change', { mode: label })}
-      className={variant === 'atrium'
-        ? `atrium-btn ${className}`
-        : `cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors ${className}`}
+      className={`cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors ${className}`}
       // Its own ground and the same cut as its neighbours. Without a
       // background it was transparent, which is fine on a page and wrong over
       // an atrium, where whatever is on the canvas showed through it.
-      style={variant === 'atrium' ? undefined : { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
     >
       {resolved === 'dark' ? '☾' : '☀'}
       <span className="hidden 2xl:inline ml-2">{label}</span>

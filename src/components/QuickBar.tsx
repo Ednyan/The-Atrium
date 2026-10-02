@@ -38,7 +38,7 @@ import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type Laser
 import type { TranslationKey } from '../locales/en'
 
 export type PlaceTool = 'text' | 'rectangle' | 'circle' | 'path' | 'frame'
-export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest'
+export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest' | 'locations'
 
 // Drawn in a 24 box, stroked in the current colour.
 const ICONS: Record<QuickAction, ReactNode> = {
@@ -70,6 +70,8 @@ const ICONS: Record<QuickAction, ReactNode> = {
       <path d="M15.5 3.5 V4.6 M20.5 8.5 H19.4 M19 5 L18.2 5.8 M19 12 L18.2 11.2" strokeLinecap="round" />
     </>
   ),
+  // A pin on the map: the atrium's saved views.
+  locations: <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" strokeLinejoin="round" />,
   pinterest: (
     <>
       <path d="M9 3.5 H15 L14 9 L17 12 H7 L10 9 Z" strokeLinejoin="round" />
@@ -93,8 +95,11 @@ const BOX_TEXT_ICON = (
   </>
 )
 
-// In the order shown; the first nine have number keys.
-export const QUICK_ORDER: QuickAction[] = ['select', 'text', 'rectangle', 'circle', 'path', 'draw', 'image', 'embed', 'frame', 'laser', 'pinterest']
+// In the order shown; the first nine have number keys. Locations opens its
+// panel rather than taking a tool up, and is the one there when the atrium
+// can only be looked at -- saved views are for everyone.
+export const QUICK_ORDER: QuickAction[] = ['select', 'text', 'rectangle', 'circle', 'path', 'draw', 'image', 'embed', 'frame', 'laser', 'pinterest', 'locations']
+const VIEW_ONLY_ORDER: QuickAction[] = ['locations']
 
 const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
   none: 'atrium.tools.effectNone',
@@ -145,7 +150,7 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, onAction, onKind, onLaserSettings }: {
+export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, onAction, onKind, onLaserSettings, locationsOpen, viewOnly = false }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
@@ -154,8 +159,13 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   onAction: (action: QuickAction) => void
   onKind: (tool: KindedTool, second: boolean) => void
   onLaserSettings: (settings: LaserSettings) => void
+  // The Locations panel is open.
+  locationsOpen: boolean
+  // The atrium can only be looked at: no tools, Locations only.
+  viewOnly?: boolean
 }) {
   const { t } = useTranslation()
+  const tools = viewOnly ? VIEW_ONLY_ORDER : QUICK_ORDER
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
   const [flyout, setFlyout] = useState<KindedTool | 'laser' | null>(null)
@@ -165,17 +175,17 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   // auto-fill, which sizes the bar's width as though every tool were in one
   // row.
   const barRef = useRef<HTMLDivElement>(null)
-  const [rows, setRows] = useState(QUICK_ORDER.length)
+  const [rows, setRows] = useState(tools.length)
   useLayoutEffect(() => {
     const room = barRef.current?.parentElement
     if (!room) return
     // A tool is 36px with 4 between; the bar adds 10 (padding and border).
-    const fit = () => setRows(Math.max(1, Math.min(QUICK_ORDER.length, Math.floor((room.clientHeight - 6) / 40))))
+    const fit = () => setRows(Math.max(1, Math.min(tools.length, Math.floor((room.clientHeight - 6) / 40))))
     fit()
     const observer = new ResizeObserver(fit)
     observer.observe(room)
     return () => observer.disconnect()
-  }, [])
+  }, [tools.length])
   const closeTimer = useRef<number | null>(null)
   const keepFlyout = (tool: KindedTool | 'laser') => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
@@ -226,6 +236,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
     frame: t('atrium.trace.type.frame'),
     laser: t('atrium.tools.laser'),
     pinterest: t('atrium.canvas.pinterestBoards'),
+    locations: t('atrium.locations.title'),
   }
   return (
     <div
@@ -239,9 +250,13 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
       className="pointer-events-auto grid grid-flow-col gap-1 p-1 border border-nier-border/40"
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)', gridTemplateRows: `repeat(${rows}, 2.25rem)` }}
     >
-      {QUICK_ORDER.map((action, i) => {
-        const on = action === 'select' ? !armed && !drawing && !laser : action === 'draw' ? drawing : action === 'laser' ? laser : armed === action
-        const key = i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
+      {tools.map((action, i) => {
+        const on = action === 'select' ? !armed && !drawing && !laser
+          : action === 'draw' ? drawing
+          : action === 'laser' ? laser
+          : action === 'locations' ? locationsOpen
+          : armed === action
+        const key = viewOnly ? null : i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {

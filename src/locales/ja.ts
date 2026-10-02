@@ -439,14 +439,10 @@ const ja: Catalogue = {
 
   // ------------------------------------------------------------------ HUD
   'atrium.hud.fullscreen': '全画面',
-  'atrium.hud.windowed': 'ウィンドウ',
   'atrium.hud.leaveFullscreen': '全画面をやめる',
   'atrium.hud.hideUi': 'UI を隠す',
   'atrium.hud.showUi': 'UI を表示',
-  'atrium.hud.hideInterface': '画面まわりを隠します',
-  'atrium.hud.showInterface': '画面まわりを表示します',
   'atrium.hud.leaveAtrium': 'Atrium から出る',
-  'atrium.hud.leaveThisAtrium': 'この atrium から出ます',
   'atrium.hud.recenter': '中心に戻す',
   'atrium.hud.theme': 'Atrium のテーマ',
   'atrium.hud.manage': 'ユーザー権限',

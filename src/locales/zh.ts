@@ -442,14 +442,10 @@ const zh: Catalogue = {
 
   // ------------------------------------------------------------------ HUD
   'atrium.hud.fullscreen': '全屏',
-  'atrium.hud.windowed': '窗口',
   'atrium.hud.leaveFullscreen': '退出全屏',
   'atrium.hud.hideUi': '隐藏界面',
   'atrium.hud.showUi': '显示界面',
-  'atrium.hud.hideInterface': '把界面收起来',
-  'atrium.hud.showInterface': '把界面显示出来',
   'atrium.hud.leaveAtrium': '离开 Atrium',
-  'atrium.hud.leaveThisAtrium': '离开这个 atrium',
   'atrium.hud.recenter': '回到中心',
   'atrium.hud.theme': 'Atrium 主题',
   'atrium.hud.manage': '用户权限',
