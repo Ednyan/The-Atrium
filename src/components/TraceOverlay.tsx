@@ -8676,7 +8676,7 @@ return (
             className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
             style={{
               position: 'fixed',
-              right: '20px',
+              right: 'var(--right-rail)',
               top: '50%',
               transform: 'translateY(-50%)',
               zIndex: MENU_PANEL_Z_INDEX

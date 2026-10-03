@@ -54,7 +54,8 @@ import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type Q
 import { isBoxShape, type BoxShape, type ShapeKind } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
-import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel } from './AtriumMenu'
+import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar } from './AtriumMenu'
+import { AtriumName, ViewReadout } from './AtriumInfo'
 import { LanguageList } from './LanguageToggle'
 import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
@@ -2105,11 +2106,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
 
   const quickAction = (action: QuickAction) => {
-    // Its panel, open or shut: for anyone, and no tool put down for it.
-    if (action === 'locations') {
-      setShowLocationsPanel(open => !open)
-      return
-    }
     if (!canEdit) return
     // The bar always wins: a tool picked here ends whatever tool or mode was
     // under way -- drawing, a shape being placed from the panel, and, in
@@ -4625,10 +4621,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       )}
 
       {/* The things that are about the session rather than the canvas: who's
-          here, fullscreen, Hide UI, the interface's light or dark, and the way
-          out -- in that order, so the one you press by accident least often is
-          furthest from the corner. Each its icon, its name drawn out below it
-          under the pointer (HudIconButton). */}
+          here, the interface's light or dark, and the way out -- in that
+          order, so the one you press by accident least often is furthest from
+          the corner. Each its icon, its name drawn out below it under the
+          pointer (HudIconButton). Viewing the atrium is the right bar's. */}
       <div ref={sessionBarRef} className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
         {!uiHidden && (
           <>
@@ -4683,19 +4679,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 </div>
               )}
             </div>
-            <HudIconButton
-              icon={isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize}
-              label={isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen')}
-              hint="F11"
-              onClick={toggleFullscreen}
-              data-fullscreen=""
-            />
-            <HudIconButton
-              icon={MENU_ICONS.hide}
-              label={t('atrium.hud.hideUi')}
-              onClick={() => setUiHidden(true)}
-              data-hide-ui=""
-            />
             <ThemeToggle variant="atrium" onToggle={followMyTheme} />
           </>
         )}
@@ -4718,6 +4701,56 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           style={uiHidden ? undefined : { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' }}
         />
       </div>
+
+      {/* The right edge, one column under the top row: the viewing tools in
+          the middle of it (AtriumMenu's ViewBar) -- the panels they open stand
+          clear of it (--right-rail) -- and the usage at its foot. */}
+      {!uiHidden && (
+      <div className="fixed top-[3.75rem] bottom-4 right-4 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
+        <div className="flex-1 min-h-0 flex items-center">
+          <ViewBar items={[
+            { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => setShowLayerPanel(open => !open) },
+            { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => setShowLocationsPanel(open => !open) },
+            { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
+            { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
+            { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
+            ...(isLobbyOwner || isLobbyAdmin ? [{ id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, onSelect: () => setShowThemeCustomization(true) }] : []),
+            { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), apart: !(isLobbyOwner || isLobbyAdmin), onSelect: () => setShowProfileCustomization(true) },
+          ]} />
+        </div>
+        {/* At the foot of the right column, how much the atrium holds: the
+            size alone, in the unit it has reached (lib/size); its limit, on
+            the web, when pointed at -- and the thin line along its foot, how
+            near that it is. As tall as a button, its words the size of theirs. */}
+        {(() => {
+          const sizeBytes = useGameStore.getState().getLobbySizeBytes()
+          const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+          const used = formatSize(sizeBytes, language)
+          const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
+          return (
+            <div
+              data-hud="true"
+              data-usage=""
+              tabIndex={0}
+              title={isDesktop ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
+              className="relative shrink-0 h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+            >
+              <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
+              <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
+              {!isDesktop && (
+                <span className="absolute inset-x-0 bottom-0 h-[2px] bg-nier-border/20">
+                  <span
+                    className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          )
+        })()}
+      </div>
+      )}
 
       {/* The left edge, one column: the atrium's menu at the top, the quick
           bar in what's left, Controls at the bottom. Each was placed on the
@@ -4762,24 +4795,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               />
             ),
           }] : []),
-          ...(isLobbyOwner || isLobbyAdmin ? [{
-            id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true,
-            onSelect: fromMenu(() => setShowThemeCustomization(true)),
-          }] : []),
-          {
-            id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), apart: !(isLobbyOwner || isLobbyAdmin),
-            onSelect: fromMenu(() => setShowProfileCustomization(true)),
-          },
           ...((isLobbyOwner || isLobbyAdmin) && currentLobby ? [{
-            id: 'permissions', icon: MENU_ICONS.permissions, label: t('atrium.hud.manage'),
+            id: 'permissions', icon: MENU_ICONS.permissions, label: t('atrium.hud.manage'), apart: true,
             onSelect: fromMenu(() => setShowLobbyManagement(true)),
           }] : []),
           {
-            id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true,
-            onSelect: fromMenu(recenter),
-          },
-          {
-            id: 'language', icon: MENU_ICONS.language, label: t('welcome.language'),
+            id: 'language', icon: MENU_ICONS.language, label: t('welcome.language'), apart: !((isLobbyOwner || isLobbyAdmin) && currentLobby),
             open: showLanguages,
             onSelect: () => showMenuPanel('languages'),
             panel: (
@@ -4813,7 +4834,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           },
         ]}
       />
-      {/* Undo and redo, beside the menu's button. */}
+      {/* The atrium's name, beside the menu's button; then undo and redo. */}
+      {currentLobby && <AtriumName name={currentLobby.name} />}
       {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
 
       {/* Presentation quick-toggle -- only shown when locations exist. A fixed
@@ -4835,10 +4857,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </div>
       {/* Never less than a row of tools: Controls gives way first. */}
       <div className="flex-1 min-h-[2.875rem] flex items-center">
-        {/* The quick bar: a tool for each kind of trace, and Locations, in
-            the middle of what the menu and the usage leave -- in more columns,
-            when that is short. Only Locations, for an atrium only looked at. */}
-        <QuickBar
+        {/* The quick bar: a tool for each kind of trace, in the middle of what
+            the menu and the readout leave -- in more columns, when that is
+            short. None, for an atrium that can only be looked at. */}
+        {canEdit && <QuickBar
           armed={placeTool}
           drawing={isDrawingMode}
           laser={laserActive}
@@ -4849,41 +4871,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           onAction={quickAction}
           onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
           onLaserSettings={changeLaserSettings}
-          locationsOpen={showLocationsPanel}
-          viewOnly={!canEdit}
-        />
+        />}
       </div>
-        {/* At the foot of the column, how much the atrium holds: the size
-            alone, in the unit it has reached (lib/size); its limit, on the
-            web, when pointed at -- and the thin line along its foot, how near
-            that it is. As tall as a button, its words the size of theirs. */}
-        {(() => {
-          const sizeBytes = useGameStore.getState().getLobbySizeBytes()
-          const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
-          const used = formatSize(sizeBytes, language)
-          const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
-          return (
-            <div
-              data-hud="true"
-              data-usage=""
-              tabIndex={0}
-              title={isDesktop ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
-              className="relative shrink-0 h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
-              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-            >
-              <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
-              <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
-              {!isDesktop && (
-                <span className="absolute inset-x-0 bottom-0 h-[2px] bg-nier-border/20">
-                  <span
-                    className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </span>
-              )}
-            </div>
-          )
-        })()}
+        {/* At the foot of the column: the zoom and the pointer's place. */}
+        <ViewReadout zoom={zoom} />
       </div>
 
       {/* At the foot of the screen, in the middle: what's true of this visit
@@ -4930,15 +4921,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />
       )}
 
-      {/* Layers Button */}
-      <button
-        onClick={() => setShowLayerPanel(!showLayerPanel)}
-        data-hud="true"
-        className="atrium-btn fixed bottom-4 right-4 font-mono z-[9999] pointer-events-auto"
-      >
-        <span className="opacity-60 mr-2">◇</span>
-        {showLayerPanel ? t('common.close') : t('atrium.layers.title')}
-      </button>
 
 
 
@@ -4956,7 +4938,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           <div
             data-ui-element="true"
             data-draw-panel=""
-            className="panel-in-right fixed right-4 top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
+            className="panel-in-right fixed right-[var(--right-rail)] top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
           >
             <div className="relative border-2 border-nier-bg px-4 pt-3 pb-4 w-[220px]">

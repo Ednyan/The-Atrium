@@ -48,9 +48,9 @@ export type PlaceTool = 'text' | BoxShape | 'path' | 'frame'
 export type OtherTrace = 'sound' | 'document' | 'sheet'
 const OTHER_TRACES: OtherTrace[] = ['sound', 'document', 'sheet']
 // What the bar does: take a tool up, or act.
-export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest' | 'locations' | OtherTrace
+export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest' | OtherTrace
 // What the bar shows: a button each. Shapes and Other each hold several.
-export type QuickButton = 'select' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest' | 'locations'
+export type QuickButton = 'select' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest'
 
 // Drawn in a 24 box, stroked in the current colour.
 const ICONS: Record<QuickAction | 'other', ReactNode> = {
@@ -106,8 +106,6 @@ const ICONS: Record<QuickAction | 'other', ReactNode> = {
       <path d="M15.5 3.5 V4.6 M20.5 8.5 H19.4 M19 5 L18.2 5.8 M19 12 L18.2 11.2" strokeLinecap="round" />
     </>
   ),
-  // A pin on the map: the atrium's saved views.
-  locations: <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" strokeLinejoin="round" />,
   pinterest: (
     <>
       <path d="M9 3.5 H15 L14 9 L17 12 H7 L10 9 Z" strokeLinejoin="round" />
@@ -131,11 +129,9 @@ const BOX_TEXT_ICON = (
   </>
 )
 
-// In the order shown; the first nine have number keys. Locations opens its
-// panel rather than taking a tool up, and is the one there when the atrium
-// can only be looked at -- saved views are for everyone.
-export const QUICK_ORDER: QuickButton[] = ['select', 'text', 'shape', 'path', 'draw', 'image', 'embed', 'frame', 'other', 'laser', 'pinterest', 'locations']
-const VIEW_ONLY_ORDER: QuickButton[] = ['locations']
+// In the order shown; the first eight have number keys. (Locations, a way of
+// looking rather than making, is with the viewing tools on the right.)
+export const QUICK_ORDER: QuickButton[] = ['select', 'text', 'shape', 'path', 'draw', 'image', 'embed', 'frame', 'other', 'laser', 'pinterest']
 
 const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
   none: 'atrium.tools.effectNone',
@@ -188,7 +184,7 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, locationsOpen, viewOnly = false }: {
+export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
@@ -200,13 +196,9 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   shapeKind: BoxShape
   onShapeKind: (kind: BoxShape) => void
   onLaserSettings: (settings: LaserSettings) => void
-  // The Locations panel is open.
-  locationsOpen: boolean
-  // The atrium can only be looked at: no tools, Locations only.
-  viewOnly?: boolean
 }) {
   const { t } = useTranslation()
-  const tools = viewOnly ? VIEW_ONLY_ORDER : QUICK_ORDER
+  const tools = QUICK_ORDER
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
   const [flyout, setFlyout] = useState<FlyoutTool | null>(null)
@@ -285,7 +277,6 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
     frame: t('atrium.trace.type.frame'),
     laser: t('atrium.tools.laser'),
     pinterest: t('atrium.canvas.pinterestBoards'),
-    locations: t('atrium.locations.title'),
   }
   return (
     <div
@@ -305,9 +296,8 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
           : action === 'other' ? false
           : action === 'draw' ? drawing
           : action === 'laser' ? laser
-          : action === 'locations' ? locationsOpen
           : armed === action
-        const key = viewOnly || action === 'other' ? null : i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
+        const key = action === 'other' ? null : i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {

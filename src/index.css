@@ -868,6 +868,11 @@ body.dragging * {
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 /* One definition of that edge, at three strengths. */
+/* How far in from the right a panel docked there stands: past the bar of
+   viewing tools down that edge (LobbyScene's right column) -- its 16px from
+   the edge, its 46px, and 8 between. */
+:root { --right-rail: 4.375rem; }
+
 :root {
   --cut-edge: linear-gradient(to bottom right,
     transparent calc(50% - 1px), rgb(var(--c-line) / 0.4) calc(50% - 1px),

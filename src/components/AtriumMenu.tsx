@@ -30,6 +30,8 @@ export const MENU_ICONS = {
   moon: 'M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z',
   leave: 'M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2M9 12h12l-3 -3M18 15l3 -3',
   check: 'M5 12l5 5l10 -10',
+  layers: 'M12 4l-8 4l8 4l8 -4l-8 -4M4 12l8 4l8 -4M4 16l8 4l8 -4',
+  locations: 'M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z',
   discard: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M10 10l4 4m0 -4l-4 4',
   close: 'M18 6l-12 12M6 6l12 12',
   controls: 'M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2zM6 10v.01M10 10v.01M14 10v.01M18 10v.01M6 14v.01M18 14v.01M10 14h4',
@@ -44,16 +46,19 @@ export function MenuIcon({ d, size = 20 }: { d: string; size?: number }) {
 }
 
 // A name drawn out from an icon's edge as the pointer arrives (or the
-// keyboard's focus): beside the icons of the left edge -- the menu, the quick
-// bar -- and below those along the top, which have no room beside them. It
+// keyboard's focus): beside the icons down an edge -- the menu and quick bar on
+// the left, the viewing tools on the right -- and below those along the top,
+// which have no room beside them. It
 // goes after a button marked `peer`, both inside a `group`; pressing it is
 // pressing the button. `shown` keeps it out without the pointer.
 const SLIDE = {
   right: 'absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
+  left: 'absolute right-full top-1/2 -translate-y-1/2 translate-x-1 pr-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_0_0_100%)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
   below: 'absolute top-full right-0 pt-2 z-10 opacity-0 pointer-events-none -translate-y-1 [clip-path:inset(0_0_100%_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
 }
 const SLIDE_SHOWN = {
   right: 'absolute left-full top-1/2 -translate-y-1/2 pl-2 z-10',
+  left: 'absolute right-full top-1/2 -translate-y-1/2 pr-2 z-10',
   below: 'absolute top-full right-0 pt-2 z-10',
 }
 
@@ -61,7 +66,7 @@ export function SlideLabel({ text, hint, onPress, side = 'right', shown = false 
   text: string
   hint?: string
   onPress?: () => void
-  side?: 'right' | 'below'
+  side?: 'right' | 'left' | 'below'
   shown?: boolean
 }) {
   return (
@@ -154,7 +159,7 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
   }, [open])
 
   return (
-    <div ref={rootRef} data-atrium-menu="" className="flex flex-col items-start gap-1 font-mono pointer-events-auto">
+    <div ref={rootRef} data-atrium-menu="" className="relative font-mono pointer-events-auto">
       <button
         type="button"
         data-menu-toggle=""
@@ -172,10 +177,12 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
         <MenuIcon d={MENU_ICONS.menu} size={18} />
       </button>
       {open && (
+        // Over what's below it -- the quick bar -- rather than pushing it
+        // down; its shadow says it's on top.
         <div
           role="menu"
           aria-label={t('atrium.menu.title')}
-          className="panel-in flex flex-col gap-1 p-1 border border-nier-border/40"
+          className="panel-in absolute top-full left-0 mt-1 z-30 flex flex-col gap-1 p-1 border border-nier-border/40 shadow-[0_10px_28px_rgba(0,0,0,0.55)]"
           style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
         >
           {items.map(item => (
@@ -205,6 +212,45 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// The viewing tools, down the right edge: a column of icons as the quick bar
+// is on the left, each name drawn out to its left. What `open` is says what
+// it has open (its panel), pressed.
+export function ViewBar({ items }: { items: MenuItem[] }) {
+  const { t } = useTranslation()
+  return (
+    <div
+      role="toolbar"
+      aria-orientation="vertical"
+      aria-label={t('atrium.tools.view')}
+      data-view-bar=""
+      data-hud="true"
+      className="flex flex-col gap-1 p-1 border border-nier-border/40 font-mono pointer-events-auto"
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
+    >
+      {items.map(item => (
+        <div key={item.id} className="group relative">
+          {item.apart && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
+          <button
+            type="button"
+            data-view={item.id}
+            onClick={item.onSelect}
+            aria-label={item.hint ? `${item.label} (${item.hint})` : item.label}
+            aria-pressed={item.open}
+            className={`peer w-9 h-9 flex items-center justify-center border transition-colors ${
+              item.open
+                ? 'bg-nier-bg text-nier-black border-nier-bg'
+                : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg focus-visible:border-nier-border/60'
+            }`}
+          >
+            <MenuIcon d={item.icon} />
+          </button>
+          <SlideLabel side="left" text={item.label} hint={item.hint} onPress={item.onSelect} />
+        </div>
+      ))}
     </div>
   )
 }

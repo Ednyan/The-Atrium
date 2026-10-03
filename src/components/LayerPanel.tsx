@@ -1308,7 +1308,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       style={{ 
         backgroundColor: 'rgb(var(--c-ground) / 0.98)',
         top: '80px',
-        right: '16px',
+        right: 'var(--right-rail)',
         height: 'calc(100vh - 160px)'
       }}
     >

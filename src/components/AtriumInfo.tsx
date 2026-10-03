@@ -1,39 +1,37 @@
-// Who's here and where: your name, the atrium's with your role in it, and the
-// cursor's place in the world with the zoom. It headed the atrium's menu until
-// the menu became a column of icons (AtriumMenu); kept whole, to be given a
-// corner of its own. Not shown anywhere until then.
+// What the atrium is, and where in it you are looking: its name, beside the
+// menu's button at the top left; the zoom, as a percentage, and the pointer's
+// place in the world, at the foot of the left edge. (Your own name is shown
+// nowhere: you know it.)
 
 import { useGameStore } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
 
-// Where the cursor is in the world, and the zoom. A component of its own,
-// subscribed on its own: the position changes with every movement of the
-// mouse, and nothing else on screen needs drawing again for it.
-export function CursorReadout({ zoom }: { zoom: number }) {
-  const position = useGameStore(state => state.position)
+// The look the two share: a chip as tall as a button, its words a button's.
+const CHIP = 'h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase'
+const GROUND = { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }
+
+export function AtriumName({ name }: { name: string }) {
   return (
-    <p className="text-nier-bg/80 text-[11px] tracking-wider">
-      ({Math.round(position.x)}, {Math.round(position.y)}) • {zoom.toFixed(2)}x
-    </p>
+    <div data-atrium-name="" title={name} className={`${CHIP} max-w-[16rem] text-nier-strong pointer-events-auto`} style={GROUND}>
+      <span className="truncate">{name}</span>
+    </div>
   )
 }
 
-export default function AtriumInfo({ username, atriumName, role, zoom }: {
-  username: string
-  atriumName: string | null
-  role: 'owner' | 'admin' | null
-  zoom: number
-}) {
+// The zoom and the pointer's place. A component of its own, subscribed on its
+// own: the place changes with every movement of the mouse, and nothing else
+// on screen needs drawing again for it.
+export function ViewReadout({ zoom }: { zoom: number }) {
   const { t } = useTranslation()
+  const position = useGameStore(state => state.position)
   return (
-    <div className="font-mono">
-      <p className="text-nier-strong text-xs tracking-[0.1em] uppercase font-bold truncate">{username}</p>
-      {atriumName && (
-        <p className="text-nier-bg/80 text-[11px] tracking-wider truncate">
-          {atriumName} {role === 'owner' && t('atrium.hud.owner')}{role === 'admin' && t('atrium.hud.admin')}
-        </p>
-      )}
-      <CursorReadout zoom={zoom} />
+    <div data-view-readout="" data-hud="true" className={`${CHIP} shrink-0 pointer-events-auto`} style={GROUND}>
+      <span className="text-nier-bg/60">{t('atrium.hud.zoom')}</span>
+      <span className="text-nier-strong tabular-nums tracking-wider">{Math.round(zoom * 100)}%</span>
+      <span className="text-nier-bg/60">X</span>
+      <span className="text-nier-strong tabular-nums tracking-wider -ml-2">{Math.round(position.x)}</span>
+      <span className="text-nier-bg/60">Y</span>
+      <span className="text-nier-strong tabular-nums tracking-wider -ml-2">{Math.round(position.y)}</span>
     </div>
   )
 }

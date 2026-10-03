@@ -232,7 +232,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
   return (
     <div
       className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto"
-      style={{ position: 'fixed', right: '20px', top: '50%', transform: 'translateY(-50%)', zIndex }}
+      style={{ position: 'fixed', right: 'var(--right-rail)', top: '50%', transform: 'translateY(-50%)', zIndex }}
     >
       {/* Corner brackets */}
       <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
