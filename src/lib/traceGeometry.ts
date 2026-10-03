@@ -98,6 +98,24 @@ export function boundsOf(box: { cx: number; cy: number; halfW: number; halfH: nu
   return { minX: box.cx - ex, minY: box.cy - ey, maxX: box.cx + ex, maxY: box.cy + ey }
 }
 
+// The corners of a shape drawn as a polygon, in a box w x h, kept `ix` and
+// `iy` in from its sides (half its outline, so the line stays in the box):
+// the triangle, the diamond and the parallelogram. Null for the rest. One
+// place for the canvas (TraceOverlay), the place preview (LobbyScene) and an
+// exported picture (lib/exportImage), so the three can't drift apart.
+export function shapePolygon(kind: string | null | undefined, w: number, h: number, ix = 0, iy = 0): { x: number; y: number }[] | null {
+  switch (kind) {
+    case 'triangle':
+      return [{ x: 0.5 * w, y: 0.15 * h + iy }, { x: 0.85 * w - ix, y: 0.85 * h - iy }, { x: 0.15 * w + ix, y: 0.85 * h - iy }]
+    case 'diamond':
+      return [{ x: w / 2, y: iy }, { x: w - ix, y: h / 2 }, { x: w / 2, y: h - iy }, { x: ix, y: h / 2 }]
+    case 'parallelogram':
+      return [{ x: 0.25 * w + ix, y: iy }, { x: w - ix, y: iy }, { x: 0.75 * w - ix, y: h - iy }, { x: ix, y: h - iy }]
+    default:
+      return null
+  }
+}
+
 // A polygon's outline as an SVG path with each corner rounded by `radius`
 // (in the points' units) -- a triangle's corner radius, which SVG has no
 // rx/ry for. Each corner's radius stops at half its shorter edge, so

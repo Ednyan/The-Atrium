@@ -23,8 +23,8 @@ import { arrowhead, curveMiddle, restOf, visiblePart, type TraceLink } from './t
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, roundedPath, trimEnds } from './elbow'
 import { curvePath, handlesAt, type PathPoint } from './pathGeometry'
 import { drawRanks } from './order'
-import { baseSizeOf, borderColourOf, boundsOf, roundedPolygonPath, storedTransformOf, traceBox } from './traceGeometry'
-import { shapePaint, shapeStyleOf } from './shapeStyle'
+import { baseSizeOf, borderColourOf, boundsOf, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from './traceGeometry'
+import { ARROW_SCALE, shapePaint, shapeStyleOf } from './shapeStyle'
 import { fontPxOf, resolveFontFamilyCss, wrapLines } from './textFit'
 import { asStrokeData, renderStrokeData, strokeDensity } from './brushes'
 import { isPathTrace, pathWorldBounds } from './pathBounds'
@@ -383,9 +383,9 @@ function drawPath(p: Painter, trace: Trace) {
     p.path(d, { stroke: trace.lightColor ?? '#cbcbcb', strokeWidth: width + 4, round: true, opacity: 0.22 * (trace.lightIntensity ?? 1) })
   }
   p.path(d, { stroke: colour, strokeWidth: width, round: true, opacity })
-  // Arrowheads as the canvas draws them: 3.5 times the line's width, a
-  // triangle reaching out past the end, a diamond centred on it.
-  const m = width * 3.5
+  // Arrowheads as the canvas draws them: ARROW_SCALE times the line's width,
+  // a triangle reaching out past the end, a diamond centred on it.
+  const m = width * ARROW_SCALE
   const ends = pathEnds(points, curve)
   const head = (kind: string | undefined, e: { x: number; y: number; ux: number; uy: number }) => {
     if (!kind || kind === 'none') return
@@ -428,9 +428,8 @@ function drawShape(p: Painter, trace: Trace) {
   const r = trace.cornerRadius || 0
   if (trace.shapeType === 'circle') {
     p.ellipse(bw / 2, bh / 2, bw / 2 - ix, bh / 2 - iy, style)
-  } else if (trace.shapeType === 'triangle') {
-    const pts = [{ x: 0.5 * bw, y: 0.15 * bh + iy }, { x: 0.85 * bw - ix, y: 0.85 * bh - iy }, { x: 0.15 * bw + ix, y: 0.85 * bh - iy }]
-    p.path(roundedPolygonPath(pts, r), style)
+  } else if (shapePolygon(trace.shapeType, bw, bh)) {
+    p.path(roundedPolygonPath(shapePolygon(trace.shapeType, bw, bh, ix, iy)!, r), style)
   } else {
     p.rect(ix, iy, bw - ix * 2, bh - iy * 2, r, style)
   }
@@ -601,7 +600,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
     if (isPathTrace(trace)) {
       const box = pathWorldBounds(trace.shapePoints, trace.shapeOutlineWidth ?? 2)
       if (!box) continue
-      const reach = (trace.shapeOutlineWidth ?? 2) * 3.5
+      const reach = (trace.shapeOutlineWidth ?? 2) * ARROW_SCALE
       take(box.minX - reach, box.minY - reach)
       take(box.maxX + reach, box.maxY + reach)
     } else {

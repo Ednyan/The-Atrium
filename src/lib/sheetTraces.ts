@@ -1,7 +1,8 @@
 // Spreadsheets on the canvas. A spreadsheet file placed becomes what's in it:
 // a sheet trace for each sheet that has anything in it, a chart trace for each
-// chart, side by side -- together in a group, Spreadsheet N, inside a frame
-// titled after the file. One step of undo takes it all away again.
+// chart, side by side -- together in a group named after the file. One step
+// of undo takes it all away again. (They were framed too; the frame was in
+// the way more than it helped.)
 //
 // Each trace's content is a small JSON file it points at (media_url), as a
 // picture's is: what it shows, already read (lib/spreadsheet), so it's never
@@ -13,10 +14,8 @@ import { mapRowToTrace } from '../hooks/useTraces'
 import { createGroup } from '../hooks/useLayers'
 import { uploadTraceFile } from './traceUpload'
 import { currentTracePreset } from './tracePresets'
-import { buildTraceInsertRow } from './traceInsert'
 import { firstFreeName, fileTitle } from './traceNames'
-import { keyAt, keysBetween, keysOnTop, topLevel } from './order'
-import { frameAround, newFrame } from './frames'
+import { keysBetween } from './order'
 import { queueLayerChange } from './layerQueue'
 import { withLayerUndo } from './layerUndo'
 import { readSpreadsheet, type ChartData, type SheetData } from './spreadsheet'
@@ -26,10 +25,9 @@ import type { TraceMaker } from './pdfTraces'
 
 const CHART_SIZE = { width: 600, height: 400 }
 const GAP = 48
-const FRAME_PADDING = 40
 
-// The spreadsheet in `file`, placed centred on `at`. How many traces it made
-// (frame not counted); thrown when it can't be read, or has nothing in it.
+// The spreadsheet in `file`, placed centred on `at`. How many traces it made;
+// thrown when it can't be read, or has nothing in it.
 export async function importSpreadsheet(file: File, at: { x: number; y: number }, who: TraceMaker): Promise<number> {
   const { sheets, charts } = await readSpreadsheet(file, currentLanguage())
   const parts: (SheetData | ChartData)[] = [...sheets, ...charts]
@@ -38,7 +36,7 @@ export async function importSpreadsheet(file: File, at: { x: number; y: number }
   return queueLayerChange(() => withLayerUndo('import spreadsheet', async () => {
     const db = supabase
     if (!db) return 0
-    const { traces, layers } = useGameStore.getState()
+    const { layers } = useGameStore.getState()
     const preset = currentTracePreset(who.lobbyId)
 
     // Left to right, their tops in line, the whole centred on `at`.
@@ -60,16 +58,12 @@ export async function importSpreadsheet(file: File, at: { x: number; y: number }
       urls.push(url)
     }
 
-    // The frame, under everything, so what it holds is over it; the group, on top.
-    const stack = topLevel(traces, layers)
-    const box = frameAround(boxes, FRAME_PADDING)
-    const groupName = firstFreeName(layers.map(l => l.name), n => t('atrium.sheet.groupN', { n }))
-    const frame = { ...newFrame(box, fileTitle(file.name) || groupName, who, preset, keyAt(stack, 0) ?? keysOnTop(stack)[0]), id: crypto.randomUUID() }
+    // The group, named after the file (Spreadsheet N when it has no name).
+    const groupName = fileTitle(file.name) || firstFreeName(layers.map(l => l.name), n => t('atrium.sheet.groupN', { n }))
     const group = await createGroup(who.lobbyId, groupName, who.userId)
     const keys = keysBetween(null, null, parts.length)
     let chartNumber = 0
     const rows = [
-      { ...buildTraceInsertRow(frame, who.userId, who.username, who.lobbyId, 0, 0), id: frame.id },
       ...parts.map((part, i) => ({
         user_id: who.userId,
         username: who.username,
@@ -92,7 +86,6 @@ export async function importSpreadsheet(file: File, at: { x: number; y: number }
         border_radius: 0,
         lobby_id: who.lobbyId,
         layer_id: group.id,
-        frame_id: frame.id,
         order_key: keys[i],
       })),
     ]

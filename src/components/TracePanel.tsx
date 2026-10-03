@@ -3,7 +3,7 @@ import type { TranslationKey } from '../locales/en'
 import { tCount, useTranslation } from '../lib/i18n'
 import ShapeStyleControls from './ShapeStyleControls'
 import TraceNameField from './TraceNameField'
-import { nextShapeStyle, rememberShapeStyle, shapeStyleColumns, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { nextShapeStyle, rememberShapeStyle, shapeStyleColumns, type ShapeDraft, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { isDesktop } from '../lib/supabase'
@@ -44,7 +44,7 @@ interface TracePanelProps {
   tracePosition?: { x: number; y: number } | null
   lobbyId: string
   initialType?: 'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document'
-  initialShapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
+  initialShapeType?: ShapeKind
   // Submitting a Path skips the normal insert-and-done flow -- instead of a
   // static pre-made line, this hands off to LobbyScene/TraceOverlay's
   // point-by-point drawing mode so the user starts placing the path (and

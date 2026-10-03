@@ -51,6 +51,8 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction } from './QuickBar'
+import { isBoxShape, type BoxShape, type ShapeKind } from '../lib/shapeStyle'
+import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
 import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel } from './AtriumMenu'
 import { LanguageList } from './LanguageToggle'
@@ -117,6 +119,9 @@ function DrawSlider({ label, value, min, max, unit = '', onChange }: {
     </label>
   )
 }
+
+// What the quick bar's file buttons pick from.
+const TRACE_FILE_ACCEPT = { image: 'image/*,.exr', sound: 'audio/*', document: '.pdf,application/pdf' } as const
 
 // Any colour at all: the palette's hues round a wheel.
 const ANY_COLOUR = 'conic-gradient(#e87a6d, #e8c15a, #7fd1a6, #9ad4c4, #a8b6d9, #c77dff, #e87a6d)'
@@ -554,7 +559,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [showTracePanel, setShowTracePanel] = useState(false)
   useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
   const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
-  const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<'rectangle' | 'circle' | 'triangle' | 'path' | undefined>(undefined)
+  const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<ShapeKind | undefined>(undefined)
 
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
 
@@ -1867,7 +1872,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         if (placePreviewRef.current) placePreviewRef.current.style.display = 'none'
       }
       if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && canEditRef.current) {
-        const action = QUICK_ORDER[Number(e.key) - 1]
+        // Shapes takes up its shape in use; Other, a choice, has no key.
+        const button = QUICK_ORDER[Number(e.key) - 1]
+        const action = button === 'shape' ? shapeKindRef.current : button === 'other' ? null : button
         if (action) {
           e.preventDefault()
           quickActionRef.current(action)
@@ -2081,6 +2088,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // A spreadsheet's sheets and charts, placed centred on `at` (lib/sheetTraces).
   const spreadsheetInputRef = useRef<HTMLInputElement>(null)
+  // The quick bar's Image and Other's sound and PDF: picked, then placed.
+  const traceFileInputRef = useRef<HTMLInputElement>(null)
+  // The shape the quick bar's Shapes takes up (and 3 does).
+  const [shapeKind, setShapeKind] = useState<BoxShape>('rectangle')
+  const shapeKindRef = useRef(shapeKind)
+  shapeKindRef.current = shapeKind
   const importSpreadsheetHere = async (file: File, at: { x: number; y: number }) => {
     if (!canEditRef.current || !userId) return
     try {
@@ -2115,7 +2128,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       setPlaceTool(null)
       return
     }
-    if (action === 'text' || action === 'rectangle' || action === 'circle' || action === 'path' || action === 'frame') {
+    if (action === 'text' || isBoxShape(action) || action === 'path' || action === 'frame') {
       // One way of making a trace at a time: the panel's shape drag would
       // take the same press.
       if (showTracePanel) handleCloseTracePanel()
@@ -2130,10 +2143,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       toggleDrawing()
     } else if (action === 'pinterest') {
       openPinterestImport(centre)
-    } else if (action === 'image' && !isDesktop) {
-      // The web app can't take files from the computer yet: said, as a
-      // dropped file has it.
-      setShowLocalFileBlockedDialog(true)
+    } else if (action === 'image' || action === 'sound' || action === 'document' || action === 'sheet') {
+      // A file: picked, then placed in the middle of the view as a drop would
+      // be (placeFilesAsTraces; a spreadsheet as its sheets). The web app
+      // can't take files from the computer yet: said, as a dropped file has it.
+      if (!isDesktop) {
+        setShowLocalFileBlockedDialog(true)
+        return
+      }
+      importAnchorRef.current = centre
+      if (action === 'sheet') {
+        spreadsheetInputRef.current?.click()
+        return
+      }
+      const input = traceFileInputRef.current
+      if (!input) return
+      input.accept = TRACE_FILE_ACCEPT[action]
+      input.click()
     } else {
       setClickedTracePosition(centre)
       setTracePanelInitialType(action)
@@ -2235,7 +2261,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       y2 = y1 + (y2 >= y1 ? side : -side)
     }
     const left = Math.min(x1, x2), top = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1)
-    const [line, ellipse, rect] = Array.from(svg.children) as SVGElement[]
+    const [line, ellipse, rect, polygon] = Array.from(svg.children) as SVGElement[]
     const style = placeStyleRef.current
     const zoom = zoomRef.current
     const show = (el: SVGElement, shown: boolean, attrs: Record<string, number | string>, look: Partial<CSSStyleDeclaration>) => {
@@ -2265,6 +2291,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     show(rect, tool === 'rectangle' || tool === 'frame' || tool === 'text', {
       x: left + inset, y: top + inset, width: Math.max(0, w - inset * 2), height: Math.max(0, h - inset * 2), rx: radius, ry: radius,
     }, tool === 'rectangle' ? shapeLook : guide)
+    // A triangle, diamond or parallelogram (lib/traceGeometry), as drawn.
+    const corners = shapePolygon(tool, w, h, inset, inset)
+    show(polygon, !!corners, {
+      d: corners ? roundedPolygonPath(corners.map(p => ({ x: left + p.x, y: top + p.y })), style ? style.cornerRadius * zoom : 0) : '',
+    }, shapeLook)
     svg.style.display = 'block'
   }
   // Hidden once what was dragged out is on the canvas -- the frame after the
@@ -2333,7 +2364,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // that makes nothing leaves nothing selected.
       setMultiSelectRequest([])
       const tool = placeToolRef.current
-      placeStyleRef.current = tool === 'rectangle' || tool === 'circle' || tool === 'path' ? nextShapeStyle(tool) : null
+      placeStyleRef.current = isBoxShape(tool) || tool === 'path' ? nextShapeStyle(tool) : null
       placePressRef.current++
       placeStartRef.current = {
         sx: e.clientX, sy: e.clientY,
@@ -2631,6 +2662,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     await placeFilesAsTraces(offer.images, worldX, worldY)
   }
 
+  // Ctrl+V of something that isn't copied traces (TraceOverlay keeps those):
+  // a link becomes an embed where the pointer is, as Excalidraw pastes one --
+  // several links, packed around it -- and on desktop a copied picture an
+  // image there. Only when every word of the text is a link: a sentence with
+  // one in it is copied prose. Whether the paste was used.
+  const pasteOnCanvas = (data: DataTransfer): boolean => {
+    if (!canEditRef.current) return false
+    const at = { x: positionRef.current.x, y: positionRef.current.y }
+    const pictures = isDesktop ? [...data.files].filter(file => file.type.startsWith('image/')) : []
+    if (pictures.length > 0) {
+      if (ensureLobbyHasSpace()) void placeFilesAsTraces(pictures, at.x, at.y)
+      return true
+    }
+    const words = data.getData('text/plain').trim().split(/\s+/).filter(Boolean)
+    const links = words.map(asPasteableUrl)
+    if (words.length === 0 || links.some(link => !link)) return false
+    if (!ensureLobbyHasSpace()) return true
+    if (links.length === 1) void insertDroppedTrace('embed', links[0]!, links[0]!, at.x, at.y)
+    else void handleCreateBatchEmbeds(links as string[], at)
+    return true
+  }
+
   // "Paste as Embed": a copied link becomes an embed trace where the user
   // right-clicked. On both platforms, unlike Paste Image -- an embed stores a
   // URL and writes no file, so there's nothing here the web can't do.
@@ -2652,11 +2705,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     await insertDroppedTrace('embed', offer.url, offer.url, worldX, worldY)
   }
 
-  const handleCreateBatchEmbeds = async (urls: string[]) => {
+  const handleCreateBatchEmbeds = async (urls: string[], at?: { x: number; y: number }) => {
     if (urls.length === 0) return
     if (!ensureLobbyHasSpace()) return
 
-    const anchor = clickedTracePosition || positionRef.current
+    const anchor = at ?? clickedTracePosition ?? positionRef.current
     // Probe each URL's real image dimensions before packing (like the
     // multi-file drop handler already does for actual files) -- most
     // pasted embeds are hotlinked images, and packing them all as a flat
@@ -4095,8 +4148,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
 
-    // A dropped spreadsheet becomes its sheets and charts, in a frame of
-    // their own (lib/sheetTraces). Desktop only, as PDFs are.
+    // A dropped spreadsheet becomes its sheets and charts, grouped
+    // (lib/sheetTraces). Desktop only, as PDFs are.
     const droppedSheets = isDesktop ? droppedFiles.filter(f => SPREADSHEET_FILE.test(f.name)) : []
     if (droppedSheets.length > 0) {
       for (const sheet of droppedSheets) await importSpreadsheetHere(sheet, { x: worldX, y: worldY })
@@ -4401,6 +4454,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             traces={traces}
             atriumBackground={viewTheme?.backgroundColor}
             gridLineSpacing={viewTheme?.gridLineSpacing}
+            onPaste={pasteOnCanvas}
             zoom={zoom}
             worldOffset={worldOffset}
             worldLayerRef={traceWorldLayerRef}
@@ -4457,6 +4511,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           <line />
           <ellipse />
           <rect />
+          <path />
         </svg>
 
         {/* Drop Zone Indicator */}
@@ -4789,6 +4844,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           laser={laserActive}
           laserSettings={laserSettings}
           kinds={{ select: directSelect, text: plainText }}
+          shapeKind={shapeKind}
+          onShapeKind={setShapeKind}
           onAction={quickAction}
           onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
           onLaserSettings={changeLaserSettings}
@@ -5391,6 +5448,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           const file = e.target.files?.[0]
           e.target.value = ''
           if (file) void importAtriumHere(file, importAnchorRef.current)
+        }}
+      />
+      {/* The quick bar's Image and Other: a file, placed as a drop is. */}
+      <input
+        ref={traceFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={e => {
+          const files = Array.from(e.target.files ?? [])
+          e.target.value = ''
+          if (files.length > 0 && ensureLobbyHasSpace()) void placeFilesAsTraces(files, importAnchorRef.current.x, importAnchorRef.current.y)
         }}
       />
       <input

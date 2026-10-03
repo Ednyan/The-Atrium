@@ -80,7 +80,7 @@ export interface Trace {
   linkUrl?: string
   createdAt: string
   // Shape properties
-  shapeType?: 'rectangle' | 'circle' | 'triangle' | 'path'
+  shapeType?: 'rectangle' | 'circle' | 'triangle' | 'diamond' | 'parallelogram' | 'path'
   shapeColor?: string
   shapeOpacity?: number
   cornerRadius?: number // For rectangles only

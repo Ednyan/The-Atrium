@@ -13,7 +13,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { showToast } from '../lib/toast'
-import type { ArrowKind, ShapeKind, ShapeStyle } from '../lib/shapeStyle'
+import { BOX_SHAPES, type ArrowKind, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
 
 const PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
@@ -40,6 +40,11 @@ const PATH_LINES: { kind: ShapeStyle['pathCurveType']; glyph: string; key: 'atri
 
 // A section's heading, and -- in Batch Edit, where a setting may be for only
 // some of what's selected -- a note of which.
+// Each kind as a glyph beside its name in the picker.
+const SHAPE_GLYPH: Record<ShapeKind, string> = {
+  rectangle: '⬛', triangle: '▲', circle: '⚫', diamond: '◆', parallelogram: '▱', path: '〰',
+}
+
 export function SectionRule({ label, note }: { label: string; note?: string | null }) {
   return (
     <div className="flex items-baseline gap-3 pt-1">
@@ -221,13 +226,9 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
       {typePicker && <div>
         <label className={LABEL}>{t('atrium.customize.shapeType')}</label>
         <div className="grid grid-cols-2 gap-2">
-          {(['rectangle', 'circle', 'triangle', 'path'] as ShapeKind[]).map(kind => (
+          {([...BOX_SHAPES, 'path'] as ShapeKind[]).map(kind => (
             <button key={kind} type="button" onClick={() => onChange({ shapeType: kind })} className={choice(value.shapeType === kind)}>
-              {kind === 'rectangle' && '⬛ '}
-              {kind === 'circle' && '⚫ '}
-              {kind === 'triangle' && '▲ '}
-              {kind === 'path' && '〰 '}
-              {t(`atrium.trace.shape.${kind}` as const)}
+              {SHAPE_GLYPH[kind]} {t(`atrium.trace.shape.${kind}` as const)}
             </button>
           ))}
         </div>
@@ -242,7 +243,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
       )}
 
       {/* Circles have no corners; paths are shaped by their points. */}
-      {(value.shapeType === 'rectangle' || value.shapeType === 'triangle') && (
+      {value.shapeType !== 'circle' && !isPath && (
         <Slider
           label={t('atrium.customize.cornerRadiusLabel', { value: value.cornerRadius })}
           hint={t('atrium.customize.roundsCorners')}

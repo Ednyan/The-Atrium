@@ -22,6 +22,11 @@
 // The laser pointer (LaserLayer) is in hand like Draw is, and has its
 // colour and particle effect in a flyout of its own.
 //
+// Shapes holds the shapes drawn in a box -- rectangle, triangle, circle,
+// diamond, parallelogram -- in a flyout, the button showing the one in use;
+// Other holds the kinds of file a trace can be besides a picture -- sound, a
+// PDF, a spreadsheet -- each picked and placed at once, as a drop is.
+//
 // Two tools have kinds, in a flyout at their side (as the canvas menu's
 // Transformations has), the button showing the kind in use:
 //   Select -- Select, which takes a group whole, or Direct select, which
@@ -32,20 +37,51 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useHistoryReach } from '../lib/actionHistory'
+import { BOX_SHAPES, isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { SlideLabel } from './AtriumMenu'
 import { useTranslation } from '../lib/i18n'
 import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type LaserSettings } from '../lib/laser'
 import type { TranslationKey } from '../locales/en'
 
-export type PlaceTool = 'text' | 'rectangle' | 'circle' | 'path' | 'frame'
-export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest' | 'locations'
+export type PlaceTool = 'text' | BoxShape | 'path' | 'frame'
+// The kinds of file the Other button offers.
+export type OtherTrace = 'sound' | 'document' | 'sheet'
+const OTHER_TRACES: OtherTrace[] = ['sound', 'document', 'sheet']
+// What the bar does: take a tool up, or act.
+export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest' | 'locations' | OtherTrace
+// What the bar shows: a button each. Shapes and Other each hold several.
+export type QuickButton = 'select' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest' | 'locations'
 
 // Drawn in a 24 box, stroked in the current colour.
-const ICONS: Record<QuickAction, ReactNode> = {
+const ICONS: Record<QuickAction | 'other', ReactNode> = {
   select: <path d="M6 3.5 L18 12 L12.6 13.1 L15.4 19.2 L13.2 20.2 L10.4 14.2 L6 17.6 Z" strokeLinejoin="round" />,
   text: <path d="M5 6 V4.5 H19 V6 M12 4.5 V19.5 M9 19.5 H15" strokeLinecap="round" strokeLinejoin="round" />,
   rectangle: <rect x="4.5" y="5.5" width="15" height="13" />,
+  triangle: <path d="M12 4.5 L20 19 H4 Z" strokeLinejoin="round" />,
   circle: <circle cx="12" cy="12" r="7.5" />,
+  diamond: <path d="M12 3.5 L20.5 12 L12 20.5 L3.5 12 Z" strokeLinejoin="round" />,
+  parallelogram: <path d="M8 5.5 H20.5 L16 18.5 H3.5 Z" strokeLinejoin="round" />,
+  // Other: a little of everything -- three boxes and a ring.
+  other: (
+    <>
+      <path d="M4 4h6v6h-6z M14 4h6v6h-6z M4 14h6v6h-6z" strokeLinejoin="round" />
+      <circle cx="17" cy="17" r="3" />
+    </>
+  ),
+  sound: (
+    <>
+      <path d="M9 17 V5.5 L19 3.5 V15" strokeLinejoin="round" />
+      <circle cx="6.5" cy="17" r="2.5" />
+      <circle cx="16.5" cy="15" r="2.5" />
+    </>
+  ),
+  document: <path d="M6 3.5 H14 L18.5 8 V20.5 H6 Z M14 3.5 V8 H18.5 M9 12 H15.5 M9 15.5 H15.5" strokeLinejoin="round" />,
+  sheet: (
+    <>
+      <rect x="4" y="5" width="16" height="14" />
+      <path d="M4 10 H20 M4 14.5 H20 M10 5 V19" />
+    </>
+  ),
   path: (
     <>
       <path d="M4 18.5 L9.5 11 L13.5 14.5 L19.5 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -98,8 +134,8 @@ const BOX_TEXT_ICON = (
 // In the order shown; the first nine have number keys. Locations opens its
 // panel rather than taking a tool up, and is the one there when the atrium
 // can only be looked at -- saved views are for everyone.
-export const QUICK_ORDER: QuickAction[] = ['select', 'text', 'rectangle', 'circle', 'path', 'draw', 'image', 'embed', 'frame', 'laser', 'pinterest', 'locations']
-const VIEW_ONLY_ORDER: QuickAction[] = ['locations']
+export const QUICK_ORDER: QuickButton[] = ['select', 'text', 'shape', 'path', 'draw', 'image', 'embed', 'frame', 'other', 'laser', 'pinterest', 'locations']
+const VIEW_ONLY_ORDER: QuickButton[] = ['locations']
 
 const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
   none: 'atrium.tools.effectNone',
@@ -112,6 +148,8 @@ const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
 // plain -- both false for the first kind.
 export type ToolKinds = { select: boolean; text: boolean }
 type KindedTool = keyof ToolKinds
+// The buttons with a flyout at their side.
+type FlyoutTool = KindedTool | 'shape' | 'other' | 'laser'
 
 // Undo and redo as buttons, for the history Ctrl+Z walks, each greyed out
 // with nothing to take back or bring back. A component of its own, so the
@@ -150,7 +188,7 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, onAction, onKind, onLaserSettings, locationsOpen, viewOnly = false }: {
+export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, locationsOpen, viewOnly = false }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
@@ -158,6 +196,9 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   kinds: ToolKinds
   onAction: (action: QuickAction) => void
   onKind: (tool: KindedTool, second: boolean) => void
+  // The shape the Shapes button takes up, and its choosing.
+  shapeKind: BoxShape
+  onShapeKind: (kind: BoxShape) => void
   onLaserSettings: (settings: LaserSettings) => void
   // The Locations panel is open.
   locationsOpen: boolean
@@ -168,7 +209,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   const tools = viewOnly ? VIEW_ONLY_ORDER : QUICK_ORDER
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
-  const [flyout, setFlyout] = useState<KindedTool | 'laser' | null>(null)
+  const [flyout, setFlyout] = useState<FlyoutTool | null>(null)
 
   // As many tools down as the room it's in is tall, and the rest in more
   // columns beside them. Counted here rather than left to the grid's
@@ -187,7 +228,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
     return () => observer.disconnect()
   }, [tools.length])
   const closeTimer = useRef<number | null>(null)
-  const keepFlyout = (tool: KindedTool | 'laser') => {
+  const keepFlyout = (tool: FlyoutTool) => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
     closeTimer.current = null
     setFlyout(tool)
@@ -221,14 +262,22 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
       { icon: ICONS.text, name: t('atrium.tools.textPlain'), hint: t('atrium.tools.textPlainHint'), attr: 'plain' },
     ],
   }
-  const kinded = (action: QuickAction): action is KindedTool => action === 'select' || action === 'text'
-  const hasFlyout = (action: QuickAction): action is KindedTool | 'laser' => kinded(action) || action === 'laser'
+  const kinded = (action: QuickButton): action is KindedTool => action === 'select' || action === 'text'
+  const hasFlyout = (action: QuickButton): action is FlyoutTool => kinded(action) || action === 'shape' || action === 'other' || action === 'laser'
   const kindOf = (tool: KindedTool) => KIND[tool][kinds[tool] ? 1 : 0]
-  const label: Record<QuickAction, string> = {
+  const label: Record<QuickButton | QuickAction, string> = {
     select: kindOf('select').name,
     text: kindOf('text').name,
+    shape: t(`atrium.trace.shape.${shapeKind}` as const),
     rectangle: t('atrium.trace.shape.rectangle'),
+    triangle: t('atrium.trace.shape.triangle'),
     circle: t('atrium.trace.shape.circle'),
+    diamond: t('atrium.trace.shape.diamond'),
+    parallelogram: t('atrium.trace.shape.parallelogram'),
+    other: t('atrium.tools.other'),
+    sound: t('atrium.trace.type.sound'),
+    document: t('atrium.trace.type.document'),
+    sheet: t('atrium.trace.type.spreadsheet'),
     path: t('atrium.trace.shape.path'),
     draw: t('atrium.draw.button'),
     image: t('atrium.trace.type.image'),
@@ -252,21 +301,23 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
     >
       {tools.map((action, i) => {
         const on = action === 'select' ? !armed && !drawing && !laser
+          : action === 'shape' ? isBoxShape(armed)
+          : action === 'other' ? false
           : action === 'draw' ? drawing
           : action === 'laser' ? laser
           : action === 'locations' ? locationsOpen
           : armed === action
-        const key = viewOnly ? null : i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
+        const key = viewOnly || action === 'other' ? null : i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {
           // A tool with kinds (or options) pressed while it's already in
           // hand opens them -- the way to them without hovering (touch).
-          if (withFlyout && on) {
+          if ((withFlyout && on) || action === 'other') {
             setFlyout(open => (open === action ? null : action))
             return
           }
-          onAction(action)
+          onAction(action === 'shape' ? shapeKind : action)
         }
         return (
           <div
@@ -294,7 +345,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
               }`}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                {withKinds ? kindOf(action).icon : ICONS[action]}
+                {withKinds ? kindOf(action).icon : action === 'shape' ? ICONS[shapeKind] : ICONS[action]}
               </svg>
               {key && <span className="absolute right-0.5 bottom-0 text-[8px] leading-none font-mono opacity-50">{key}</span>}
               {/* More kinds, to the side. */}
@@ -333,6 +384,66 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                       {kind.icon}
                     </svg>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Shapes: each kind, the one in use pressed; picking one takes it up. */}
+            {action === 'shape' && flyout === 'shape' && (
+              <div
+                ref={flyoutRef}
+                data-quick-flyout="shape"
+                className="slide-in absolute left-full top-0 ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10"
+                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
+              >
+                <ToolName name={t('atrium.tools.shapes')} keyName={key} />
+                {BOX_SHAPES.map(kind => (
+                  <button
+                    key={kind}
+                    type="button"
+                    data-shape-kind={kind}
+                    aria-pressed={shapeKind === kind}
+                    aria-label={label[kind]}
+                    title={label[kind]}
+                    onClick={() => {
+                      onShapeKind(kind)
+                      if (armed !== kind) onAction(kind)
+                      setFlyout(null)
+                    }}
+                    className={`w-9 h-9 flex items-center justify-center border transition-colors ${
+                      shapeKind === kind
+                        ? 'bg-nier-bg text-nier-black border-nier-bg'
+                        : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg'
+                    }`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">{ICONS[kind]}</svg>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Other: a file of each kind, picked and placed at once. */}
+            {action === 'other' && flyout === 'other' && (
+              <div
+                ref={flyoutRef}
+                data-quick-flyout="other"
+                className="slide-in absolute left-full top-0 ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10"
+                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
+              >
+                <ToolName name={label.other} keyName={null} />
+                {OTHER_TRACES.map(kind => (
+                  <button
+                    key={kind}
+                    type="button"
+                    data-other-trace={kind}
+                    aria-label={label[kind]}
+                    title={label[kind]}
+                    onClick={() => {
+                      onAction(kind)
+                      setFlyout(null)
+                    }}
+                    className="w-9 h-9 flex items-center justify-center border border-transparent text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">{ICONS[kind]}</svg>
                   </button>
                 ))}
               </div>

@@ -631,10 +631,19 @@ body.dragging * {
   height: 12px;
 }
 
-.trace-nier-handle-crop,
-.trace-nier-handle-point {
+.trace-nier-handle-crop {
   width: 14px;
   height: 14px;
+}
+
+/* A path's points: small hollow rings, so the line -- and the arrowhead at an
+   end -- show through them. They were filled squares sitting on the line. */
+.trace-nier-handle-point {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border-width: 1.5px;
+  background: transparent;
 }
 
 .trace-nier-handle-center {

@@ -8,7 +8,11 @@
 
 import type { Trace } from '../types/database'
 
-export type ShapeKind = 'rectangle' | 'circle' | 'triangle' | 'path'
+// The shapes drawn in a box, in the order they're offered; and a path.
+export const BOX_SHAPES = ['rectangle', 'triangle', 'circle', 'diamond', 'parallelogram'] as const
+export type BoxShape = typeof BOX_SHAPES[number]
+export type ShapeKind = BoxShape | 'path'
+export const isBoxShape = (kind: unknown): kind is BoxShape => (BOX_SHAPES as readonly unknown[]).includes(kind)
 export type ArrowKind = 'none' | 'triangle' | 'diamond'
 
 export interface ShapeStyle {
@@ -30,6 +34,16 @@ export interface ShapeStyle {
 }
 
 export const defaultShapeColor = (kind: ShapeKind) => (kind === 'path' ? '#9ca3af' : '#3b82f6')
+
+// An arrowhead's length and width, as a multiple of its line's thickness: on
+// the canvas (TraceOverlay) and in an exported picture (lib/exportImage) alike.
+// It was 3.5, which left a head barely wider than a thick line.
+export const ARROW_SCALE = 4.5
+
+// How a path starts before any has been made (or remembered, below): thick
+// enough to read at a glance, ending in an arrow, as the Path tool's icon
+// shows. It was 2 wide with no head.
+const NEW_PATH: Partial<ShapeStyle> = { shapeOutlineWidth: 4, pathArrowEnd: 'triangle' }
 
 /** A trace's style with every default the renderer applies filled in. */
 export function shapeStyleOf(trace: Partial<Trace>): ShapeStyle {
@@ -55,7 +69,9 @@ export function shapeStyleOf(trace: Partial<Trace>): ShapeStyle {
 // in Excalidraw. Lines apart from the filled kinds: a path's colour and
 // thickness aren't a box's. Kept on this device (localStorage), which may
 // refuse it -- then it's the defaults.
-const LAST_STYLE_KEY = 'atrium.lastShapeStyle'
+// v2: forgotten once, so the bigger path above is seen instead of a
+// remembered thin one.
+const LAST_STYLE_KEY = 'atrium.lastShapeStyle.v2'
 const slotOf = (kind: ShapeKind) => (kind === 'path' ? 'path' : 'filled')
 
 function lastStyles(): Record<string, Partial<ShapeStyle>> {
@@ -78,7 +94,7 @@ export function rememberShapeStyle(style: ShapeStyle) {
 
 /** The style a new shape of `kind` starts with. */
 export function nextShapeStyle(kind: ShapeKind): ShapeStyle {
-  return shapeStyleOf({ ...lastStyles()[slotOf(kind)], shapeType: kind } as Partial<Trace>)
+  return shapeStyleOf({ ...(kind === 'path' ? NEW_PATH : {}), ...lastStyles()[slotOf(kind)], shapeType: kind } as Partial<Trace>)
 }
 
 /** The same style as database columns, for an insert. */

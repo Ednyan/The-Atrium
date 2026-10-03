@@ -23,7 +23,7 @@ import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss } from '../lib/textFit'
-import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, storedTransformOf, traceBox } from '../lib/traceGeometry'
+import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from '../lib/traceGeometry'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
@@ -44,7 +44,7 @@ import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
+import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
@@ -154,6 +154,9 @@ const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
 
 interface TraceOverlayProps {
   traces: Trace[]
+  // A paste that isn't copied traces: LobbyScene's to make something of (a
+  // link, a picture) -- whether it did.
+  onPaste?: (data: DataTransfer) => boolean
   // The atrium's own background, so the cursor can be outlined against it.
   // Without the drop shadow that used to separate them, a pale cursor on a
   // pale atrium is a pale cursor on a pale atrium.
@@ -648,7 +651,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1431,6 +1434,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
   const transformModeRef = useRef<TransformMode>(transformMode)
   const selectedTraceIdRef = useRef<string | null>(selectedTraceId)
   const pathCreationModeRef = useRef(pathCreationMode)
+  const onPasteRef = useRef(onPaste)
+  onPasteRef.current = onPaste
   const worldOffsetRef = useRef(worldOffset)
   worldOffsetRef.current = worldOffset
 
@@ -2979,6 +2984,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
       if (payload?.traces.length) {
         e.preventDefault()
         void duplicateTraces(payload.traces.map(trace => cloneTraceSnapshot(trace)))
+      } else if (e.clipboardData && onPasteRef.current?.(e.clipboardData)) {
+        e.preventDefault()
       }
     }
 
@@ -5499,6 +5506,8 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
     // zoomed in (line length grew, thickness didn't).
     const outlineWidth = displayTrace.shapeOutlineWidth ?? 2
     const zoomedOutlineWidth = Math.max(outlineWidth * zoom, 0.5)
+    // The arrowheads' size on screen (lib/shapeStyle ARROW_SCALE).
+    const arrowSize = zoomedOutlineWidth * ARROW_SCALE
     const arrowStart = displayTrace.pathArrowStart || 'none'
     const arrowEnd = displayTrace.pathArrowEnd || 'none'
     // Reuses the illuminate/lightColor/lightIntensity fields (see the
@@ -5560,76 +5569,83 @@ export default function TraceOverlay({ traces, atriumBackground, gridLineSpacing
           {/* Triangle markers - size in screen pixels (userSpaceOnUse) */}
           <marker
             id={`${markerId}-triangle-start`}
-            markerWidth={zoomedOutlineWidth * 3.5}
-            markerHeight={zoomedOutlineWidth * 3.5}
-            refX={zoomedOutlineWidth * 3.5}
-            refY={zoomedOutlineWidth * 1.75}
+            markerWidth={arrowSize}
+            markerHeight={arrowSize}
+            refX={arrowSize}
+            refY={arrowSize / 2}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`${zoomedOutlineWidth * 3.5},0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 3.5} 0,${zoomedOutlineWidth * 1.75}`}
+              points={`${arrowSize},0 ${arrowSize},${arrowSize} 0,${arrowSize / 2}`}
               fill={shapeColor}
             />
           </marker>
           <marker
             id={`${markerId}-triangle-end`}
-            markerWidth={zoomedOutlineWidth * 3.5}
-            markerHeight={zoomedOutlineWidth * 3.5}
+            markerWidth={arrowSize}
+            markerHeight={arrowSize}
             refX={0}
-            refY={zoomedOutlineWidth * 1.75}
+            refY={arrowSize / 2}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`0,0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 1.75} 0,${zoomedOutlineWidth * 3.5}`}
+              points={`0,0 ${arrowSize},${arrowSize / 2} 0,${arrowSize}`}
               fill={shapeColor}
             />
           </marker>
           {/* Diamond (Nier-style) markers - size in screen pixels */}
           <marker
             id={`${markerId}-diamond-start`}
-            markerWidth={zoomedOutlineWidth * 3.5}
-            markerHeight={zoomedOutlineWidth * 3.5}
-            refX={zoomedOutlineWidth * 1.75}
-            refY={zoomedOutlineWidth * 1.75}
+            markerWidth={arrowSize}
+            markerHeight={arrowSize}
+            refX={arrowSize / 2}
+            refY={arrowSize / 2}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`${zoomedOutlineWidth * 1.75},0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 1.75} ${zoomedOutlineWidth * 1.75},${zoomedOutlineWidth * 3.5} 0,${zoomedOutlineWidth * 1.75}`}
+              points={`${arrowSize / 2},0 ${arrowSize},${arrowSize / 2} ${arrowSize / 2},${arrowSize} 0,${arrowSize / 2}`}
               fill={shapeColor}
             />
           </marker>
           <marker
             id={`${markerId}-diamond-end`}
-            markerWidth={zoomedOutlineWidth * 3.5}
-            markerHeight={zoomedOutlineWidth * 3.5}
-            refX={zoomedOutlineWidth * 1.75}
-            refY={zoomedOutlineWidth * 1.75}
+            markerWidth={arrowSize}
+            markerHeight={arrowSize}
+            refX={arrowSize / 2}
+            refY={arrowSize / 2}
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
             <polygon
-              points={`${zoomedOutlineWidth * 1.75},0 ${zoomedOutlineWidth * 3.5},${zoomedOutlineWidth * 1.75} ${zoomedOutlineWidth * 1.75},${zoomedOutlineWidth * 3.5} 0,${zoomedOutlineWidth * 1.75}`}
+              points={`${arrowSize / 2},0 ${arrowSize},${arrowSize / 2} ${arrowSize / 2},${arrowSize} 0,${arrowSize / 2}`}
               fill={shapeColor}
             />
           </marker>
         </defs>
-        {/* Selection glow: whether this path is the one selected trace or
-            part of a multi-selection. */}
-        {isPathMultiSelected && (
-          <path
-            d={pathData}
-            fill="none"
-            stroke="#86efac"
-            strokeWidth={zoomedOutlineWidth + 8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity={0.75}
-            style={{ pointerEvents: 'none', filter: 'blur(4px)' }}
-          />
-        )}
+        {/* Selected -- alone or with others: a dashed box round it, its
+            arrowheads included, as a selected box shows its frame. It was a
+            blurred green copy of the line under it, which hid the line. */}
+        {isPathMultiSelected && (() => {
+          const pad = arrowSize / 2 + 6
+          const xs = screenPoints.map((p: { x: number }) => p.x)
+          const ys = screenPoints.map((p: { y: number }) => p.y)
+          const x = Math.min(...xs) - pad, y = Math.min(...ys) - pad
+          return (
+            <rect
+              x={x}
+              y={y}
+              width={Math.max(...xs) + pad - x}
+              height={Math.max(...ys) + pad - y}
+              fill="none"
+              strokeWidth={1}
+              strokeDasharray="4 4"
+              style={{ stroke: 'rgb(var(--c-fg) / 0.55)', pointerEvents: 'none' }}
+            />
+          )
+        })()}
         {/* Invisible wider stroke for easier clicking -- floored so a
             heavily zoomed-out (thus very thin) path stays clickable */}
         <path
@@ -6178,12 +6194,13 @@ return (
                   )}
                 </svg>
               )
-            } else if (shapeType === 'triangle') {
-              // Triangle edges aren't axis-aligned, so there's no
-              // clean separate X/Y radius the way a rectangle has --
-              // averaging the two keeps it consistent with the
-              // rectangle's radius "feel" without a second control.
-              const triangleRadiusPercent = (radiusPercentX + radiusPercentY) / 2
+            } else if (shapePolygon(shapeType, 100, 100)) {
+              // A triangle, diamond or parallelogram (lib/traceGeometry).
+              // Their edges aren't axis-aligned, so there's no clean separate
+              // X/Y radius the way a rectangle has -- averaging the two keeps
+              // it consistent with the rectangle's radius "feel" without a
+              // second control.
+              const polygonRadiusPercent = (radiusPercentX + radiusPercentY) / 2
 
               return (
                 <svg
@@ -6193,14 +6210,7 @@ return (
                   style={shapeStyle}
                 >
                   <path
-                    d={roundedPolygonPath(
-                      [
-                        { x: 50, y: 15 + insetY },
-                        { x: 85 - insetX, y: 85 - insetY },
-                        { x: 15 + insetX, y: 85 - insetY },
-                      ],
-                      triangleRadiusPercent
-                    )}
+                    d={roundedPolygonPath(shapePolygon(shapeType, 100, 100, insetX, insetY)!, polygonRadiusPercent)}
                     fill={fill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
@@ -6213,14 +6223,7 @@ return (
                     <path
                       {...frameProps}
                       strokeLinejoin="round"
-                      d={roundedPolygonPath(
-                        [
-                          { x: 50, y: 15 + frameY },
-                          { x: 85 - frameX, y: 85 - frameY },
-                          { x: 15 + frameX, y: 85 - frameY },
-                        ],
-                        triangleRadiusPercent
-                      )}
+                      d={roundedPolygonPath(shapePolygon(shapeType, 100, 100, frameX, frameY)!, polygonRadiusPercent)}
                     />
                   )}
                 </svg>
