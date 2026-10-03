@@ -10,7 +10,6 @@ import { currentTracePreset } from '../lib/tracePresets'
 import { readPackingShape } from '../lib/atriumPreferences'
 import { usePresence } from '../hooks/usePresence'
 import { mapRowToTrace } from '../hooks/useTraces'
-import TracePanel from './TracePanel'
 import TraceOverlay, { CULL_MARGIN } from './TraceOverlay'
 import { contentView, createWorldCamera, edgeInsets } from '../lib/worldCamera'
 import { boundsOf, traceBox } from '../lib/traceGeometry'
@@ -39,7 +38,7 @@ import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
 import { fileTitle, firstFreeName, nextShapeName, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { insertTrace } from '../lib/traceWrites'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { nextShapeStyle, previewFrameColour, sameShapeDraft, shapePaint, shapeStyleColumns, shapeStyleOf, textColourOn, type ShapeDraft, type ShapeStyle } from '../lib/shapeStyle'
+import { nextShapeStyle, previewFrameColour, shapePaint, shapeStyleColumns, textColourOn, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
@@ -51,17 +50,18 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction } from './QuickBar'
-import { isBoxShape, type BoxShape, type ShapeKind } from '../lib/shapeStyle'
+import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
 import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar } from './AtriumMenu'
 import { AtriumName, ViewReadout } from './AtriumInfo'
+import EmbedLinkBox from './EmbedLinkBox'
 import { LanguageList } from './LanguageToggle'
 import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
 import SharePanel from './SharePanel'
 import { ImportTooLargeError, importIntoAtrium } from '../lib/atriumFile'
-import { createPdfTrace, pageRows } from '../lib/pdfTraces'
+import { createPdfTrace } from '../lib/pdfTraces'
 import { importSpreadsheet } from '../lib/sheetTraces'
 import { SPREADSHEET_FILE } from '../lib/spreadsheet'
 import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
@@ -122,7 +122,7 @@ function DrawSlider({ label, value, min, max, unit = '', onChange }: {
 }
 
 // What the quick bar's file buttons pick from.
-const TRACE_FILE_ACCEPT = { image: 'image/*,.exr', sound: 'audio/*', document: '.pdf,application/pdf' } as const
+const TRACE_FILE_ACCEPT = { image: 'image/*,.exr', audio: 'audio/*', sound: 'audio/*', video: 'video/*', document: '.pdf,application/pdf' } as const
 
 // Any colour at all: the palette's hues round a wheel.
 const ANY_COLOUR = 'conic-gradient(#e87a6d, #e8c15a, #7fd1a6, #9ad4c4, #a8b6d9, #c77dff, #e87a6d)'
@@ -420,7 +420,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const labelRef = useRef<Text | null>(null)
   const playerAvatarRef = useRef<Graphics | null>(null)
   const positionRef = useRef({ x: 0, y: 0 })
-  const tracePlacementIndicatorRef = useRef<Graphics | null>(null)
   const traceIndicatorsRef = useRef<Container | null>(null)
   // Object pool for trace indicators to prevent memory leaks
   const indicatorPoolRef = useRef<Array<{ graphics: Graphics, distanceText: Text, unitText: Text, labelAt: number }>>([])
@@ -450,7 +449,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // mousemove (like brushCursorRef) to avoid re-rendering on every pixel.
   const isAreaSelectingRef = useRef(false)
   const areaSelectRectRef = useRef<HTMLDivElement>(null)
-  const showTracePanelRef = useRef(false)
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
   // Per-atrium: how a multi-item drop/paste batch gets arranged (see the
@@ -479,30 +477,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // under way (see the ticker).
   const traceWorldLayerRef = useRef<HTMLDivElement | null>(null)
   const lastTouchDistRef = useRef<number | null>(null)
-  const [clickedTracePosition, setClickedTracePosition] = useState<{ x: number; y: number } | null>(null)
 
-  // The rectangle a shape trace will be created at, in world units. Held here
-  // rather than in TracePanel because it's drawn on the canvas and centred on
-  // the placement position, both of which this component owns.
-  //
-  // Size only -- the centre is clickedTracePosition, which the drag also sets,
-  // so the existing placement plumbing keeps working unchanged.
   // How far through a batch import we are, or null when nothing is importing.
   // Drives the panel that covers the atrium while files are being written.
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
-
-  const [shapeDraftSize, setShapeDraftSize] = useState<ShapeDraft | null>(null)
-  const shapeDraftSizeRef = useRef<ShapeDraft | null>(null)
-  useEffect(() => { shapeDraftSizeRef.current = shapeDraftSize }, [shapeDraftSize])
-
-  // The Pixi ticker is registered once, in an effect with no dependencies, so
-  // anything it reads has to come through a ref. clickedTracePosition was
-  // being read as state there, which means it was pinned to its first-render
-  // value of null -- the placement indicator that code draws has never
-  // actually appeared. Mirroring it here fixes that as well as the shape
-  // preview, which would otherwise have inherited the same fault.
-  const clickedTracePositionRef = useRef<{ x: number; y: number } | null>(null)
-  useEffect(() => { clickedTracePositionRef.current = clickedTracePosition }, [clickedTracePosition])
 
   // Placement markers used a fixed gold, which sat somewhere between the
   // background and the foreground on a dark theme and vanished outright on a
@@ -511,39 +489,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // drawn on. A ref because the Pixi ticker reads it.
   const indicatorColorRef = useRef({ primary: 0xffffff })
 
-  // The panel publishing its current shape settings. Adopt them, and make sure
-  // there's a placement position to centre the preview on.
-  //
-  // Returns the previous object unchanged when nothing actually differs. The
-  // panel republishes on every change, including ones that originated from a
-  // canvas drag, so without this the two would keep handing the same values
-  // back and forth and never settle.
-  const handleShapeDraftChange = useCallback((draft: ShapeDraft) => {
-    setShapeDraftSize(prev => (sameShapeDraft(prev, draft) ? prev : draft))
-    setClickedTracePosition(prev => prev ?? { x: positionRef.current.x, y: positionRef.current.y })
-  }, [])
-
-  const handleShapeModeChange = useCallback((active: boolean) => {
-    shapeDragArmedRef.current = active
-    setShapeArmed(active)
-    // Leaving shape mode (switching type, or closing the panel) drops the
-    // preview -- it describes a shape that is no longer being created.
-    if (!active) {
-      setShapeDraftSize(null)
-      isShapeDraggingRef.current = false
-      shapeDragStartWorldRef.current = null
-    }
-  }, [])
-
-  // Whether the open panel is on a sizeable shape type, i.e. whether a drag on
-  // the canvas should draw a shape instead of panning. As state too, for the
-  // layer that takes the pointer while it is (see shapeArmed below).
-  const shapeDragArmedRef = useRef(false)
-  const [shapeArmed, setShapeArmed] = useState(false)
-  const isShapeDraggingRef = useRef(false)
-  const shapeDragStartWorldRef = useRef<{ x: number; y: number } | null>(null)
   // One-shot signal telling TraceOverlay "select this brand-new path and
-  // start its point-placing mode immediately" -- see handleCreatePath.
+  // start its point-placing mode immediately" (a path begun with a click).
   const [newPathTraceId, setNewPathTraceId] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
@@ -557,10 +504,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The usage figure reads the store as it draws; this is what redraws it
   // when the atrium has been measured again (useTraces).
   useGamePick('serverLobbySize')
-  const [showTracePanel, setShowTracePanel] = useState(false)
-  useEffect(() => { showTracePanelRef.current = showTracePanel }, [showTracePanel])
-  const [tracePanelInitialType, setTracePanelInitialType] = useState<'text' | 'image' | 'audio' | 'video' | 'embed' | 'shape' | 'document' | undefined>(undefined)
-  const [tracePanelInitialShapeType, setTracePanelInitialShapeType] = useState<ShapeKind | undefined>(undefined)
 
   const [mapContextMenu, setMapContextMenu] = useState<{ x: number; y: number; worldX: number; worldY: number } | null>(null)
 
@@ -934,8 +877,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // into an activity, so reopening a panel mid-draw is still allowed -- it's
   // the user's call at that point.
   useEffect(() => {
-    if (showTracePanel || isDrawingMode) closeSidePanels()
-  }, [showTracePanel, isDrawingMode, closeSidePanels])
+    if (isDrawingMode) closeSidePanels()
+  }, [isDrawingMode, closeSidePanels])
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [isEraserMode, setIsEraserMode] = useState(false)
@@ -1883,12 +1826,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         return
       }
 
+      // T: an embed's link asked for where the pointer is.
       if (e.key === 't' || e.key === 'T') {
         if (!canEditRef.current) return
         e.preventDefault()
         e.stopPropagation()
-        setClickedTracePosition({ x: positionRef.current.x, y: positionRef.current.y })
-        setShowTracePanel(prev => !prev)
+        const at = { x: positionRef.current.x, y: positionRef.current.y }
+        setEmbedAsk(open => (open ? null : { world: at, screen: onScreenRef.current(at) }))
       }
       if (e.key === 'd' || e.key === 'D') {
         if (!canEditRef.current) return
@@ -1960,49 +1904,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => clearInterval(interval)
   }, [lobbyId, onlinePlayerCount])
   
-  // One of Leave Trace, Layers and Locations at a time. They all dock on the
-  // right, so two open at once stack over each other and over the canvas.
-  // Enforced here, on whichever opens, rather than at each of the four places
-  // Leave Trace can be opened from -- the next one added would have been the
-  // one that forgot. Closing Leave Trace goes through its own close so its
-  // placement marker and pending file are cleared, as if it were dismissed.
-  useEffect(() => {
-    if (showTracePanel) closeSidePanels()
-  }, [showTracePanel, closeSidePanels])
+  // One of Layers and Locations at a time. They both dock on the right, so two
+  // open at once stack over each other and over the canvas.
   useEffect(() => {
     if (!showLayerPanel) return
     setShowLocationsPanel(false)
-    if (showTracePanel) handleCloseTracePanel()
   }, [showLayerPanel])
   useEffect(() => {
     if (!showLocationsPanel) return
     setShowLayerPanel(false)
-    if (showTracePanel) handleCloseTracePanel()
   }, [showLocationsPanel])
-
-  // Handle closing trace panel
-  const handleCloseTracePanel = () => {
-    setShowTracePanel(false)
-    setClickedTracePosition(null)
-    setTracePanelInitialType(undefined)
-    setTracePanelInitialShapeType(undefined)
-  }
-
-  // Creating a path used to insert a static 2-point line and leave the user
-  // to hunt down the Customize panel to actually draw it or add arrows --
-  // instead, this creates just a single starting point and immediately
-  // hands off to TraceOverlay's point-placing mode (see newPathTraceId /
-  // the "Special handles for path shapes" section there), landing right on
-  // the arrow controls once the user finishes.
-  // The whole style from the create panel, not only its colour: thickness,
-  // curve and arrows used to be settable only after the path existed.
-  const handleCreatePath = async (style: ShapeStyle) => {
-    const startPosition = clickedTracePosition || positionRef.current
-    const id = await insertShapeTrace({ ...style, shapeType: 'path' }, startPosition, [startPosition])
-    if (!id) return
-    handleCloseTracePanel()
-    setNewPathTraceId(id)
-  }
 
   // A shape made straight away, with no panel: from the create panel's Path,
   // and from the quick bar's Rectangle, Circle and Path. Centred on `at`, at a
@@ -2091,6 +2002,24 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const spreadsheetInputRef = useRef<HTMLInputElement>(null)
   // The quick bar's Image and Other's sound and PDF: picked, then placed.
   const traceFileInputRef = useRef<HTMLInputElement>(null)
+  // Where an embed's link is being asked for (EmbedLinkBox): the world point
+  // it will be centred on, and where on the screen that is.
+  const [embedAsk, setEmbedAsk] = useState<{ world: { x: number; y: number }; screen: { x: number; y: number } } | null>(null)
+  // A world point's place on the screen now.
+  const onScreen = (p: { x: number; y: number }) => {
+    const c = worldContainerRef.current
+    return c ? { x: p.x * zoomRef.current + c.x, y: p.y * zoomRef.current + c.y } : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  }
+  // The links given: one, an embed there; several, packed round it in the
+  // person's arrangement for batches.
+  const onScreenRef = useRef(onScreen)
+  onScreenRef.current = onScreen
+  const placeEmbeds = (urls: string[], at: { x: number; y: number }) => {
+    setEmbedAsk(null)
+    if (urls.length === 0 || !ensureLobbyHasSpace()) return
+    if (urls.length === 1) void insertDroppedTrace('embed', urls[0], urls[0], at.x, at.y)
+    else void handleCreateBatchEmbeds(urls, at)
+  }
   // The shape the quick bar's Shapes takes up (and 3 does).
   const [shapeKind, setShapeKind] = useState<BoxShape>('rectangle')
   const shapeKindRef = useRef(shapeKind)
@@ -2108,12 +2037,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const quickAction = (action: QuickAction) => {
     if (!canEdit) return
     // The bar always wins: a tool picked here ends whatever tool or mode was
-    // under way -- drawing, a shape being placed from the panel, and, in
-    // TraceOverlay, a path's points, crop mode, a connection (toolSwitch).
+    // under way -- drawing, and, in TraceOverlay, a path's points, crop mode,
+    // a connection (toolSwitch).
     // Text being typed ends as the bar takes the focus.
     setToolSwitch(n => n + 1)
     if (action !== 'draw' && isDrawingModeRef.current) leaveDrawing()
-    if (shapeDragArmedRef.current && showTracePanel) handleCloseTracePanel()
     if (action === 'laser') {
       setPlaceTool(null)
       setLaserActive(on => !on)
@@ -2124,10 +2052,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       setPlaceTool(null)
       return
     }
-    if (action === 'text' || isBoxShape(action) || action === 'path' || action === 'frame') {
-      // One way of making a trace at a time: the panel's shape drag would
-      // take the same press.
-      if (showTracePanel) handleCloseTracePanel()
+    if (action === 'text' || isBoxShape(action) || action === 'path' || action === 'frame' || action === 'embed') {
       setMapContextMenu(null)
       setPlaceTool(prev => (prev === action ? null : action))
       return
@@ -2139,7 +2064,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       toggleDrawing()
     } else if (action === 'pinterest') {
       openPinterestImport(centre)
-    } else if (action === 'image' || action === 'sound' || action === 'document' || action === 'sheet') {
+    } else if (action === 'image' || action === 'sound' || action === 'video' || action === 'document' || action === 'sheet') {
       // A file: picked, then placed in the middle of the view as a drop would
       // be (placeFilesAsTraces; a spreadsheet as its sheets). The web app
       // can't take files from the computer yet: said, as a dropped file has it.
@@ -2156,11 +2081,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (!input) return
       input.accept = TRACE_FILE_ACCEPT[action]
       input.click()
-    } else {
-      setClickedTracePosition(centre)
-      setTracePanelInitialType(action)
-      setTracePanelInitialShapeType(undefined)
-      setShowTracePanel(true)
     }
   }
   const quickActionRef = useRef(quickAction)
@@ -2185,6 +2105,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const centre = { x: a.x + (b.x >= a.x ? width : -width) / 2, y: a.y + (b.y >= a.y ? height : -height) / 2 }
     // What's made is selected, with its Customize panel open.
     const customize = (id: string) => setCustomizeRequest([id])
+
+    // An embed: asked for its link where the click was (EmbedLinkBox).
+    if (tool === 'embed') {
+      setPlaceTool(null)
+      setEmbedAsk({ world: a, screen: { x: start.sx, y: start.sy } })
+      return
+    }
 
     if (tool === 'text') {
       // The box first, dragged out like a rectangle (or the usual size, for
@@ -2575,72 +2502,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('keydown', handler)
   }, [goToPresentationIndex])
 
-  // Batch-embed creation from TracePanel's "Batch Placement" toggle: one URL
-  // per line becomes its own embed trace, bin-packed around the placement
-  // point exactly like a multi-file drop/paste (see handleDrop/handlePaste
-  // above) instead of stacking every trace on the same spot.
-  //
-  // Inserted as a single bulk statement rather than looping insertDroppedTrace
-  // per URL -- N sequential single-row inserts meant N separate network
-  // round-trips (slow for a large batch) for no benefit: Supabase Realtime
-  // broadcasts one change event per row regardless of how many rows a single
-  // INSERT statement affects, so batching the SQL call doesn't reduce
-  // realtime traffic, only the number of requests this client has to make.
-  // "One trace per page": each rendered page is written into the vault and
-  // becomes an image trace, arranged in a reading-order grid.
-  //
-  // Deliberately not run through packBoxesAroundCenter like a batch embed
-  // paste. That packer optimizes for a tight, organic cluster, which is the
-  // right answer for unrelated images and the wrong one for pages: their order
-  // is the information, so they go left-to-right, top-to-bottom, on a uniform
-  // pitch.
-  const handleCreatePdfPages = async (
-    pages: { blob: Blob; width: number; height: number }[],
-    columns: number,
-  ) => {
-    if (pages.length === 0 || !supabase) return
-    if (!ensureLobbyHasSpace()) return
-
-    handleCloseTracePanel()
-
-    if (!userId) return
-    const anchor = clickedTracePosition || positionRef.current
-    // In reading order, centred where it was placed, on top of everything
-    // (lib/pdfTraces pageRows -- Extract Pages lays pages out the same way).
-    const orderFields = newTraceOrderFields(useGameStore.getState().traces, useGameStore.getState().layers, pages.length)
-    const rows = await pageRows(pages, anchor, columns, { lobbyId, userId, username }, 600, i => orderFields[i])
-
-    // One insert for the whole document rather than one per page.
-    const { data, error } = await (supabase.from('traces') as any).insert(rows).select()
-    if (error) {
-      console.error('PDF page insert error:', error)
-      showToast(t('atrium.error.pagesFailed', { message: error.message }))
-      return
-    }
-    for (const row of data ?? []) {
-      useGameStore.getState().addTrace(mapRowToTrace(row))
-    }
-
-    // Reported, because a PDF is by far the heaviest thing that can be put in
-    // an atrium and the cost is otherwise invisible until it starts feeling
-    // slow.
-    const totalMB = pages.reduce((sum, p) => sum + p.blob.size, 0) / (1024 * 1024)
-    showToast(tCount('atrium.toast.pagesPlaced', pages.length, { size: totalMB.toFixed(1) }))
-  }
-
-  // Several files chosen at once in the Create Trace panel's picker. Routed
-  // through the same placement path a multi-file drop uses, so shift-selecting
-  // a folder of images in the picker and dragging those same images in produce
-  // an identical arrangement.
-  const handleCreateFileBatch = async (files: File[]) => {
-    if (files.length === 0) return
-    if (!ensureLobbyHasSpace()) return
-
-    const anchor = clickedTracePosition || positionRef.current
-    handleCloseTracePanel()
-    await placeFilesAsTraces(files, anchor.x, anchor.y)
-  }
-
   // "Paste Image" from the canvas right-click menu. Places at the point that
   // was right-clicked, which is the whole advantage over Ctrl+V -- the user
   // has already said where they want it.
@@ -2705,7 +2566,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (urls.length === 0) return
     if (!ensureLobbyHasSpace()) return
 
-    const anchor = at ?? clickedTracePosition ?? positionRef.current
+    const anchor = at ?? positionRef.current
     // Probe each URL's real image dimensions before packing (like the
     // multi-file drop handler already does for actual files) -- most
     // pasted embeds are hotlinked images, and packing them all as a flat
@@ -2777,8 +2638,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         useGameStore.getState().addTrace(trace)
       }
     }
-
-    handleCloseTracePanel()
   }
 
   // Bulk-convert every embed trace in this atrium into an internal image
@@ -3072,11 +2931,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       worldContainer.addChild(label)
       labelRef.current = label
 
-      // Create pulsing indicator for trace placement (initially hidden)
-      const tracePlacementIndicator = new Graphics()
-      worldContainer.addChild(tracePlacementIndicator)
-      tracePlacementIndicatorRef.current = tracePlacementIndicator
-
       // Create container for trace direction indicators (on UI layer, not world)
       const traceIndicatorsContainer = new Container()
       app.stage.addChild(traceIndicatorsContainer)
@@ -3111,20 +2965,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           if (!isClickingTrace && !isClickingUI) {
             // Don't start panning if in drawing mode
             if (isDrawingModeRef.current) return
-            // Drag out the shape instead of panning, while the Create Trace
-            // panel is open on a sizeable shape type. Same gesture as the
-            // shift+drag area select below, which is where the idea comes
-            // from -- you draw the region you want rather than accepting a
-            // fixed 200x200 box and resizing it afterwards.
-            if (shapeDragArmedRef.current && worldContainerRef.current) {
-              isShapeDraggingRef.current = true
-              cameraFlyToRef.current = null
-              shapeDragStartWorldRef.current = {
-                x: (e.clientX - worldContainerRef.current.x) / zoomRef.current,
-                y: (e.clientY - worldContainerRef.current.y) / zoomRef.current,
-              }
-              return
-            }
             if (e.shiftKey) {
               // Shift+drag on empty canvas draws a selection rectangle instead of panning
               isAreaSelectingRef.current = true
@@ -3184,31 +3024,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
         }
 
-        // Live-size the shape being dragged out. Writes both the size and the
-        // centre, so the panel's dimension fields and the placement position
-        // track the rectangle as it's drawn.
-        if (isShapeDraggingRef.current && shapeDragStartWorldRef.current && worldContainerRef.current) {
-          const start = shapeDragStartWorldRef.current
-          const currentX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
-          const currentY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
-
-          // Dragging in any direction works: the rectangle is between the two
-          // corners, not anchored to a top-left.
-          const width = Math.abs(currentX - start.x)
-          const height = Math.abs(currentY - start.y)
-
-          // Merged, not replaced: the drag only decides the size. Everything
-          // else -- type, colours, outline, radius -- belongs to the panel and
-          // must survive it. Spread rather than listed, so a style field added
-          // later cannot be dropped here by being forgotten.
-          setShapeDraftSize(prev => ({ ...(prev ?? shapeStyleOf({})), width, height }))
-          setClickedTracePosition({
-            x: (start.x + currentX) / 2,
-            y: (start.y + currentY) / 2,
-          })
-          return
-        }
-
         if (isAreaSelectingRef.current && mouseDownScreenPosRef.current && areaSelectRectRef.current) {
           const startX = mouseDownScreenPosRef.current.x
           const startY = mouseDownScreenPosRef.current.y
@@ -3223,20 +3038,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const handleMouseUp = (e: MouseEvent) => {
         if (e.button === 0) {
           isPanningRef.current = false
-
-          if (isShapeDraggingRef.current) {
-            isShapeDraggingRef.current = false
-            shapeDragStartWorldRef.current = null
-            // A click rather than a drag: the user was repositioning the
-            // shape, not resizing it to nothing. Keep whatever size is already
-            // set (the panel's default on the first click) instead of
-            // collapsing it, and let the click-to-place handling stand.
-            const draft = shapeDraftSizeRef.current
-            if (draft && (draft.width < 4 || draft.height < 4)) {
-              setShapeDraftSize(null)
-            }
-            return
-          }
 
           if (isAreaSelectingRef.current) {
             isAreaSelectingRef.current = false
@@ -3278,22 +3079,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             return
           }
 
-          // While the new-trace panel is open, a genuine click (not a pan-drag)
-          // on the map updates the pending placement position live.
-          if (showTracePanelRef.current && !isDrawingModeRef.current && mouseDownScreenPosRef.current) {
-            const dx = e.clientX - mouseDownScreenPosRef.current.x
-            const dy = e.clientY - mouseDownScreenPosRef.current.y
-            const dragDistance = Math.hypot(dx, dy)
-            if (dragDistance < 5) {
-              const target = e.target as HTMLElement
-              const isUI = target.closest('[data-ui-element], [data-trace-element], button, input, textarea, select, label, [role="dialog"], .customize-menu, .pointer-events-auto') !== null
-              if (!isUI && worldContainerRef.current) {
-                const worldX = (e.clientX - worldContainerRef.current.x) / zoomRef.current
-                const worldY = (e.clientY - worldContainerRef.current.y) / zoomRef.current
-                setClickedTracePosition({ x: worldX, y: worldY })
-              }
-            }
-          }
           mouseDownScreenPosRef.current = null
         }
       }
@@ -3516,54 +3301,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // Player avatar and label now rendered in DOM (no need to update Pixi objects)
         // Keeping refs for compatibility but they're invisible
 
-        // Shape being placed: draw the rectangle it will occupy, so the size
-        // in the panel and the size on the canvas are the same thing seen two
-        // ways. Drawn in the same graphics object as the placement pulse,
-        // which already lives in the world container and so scales and pans
-        // with the camera for free.
-        const placementPos = clickedTracePositionRef.current
-        const draftSize = shapeDraftSizeRef.current
-        const indicator = indicatorColorRef.current
-
-        if (tracePlacementIndicatorRef.current && placementPos && draftSize) {
-          // A shape being placed is drawn by TraceOverlay (its shapeDraft),
-          // over the traces, where the shape it becomes will be; this canvas
-          // is under them all.
-          tracePlacementIndicatorRef.current.clear()
-        } else if (tracePlacementIndicatorRef.current && placementPos) {
-          // Placement marker: one colour, thin lines, and a slow breath.
-          //
-          // Three things made the old one harsh. It advanced 0.1 radians a
-          // frame, a full cycle in about a second; it used abs(sin), which
-          // has a cusp at zero and so snapped rather than eased; and its
-          // centre was a second, brighter colour. This is a fifth of the
-          // speed, on a smooth 0..1 curve, in a single colour that already
-          // follows the atrium's background.
-          pulseTime += 0.02
-          const breath = (Math.sin(pulseTime) + 1) / 2
-          const radius = 20 + breath * 6
-
-          const g = tracePlacementIndicatorRef.current
-          g.clear()
-
-          // Faint outer halo -- gives the marker presence without a hard edge.
-          g.lineStyle(1.5, indicator.primary, 0.08 + breath * 0.08)
-          g.drawCircle(placementPos.x, placementPos.y, radius + 12)
-
-          // The ring itself, thin enough to read as drawn on the canvas
-          // rather than sitting on top of it.
-          g.lineStyle(1.5, indicator.primary, 0.30 + breath * 0.18)
-          g.drawCircle(placementPos.x, placementPos.y, radius)
-
-          // A small steady centre, same colour, no pulse -- it marks the exact
-          // point, so moving or flashing it would work against that.
-          g.beginFill(indicator.primary, 0.45)
-          g.drawCircle(placementPos.x, placementPos.y, 2.5)
-          g.endFill()
-        } else if (tracePlacementIndicatorRef.current) {
-          // Clear indicator if no trace position
-          tracePlacementIndicatorRef.current.clear()
-        }
 
         // Update trace direction indicators on screen borders (Nier:Automata style)
         // Uses object pooling to prevent memory leaks
@@ -3796,7 +3533,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       worldContainerRef.current = null
       labelRef.current = null
       playerAvatarRef.current = null
-      tracePlacementIndicatorRef.current = null
       traceIndicatorsRef.current = null
       lightingLayerRef.current = null
       gridRef.current = null
@@ -4460,7 +4196,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
             areaSelectRequest={areaSelectRequest}
-            shapeDraft={shapeDraftSize && clickedTracePosition ? { draft: shapeDraftSize, ...clickedTracePosition } : null}
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
@@ -4468,13 +4203,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
             hideCursor={(isDrawingMode && pointerOnDrawingCanvas) || (laserActive && pointerOnLaser)}
-            placing={!!placeTool || shapeArmed}
+            placing={!!placeTool}
             onEditDrawing={traceId => void startDrawing(traceId)}
             hiddenTraceIds={drawingMembers}
             toolSwitch={toolSwitch}
             onMultiSelectionChange={setMultiSelectedTraceIds}
             onExport={ids => setExportOf({ ids })}
-            onCustomizeOpen={() => { closeSidePanels(); setShowTracePanel(false) }}
+            onCustomizeOpen={closeSidePanels}
             canEdit={canEdit}
           />
         </div>
@@ -4485,7 +4220,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             Over the traces (their layer is isolated), under the HUD and the
             Create Trace panel. A plain layer: the canvas's own mouse handling
             takes the drag, as it does on empty canvas. */}
-        {shapeArmed && <div className="absolute inset-0" style={{ zIndex: 1, pointerEvents: 'auto' }} />}
 
         {/* Shift+drag area-selection rectangle -- position/size mutated
             directly on mousemove (see handleMouseMove), not React state.
@@ -4913,6 +4647,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </div>
 
 
+      {embedAsk && (
+        <EmbedLinkBox
+          at={embedAsk.screen}
+          onEmbed={urls => placeEmbeds(urls, embedAsk.world)}
+          onCancel={() => setEmbedAsk(null)}
+        />
+      )}
+
       {showReportForm && (
         <ReportFeedbackModal
           onClose={() => setShowReportForm(false)}
@@ -5331,6 +5073,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               ...(isDesktop ? [
                 { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
+                { label: `◇ ${t('atrium.trace.type.video')}`, type: 'video' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.document')}`, type: 'document' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.spreadsheet')}`, type: 'sheet' as const, shape: undefined },
               ] : []),
@@ -5340,6 +5083,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
                 onClick={async () => {
                   const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
+                  const screen = { x: mapContextMenu.x, y: mapContextMenu.y }
                   setMapContextMenu(null)
 
                   // Text skips the panel entirely.
@@ -5371,10 +5115,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                     return
                   }
 
-                  setClickedTracePosition(anchor)
-                  setTracePanelInitialType(item.type)
-                  setTracePanelInitialShapeType(item.shape)
-                  setShowTracePanel(true)
+                  // An embed: its link asked for there.
+                  if (item.type === 'embed') {
+                    setEmbedAsk({ world: anchor, screen })
+                    return
+                  }
+                  // A path: begun there, its points clicked on from it.
+                  if (item.type === 'shape' && item.shape === 'path') {
+                    const id = await insertShapeTrace(nextShapeStyle('path'), anchor, [anchor])
+                    if (id) setNewPathTraceId(id)
+                    return
+                  }
+                  // A shape: the one Shapes has in hand, at a usual size there.
+                  if (item.type === 'shape') {
+                    const id = await insertShapeTrace(nextShapeStyle(shapeKindRef.current), anchor, undefined, { width: 200, height: 150 })
+                    if (id) setCustomizeRequest([id])
+                    return
+                  }
+                  // A file: picked, then placed there as a drop is.
+                  importAnchorRef.current = anchor
+                  const input = traceFileInputRef.current
+                  if (!input) return
+                  input.accept = TRACE_FILE_ACCEPT[item.type]
+                  input.click()
                 }}
               >
                 {item.label}
@@ -5468,32 +5231,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       )}
 
       {/* Trace Panel */}
-      {showTracePanel && (
-        <TracePanel
-          onClose={handleCloseTracePanel}
-          onCreatePath={handleCreatePath}
-          onCreateBatchEmbeds={handleCreateBatchEmbeds}
-          onCreateFileBatch={handleCreateFileBatch}
-          onCreatePdfPages={handleCreatePdfPages}
-          onOpenPinterestImport={pinterestConnected ? () => {
-            // The trace panel closes as the board picker opens, so the two
-            // read as one panel giving way to another rather than stacking.
-            // Both share .modal-backdrop, so the swap animates the same way
-            // whether it starts here or from the canvas menu.
-            setShowTracePanel(false)
-            setPinterestImportAnchor(clickedTracePosition)
-            setShowPinterestImport(true)
-          } : undefined}
-          tracePosition={clickedTracePosition}
-          lobbyId={lobbyId}
-          initialType={tracePanelInitialType}
-          initialShapeType={tracePanelInitialShapeType}
-          shapeDraftSize={shapeDraftSize}
-          onShapeDraftChange={handleShapeDraftChange}
-          onShapeModeChange={handleShapeModeChange}
-        />
-      )}
-
       {showPinterestConnect && (
         <PinterestConnectionPanel
           onClose={() => setShowPinterestConnect(false)}

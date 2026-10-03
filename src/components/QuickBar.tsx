@@ -24,8 +24,10 @@
 //
 // Shapes holds the shapes drawn in a box -- rectangle, triangle, circle,
 // diamond, parallelogram -- in a flyout, the button showing the one in use;
-// Other holds the kinds of file a trace can be besides a picture -- sound, a
-// PDF, a spreadsheet -- each picked and placed at once, as a drop is.
+// Other holds the kinds of file a trace can be besides a picture -- sound,
+// video, a PDF, a spreadsheet -- each picked and placed at once, as a drop is.
+// Embed is a tool like Text: a click says where, and a box asks for the link
+// (EmbedLinkBox).
 //
 // Two tools have kinds, in a flyout at their side (as the canvas menu's
 // Transformations has), the button showing the kind in use:
@@ -43,12 +45,12 @@ import { useTranslation } from '../lib/i18n'
 import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type LaserSettings } from '../lib/laser'
 import type { TranslationKey } from '../locales/en'
 
-export type PlaceTool = 'text' | BoxShape | 'path' | 'frame'
+export type PlaceTool = 'text' | BoxShape | 'path' | 'frame' | 'embed'
 // The kinds of file the Other button offers.
-export type OtherTrace = 'sound' | 'document' | 'sheet'
-const OTHER_TRACES: OtherTrace[] = ['sound', 'document', 'sheet']
+export type OtherTrace = 'sound' | 'video' | 'document' | 'sheet'
+const OTHER_TRACES: OtherTrace[] = ['sound', 'video', 'document', 'sheet']
 // What the bar does: take a tool up, or act.
-export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'embed' | 'laser' | 'pinterest' | OtherTrace
+export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'laser' | 'pinterest' | OtherTrace
 // What the bar shows: a button each. Shapes and Other each hold several.
 export type QuickButton = 'select' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest'
 
@@ -73,6 +75,12 @@ const ICONS: Record<QuickAction | 'other', ReactNode> = {
       <path d="M9 17 V5.5 L19 3.5 V15" strokeLinejoin="round" />
       <circle cx="6.5" cy="17" r="2.5" />
       <circle cx="16.5" cy="15" r="2.5" />
+    </>
+  ),
+  video: (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" />
+      <path d="M10 9.5 L15 12 L10 14.5 Z" strokeLinejoin="round" />
     </>
   ),
   document: <path d="M6 3.5 H14 L18.5 8 V20.5 H6 Z M14 3.5 V8 H18.5 M9 12 H15.5 M9 15.5 H15.5" strokeLinejoin="round" />,
@@ -268,6 +276,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
     parallelogram: t('atrium.trace.shape.parallelogram'),
     other: t('atrium.tools.other'),
     sound: t('atrium.trace.type.sound'),
+    video: t('atrium.trace.type.video'),
     document: t('atrium.trace.type.document'),
     sheet: t('atrium.trace.type.spreadsheet'),
     path: t('atrium.trace.shape.path'),
@@ -518,6 +527,7 @@ export function ToolHint({ armed, laser, drawing }: { armed: PlaceTool | null; l
   const { t } = useTranslation()
   const text = drawing ? t('atrium.draw.hint')
     : laser ? t('atrium.tools.hintLaser')
+    : armed === 'embed' ? t('atrium.tools.hintEmbed')
     : armed === 'text' ? t('atrium.tools.hintText')
     : armed === 'path' ? t('atrium.tools.hintPath')
     : armed ? t('atrium.tools.hintBox')

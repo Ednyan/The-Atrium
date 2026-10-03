@@ -44,7 +44,7 @@ import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeDraft } from '../lib/shapeStyle'
+import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf } from '../lib/shapeStyle'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
@@ -186,11 +186,8 @@ interface TraceOverlayProps {
   // where each trace's real size is known. A new object each time.
   areaSelectRequest?: Box | null
   // A tool is in hand that the next press on the canvas places with (the
-  // quick bar's, or the Create Trace panel's shape): the cursor's a crosshair.
+  // quick bar's): the cursor's a crosshair.
   placing?: boolean
-  // The shape being placed from the Create Trace panel, drawn over every
-  // trace as it will look: its style and size, and its centre in world units.
-  shapeDraft?: { draft: ShapeDraft; x: number; y: number } | null
   // One-shot request from the Layer panel: open the customize UI for these
   // traces. One id opens that trace's own panel; several select them and open
   // batch edit. A new array reference is sent each time, like
@@ -340,12 +337,6 @@ const CROP_HANDLES = [
   { key: 'bl', u: 0, v: 1 }, { key: 'b', u: 0.5, v: 1 }, { key: 'br', u: 1, v: 1 },
 ] as const
 
-// The shape being placed (TraceOverlay's shapeDraft), drawn as a trace: its
-// id, and its level -- over every trace and thread, under the handles.
-
-
-const SHAPE_DRAFT_ID = '__shape-draft__'
-const SHAPE_DRAFT_Z = 999_999
 // Room left around a selection wrapped in a frame, in world units.
 const FRAME_PADDING = 40
 // How far either side of its border a press takes a frame, in screen pixels.
@@ -651,7 +642,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, shapeDraft, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -1120,15 +1111,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // light, one below it, and under that the threads whose lower end it is
   // (TraceLinksLayer).
   const drawRank = React.useMemo(() => drawRanks(traces, layers), [traces, layers])
-  const zOf = (trace: Trace) => trace.id === SHAPE_DRAFT_ID ? SHAPE_DRAFT_Z : (drawRank.get(trace.id) ?? 0) * 3
-  // The shape being placed, as a trace of its own, drawn by the same renderer
-  // as every shape -- so the preview is the shape that will appear -- with
-  // the look a shape has while its panel is open, over every trace.
-  const draftTrace = React.useMemo((): Trace | null => shapeDraft ? {
-    ...shapeDraft.draft,
-    id: SHAPE_DRAFT_ID, type: 'shape', x: shapeDraft.x, y: shapeDraft.y, scaleX: 1, scaleY: 1, rotation: 0,
-    ignoreClicks: true, lobbyId: '', userId: '', username: '', createdAt: '',
-  } as Trace : null, [shapeDraft])
+  const zOf = (trace: Trace) => (drawRank.get(trace.id) ?? 0) * 3
 
   // How many rows of the Move to Group flyout are shown before it scrolls:
   // New Group, Ungrouped, and three groups.
@@ -5974,7 +5957,7 @@ return (
         // grip and caret around it stay where they are, and something
         // being worked with shouldn't drift out from under the pointer.
         // Not the shape being placed: it would drift while being sized.
-        ...(traceFloat > 0 && !isInSelection && !isPressed && trace.id !== SHAPE_DRAFT_ID
+        ...(traceFloat > 0 && !isInSelection && !isPressed
           && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
           && !(trace.type === 'embed' && trace.enableInteraction) ? {
           animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
@@ -5983,7 +5966,7 @@ return (
         cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
         // A frame is taken hold of by its edge and title (below); its inside
         // is left to what it holds, and to the canvas under it.
-        pointerEvents: trace.id === SHAPE_DRAFT_ID || isFrame(trace) ? 'none' : 'auto',
+        pointerEvents: isFrame(trace) ? 'none' : 'auto',
       }}
       onMouseEnter={() => setCursorState('pointer')}
       onMouseLeave={() => setCursorState('default')}
@@ -6052,7 +6035,7 @@ return (
           style={{
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
-            pointerEvents: trace.id === SHAPE_DRAFT_ID ? 'none' : 'auto',
+            pointerEvents: 'auto',
             // Not clipped, nor its SVG (shapeStyle): the shape is drawn
             // inside its box already, stroke and all (the insets below), and
             // on a turned shape a clip is the edge you see -- one the
@@ -6110,7 +6093,7 @@ return (
             // colour that stands out from the atrium (previewFrameColour).
             // At full strength: it was drawn see-through then, which made a
             // new shape look like something other than what it would be.
-            const editing = editingTrace?.id === trace.id || trace.id === SHAPE_DRAFT_ID
+            const editing = editingTrace?.id === trace.id
             // 1.5 world units, like the preview frame, kept inside the box.
             const frameWidth = Math.max(1.5 * zoom, 1)
             const frameX = Math.min((frameWidth / 2 / borderWidth) * 100, 50)
@@ -6268,7 +6251,7 @@ return (
             padding: '0px',
             // A frame is taken hold of by its edge and title (below); its inside
             // is left to what it holds, and to the canvas under it.
-            pointerEvents: trace.id === SHAPE_DRAFT_ID || isFrame(trace) ? 'none' : 'auto',
+            pointerEvents: isFrame(trace) ? 'none' : 'auto',
             // No backgroundImage scanline texture here -- a fine 2-3px
             // repeating-linear-gradient on a container whose pixel size
             // varies continuously with zoom caused visible moire/
@@ -7333,7 +7316,6 @@ return (
       />
 
       {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
-      {draftTrace && renderTrace(draftTrace)}
 
         {/* The selected path's handles, over everything else of the world:
             a square on each point, a fainter round one between each two

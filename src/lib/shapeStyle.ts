@@ -115,21 +115,6 @@ export function shapeStyleColumns(style: ShapeStyle) {
   }
 }
 
-/**
- * A shape still being placed: its full style plus the size dragged out or
- * typed. The canvas draws this as a preview, so the preview can show exactly
- * what is being made -- colour, outline and all -- rather than a grey outline.
- */
-export type ShapeDraft = ShapeStyle & { width: number; height: number }
-
-/** True when two drafts would draw identically. */
-export function sameShapeDraft(a: ShapeDraft | null, b: ShapeDraft | null): boolean {
-  if (!a || !b) return a === b
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof ShapeDraft>
-  for (const key of keys) if (a[key] !== b[key]) return false
-  return true
-}
-
 /** "#3b82f6" or "#38f" as the number Pixi takes. Blue for anything unparseable. */
 export function colourToNumber(colour: string | undefined): number {
   const hex = (colour ?? '').replace('#', '')

@@ -6,7 +6,6 @@ import assert from 'node:assert/strict'
 
 import {
   colourToNumber,
-  sameShapeDraft,
   shapeStyleColumns,
   shapeStyleOf,
   type ShapeDraft,
@@ -42,15 +41,6 @@ test('every style field reaches a database column', () => {
   assert.equal(columns.shape_outline_color, '#ff0000')
   assert.equal(columns.shape_outline_only, false)
   assert.equal(columns.path_curve_type, 'straight')
-})
-
-test('drafts that draw the same compare equal, and any difference does not', () => {
-  const a: ShapeDraft = { ...shapeStyleOf({}), width: 200, height: 100 }
-  assert.equal(sameShapeDraft(a, { ...a }), true)
-  assert.equal(sameShapeDraft(a, { ...a, shapeColor: '#000000' }), false)
-  assert.equal(sameShapeDraft(a, { ...a, width: 201 }), false)
-  assert.equal(sameShapeDraft(null, null), true)
-  assert.equal(sameShapeDraft(a, null), false)
 })
 
 test('colours become the numbers Pixi takes', () => {
