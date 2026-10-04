@@ -46,18 +46,39 @@ export async function applyLayerDelta(delta: LayerDelta): Promise<void> {
   window.dispatchEvent(new Event('atrium:layers-changed'))
 }
 
+// What a change made, by id, when it says (an import): its step is those
+// alone, whatever else happened in the atrium while it ran.
+export interface OwnIds { traces: Set<string>; layers: Set<string>; links: Set<string> }
+
+// Only what belongs to `own`.
+function ownPart(d: LayerDelta, own: OwnIds): LayerDelta {
+  const t = (x: { id: string }) => own.traces.has(x.id), l = (x: { id: string }) => own.layers.has(x.id), k = (x: { id: string }) => own.links.has(x.id)
+  return {
+    layersAdded: d.layersAdded.filter(l), layersRemoved: d.layersRemoved.filter(l), layersChanged: d.layersChanged.filter(l),
+    tracesAdded: d.tracesAdded.filter(t), tracesRemoved: d.tracesRemoved.filter(t), tracesChanged: d.tracesChanged.filter(t),
+    linksAdded: d.linksAdded.filter(k), linksRemoved: d.linksRemoved.filter(k),
+  }
+}
+
 // Runs a layer change and records it, as one step, if it changed anything.
 // Called inside the layer queue, as the change itself would be.
-export async function withLayerUndo<T>(label: string, change: () => Promise<T>): Promise<T> {
+//
+// A change that runs long while the atrium stays in use (an import) says what
+// it made (`own`): then its step is that alone, and a trace someone adds or a
+// group they rename meanwhile is theirs, with its own undo -- the before/after
+// difference would otherwise take it in. Its traces it adopts itself
+// (adoptTraces) rather than every trace that appears while it runs.
+export async function withLayerUndo<T>(label: string, change: () => Promise<T>, own?: () => OwnIds): Promise<T> {
   const before = snapshotLayers()
-  applying++
+  if (!own) applying++
   let result: T
   try {
     result = await change()
   } finally {
-    applying--
+    if (!own) applying--
   }
-  const delta = layerDelta(before, snapshotLayers())
+  const whole = layerDelta(before, snapshotLayers())
+  const delta = own ? ownPart(whole, own()) : whole
   // Traces this change made are its own, not additions to record apart.
   for (const trace of delta.tracesAdded) adopted.add(trace.id)
   if (!deltaIsEmpty(delta)) {

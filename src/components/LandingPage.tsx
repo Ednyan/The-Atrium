@@ -300,9 +300,6 @@ const sections: Section[] = [
 
 const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
 
-// The height of the code-history band under the bar.
-const CODE_HISTORY_BAND = 'clamp(94px, 9.9vw, 151px)'
-
 // The sticky bar's height (h-14). Both the jump and the scroll-spy measure
 // against it, so it is written once.
 const NAV_HEIGHT = 56
@@ -888,49 +885,17 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </div>
       </div>
 
-      {/* The code history (public/code-history, a page of its own): a band of the
-          finished graph -- every file and connection the code has had -- right
-          under the bar, edge to edge, on a strip of this page's own ground a
-          shade deeper, in either theme (.code-history-band). The link is at the right edge because the
-          code history is this page's neighbour to the right: the two slide
-          past each other (lib/codeHistory), and hovering the band loads it
-          ahead. */}
-      <a
-        href="/code-history/"
-        onPointerEnter={preloadCodeHistory}
-        onFocus={preloadCodeHistory}
-        onClick={e => {
-          if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-          if (openCodeHistory()) e.preventDefault()
-        }}
-        className="code-history-band group relative flex items-center justify-end overflow-hidden"
-        style={{ height: CODE_HISTORY_BAND }}
-      >
-        <img
-          src="/code-history/banner.webp"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
-        />
-        <span className="byline-link relative flex items-center gap-3 px-5 sm:px-10 lg:px-16 text-[11px] sm:text-xs tracking-[0.22em] uppercase text-nier-bg/80">
-          {t('landing.codeHistory')}
-          <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
-        </span>
-      </a>
-
-      {/* SECTION 1: The Digital Atrium -- the title. The first screen still, less
-          the band above it, and set from the top of it rather than centred, so
-          the name sits up under the band -- with room to breathe there, a
-          share of the screen's height. */}
+      {/* SECTION 1: The Digital Atrium -- the title. The first screen, set from
+          the top of it rather than centred, with room to breathe above the
+          name, and closed at the foot by the code history's strip. */}
       <section
         ref={el => sectionRefs.current[0] = el}
-        className="flex items-start px-5 sm:px-10 lg:px-16 pt-[clamp(2.5rem,8vh,5.5rem)] pb-24 relative overflow-hidden"
-        style={{ minHeight: `calc(100vh - 3.5rem - ${CODE_HISTORY_BAND})` }}
+        className="flex flex-col px-5 sm:px-10 lg:px-16 pt-[clamp(2.5rem,8vh,5.5rem)] pb-14 relative overflow-hidden"
+        style={{ minHeight: 'calc(100vh - 3.5rem)' }}
       >
-        {/* Corner brackets */}
+        {/* Corner brackets, at the top: the strip closes the foot. */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30 pointer-events-none" />
         <div className="absolute top-8 right-8 w-16 h-16 border-r-2 border-t-2 border-nier-border/30 pointer-events-none" />
-        <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-nier-border/30 pointer-events-none" />
-        <div className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-nier-border/30 pointer-events-none" />
 
         {/* The portal as an emblem: scaled far past its natural size and sunk
             to low opacity behind the type. Cropped by the section edge on
@@ -975,17 +940,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             so nothing led -- the eye had no entry point. Type anchors the left,
             the product holds the right, and on narrow screens it stacks with
             the product directly under the headline. */}
-        <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-start">
+        <div className="relative z-10 w-full max-w-[1400px] mx-auto mb-16 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-start">
 
 
           {/* LEFT: type + actions */}
           <div className="text-left">
             {/* The name, made of traces: what the place is made of
                 (components/TraceTitle). */}
-            <TraceTitle className="mb-12" />
+            <TraceTitle className="mb-7" />
 
-            <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">{t('landing.hero.sub1')}<span className="block text-nier-bg/70 text-base mt-2">{t('landing.hero.sub2')}</span>
-            </p>
+            <p className="text-nier-bg/80 text-xl md:text-2xl font-light leading-relaxed max-w-lg mb-9">{t('landing.hero.sub2')}</p>
 
             {/* Filled rather than outlined. Previously the call to action had
                 the same visual weight as every other bordered box on the page,
@@ -1105,11 +1069,40 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           </div>
         </div>
 
-        {/* Scroll hint, pinned low but out of the content's way */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-pulse pointer-events-none">
-          <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">{t('landing.hero.scroll')}</span>
-          <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
-        </div>
+        {/* The code history (public/code-history, a page of its own), seen at
+            once: a strip at the foot of the first screen, on the content's own
+            measure and framed the way the showcase is, the finished graph --
+            every file and connection the code has had -- printed into it
+            (.code-history-strip), what it is on the left and the way in on
+            the right. The code history is this page's neighbour to the right:
+            the two slide past each other (lib/codeHistory), and hovering the
+            strip loads it ahead. */}
+        <a
+          href="/code-history/"
+          onPointerEnter={preloadCodeHistory}
+          onFocus={preloadCodeHistory}
+          onClick={e => {
+            if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+            if (openCodeHistory()) e.preventDefault()
+          }}
+          className="code-history-strip group relative z-10 w-full max-w-[1400px] mx-auto mt-auto"
+        >
+          <span aria-hidden="true" className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60" />
+          <span aria-hidden="true" className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60" />
+          <span aria-hidden="true" className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60" />
+          <span aria-hidden="true" className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60" />
+          <span className="relative flex items-center gap-6 h-[clamp(76px,7.5vw,112px)] px-5 sm:px-8 overflow-hidden border border-nier-border/30">
+            <img src="/code-history/banner.webp" alt="" className="absolute inset-y-0 right-0 w-full sm:w-[66%] h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+            <span className="relative hidden sm:flex items-center gap-3 max-w-[46%] text-sm leading-snug text-nier-bg/75 font-light">
+              <span className="byline-mark w-2 h-2 rotate-45 shrink-0" />
+              {t('landing.codeHistory.what')}
+            </span>
+            <span className="byline-link relative ml-auto flex items-center gap-3 text-[11px] sm:text-xs tracking-[0.22em] uppercase text-nier-bg/80 whitespace-nowrap">
+              {t('landing.codeHistory')}
+              <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+            </span>
+          </span>
+        </a>
       </section>
 
       {/* What can be put down in an atrium, running past: the page's beat

@@ -414,6 +414,18 @@ interface LobbySceneProps {
   onKicked: (blacklisted: boolean) => void
 }
 
+// The drifting particles' part of a theme, for the manager when it's made and
+// whenever the theme changes.
+function particleConfig(theme: { particleColor?: string; particlesEnabled?: boolean; particleOpacity?: number; particleDensity?: number } | null | undefined, backgroundColor: number) {
+  return {
+    particleColor: theme?.particleColor ? parseInt(theme.particleColor.replace('#', ''), 16) : 0xffffff,
+    particlesEnabled: theme?.particlesEnabled ?? true,
+    particleOpacity: theme?.particleOpacity ?? 0.6,
+    particleDensity: theme?.particleDensity ?? 1.0,
+    backgroundColor,
+  }
+}
+
 export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySceneProps) {
   const { t, language } = useTranslation()
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -3010,12 +3022,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       window.addEventListener('wheel', handleWheel, { passive: false })
 
       // Initialize theme manager
+      // The theme's particles from the start, not just in the later
+      // updateConfig: the theme can be here before this is, and then that
+      // never runs again -- the particles came back white on every visit.
       const themeManager = new ThemeManager(worldContainer, {
         particleCount: 100,
-        // Seeded here too, not just in the later updateConfig: particles are
-        // created right below, and their blend mode is chosen from the
-        // background at creation time.
-        backgroundColor: bgColor,
+        ...particleConfig(themeSettingsRef.current, bgColor),
       })
       themeManagerRef.current = themeManager
       themeManager.createParticles(viewportWidth, viewportHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
@@ -3669,15 +3681,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     // Update ThemeManager settings
     if (themeManagerRef.current) {
-      const themeSettings = viewTheme
-
-      themeManagerRef.current.updateConfig({
-        particleColor:themeSettings?.particleColor ? parseInt(themeSettings.particleColor.replace('#', ''), 16) : 0xffffff,
-        particlesEnabled: themeSettings?.particlesEnabled ?? true,
-        particleOpacity: themeSettings?.particleOpacity ?? 0.6,
-        particleDensity: themeSettings?.particleDensity ?? 1.0,
-        backgroundColor: bgColor,
-      })
+      themeManagerRef.current.updateConfig(particleConfig(viewTheme, bgColor))
 
       // Recreate particles with new settings
       themeManagerRef.current.createParticles(window.innerWidth, window.innerHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
@@ -4360,7 +4364,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             pointer-events-auto is the lock: the overlay takes the clicks and
             drags that would otherwise reach the canvas, so movement stops for
             as long as the import runs and resumes by itself when it ends. */}
-        {importProgress && (
+        {importProgress && !importProgress.percent && (
           <div
             data-import-progress=""
             className="absolute inset-0 z-[9999] pointer-events-auto flex items-center justify-center cursor-wait"
@@ -4790,6 +4794,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 {t('atrium.hud.tracesSelected', { count: multiSelectedTraceIds.length })}
               </p>
             )}
+        {/* An .atrium file coming in: how far, here at the foot, and the
+            atrium left free to use meanwhile (its undo is its own: lib/atriumFile). */}
+        {importProgress?.percent && (
+          <div
+            data-import-progress=""
+            role="progressbar"
+            aria-label={t('atrium.hud.importing')}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round((importProgress.done / Math.max(1, importProgress.total)) * 100)}
+            className="panel-in relative w-60 px-3 py-2 border font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
+            style={{ color: 'rgb(var(--c-fg))', background: 'rgb(var(--c-ground) / 0.94)', borderColor: 'rgb(var(--c-fg) / 0.3)' }}
+          >
+            <div className="flex justify-between gap-3">
+              <span className="truncate">◇ {t('atrium.hud.importing')}</span>
+              <span className="tabular-nums">{new Intl.NumberFormat(language, { style: 'percent' }).format(importProgress.done / Math.max(1, importProgress.total))}</span>
+            </div>
+            <div className="absolute inset-x-0 bottom-0 h-[2px]" style={{ background: 'rgb(var(--c-fg) / 0.12)' }}>
+              <div className="h-full transition-[width] duration-200 ease-out" style={{ width: `${(importProgress.done / Math.max(1, importProgress.total)) * 100}%`, background: 'rgb(var(--c-fg))' }} />
+            </div>
+          </div>
+        )}
         <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} panning={panTool} />
       </div>
 

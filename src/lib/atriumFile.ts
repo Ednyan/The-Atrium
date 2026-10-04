@@ -21,7 +21,7 @@ import { keysBetween, keysOnTop, topLevel } from './order'
 import { fileOrderKeys, type AtriumFile } from './atriumFormat'
 import { firstFreeName, placeholderNames } from './traceNames'
 import { queueLayerChange } from './layerQueue'
-import { withLayerUndo } from './layerUndo'
+import { adoptTraces, withLayerUndo } from './layerUndo'
 import { uploadTraceFile } from './traceUpload'
 import { fetchMedia } from './exportImage'
 import { traceBox } from './traceGeometry'
@@ -141,6 +141,9 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     const free = Math.max(0, LOBBY_SIZE_LIMIT - useGameStore.getState().getLobbySizeBytes())
     if (needed > free) return Promise.reject(new ImportTooLargeError(needed, free))
   }
+  // What the import makes, by id: its one step of undo is these alone, so
+  // the atrium can be used while it runs (lib/layerUndo).
+  const own = { traces: new Set<string>(), layers: new Set<string>(), links: new Set<string>() }
   return queueLayerChange(() => withLayerUndo('import', async () => {
     const db = supabase
     if (!db) return { added: 0, missing: 0, failed: 0 }
@@ -187,6 +190,7 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     for (const [i, item] of top.entries()) {
       if ('group' in item) {
         const made = await createGroup(lobbyId, item.group.name, userId, topKeys[i])
+        own.layers.add(made.id)
         groupIds.set(item.group._local_id, made.id)
         const inside = parsed.filter(({ row }) => row._local_layer_id === item.group._local_id)
           .sort((a, b) => ((traceKeyOf.get(a.row) ?? '') < (traceKeyOf.get(b.row) ?? '') ? -1 : 1))
@@ -256,6 +260,8 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
       done += batch.length
       onProgress?.(done, total)
     }
+    for (const row of written) own.traces.add(row.id)
+    adoptTraces(own.traces)
     for (const row of written) useGameStore.getState().addTrace(mapRowToTrace(row))
     const added = written.length
 
@@ -263,9 +269,9 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     const linkRows = carryLinks(file.links, ids).map(l => ({ ...l, lobby_id: lobbyId }))
     if (linkRows.length > 0) {
       const { data } = await (db.from('trace_links') as any).insert(linkRows).select()
-      if (Array.isArray(data)) for (const row of data) useGameStore.getState().receiveLink(mapRowToLink(row))
+      if (Array.isArray(data)) for (const row of data) { own.links.add(row.id); useGameStore.getState().receiveLink(mapRowToLink(row)) }
     }
     window.dispatchEvent(new Event('atrium:layers-changed'))
     return { added, missing, failed }
-  }))
+  }, () => own))
 }

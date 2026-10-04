@@ -13,21 +13,36 @@
           --panel: #fbfaf6; --strong: #161412; --metal: linear-gradient(100deg, #1A1714 0%, #55504A 100%); --lead: rgb(46 42 37 / .82); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
-  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
-  canvas.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 18px; top: 64px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
-  /* The way back, top left, and light or dark, top right: the site's own
-     buttons -- bordered, a corner cut -- not a tab down an edge. */
-  .chrome { position: fixed; top: 14px; z-index: 3; height: 34px; display: inline-flex; align-items: center; gap: 10px;
+  #c { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  #c.dragging { cursor: grabbing; }
+  #hud { position: fixed; left: 18px; top: 76px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* The bar along the top, as the landing page has one: the way back on the
+     left, what this is in the middle, the language and light or dark on the
+     right -- the site's own buttons, bordered, a corner cut. */
+  #top { position: fixed; top: 0; left: 0; right: 0; z-index: 3; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 18px;
+         background: color-mix(in srgb, var(--bg) 84%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(8px); }
+  #top .end { margin-left: auto; display: flex; gap: 8px; }
+  #title { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; pointer-events: none;
+           font-size: 11px; letter-spacing: .3em; text-transform: uppercase; white-space: nowrap; color: var(--strong); }
+  #title i { width: 7px; height: 7px; background: var(--accent); transform: rotate(45deg); }
+  #title span + span { color: var(--dim); }
+  .chrome { height: 34px; display: inline-flex; align-items: center; gap: 10px;
             background: var(--panel); color: var(--fg); border: 1px solid var(--line); font: inherit; text-decoration: none; cursor: pointer;
             clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
             transition: border-color .25s ease, color .25s ease, background .25s ease; }
   .chrome:hover { border-color: var(--accent); color: var(--strong); }
-  #back { left: 18px; padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
+  #back { padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
   #back b { font-weight: normal; transition: transform .25s ease; }
   #back:hover b { transform: translateX(-3px); }
-  #mode { right: 18px; width: 34px; justify-content: center; padding: 0; }
-  #mode svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  #mode { width: 34px; justify-content: center; padding: 0; }
+  .chrome svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  /* The language: the select itself, the whole button wide, so its own list opens. */
+  #langWrap { position: relative; padding: 0 12px 0 10px; gap: 8px; }
+  #lang { position: absolute; inset: 0; opacity: 0; cursor: pointer; font: inherit; }
+  #lang option { background: var(--panel); color: var(--fg); }
+  #langName { font-size: 12px; }
+  @media (max-width: 1000px) { #title span + span { display: none; } }
+  @media (max-width: 760px) { #title, #back span, #langName { display: none; } }
 
   /* The landing page and this one slide past each other, as neighbours: it
      goes off to the left as this comes in from the right. From the landing
@@ -41,8 +56,24 @@
   #date { font-size: 30px; letter-spacing: .06em; }
   #stats { color: var(--dim); margin-top: 2px; }
   #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
-  #legend { position: fixed; right: 18px; top: 62px; color: var(--dim); text-align: right; pointer-events: none; }
-  #legend b { font-weight: normal; }
+  /* What's what, and how to move about: two panels down the right, the
+     legend's marks drawn as the graph draws them, in its colours. */
+  #side { position: fixed; right: 18px; top: 74px; z-index: 2; width: 264px; display: flex; flex-direction: column; gap: 12px; }
+  .panel { padding: 12px 14px 13px; background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line);
+           clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%); }
+  .panel h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font: inherit; font-size: 10.5px; letter-spacing: .28em;
+              text-transform: uppercase; color: var(--dim); }
+  .panel h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  #legend li { display: flex; align-items: center; gap: 10px; }
+  #legend svg { width: 26px; height: 14px; flex: none; overflow: visible; }
+  #controls ul { grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; }
+  #controls li { display: contents; }
+  kbd { justify-self: start; padding: 1px 7px; font: inherit; font-size: 11px; color: var(--fg); background: var(--bg);
+        border: 1px solid var(--line); border-bottom-width: 2px; white-space: nowrap; }
+  #controls span { color: var(--dim); }
+  @media (max-width: 760px), (max-height: 560px) { #side { display: none; } }
+  @media (min-width: 761px) { #hud { max-width: min(640px, calc(100vw - 340px)); } }
   #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
   #bar button, #bar select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
   #bar button:hover, #bar select:hover { border-color: var(--accent); }
@@ -52,8 +83,8 @@
   #slider { width: 100%; accent-color: var(--accent); }
   #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
   #tip small { color: var(--dim); display: block; }
-  #hud, #legend, #bar { transition: opacity 1.2s ease; }
-  body.intro #hud, body.intro #legend, body.intro #bar { opacity: 0; pointer-events: none; }
+  #hud, #side, #bar { transition: opacity 1.2s ease; }
+  body.intro #hud, body.intro #side, body.intro #bar { opacity: 0; pointer-events: none; }
   :root[data-theme='light'] body.intro canvas { filter: brightness(1.05) saturate(0.35) blur(1.5px); }
   /* Behind the title the graph is texture, not content: darker, greyer and a
      little soft, so the name stands clear of it. The canvas is empty by the
@@ -85,18 +116,27 @@
 </head>
 <body class="intro">
 <canvas id="c"></canvas>
-<a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
-<button id="mode" class="chrome" type="button"></button>
+<header id="top">
+  <a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
+  <div id="title"><i></i><span data-t="title">Code history</span><span>The Digital Atrium</span></div>
+  <div class="end">
+    <label id="langWrap" class="chrome"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18"/></svg><span id="langName"></span><select id="lang"></select></label>
+    <button id="mode" class="chrome" type="button"></button>
+  </div>
+</header>
 <div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div><div id="introNext"><p id="explain" data-t="explain"></p></div></div>
 <button id="skip" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
-<div id="legend"></div>
+<div id="side">
+  <section id="legend" class="panel"><h2 data-t="legendTitle">Legend</h2><ul></ul></section>
+  <section id="controls" class="panel"><h2 data-t="controlsTitle">Controls</h2><ul></ul></section>
+</div>
 <div id="tip"></div>
 <div id="bar">
-  <button id="play" data-t="pause">Pause</button>
+  <button id="play">Pause</button>
   <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
-<script src="growth.js?v=9e840ce7c005"></script>
+<script src="growth.js?v=afcd5c2dc582"></script>
 </body>
 </html>

@@ -16,6 +16,7 @@
 // lets nothing frame its pages.
 
 import { setLandingTheme } from './useLandingTheme'
+import { availableLanguages, setLanguage } from './i18n'
 import { isDesktop } from './supabase'
 
 const PATH = '/code-history/'
@@ -72,6 +73,10 @@ function onMessage(e: MessageEvent) {
   if (e.data === 'code-history:back') history.back()
   // Light or dark switched over there: the landing page behind follows.
   if (e.data === 'code-history:theme:light' || e.data === 'code-history:theme:dark') setLandingTheme(e.data.slice('code-history:theme:'.length) as 'light' | 'dark')
+  // And the language, where the app has it (that page has one more).
+  const lang = typeof e.data === 'string' && e.data.startsWith('code-history:lang:') ? e.data.slice('code-history:lang:'.length) : ''
+  const known = availableLanguages().find(language => language.code === lang)
+  if (known) setLanguage(known.code)
 }
 
 async function sync() {

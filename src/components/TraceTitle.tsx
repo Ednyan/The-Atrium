@@ -1,121 +1,162 @@
-// The landing page's title, made the way anything in an atrium is made: of
-// traces. THE is a text trace, wearing its type's tab; DIGITAL and ATRIUM are a
-// letter a trace, each in one of the atrium's own looks -- plain, sepia-edged,
-// inked, a bare frame -- ATRIUM's letters in the title metal. They arrive as
-// traces put down do, overshooting a little and settling (the drag feel's
-// spring), lie a hair off true as hand-placed things do, and breathe. Every few
-// seconds a cursor -- yours -- picks one up: the dashed selection and its
-// handles hop to it and it lifts. Still, for anyone who asked for less motion.
+// The landing page's title, put together the way anything in an atrium is:
+// each letter comes in as a trace -- a frame with a trace's corner marks --
+// dragged to its place, the last one by a cursor; then the frames let go and
+// what's left is the plain title, nothing collaged about it.
 //
-// Sized by its column (cqi), so it's the same collage at any width. The words
-// are the h1's label; the tiles are drawn for the eye only.
+// The title is ordinary text from the start, only unseen until the traces are
+// down, so what they settle into is exactly it. The traces are a layer over
+// it, measured off its letters (a Range per letter, the font's cap height from
+// a canvas), and taken away once it shows. Straight to the title for anyone
+// who asked for less motion.
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { PAN_ICON } from './AtriumInfo'
 
-type Look = 'plain' | 'sepia' | 'ink' | 'frame' | 'metal'
-interface Tile { ch: string; look: Look; dx: number; dy: number; rot: number }
-
-// Hand-placed, not random: the same collage on every visit.
-const DIGITAL: Tile[] = [
-  { ch: 'D', look: 'plain', dx: 0, dy: 0.02, rot: -1.6 },
-  { ch: 'I', look: 'sepia', dx: 0, dy: -0.05, rot: 1.2 },
-  { ch: 'G', look: 'ink', dx: 0, dy: 0.04, rot: -0.6 },
-  { ch: 'I', look: 'plain', dx: 0, dy: -0.02, rot: 1.8 },
-  { ch: 'T', look: 'frame', dx: 0, dy: 0.05, rot: -1.1 },
-  { ch: 'A', look: 'plain', dx: 0, dy: -0.04, rot: 0.7 },
-  { ch: 'L', look: 'sepia', dx: 0, dy: 0.03, rot: -1.4 },
+// How each word is set -- the title's, and its traces' the same.
+const WORDS: { text: string; className: string; style?: CSSProperties }[] = [
+  { text: 'THE', className: 'text-nier-bg/70 tracking-[0.12em] font-extralight' },
+  { text: 'DIGITAL', className: 'text-nier-strong', style: { textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' } },
+  { text: 'ATRIUM', className: 'tt-metal' },
 ]
-const ATRIUM: Tile[] = [
-  { ch: 'A', look: 'metal', dx: 0, dy: -0.03, rot: 1.3 },
-  { ch: 'T', look: 'metal', dx: 0, dy: 0.04, rot: -0.9 },
-  { ch: 'R', look: 'ink', dx: 0, dy: -0.02, rot: 1.6 },
-  { ch: 'I', look: 'metal', dx: 0, dy: 0.05, rot: -1.5 },
-  { ch: 'U', look: 'metal', dx: 0, dy: -0.04, rot: 0.8 },
-  { ch: 'M', look: 'metal', dx: 0, dy: 0.02, rot: -0.7 },
+// Where each trace is dragged from, in em: THE whole, then a letter each. The
+// last is the one the cursor brings, from furthest off.
+const FROM = [
+  [-1.2, -0.5], [-0.9, 0.9], [0.3, -1.1], [-0.4, 1.2], [0.8, -0.9], [-0.6, -1.3], [0.5, 1], [1.1, -0.6],
+  [-0.8, 1.1], [0.4, -1.2], [-0.3, 1.3], [0.9, -1], [-0.6, 0.9], [1.9, 1.5],
 ]
-// Where each comes from as it's put down, by its place: a short way off, turned.
-const FROM = [[-0.6, -0.9, -14], [0.4, -1.2, 10], [-0.3, 0.9, -8], [0.7, -0.6, 12], [-0.5, 1.1, -10], [0.3, -1, 9], [-0.8, 0.7, -12]]
-// The order the cursor picks them up in (indices across both words).
-const HOPS = [9, 2, 12, 5, 7, 0, 10, 4, 11, 1]
+// The phases follow the animation itself -- the frames let go once the last
+// trace is down, the traces go once they've faded -- since on a busy first
+// load it can start late. These are only in case its events never come (ms).
+const SETTLE_BY = 4500
+const DONE_BY = 6500
 
-const reduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+interface Piece {
+  ch: string; word: number; x: number; y: number; w: number; h: number; size: number
+  capTop: number; capH: number
+  // The metal's box, from this letter: ATRIUM's sheen runs across the word.
+  metal?: { x: number; y: number; w: number; h: number }
+}
+type Phase = 'wait' | 'arrive' | 'settle' | 'done'
+
+const reduced = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 export default function TraceTitle({ className = '' }: { className?: string }) {
   const rootRef = useRef<HTMLHeadingElement>(null)
-  const tileRefs = useRef<(HTMLSpanElement | null)[]>([])
-  const [arrived, setArrived] = useState(false)
-  const [hop, setHop] = useState(0)
-  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number; size: number } | null>(null)
-  const tiles = [...DIGITAL, ...ATRIUM]
-  const picked = HOPS[hop % HOPS.length]
+  const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const [phase, setPhase] = useState<Phase>(() => reduced() ? 'done' : 'wait')
+  const [pieces, setPieces] = useState<Piece[]>([])
 
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setArrived(true))
-    if (reduced()) return () => cancelAnimationFrame(frame)
-    // The cursor waits for the letters to land, then picks one up every few seconds.
-    let timer = window.setTimeout(function next() {
-      setHop(h => h + 1)
-      timer = window.setTimeout(next, 3400)
-    }, 2600)
-    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer) }
-  }, [])
-
-  // Where the picked tile is, for the selection and the cursor.
   useLayoutEffect(() => {
+    if (phase === 'done') return
+    const root = rootRef.current
+    if (!root) return
     const measure = () => {
-      const el = tileRefs.current[picked]
-      if (!el) return
-      // The tile's own box, unturned (offsets are the h1's: it's the nearest
-      // positioned ancestor); its lie and turn are put on in em, below.
-      setBox({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, size: parseFloat(getComputedStyle(el).fontSize) })
+      const origin = root.getBoundingClientRect()
+      const range = document.createRange()
+      const ctx = document.createElement('canvas').getContext('2d')
+      const out: Piece[] = []
+      wordRefs.current.forEach((el, word) => {
+        const text = el?.firstChild
+        if (!el || !(text instanceof Text)) return
+        const cs = getComputedStyle(el)
+        const size = parseFloat(cs.fontSize)
+        let ascent = size * 0.9, cap = size * 0.7
+        if (ctx) {
+          ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+          const m = ctx.measureText('H')
+          ascent = m.fontBoundingBoxAscent ?? ascent
+          cap = m.actualBoundingBoxAscent || cap
+        }
+        const box = el.getBoundingClientRect()
+        const spans = word === 0 ? [[0, text.length]] : [...text.data].map((_, i) => [i, i + 1])
+        for (const [a, b] of spans) {
+          range.setStart(text, a)
+          range.setEnd(text, b)
+          const r = range.getBoundingClientRect()
+          out.push({
+            ch: text.data.slice(a, b), word, size,
+            x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height,
+            capTop: ascent - cap, capH: cap,
+            metal: word === 2 ? { x: box.left - r.left, y: box.top - r.top, w: box.width, h: box.height } : undefined,
+          })
+        }
+      })
+      setPieces(out)
     }
-    measure()
-    const observer = new ResizeObserver(measure)
-    if (rootRef.current) observer.observe(rootRef.current)
-    return () => observer.disconnect()
+    let live = true
+    let timers: number[] = []
+    // Measured in the font it'll be seen in -- but not waited on for long.
+    void Promise.race([document.fonts?.ready, new Promise(r => setTimeout(r, 800))]).then(() => {
+      if (!live) return
+      measure()
+      setPhase('arrive')
+      timers = [
+        window.setTimeout(() => setPhase(p => p === 'arrive' ? 'settle' : p), SETTLE_BY),
+        window.setTimeout(() => setPhase('done'), DONE_BY),
+      ]
+    })
+    const observer = new ResizeObserver(() => { if (live) measure() })
+    observer.observe(root)
+    return () => { live = false; observer.disconnect(); timers.forEach(clearTimeout) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picked])
-
-  const tile = (t: Tile, i: number) => {
-    const [fx, fy, frot] = FROM[i % FROM.length]
-    return (
-      <span
-        key={i}
-        ref={el => { tileRefs.current[i] = el }}
-        className={`tt-tile ${picked === i && arrived ? 'is-picked' : ''}`}
-        data-look={t.look}
-        style={{
-          '--i': i,
-          '--rest': `translate(${t.dx}em, ${t.dy}em) rotate(${t.rot}deg)`,
-          '--from': `translate(${fx}em, ${fy}em) rotate(${frot}deg)`,
-        } as CSSProperties}
-      >
-        <span className="tt-face"><span className="tt-letter" data-ch={t.ch}>{t.ch}</span></span>
-      </span>
-    )
-  }
+  }, [phase === 'done'])
 
   return (
-    <h1 ref={rootRef} aria-label="The Digital Atrium" className={`trace-title ${arrived ? 'is-in' : ''} ${className}`}>
-      <span aria-hidden="true" className="tt-row tt-the">
-        <span className="tt-text-trace">
-          <span className="tt-type">Text</span>
-          THE
+    <h1
+      ref={rootRef}
+      data-phase={phase}
+      className={`trace-title relative font-light leading-[0.86] tracking-[-0.02em] ${className}`}
+      style={{ containerType: 'inline-size' }}
+    >
+      <span ref={el => { wordRefs.current[0] = el }} className={`tt-word block mb-3 ${WORDS[0].className}`} style={{ fontSize: 'clamp(1.25rem, 6.2cqi, 3rem)' }}>
+        {WORDS[0].text}
+      </span>
+      <span className="block whitespace-nowrap" style={{ fontSize: 'clamp(2rem, 12.9cqi, 6.5rem)' }}>
+        <span ref={el => { wordRefs.current[1] = el }} className={`tt-word inline-block ${WORDS[1].className}`} style={WORDS[1].style}>
+          {WORDS[1].text}
+        </span>{' '}
+        <span ref={el => { wordRefs.current[2] = el }} className={`tt-word inline-block ${WORDS[2].className}`}>
+          {WORDS[2].text}
         </span>
       </span>
-      <span aria-hidden="true" className="tt-row">{DIGITAL.map((t, i) => tile(t, i))}</span>
-      <span aria-hidden="true" className="tt-row tt-indent">{ATRIUM.map((t, i) => tile(t, DIGITAL.length + i))}</span>
-      {box && (
+
+      {phase !== 'done' && phase !== 'wait' && (
         <span
           aria-hidden="true"
-          className={`tt-select ${arrived ? 'is-in' : ''}`}
-          style={{ left: box.x, top: box.y, width: box.w, height: box.h, fontSize: box.size, transform: `translateY(${tiles[picked].dy - 0.07}em) rotate(${tiles[picked].rot}deg)` }}
+          className="tt-pieces"
+          onAnimationEnd={e => { if (e.animationName === 'tt-drag' && (e.target as Element).classList.contains('is-held')) setPhase('settle') }}
+          onTransitionEnd={e => { if (e.target === e.currentTarget && e.propertyName === 'opacity') setPhase('done') }}
         >
-          <i /><i /><i /><i />
-          <span className="tt-cursor">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z" /></svg>
-            <span className="tt-name">you</span>
-          </span>
+          {pieces.map((p, i) => {
+            const held = i === pieces.length - 1
+            const [fx, fy] = FROM[i % FROM.length]
+            const look = WORDS[p.word]
+            return (
+              <span
+                key={i}
+                className={`tt-piece ${held ? 'is-held' : ''}`}
+                style={{ left: p.x, top: p.y, width: p.w, height: p.h, fontSize: p.size, '--i': i, '--from': `translate(${fx}em, ${fy}em)` } as CSSProperties}
+              >
+                <span className="tt-frame" style={{ top: p.capTop - p.size * 0.11, height: p.capH + p.size * 0.22 }} />
+                <span
+                  className={`tt-glyph ${look.className}`}
+                  style={{
+                    ...look.style,
+                    lineHeight: `${p.h}px`,
+                    ...(p.metal && { backgroundSize: `${p.metal.w}px ${p.metal.h}px`, backgroundPosition: `${p.metal.x}px ${p.metal.y}px`, backgroundRepeat: 'no-repeat' }),
+                  }}
+                >
+                  {p.ch}
+                </span>
+                {held && (
+                  <svg className="tt-hand" viewBox="0 0 24 24" style={{ top: p.capTop + p.capH * 0.55 }}>
+                    <path d={PAN_ICON} fill="none" stroke="#ff8a3d" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={PAN_ICON} fill="none" stroke="#fff" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+            )
+          })}
         </span>
       )}
     </h1>

@@ -13,21 +13,36 @@
           --panel: #fbfaf6; --strong: #161412; --metal: linear-gradient(100deg, #1A1714 0%, #55504A 100%); --lead: rgb(46 42 37 / .82); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
-  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
-  canvas.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 18px; top: 64px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
-  /* The way back, top left, and light or dark, top right: the site's own
-     buttons -- bordered, a corner cut -- not a tab down an edge. */
-  .chrome { position: fixed; top: 14px; z-index: 3; height: 34px; display: inline-flex; align-items: center; gap: 10px;
+  #c { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  #c.dragging { cursor: grabbing; }
+  #hud { position: fixed; left: 18px; top: 76px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* The bar along the top, as the landing page has one: the way back on the
+     left, what this is in the middle, the language and light or dark on the
+     right -- the site's own buttons, bordered, a corner cut. */
+  #top { position: fixed; top: 0; left: 0; right: 0; z-index: 3; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 18px;
+         background: color-mix(in srgb, var(--bg) 84%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(8px); }
+  #top .end { margin-left: auto; display: flex; gap: 8px; }
+  #title { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; pointer-events: none;
+           font-size: 11px; letter-spacing: .3em; text-transform: uppercase; white-space: nowrap; color: var(--strong); }
+  #title i { width: 7px; height: 7px; background: var(--accent); transform: rotate(45deg); }
+  #title span + span { color: var(--dim); }
+  .chrome { height: 34px; display: inline-flex; align-items: center; gap: 10px;
             background: var(--panel); color: var(--fg); border: 1px solid var(--line); font: inherit; text-decoration: none; cursor: pointer;
             clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
             transition: border-color .25s ease, color .25s ease, background .25s ease; }
   .chrome:hover { border-color: var(--accent); color: var(--strong); }
-  #back { left: 18px; padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
+  #back { padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
   #back b { font-weight: normal; transition: transform .25s ease; }
   #back:hover b { transform: translateX(-3px); }
-  #mode { right: 18px; width: 34px; justify-content: center; padding: 0; }
-  #mode svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  #mode { width: 34px; justify-content: center; padding: 0; }
+  .chrome svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  /* The language: the select itself, the whole button wide, so its own list opens. */
+  #langWrap { position: relative; padding: 0 12px 0 10px; gap: 8px; }
+  #lang { position: absolute; inset: 0; opacity: 0; cursor: pointer; font: inherit; }
+  #lang option { background: var(--panel); color: var(--fg); }
+  #langName { font-size: 12px; }
+  @media (max-width: 1000px) { #title span + span { display: none; } }
+  @media (max-width: 760px) { #title, #back span, #langName { display: none; } }
 
   /* The landing page and this one slide past each other, as neighbours: it
      goes off to the left as this comes in from the right. From the landing
@@ -41,8 +56,24 @@
   #date { font-size: 30px; letter-spacing: .06em; }
   #stats { color: var(--dim); margin-top: 2px; }
   #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
-  #legend { position: fixed; right: 18px; top: 62px; color: var(--dim); text-align: right; pointer-events: none; }
-  #legend b { font-weight: normal; }
+  /* What's what, and how to move about: two panels down the right, the
+     legend's marks drawn as the graph draws them, in its colours. */
+  #side { position: fixed; right: 18px; top: 74px; z-index: 2; width: 264px; display: flex; flex-direction: column; gap: 12px; }
+  .panel { padding: 12px 14px 13px; background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line);
+           clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%); }
+  .panel h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font: inherit; font-size: 10.5px; letter-spacing: .28em;
+              text-transform: uppercase; color: var(--dim); }
+  .panel h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  #legend li { display: flex; align-items: center; gap: 10px; }
+  #legend svg { width: 26px; height: 14px; flex: none; overflow: visible; }
+  #controls ul { grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; }
+  #controls li { display: contents; }
+  kbd { justify-self: start; padding: 1px 7px; font: inherit; font-size: 11px; color: var(--fg); background: var(--bg);
+        border: 1px solid var(--line); border-bottom-width: 2px; white-space: nowrap; }
+  #controls span { color: var(--dim); }
+  @media (max-width: 760px), (max-height: 560px) { #side { display: none; } }
+  @media (min-width: 761px) { #hud { max-width: min(640px, calc(100vw - 340px)); } }
   #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
   #bar button, #bar select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
   #bar button:hover, #bar select:hover { border-color: var(--accent); }
@@ -52,8 +83,8 @@
   #slider { width: 100%; accent-color: var(--accent); }
   #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
   #tip small { color: var(--dim); display: block; }
-  #hud, #legend, #bar { transition: opacity 1.2s ease; }
-  body.intro #hud, body.intro #legend, body.intro #bar { opacity: 0; pointer-events: none; }
+  #hud, #side, #bar { transition: opacity 1.2s ease; }
+  body.intro #hud, body.intro #side, body.intro #bar { opacity: 0; pointer-events: none; }
   :root[data-theme='light'] body.intro canvas { filter: brightness(1.05) saturate(0.35) blur(1.5px); }
   /* Behind the title the graph is texture, not content: darker, greyer and a
      little soft, so the name stands clear of it. The canvas is empty by the
@@ -85,15 +116,24 @@
 </head>
 <body class="intro">
 <canvas id="c"></canvas>
-<a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
-<button id="mode" class="chrome" type="button"></button>
+<header id="top">
+  <a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
+  <div id="title"><i></i><span data-t="title">Code history</span><span>The Digital Atrium</span></div>
+  <div class="end">
+    <label id="langWrap" class="chrome"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18"/></svg><span id="langName"></span><select id="lang"></select></label>
+    <button id="mode" class="chrome" type="button"></button>
+  </div>
+</header>
 <div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div><div id="introNext"><p id="explain" data-t="explain"></p></div></div>
 <button id="skip" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
-<div id="legend"></div>
+<div id="side">
+  <section id="legend" class="panel"><h2 data-t="legendTitle">Legend</h2><ul></ul></section>
+  <section id="controls" class="panel"><h2 data-t="controlsTitle">Controls</h2><ul></ul></section>
+</div>
 <div id="tip"></div>
 <div id="bar">
-  <button id="play" data-t="pause">Pause</button>
+  <button id="play">Pause</button>
   <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
@@ -107,47 +147,71 @@ const D = /*DATA*/null
 // The stages' notes are commit messages, and stay as they were written.
 const T = {
   en: { lead: "You're about to see the code history of", explain: 'What follows is every change made to its code, from the first file to today. Each node is a file or a piece of code; each line, a connection between them.', skip: 'Skip intro', back: 'Back to homepage', play: 'Play', pause: 'Pause', replay: 'Replay', era: 'before git', tip: 'package or concept',
-    legend: ['new', 'removed', 'glow: edited', 'folder', 'other file', 'scroll to zoom', 'drag to move', 'double-click to follow again', 'space to pause'],
+    title: "Code history", legendTitle: "Legend", controlsTitle: "Controls", language: "Language",
+    legend: ["new", "edited", "removed", "piece of code", "other file", "folder", "connection", "file tree"],
+    controls: [["Scroll", "zoom"], ["Drag", "move around"], ["Double-click", "follow again"], ["Space", "pause / play"], ["Hover", "see a name"]],
     stats: (f, fi, c, l) => `${f} folders · ${fi} files · ${c} pieces of code · ${l} connections` },
   es: { lead: 'Estás a punto de ver la historia del código de', explain: 'Lo que sigue es cada cambio hecho en su código, desde el primer archivo hasta hoy. Cada nodo es un archivo o un fragmento de código; cada línea, una conexión entre ellos.', skip: 'Saltar intro', back: 'Volver al inicio', play: 'Reproducir', pause: 'Pausa', replay: 'Repetir', era: 'antes de git', tip: 'paquete o concepto',
-    legend: ['nuevo', 'eliminado', 'brillo: editado', 'carpeta', 'otro archivo', 'rueda para acercar', 'arrastra para mover', 'doble clic para volver a seguir', 'espacio para pausar'],
+    title: "Historial del código", legendTitle: "Leyenda", controlsTitle: "Controles", language: "Idioma",
+    legend: ["nuevo", "editado", "eliminado", "fragmento de código", "otro archivo", "carpeta", "conexión", "árbol de archivos"],
+    controls: [["Rueda", "acercar o alejar"], ["Arrastrar", "moverse"], ["Doble clic", "volver a seguir"], ["Espacio", "pausa / reproducir"], ["Pasar el cursor", "ver un nombre"]],
     stats: (f, fi, c, l) => `${f} carpetas · ${fi} archivos · ${c} fragmentos de código · ${l} conexiones` },
   'pt-BR': { lead: 'Você está prestes a ver a história do código de', explain: 'A seguir, cada mudança feita no código, do primeiro arquivo até hoje. Cada nó é um arquivo ou um trecho de código; cada linha, uma conexão entre eles.', skip: 'Pular introdução', back: 'Voltar para a página inicial', play: 'Reproduzir', pause: 'Pausar', replay: 'Repetir', era: 'antes do git', tip: 'pacote ou conceito',
-    legend: ['novo', 'removido', 'brilho: editado', 'pasta', 'outro arquivo', 'role para aproximar', 'arraste para mover', 'clique duplo para voltar a seguir', 'espaço para pausar'],
+    title: "História do código", legendTitle: "Legenda", controlsTitle: "Controles", language: "Idioma",
+    legend: ["novo", "editado", "removido", "trecho de código", "outro arquivo", "pasta", "conexão", "árvore de arquivos"],
+    controls: [["Rolar", "aproximar ou afastar"], ["Arrastar", "mover"], ["Clique duplo", "voltar a seguir"], ["Espaço", "pausar / reproduzir"], ["Passar o mouse", "ver um nome"]],
     stats: (f, fi, c, l) => `${f} pastas · ${fi} arquivos · ${c} trechos de código · ${l} conexões` },
   'pt-PT': { lead: 'Estás prestes a ver a história do código de', explain: 'A seguir, cada alteração feita ao código, do primeiro ficheiro até hoje. Cada nó é um ficheiro ou um excerto de código; cada linha, uma ligação entre eles.', skip: 'Saltar introdução', back: 'Voltar à página inicial', play: 'Reproduzir', pause: 'Pausar', replay: 'Repetir', era: 'antes do git', tip: 'pacote ou conceito',
-    legend: ['novo', 'removido', 'brilho: editado', 'pasta', 'outro ficheiro', 'roda para aproximar', 'arrasta para mover', 'duplo clique para voltar a seguir', 'espaço para pausar'],
+    title: "História do código", legendTitle: "Legenda", controlsTitle: "Controlos", language: "Idioma",
+    legend: ["novo", "editado", "removido", "excerto de código", "outro ficheiro", "pasta", "ligação", "árvore de ficheiros"],
+    controls: [["Roda", "aproximar ou afastar"], ["Arrastar", "mover"], ["Duplo clique", "voltar a seguir"], ["Espaço", "pausar / reproduzir"], ["Passar o rato", "ver um nome"]],
     stats: (f, fi, c, l) => `${f} pastas · ${fi} ficheiros · ${c} excertos de código · ${l} ligações` },
   fr: { lead: "Vous allez découvrir l'histoire du code de", explain: "Voici chaque modification apportée à son code, du premier fichier à aujourd'hui. Chaque nœud est un fichier ou un morceau de code ; chaque ligne, une connexion entre eux.", skip: "Passer l'intro", back: "Retour à l'accueil", play: 'Lecture', pause: 'Pause', replay: 'Rejouer', era: 'avant git', tip: 'paquet ou concept',
-    legend: ['nouveau', 'supprimé', 'lueur : modifié', 'dossier', 'autre fichier', 'molette pour zoomer', 'glisser pour déplacer', 'double-clic pour suivre à nouveau', 'espace pour mettre en pause'],
+    title: "Historique du code", legendTitle: "Légende", controlsTitle: "Commandes", language: "Langue",
+    legend: ["nouveau", "modifié", "supprimé", "morceau de code", "autre fichier", "dossier", "connexion", "arborescence"],
+    controls: [["Molette", "zoomer"], ["Glisser", "se déplacer"], ["Double-clic", "suivre à nouveau"], ["Espace", "pause / lecture"], ["Survol", "voir un nom"]],
     stats: (f, fi, c, l) => `${f} dossiers · ${fi} fichiers · ${c} morceaux de code · ${l} connexions` },
   de: { lead: 'Gleich siehst du die Code-Geschichte von', explain: 'Was folgt, ist jede Änderung an seinem Code, von der ersten Datei bis heute. Jeder Knoten ist eine Datei oder ein Stück Code; jede Linie eine Verbindung zwischen ihnen.', skip: 'Intro überspringen', back: 'Zurück zur Startseite', play: 'Abspielen', pause: 'Pause', replay: 'Nochmal', era: 'vor Git', tip: 'Paket oder Konzept',
-    legend: ['neu', 'entfernt', 'Leuchten: bearbeitet', 'Ordner', 'andere Datei', 'scrollen zum Zoomen', 'ziehen zum Verschieben', 'Doppelklick, um wieder zu folgen', 'Leertaste zum Pausieren'],
+    title: "Code-Geschichte", legendTitle: "Legende", controlsTitle: "Steuerung", language: "Sprache",
+    legend: ["neu", "bearbeitet", "entfernt", "Stück Code", "andere Datei", "Ordner", "Verbindung", "Dateibaum"],
+    controls: [["Scrollen", "zoomen"], ["Ziehen", "verschieben"], ["Doppelklick", "wieder folgen"], ["Leertaste", "Pause / Abspielen"], ["Darüberfahren", "Namen sehen"]],
     stats: (f, fi, c, l) => `${f} Ordner · ${fi} Dateien · ${c} Code-Stücke · ${l} Verbindungen` },
   it: { lead: 'Stai per vedere la storia del codice di', explain: 'Quello che segue è ogni modifica fatta al suo codice, dal primo file a oggi. Ogni nodo è un file o un pezzo di codice; ogni linea, un collegamento tra loro.', skip: 'Salta intro', back: 'Torna alla home', play: 'Riproduci', pause: 'Pausa', replay: 'Riguarda', era: 'prima di git', tip: 'pacchetto o concetto',
-    legend: ['nuovo', 'rimosso', 'bagliore: modificato', 'cartella', 'altro file', 'scorri per lo zoom', 'trascina per spostare', 'doppio clic per seguire di nuovo', 'spazio per mettere in pausa'],
+    title: "Storia del codice", legendTitle: "Legenda", controlsTitle: "Comandi", language: "Lingua",
+    legend: ["nuovo", "modificato", "rimosso", "pezzo di codice", "altro file", "cartella", "collegamento", "albero dei file"],
+    controls: [["Rotella", "zoom"], ["Trascina", "spostati"], ["Doppio clic", "segui di nuovo"], ["Spazio", "pausa / riproduci"], ["Passa sopra", "vedi un nome"]],
     stats: (f, fi, c, l) => `${f} cartelle · ${fi} file · ${c} pezzi di codice · ${l} collegamenti` },
   ru: { lead: 'Сейчас вы увидите историю кода', explain: 'Дальше — каждое изменение его кода, от первого файла до сегодняшнего дня. Каждый узел — это файл или фрагмент кода; каждая линия — связь между ними.', skip: 'Пропустить', back: 'На главную', play: 'Смотреть', pause: 'Пауза', replay: 'Повторить', era: 'до git', tip: 'пакет или понятие',
-    legend: ['новое', 'удалено', 'свечение: изменено', 'папка', 'другой файл', 'прокрутка — масштаб', 'перетаскивание — перемещение', 'двойной щелчок — снова следовать', 'пробел — пауза'],
+    title: "История кода", legendTitle: "Обозначения", controlsTitle: "Управление", language: "Язык",
+    legend: ["новое", "изменено", "удалено", "фрагмент кода", "другой файл", "папка", "связь", "дерево файлов"],
+    controls: [["Прокрутка", "масштаб"], ["Перетаскивание", "перемещение"], ["Двойной щелчок", "снова следовать"], ["Пробел", "пауза / пуск"], ["Наведение", "имя точки"]],
     stats: (f, fi, c, l) => `папок: ${f} · файлов: ${fi} · фрагментов кода: ${c} · связей: ${l}` },
   zh: { lead: '你即将看到以下项目的代码历史', explain: '接下来是它的代码从第一个文件到今天的每一次改动。每个节点是一个文件或一段代码；每条线是它们之间的一个连接。', skip: '跳过开场', back: '返回首页', play: '播放', pause: '暂停', replay: '重播', era: 'git 之前', tip: '包或概念',
-    legend: ['新增', '删除', '发光：已编辑', '文件夹', '其他文件', '滚动缩放', '拖动移动', '双击重新跟随', '空格暂停'],
+    title: "代码历史", legendTitle: "图例", controlsTitle: "操作", language: "语言",
+    legend: ["新增", "已编辑", "已删除", "代码片段", "其他文件", "文件夹", "连接", "文件树"],
+    controls: [["滚动", "缩放"], ["拖动", "移动"], ["双击", "重新跟随"], ["空格", "暂停 / 播放"], ["悬停", "查看名称"]],
     stats: (f, fi, c, l) => `${f} 个文件夹 · ${fi} 个文件 · ${c} 段代码 · ${l} 个连接` },
   ja: { lead: 'これからご覧いただくのは、次のコードの歴史です', explain: '最初のファイルから今日まで、そのコードに加えられたすべての変更です。ノードはひとつのファイルかコードの一部、線はそれらのつながりです。', skip: 'イントロをスキップ', back: 'ホームに戻る', play: '再生', pause: '一時停止', replay: 'もう一度', era: 'git 以前', tip: 'パッケージまたは概念',
-    legend: ['新規', '削除', '光：編集', 'フォルダー', 'その他のファイル', 'スクロールで拡大縮小', 'ドラッグで移動', 'ダブルクリックで追従に戻る', 'スペースで一時停止'],
+    title: "コードの歴史", legendTitle: "凡例", controlsTitle: "操作", language: "言語",
+    legend: ["新規", "編集", "削除", "コードの一部", "その他のファイル", "フォルダー", "つながり", "ファイルツリー"],
+    controls: [["スクロール", "拡大・縮小"], ["ドラッグ", "移動"], ["ダブルクリック", "再び追従"], ["スペース", "一時停止 / 再生"], ["ホバー", "名前を表示"]],
     stats: (f, fi, c, l) => `フォルダー ${f} · ファイル ${fi} · コード ${c} · つながり ${l}` },
   ko: { lead: '이제 보시게 될 것은 다음 프로젝트의 코드 역사입니다', explain: '첫 파일부터 오늘까지, 코드에 있었던 모든 변화입니다. 각 노드는 파일이나 코드 조각이고, 각 선은 그 사이의 연결입니다.', skip: '인트로 건너뛰기', back: '홈으로 돌아가기', play: '재생', pause: '일시정지', replay: '다시 보기', era: 'git 이전', tip: '패키지 또는 개념',
-    legend: ['새로 생김', '삭제됨', '빛: 수정됨', '폴더', '기타 파일', '스크롤로 확대·축소', '드래그로 이동', '더블클릭으로 다시 따라가기', '스페이스로 일시정지'],
+    title: "코드의 역사", legendTitle: "범례", controlsTitle: "조작", language: "언어",
+    legend: ["새로 생김", "수정됨", "삭제됨", "코드 조각", "기타 파일", "폴더", "연결", "파일 트리"],
+    controls: [["스크롤", "확대·축소"], ["드래그", "이동"], ["더블클릭", "다시 따라가기"], ["스페이스", "일시정지 / 재생"], ["마우스 올리기", "이름 보기"]],
     stats: (f, fi, c, l) => `폴더 ${f} · 파일 ${fi} · 코드 조각 ${c} · 연결 ${l}` },
   hi: { lead: 'आगे आप इस परियोजना के कोड का इतिहास देखेंगे', explain: 'पहली फ़ाइल से आज तक, इसके कोड में हुआ हर बदलाव। हर नोड एक फ़ाइल या कोड का एक टुकड़ा है; हर रेखा उनके बीच का एक जुड़ाव।', skip: 'परिचय छोड़ें', back: 'होमपेज पर वापस', play: 'चलाएँ', pause: 'रोकें', replay: 'फिर से चलाएँ', era: 'git से पहले', tip: 'पैकेज या अवधारणा',
-    legend: ['नया', 'हटाया गया', 'चमक: बदला गया', 'फ़ोल्डर', 'अन्य फ़ाइल', 'ज़ूम के लिए स्क्रॉल करें', 'हिलाने के लिए खींचें', 'फिर से फ़ॉलो करने के लिए डबल-क्लिक', 'रोकने के लिए स्पेस'],
+    title: "कोड का इतिहास", legendTitle: "संकेत", controlsTitle: "नियंत्रण", language: "भाषा",
+    legend: ["नया", "बदला गया", "हटाया गया", "कोड का टुकड़ा", "अन्य फ़ाइल", "फ़ोल्डर", "जुड़ाव", "फ़ाइल ट्री"],
+    controls: [["स्क्रॉल", "ज़ूम"], ["खींचें", "घुमाएँ"], ["डबल-क्लिक", "फिर से फ़ॉलो करें"], ["स्पेस", "रोकें / चलाएँ"], ["होवर", "नाम देखें"]],
     stats: (f, fi, c, l) => `${f} फ़ोल्डर · ${fi} फ़ाइलें · कोड के ${c} टुकड़े · ${l} जुड़ाव` },
 }
-const lang = (() => {
-  try {
-    const stored = localStorage.getItem('atrium_language')
-    if (stored && T[stored]) return stored
-  } catch {}
+const LANG_KEY = 'atrium_language'
+const storedLang = () => { try { const v = localStorage.getItem(LANG_KEY); return v && T[v] ? v : null } catch { return null } }
+let lang = (() => {
+  const stored = storedLang()
+  if (stored) return stored
   for (const tag of navigator.languages?.length ? navigator.languages : [navigator.language]) {
     const [base, region] = (tag || '').toLowerCase().split('-')
     if (base === 'pt') return ['pt', 'ao', 'mz', 'cv', 'gw', 'st', 'tl'].includes(region ?? '') ? 'pt-PT' : 'pt-BR'
@@ -155,8 +219,12 @@ const lang = (() => {
   }
   return 'en'
 })()
-const tr = T[lang]
-document.documentElement.lang = lang
+let tr = T[lang]
+// What each language calls itself, as the app's picker lists them.
+const ENDONYMS = { en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', 'pt-PT': 'Português (Portugal)', fr: 'Français', de: 'Deutsch',
+  it: 'Italiano', ru: 'Русский', zh: '中文', ja: '日本語', ko: '한국어', hi: 'हिन्दी' }
+const langSel = document.getElementById('lang')
+for (const code of Object.keys(T).sort((a, b) => ENDONYMS[a].localeCompare(ENDONYMS[b]))) langSel.add(new Option(ENDONYMS[code], code))
 
 // ---- Light or dark ---------------------------------------------------------------
 // As the landing page has it -- its key, in this tab -- and switched here too,
@@ -181,16 +249,48 @@ function setTheme(next, tell) {
   mode.setAttribute('aria-label', next === 'dark' ? 'Light' : 'Dark')
   try { sessionStorage.setItem(THEME_KEY, next) } catch {}
   if (tell && window.parent !== window) parent.postMessage('code-history:theme:' + next, location.origin)
-  if (typeof drawLegend === 'function') drawLegend()
+  drawSide()
+}
+
+// Everything in words, again in another language -- picked here, where the
+// app keeps it, and told to the landing page behind, as light or dark is.
+function setLang(next, tell) {
+  lang = next; tr = T[next]
+  document.documentElement.lang = next
+  for (const el of document.querySelectorAll('[data-t]')) el.textContent = tr[el.dataset.t]
+  langSel.value = next
+  langSel.setAttribute('aria-label', tr.language)
+  document.getElementById('langName').textContent = ENDONYMS[next]
+  drawSide()
+  playLabel()
+  if (!tell) return
+  try { localStorage.setItem(LANG_KEY, next) } catch {}
+  if (window.parent !== window) parent.postMessage('code-history:lang:' + next, location.origin)
+}
+langSel.onchange = () => setLang(langSel.value, true)
+
+// The legend's marks as the graph draws them, in its colours (the first few of
+// the code's own); the controls as keys and what they do.
+let palette = null
+function drawSide() {
+  palette ??= [...new Set(D.nodes.filter(n => n[6] === 0).map(n => n[2]))].slice(0, 3)
+  const [a, b = a, c = a] = palette
+  const esc = w => w.replace(/[<&>]/g, '')
+  const marks = [
+    `<circle cx="13" cy="7" r="2.4" fill="rgb(${P.fresh})"/><circle cx="13" cy="7" r="6" fill="none" stroke="${P.ring}" stroke-width="1" opacity=".55"/>`,
+    `<circle cx="13" cy="7" r="6" fill="${a}" opacity=".35"/><circle cx="13" cy="7" r="3" fill="${a}"/><circle cx="13" cy="7" r="1.5" fill="${P.ring}" opacity=".8"/>`,
+    `<circle cx="13" cy="7" r="2.6" fill="rgb(${P.removed})"/>`,
+    `<circle cx="5" cy="8" r="2.4" fill="${a}"/><circle cx="13" cy="5" r="2" fill="${b}"/><circle cx="20" cy="9" r="2.6" fill="${c}"/>`,
+    `<circle cx="13" cy="7" r="1.8" fill="${P.other}" opacity=".7"/>`,
+    `<rect x="9.5" y="3.5" width="7" height="7" fill="none" stroke="${P.folder}" stroke-width=".9" opacity=".8"/>`,
+    `<path d="M2 11Q13 0 24 7" fill="none" stroke="${a}" stroke-width="1.3" opacity=".8"/>`,
+    `<path d="M2 7H24" stroke="${P.folder}" stroke-width=".8" opacity=".45"/>`,
+  ]
+  document.querySelector('#legend ul').innerHTML = tr.legend.map((w, i) => `<li><svg viewBox="0 0 26 14">${marks[i]}</svg>${esc(w)}</li>`).join('')
+  document.querySelector('#controls ul').innerHTML = tr.controls.map(([key, what]) => `<li><kbd>${esc(key)}</kbd><span>${esc(what)}</span></li>`).join('')
 }
 setTheme(theme, false)
 document.getElementById('mode').onclick = () => setTheme(theme === 'dark' ? 'light' : 'dark', true)
-for (const el of document.querySelectorAll('[data-t]')) el.textContent = tr[el.dataset.t]
-function drawLegend() {
-  const [fresh, removed, glow, folder, other, zoom, move, follow, pause] = tr.legend.map(w => w.replace(/[<&>]/g, ''))
-  document.getElementById('legend').innerHTML = `<b style="color:rgb(${P.fresh})">■</b> ${fresh} &nbsp;·&nbsp; <b style="color:rgb(${P.removed})">■</b> ${removed} &nbsp;·&nbsp; ${glow} &nbsp;·&nbsp; □ ${folder} &nbsp;·&nbsp; <b style="color:${P.other}">●</b> ${other}<br>${zoom} · ${move} · ${follow} · ${pause}`
-}
-drawLegend()
 
 const S = D.stages.length, last = S - 1
 const nodes = D.nodes, edges = D.edges, N = nodes.length
@@ -223,7 +323,7 @@ const counts = D.stages.map((_, s) => {
     else { files.add(node[5]); if (kindOf[i] === 0) code++ }
   })
   edges.forEach((edge, e) => { if (edgeIn[e][s] && !edge[2]) links++ })
-  return tr.stats(folders, files.size, code, links)
+  return [folders, files.size, code, links]
 })
 const preGit = D.stages.findIndex(s => s.git)
 if (preGit > 0) document.getElementById('era').style.width = (preGit / last * 100) + '%'
@@ -319,10 +419,12 @@ function step(s) {
 }
 
 // ---- Camera ----------------------------------------------------------------
-let W, H, dpr, home, view, follow = true
+let W, H, dpr, home, view, follow = true, sideW = 0
 function resize() {
   dpr = window.devicePixelRatio || 1
   W = innerWidth; H = innerHeight
+  const side = document.getElementById('side')
+  sideW = side.offsetWidth ? side.offsetWidth + 30 : 0
   canvas.width = W * dpr; canvas.height = H * dpr
   home = { x: W / 2, y: H / 2 - 10, s: Math.min(W, H - 110) * 0.47 }
   view = view || { ...home }
@@ -342,8 +444,8 @@ function frameCamera(snap = false) {
   }
   if (minX === Infinity) return
   const w = Math.max(maxX - minX, 0.25), h = Math.max(maxY - minY, 0.25)
-  const s = Math.min((W - 80) / w, (H - 190) / h)
-  const target = { s, x: W / 2 - (minX + maxX) / 2 * s, y: (H - 40) / 2 - (minY + maxY) / 2 * s }
+  const s = Math.min((W - 80 - sideW) / w, (H - 230) / h)
+  const target = { s, x: (W - sideW) / 2 - (minX + maxX) / 2 * s, y: (H + 10) / 2 - (minY + maxY) / 2 * s }
   const k = snap ? 1 : 0.035
   view.s += (target.s - view.s) * k
   view.x += (target.x - view.x) * k
@@ -369,7 +471,7 @@ function fade(p, s, t) {
 function frame(now) {
   if (playing) {
     pos = Math.min(last, pos + (now - prev) / perStage())
-    if (pos >= last) { playing = false; playBtn.textContent = tr.replay }
+    if (pos >= last) { playing = false; playLabel() }
     slider.value = pos
   }
   if (!introDone) opening(now)
@@ -496,22 +598,23 @@ function draw() {
 
   const shown = Math.round(pos), stage = D.stages[shown]
   dateEl.textContent = new Date(stage.t * 1000).toISOString().slice(0, 16).replace('T', '  ')
-  statsEl.textContent = counts[shown]
+  statsEl.textContent = tr.stats(...counts[shown])
   noteEl.textContent = stage.note
 }
 
 // ---- Controls ------------------------------------------------------------------
+function playLabel() { playBtn.textContent = playing ? tr.pause : introDone && pos >= last ? tr.replay : tr.play }
 function toggle() {
   if (pos >= last) { pos = 0; lastFloor = 0; live.fill(0); follow = true }
   playing = !playing
-  playBtn.textContent = playing ? tr.pause : tr.play
+  playLabel()
 }
 playBtn.onclick = toggle
 addEventListener('keydown', e => {
   if (!introDone) return
   if (e.code === 'Space') { e.preventDefault(); toggle() }
 })
-slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playBtn.textContent = tr.play }
+slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel() }
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault()
@@ -553,7 +656,11 @@ const start = () => requestAnimationFrame(t => { prev = t; frame(t) })
 if (window.parent !== window) {
   let started = false
   addEventListener('message', e => {
-    if (e.source === parent && e.data === 'code-history:show' && !started) { started = true; start() }
+    if (e.source !== parent || e.data !== 'code-history:show' || started) return
+    started = true
+    const now = storedLang()
+    if (now && now !== lang) setLang(now, false)
+    start()
   })
   document.getElementById('back').onclick = e => { e.preventDefault(); parent.postMessage('code-history:back', location.origin) }
   parent.postMessage('code-history:ready', location.origin)
@@ -566,8 +673,9 @@ if (window.parent !== window) {
 // a key, used to, which ended it for anyone who so much as touched the page.
 const intro = document.getElementById('intro')
 const introName = document.getElementById('introName'), introNext = document.getElementById('introNext')
-// Each moment: in, held, out (ms).
-const NAME = [1400, 3600, 1100], NEXT = [1100, 5200, 1500]
+// Each moment: in, held, out (ms) -- the name two seconds in all, what
+// follows five.
+const NAME = [450, 1150, 400], NEXT = [500, 4000, 500]
 const NAME_END = NAME[0] + NAME[1] + NAME[2], OPEN_END = NAME_END + NEXT[0] + NEXT[1] + NEXT[2]
 const shownAt = (t, [inn, hold, out]) => t < 0 ? 0 : t < inn ? ease(t / inn) : t < inn + hold ? 1 : ease(Math.max(0, 1 - (t - inn - hold) / out))
 let introDone = false, openedAt = null, veil = 0
@@ -601,6 +709,9 @@ function endIntro() {
 }
 const skipBtn = document.getElementById('skip')
 skipBtn.onclick = endIntro
+
+// The words, now that everything they go into is here.
+setLang(lang, false)
 </script>
 </body>
 </html>
