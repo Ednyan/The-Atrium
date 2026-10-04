@@ -641,6 +641,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The laser pointer (LaserLayer), in hand or not, and its look -- this
   // person's own, kept on this device.
   const [laserActive, setLaserActive] = useState(false)
+  // Move the view (the readout's four arrows, H): a drag pans and nothing
+  // else is pressed -- no trace taken, none selected. Any tool ends it.
+  const [panTool, setPanTool] = useState(false)
+  const panToolRef = useRef(panTool)
+  panToolRef.current = panTool
   const laserActiveRef = useRef(false)
   laserActiveRef.current = laserActive
   const [laserSettings, setLaserSettings] = useState<LaserSettings>(loadLaserSettings)
@@ -736,11 +741,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // wondering whether it worked.
   const [justSaved, setJustSaved] = useState(false)
 
-  // The button fades rather than being cut. "Saved" used to vanish the instant
-  // its timer expired, which reads as an interruption rather than a finish --
-  // so it is held mounted for the length of the fade after the last state that
-  // wanted it on screen has gone.
-  const SAVE_FADE_MS = 1000
+  // Save drops down under the atrium's name while there's something to save,
+  // and folds back up once saved. "Saved" used to vanish the instant its timer
+  // expired, which reads as an interruption rather than a finish -- so it is
+  // held mounted for the length of the fold after the last state that wanted
+  // it on screen has gone.
+  const SAVE_FADE_MS = 300
   // How many actions wait for Save (unsavedActions): re-rendered when the
   // number changes, not on every change marked.
   const unsaved = useGameStore(unsavedActions)
@@ -875,6 +881,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Freehand drawing mode
   const [isDrawingMode, setIsDrawingMode] = useState(false)
   useEffect(() => { if (isDrawingMode || placeTool) setLaserActive(false) }, [isDrawingMode, placeTool])
+  useEffect(() => { if (isDrawingMode || placeTool || laserActive) setPanTool(false) }, [isDrawingMode, placeTool, laserActive])
   // Drawing's and a shape tool's Customization panels clear the panels around
   // them, as a trace's does (onCustomizeOpen).
   useEffect(() => {
@@ -1241,6 +1248,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (isDrawingModeRef.current) leaveDrawing()
     else void startDrawing()
   }
+  // Taking up Move the view puts down whatever tool was in hand.
+  const togglePanTool = () => {
+    if (!panToolRef.current) {
+      setPlaceTool(null)
+      setLaserActive(false)
+      if (isDrawingModeRef.current) leaveDrawing()
+    }
+    setPanTool(!panToolRef.current)
+  }
+  const togglePanToolRef = useRef(togglePanTool)
+  togglePanToolRef.current = togglePanTool
   // The key handler is registered once; these change every render.
   const drawingKeysRef = useRef({ toggleDrawing, leaveDrawing, stepHistory })
   drawingKeysRef.current = { toggleDrawing, leaveDrawing, stepHistory }
@@ -1769,6 +1787,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // keys live in -- so undo, redo, Enter, Delete and Escape all went quiet
       // the moment the brush width or smoothing slider took focus.
       if (isEditableTarget(e.target)) return
+
+      // Move the view: H takes it up and puts it down, Escape puts it down.
+      if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isDrawingModeRef.current) {
+        e.preventDefault()
+        togglePanToolRef.current()
+        return
+      }
+      if (e.key === 'Escape' && panToolRef.current) setPanTool(false)
       
       // Keyboard zoom, for anyone without a wheel and as a precise alternative
       // to one. Deliberately +/-/0 rather than the arrow keys: left and right
@@ -2053,6 +2079,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // a connection (toolSwitch).
     // Text being typed ends as the bar takes the focus.
     setToolSwitch(n => n + 1)
+    setPanTool(false)
     if (action !== 'draw' && isDrawingModeRef.current) leaveDrawing()
     if (action === 'laser') {
       setPlaceTool(null)
@@ -2247,10 +2274,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // there. Not over a panel, where it keeps its own use. Caught first, so
   // nothing under it takes the press; its default, the browser's autoscroll,
   // is kept from starting, and a middle click on a link doesn't open it.
+  // With Move the view taken up, the left button pans just the same, and the
+  // click (or double click) that ends its press reaches nothing.
   useEffect(() => {
     let panning = false
+    const pans = (e: MouseEvent) => e.button === 1 || (e.button === 0 && panToolRef.current)
+    const swallow = (e: MouseEvent) => { e.stopPropagation(); e.preventDefault() }
     const down = (e: MouseEvent) => {
-      if (e.button !== 1) return
+      if (!pans(e)) return
       const target = e.target as HTMLElement | null
       if (target?.closest?.('[data-ui-element], [data-hud], .customize-menu, .layer-panel, [role="dialog"], input, textarea, select')) return
       e.preventDefault()
@@ -2261,22 +2292,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
     }
     const up = (e: MouseEvent) => {
-      if (e.button !== 1 || !panning) return
+      if (!pans(e) || !panning) return
       panning = false
       isPanningRef.current = false
       e.preventDefault()
       e.stopPropagation()
+      if (e.button === 0) {
+        window.addEventListener('click', swallow, { capture: true, once: true })
+        window.setTimeout(() => window.removeEventListener('click', swallow, true), 400)
+      }
     }
+    const dbl = (e: MouseEvent) => { if (panToolRef.current && isCanvasTarget(e.target)) swallow(e) }
     const aux = (e: MouseEvent) => {
       if (e.button === 1 && isPanningRef.current === false && !(e.target as HTMLElement | null)?.closest?.('[data-ui-element], [data-hud], .customize-menu, .layer-panel, [role="dialog"]')) e.preventDefault()
     }
     window.addEventListener('mousedown', down, true)
     window.addEventListener('mouseup', up, true)
     window.addEventListener('auxclick', aux, true)
+    window.addEventListener('dblclick', dbl, true)
     return () => {
       window.removeEventListener('mousedown', down, true)
       window.removeEventListener('mouseup', up, true)
       window.removeEventListener('auxclick', aux, true)
+      window.removeEventListener('dblclick', dbl, true)
     }
   }, [])
 
@@ -4216,6 +4254,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             isDrawingMode={isDrawingMode}
             hideCursor={(isDrawingMode && pointerOnDrawingCanvas) || (laserActive && pointerOnLaser)}
             placing={!!placeTool}
+            panning={panTool}
             onEditDrawing={traceId => void startDrawing(traceId)}
             hiddenTraceIds={drawingMembers}
             toolSwitch={toolSwitch}
@@ -4316,59 +4355,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         )}
       </div>
 
-      {/* Save, at the top (lib/traceSave): a button while there are changes
-          to save -- with Don't Save beside it -- then Saving, then Saved for a
-          moment before it fades; Not saved, retry, when a save fails. */}
-      {!uiHidden && saveBarMounted && (
-        <div
-          data-hud="true"
-          // Something to save is something to click; otherwise -- Saving,
-          // Saved -- it lets clicks through to the canvas under it.
-          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] font-mono flex items-stretch gap-2 ${canSave ? 'pointer-events-auto' : 'pointer-events-none'}`}
-          style={{ opacity: saveBarShown ? 1 : 0, transition: `opacity ${SAVE_FADE_MS}ms ease-out` }}
-        >
-          <HudIconButton
-            icon={shownSave.icon}
-            label={shownSave.label}
-            hint={canSave ? 'Ctrl+S' : undefined}
-            data-save=""
-            onClick={() => { void saveAllChanges() }}
-            disabled={!canSave}
-            active={canSave && !saveFailed}
-            iconClassName={isSavingChanges ? 'animate-pulse' : undefined}
-            style={saveFailed && !isSavingChanges ? { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' } : shownSave.dim ? { opacity: 0.6 } : undefined}
-            badge={unsaved > 0 && !isSavingChanges && (
-              <span className="absolute top-0.5 right-1 text-[9px] leading-none tabular-nums font-bold">{unsaved}</span>
-            )}
-          />
-          {/* Don't Save, beside Save: back to the atrium as last saved, after
-              a second press -- its name held out, asking to be sure (lib/traceSave
-              discardAllChanges). */}
-          {unsaved > 0 && !isSavingChanges && (
-            <>
-              <HudIconButton
-                icon={MENU_ICONS.discard}
-                label={discarding ? t('atrium.hud.discarding') : confirmDiscard ? t('atrium.hud.confirmDiscard') : t('atrium.hud.dontSave')}
-                data-discard={confirmDiscard ? 'confirm' : ''}
-                disabled={discarding}
-                holdLabel={confirmDiscard}
-                onClick={async () => {
-                  if (!confirmDiscard) { setConfirmDiscard(true); return }
-                  setDiscarding(true)
-                  if (!(await discardAllChanges(lobbyId))) showToast(t('atrium.toast.discardFailed'))
-                  setDiscarding(false)
-                  setConfirmDiscard(false)
-                }}
-                style={confirmDiscard ? { borderColor: 'rgb(var(--c-danger) / 0.7)', color: 'rgb(var(--c-danger))' } : undefined}
-              />
-              {confirmDiscard && !discarding && (
-                <HudIconButton icon={MENU_ICONS.close} label={t('common.cancel')} onClick={() => setConfirmDiscard(false)} />
-              )}
-            </>
-          )}
-        </div>
-      )}
-
       {/* The things that are about the session rather than the canvas: who's
           here, the interface's light or dark, and the way out -- in that
           order, so the one you press by accident least often is furthest from
@@ -4451,26 +4437,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />
       </div>
 
-      {/* The right edge, one column under the top row: the viewing tools in
-          the middle of it (AtriumMenu's ViewBar) -- the panels they open stand
-          clear of it (--right-rail) -- and the usage at its foot. */}
+      {/* The viewing tools, a row along the top in the middle (AtriumMenu's
+          ViewBar); and in the bottom-right corner, the usage. */}
       {!uiHidden && (
-      <div className="fixed top-[3.75rem] bottom-4 right-4 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
-        <div className="flex-1 min-h-0 flex items-center">
-          <ViewBar items={[
-            { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => setShowLayerPanel(open => !open) },
-            { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => setShowLocationsPanel(open => !open) },
-            { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
-            { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
-            { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
-            ...(isLobbyOwner || isLobbyAdmin ? [{ id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, onSelect: () => setShowThemeCustomization(true) }] : []),
-            { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), apart: !(isLobbyOwner || isLobbyAdmin), onSelect: () => setShowProfileCustomization(true) },
-          ]} />
-        </div>
-        {/* At the foot of the right column, how much the atrium holds: the
-            size alone, in the unit it has reached (lib/size); its limit, on
-            the web, when pointed at -- and the thin line along its foot, how
-            near that it is. As tall as a button, its words the size of theirs. */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+        <ViewBar items={[
+          { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => setShowLayerPanel(open => !open) },
+          { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => setShowLocationsPanel(open => !open) },
+          { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
+          { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
+          { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
+          ...(isLobbyOwner || isLobbyAdmin ? [{ id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, onSelect: () => setShowThemeCustomization(true) }] : []),
+          { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), apart: !(isLobbyOwner || isLobbyAdmin), onSelect: () => setShowProfileCustomization(true) },
+        ]} />
+      </div>
+      )}
+      {!uiHidden && (
+      <div className="fixed bottom-4 right-4 z-[9999] pointer-events-none">
+        {/* How much the atrium holds: the size alone, in the unit it has
+            reached (lib/size); its limit, on the web, when pointed at -- and
+            the thin line along its foot, how near that it is. As tall as a
+            button, its words the size of theirs. */}
         {(() => {
           const sizeBytes = useGameStore.getState().getLobbySizeBytes()
           const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
@@ -4583,8 +4570,72 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           },
         ]}
       />
-      {/* The atrium's name, beside the menu's button; then undo and redo. */}
-      {currentLobby && <AtriumName name={currentLobby.name} />}
+      {/* The atrium's name, beside the menu's button, with Save under it while
+          there's something to save; then undo and redo. */}
+      <div className="relative">
+        {currentLobby && <AtriumName name={currentLobby.name} />}
+        {/* Save, dropped down under the atrium's name (lib/traceSave): a
+            button while there are changes to save -- with Don't Save beside it
+            -- then Saving, then Saved for a moment before it folds back up; Not
+            saved, retry, when a save fails. */}
+        {!uiHidden && saveBarMounted && (
+          <div
+            data-hud="true"
+            data-save-bar=""
+            // Something to save is something to click; otherwise -- Saving,
+            // Saved -- it lets clicks through to the canvas under it.
+            className={`absolute top-full left-0 mt-2 z-[1] font-mono flex items-stretch gap-2 ${canSave ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            style={{
+              opacity: saveBarShown ? 1 : 0,
+              transform: saveBarShown ? 'translateY(0)' : 'translateY(-8px)',
+              clipPath: saveBarShown ? 'inset(0 -100vw -100vh -100vw)' : 'inset(0 -100vw 100% -100vw)',
+              transition: `opacity ${SAVE_FADE_MS}ms ease-out, transform ${SAVE_FADE_MS}ms cubic-bezier(0.22, 1, 0.36, 1), clip-path ${SAVE_FADE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+            }}
+          >
+            <HudIconButton
+              icon={shownSave.icon}
+              label={shownSave.label}
+              hint={canSave ? 'Ctrl+S' : undefined}
+              data-save=""
+              onClick={() => { void saveAllChanges() }}
+              disabled={!canSave}
+              active={canSave && !saveFailed}
+              iconClassName={isSavingChanges ? 'animate-pulse' : undefined}
+              style={saveFailed && !isSavingChanges ? { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' } : shownSave.dim ? { opacity: 0.6 } : undefined}
+              labelSide="below-start"
+              badge={unsaved > 0 && !isSavingChanges && (
+                <span className="absolute top-0.5 right-1 text-[9px] leading-none tabular-nums font-bold">{unsaved}</span>
+              )}
+            />
+            {/* Don't Save, beside Save: back to the atrium as last saved, after
+                a second press -- its name held out, asking to be sure (lib/traceSave
+                discardAllChanges). */}
+            {unsaved > 0 && !isSavingChanges && (
+              <>
+                <HudIconButton
+                  icon={MENU_ICONS.discard}
+                  labelSide="below-start"
+                  label={discarding ? t('atrium.hud.discarding') : confirmDiscard ? t('atrium.hud.confirmDiscard') : t('atrium.hud.dontSave')}
+                  data-discard={confirmDiscard ? 'confirm' : ''}
+                  disabled={discarding}
+                  holdLabel={confirmDiscard}
+                  onClick={async () => {
+                    if (!confirmDiscard) { setConfirmDiscard(true); return }
+                    setDiscarding(true)
+                    if (!(await discardAllChanges(lobbyId))) showToast(t('atrium.toast.discardFailed'))
+                    setDiscarding(false)
+                    setConfirmDiscard(false)
+                  }}
+                  style={confirmDiscard ? { borderColor: 'rgb(var(--c-danger) / 0.7)', color: 'rgb(var(--c-danger))' } : undefined}
+                />
+                {confirmDiscard && !discarding && (
+                  <HudIconButton icon={MENU_ICONS.close} label={t('common.cancel')} labelSide="below-start" onClick={() => setConfirmDiscard(false)} />
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
       {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
 
       {/* Presentation quick-toggle -- only shown when locations exist. A fixed
@@ -4605,7 +4656,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       )}
       </div>
       {/* Never less than a row of tools: Controls gives way first. */}
-      <div className="flex-1 min-h-[2.875rem] flex items-center">
+      {/* Dimmed while the menu is open over it: they are two things. */}
+      <div className="flex-1 min-h-[2.875rem] flex items-center transition-opacity duration-200" style={{ opacity: menuOpen ? 0.35 : 1 }}>
         {/* The quick bar: a tool for each kind of trace, in the middle of what
             the menu and the readout leave -- in more columns, when that is
             short. None, for an atrium that can only be looked at. */}
@@ -4623,7 +4675,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />}
       </div>
         {/* At the foot of the column: the zoom and the pointer's place. */}
-        <ViewReadout zoom={zoom} />
+        <ViewReadout
+          zoom={zoom}
+          // To the next tenth, as Excalidraw's buttons go: 84% → 90%, → 80%.
+          onZoom={direction => {
+            const tenths = targetZoomRef.current * 10
+            const next = (direction > 0 ? Math.floor(tenths + 1e-6) + 1 : Math.ceil(tenths - 1e-6) - 1) / 10
+            cameraFlyToRef.current = null
+            targetZoomRef.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next))
+          }}
+          onZoomReset={() => { cameraFlyToRef.current = null; targetZoomRef.current = 1 }}
+          panning={panTool}
+          onPanning={togglePanTool}
+        />
       </div>
 
       {/* At the foot of the screen, in the middle: what's true of this visit

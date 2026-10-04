@@ -61,6 +61,7 @@ import { layerChangeUnderWay, queueLayerChange } from '../lib/layerQueue'
 import { setActionRecorder, setHistoryReach, type ActionEntry } from '../lib/actionHistory'
 import { layerChangeAdopts, withLayerUndo } from '../lib/layerUndo'
 import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
+import { PAN_ICON } from './AtriumInfo'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
@@ -220,6 +221,8 @@ interface TraceOverlayProps {
   // True while the pointer is over the drawing canvas, where the brush circle
   // stands in for the cursor.
   hideCursor?: boolean
+  // Move the view is taken up (LobbyScene): the cursor says so.
+  panning?: boolean
   // Edit Drawing, handed up; and the strokes of the drawing being drawn, kept
   // off the canvas while they're in the drawing layer instead (LobbyScene).
   onEditDrawing?: (traceId: string) => void
@@ -423,13 +426,15 @@ function parseTraceClipboardPayload(rawValue: string): TraceClipboardPayload | n
 // when it's shown again.
 let pointerAt: { x: number; y: number } | null = null
 
-function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair }: {
+function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair, pan }: {
   hidden: boolean
   zIndex: number
   pointerInWindow: boolean
   // Something is being placed or picked on the canvas: a crosshair over it,
   // the usual cursor over the interface.
   crosshair: boolean
+  // Move the view is taken up: its four arrows over the canvas.
+  pan: boolean
 }) {
   const { username, playerColor, cursorState, hideOwnNameTag } = useGamePick('username', 'playerColor', 'cursorState', 'hideOwnNameTag')
   const elRef = useRef<HTMLDivElement | null>(null)
@@ -506,20 +511,18 @@ function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair }: {
           <circle cx="12" cy="12" r="1" fill={playerColor} />
         </svg>
       )
-    } else if (cursorState === 'pointer') {
-      // Paint-drop cursor (for clickable items) -- an abstract blob with
-      // trailing streaks, as if a drop of paint were falling upward against
-      // gravity. See src/assets/cursors/hand-pointer.svg for the editable
-      // source (open in Illustrator to tweak further).
-      const drop = 'M7,7.1V5.5C7,4.1,8.1,3,9.5,3S12,4.1,12,5.5v3.2c0.9,0,1.6,0.1,2.3,0.3V7.5c0-1.4,1-2.5,2.3-2.5C18,5,19,6.1,19,7.5v7c0,4.1-3.4,7.5-7.5,7.5S4,18.6,4,14.5v-5C4,8.1,5.1,7,6.5,7c1.4,0,2.3,1,2.3,2.4c0,0.3,0,1.5,0,1.5'
+    } else if (cursorState === 'pointer' || (pan && overCanvas)) {
+      // Four arrows, centred on the point: over a trace, that it can be
+      // moved; with Move the view, that the view will be (the readout's
+      // PAN_ICON). It was a drop of paint, which said neither.
       outline = (
-        <svg {...at('translate(-2px, -2px)')}>
-          <path d={drop} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <svg {...at('translate(-12px, -12px)')}>
+          <path d={PAN_ICON} fill="none" stroke="#fff" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )
       body = (
-        <svg {...at('translate(-2px, -2px)')}>
-          <path d={drop} fill={playerColor} />
+        <svg {...at('translate(-12px, -12px)')}>
+          <path d={PAN_ICON} fill="none" stroke={playerColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )
     } else if (cursorState === 'grab' || cursorState === 'grabbing' || cursorState === 'not-allowed') {
@@ -643,7 +646,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, panning = false, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -5782,6 +5785,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           zIndex={item.zIndex}
           pointerInWindow={pointerInWindow}
           crosshair={placing || pathCreationMode || !!colorPickerCallback}
+          pan={panning}
         />
       )
     }

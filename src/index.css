@@ -868,10 +868,9 @@ body.dragging * {
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 /* One definition of that edge, at three strengths. */
-/* How far in from the right a panel docked there stands: past the bar of
-   viewing tools down that edge (LobbyScene's right column) -- its 16px from
-   the edge, its 46px, and 8 between. */
-:root { --right-rail: 4.375rem; }
+/* How far in from the right a panel docked there stands: the HUD's 16px
+   from the edge (the viewing tools are along the top now). */
+:root { --right-rail: 1rem; }
 
 :root {
   --cut-edge: linear-gradient(to bottom right,
@@ -920,11 +919,13 @@ body.dragging * {
 }
 .slide-in { animation: slide-in 200ms ease-out; }
 
+/* A panel docked on the right slides in from past the screen's edge, as a
+   drawer does: picking a tool, or a trace, brings its panel in. */
 @keyframes panel-in-right {
-  from { opacity: 0; transform: translateX(10px); }
+  from { opacity: 0.4; transform: translateX(calc(100% + var(--right-rail))); }
   to   { opacity: 1; transform: translateX(0); }
 }
-.panel-in-right { animation: panel-in-right 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+.panel-in-right { animation: panel-in-right 280ms cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* A colour input that actually shows its colour.
    Tailwind's reset makes every input transparent, which on a native colour

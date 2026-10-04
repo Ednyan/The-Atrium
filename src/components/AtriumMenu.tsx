@@ -46,29 +46,36 @@ export function MenuIcon({ d, size = 20 }: { d: string; size?: number }) {
 }
 
 // A name drawn out from an icon's edge as the pointer arrives (or the
-// keyboard's focus): beside the icons down an edge -- the menu and quick bar on
-// the left, the viewing tools on the right -- and below those along the top,
-// which have no room beside them. It
-// goes after a button marked `peer`, both inside a `group`; pressing it is
-// pressing the button. `shown` keeps it out without the pointer.
+// keyboard's focus): beside the icons down the left edge -- the menu and the
+// quick bar -- and below those along the top, which have no room beside them:
+// lined up with the icon's right edge at the top right (`below`), its left
+// edge at the top left (`below-start`), its middle at the top centre
+// (`below-centre`). It goes after a button marked `peer`, both inside a
+// `group`; pressing it is pressing the button. `shown` keeps it out without
+// the pointer.
 const SLIDE = {
   right: 'absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
   left: 'absolute right-full top-1/2 -translate-y-1/2 translate-x-1 pr-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_0_0_100%)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
   above: 'absolute bottom-full left-1/2 -translate-x-1/2 translate-y-1 pb-2 z-10 opacity-0 pointer-events-none [clip-path:inset(100%_0_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
   below: 'absolute top-full right-0 pt-2 z-10 opacity-0 pointer-events-none -translate-y-1 [clip-path:inset(0_0_100%_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
+  'below-start': 'absolute top-full left-0 pt-2 z-10 opacity-0 pointer-events-none -translate-y-1 [clip-path:inset(0_0_100%_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
+  'below-centre': 'absolute top-full left-1/2 -translate-x-1/2 pt-2 z-10 opacity-0 pointer-events-none -translate-y-1 [clip-path:inset(0_0_100%_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
 }
 const SLIDE_SHOWN = {
   right: 'absolute left-full top-1/2 -translate-y-1/2 pl-2 z-10',
   left: 'absolute right-full top-1/2 -translate-y-1/2 pr-2 z-10',
   above: 'absolute bottom-full left-1/2 -translate-x-1/2 pb-2 z-10',
   below: 'absolute top-full right-0 pt-2 z-10',
+  'below-start': 'absolute top-full left-0 pt-2 z-10',
+  'below-centre': 'absolute top-full left-1/2 -translate-x-1/2 pt-2 z-10',
 }
+type SlideSide = keyof typeof SLIDE
 
 export function SlideLabel({ text, hint, onPress, side = 'right', shown = false }: {
   text: string
   hint?: string
   onPress?: () => void
-  side?: 'right' | 'left' | 'above' | 'below'
+  side?: SlideSide
   shown?: boolean
 }) {
   return (
@@ -86,7 +93,7 @@ export function SlideLabel({ text, hint, onPress, side = 'right', shown = false 
 
 // A square button of the HUD that is only its icon, its name drawn out below
 // it under the pointer: the session's controls at the top right, and Save.
-export function HudIconButton({ icon, label, hint, onClick, active, holdLabel, badge, iconClassName, className = '', style, ...rest }: {
+export function HudIconButton({ icon, label, hint, onClick, active, holdLabel, badge, iconClassName, labelSide = 'below', className = '', style, ...rest }: {
   icon: string
   label: string
   hint?: string
@@ -98,6 +105,9 @@ export function HudIconButton({ icon, label, hint, onClick, active, holdLabel, b
   // Drawn over the icon: a count.
   badge?: ReactNode
   iconClassName?: string
+  // Which way its name comes out below it (SlideLabel): to the left at the
+  // top right, the default; to the right at the top left.
+  labelSide?: 'below' | 'below-start'
   className?: string
   style?: CSSProperties
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'style' | 'className' | 'type'>) {
@@ -117,7 +127,7 @@ export function HudIconButton({ icon, label, hint, onClick, active, holdLabel, b
         <span className={`flex ${iconClassName ?? ''}`}><MenuIcon d={icon} size={18} /></span>
         {badge}
       </button>
-      <SlideLabel text={label} hint={hint} side="below" shown={holdLabel} onPress={rest.disabled ? undefined : onClick} />
+      <SlideLabel text={label} hint={hint} side={labelSide} shown={holdLabel} onPress={rest.disabled ? undefined : onClick} />
     </div>
   )
 }
@@ -180,13 +190,23 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
       </button>
       {open && (
         // Over what's below it -- the quick bar -- rather than pushing it
-        // down; its shadow says it's on top.
+        // down, and plainly not part of it, as Excalidraw's and Miro's menus
+        // are cards of their own: a raised surface, a deep shadow, a notch
+        // pointing at the button, and set in from the bar's edge (which
+        // LobbyScene dims meanwhile).
         <div
           role="menu"
           aria-label={t('atrium.menu.title')}
-          className="panel-in absolute top-full left-0 mt-1 z-30 flex flex-col gap-1 p-1 border border-nier-border/40 shadow-[0_10px_28px_rgba(0,0,0,0.55)]"
-          style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
+          data-menu-card=""
+          className="panel-in absolute top-full left-2 mt-3 z-30 flex flex-col gap-1 p-1.5 border border-nier-border/60 shadow-[0_16px_40px_rgba(0,0,0,0.6)]"
+          style={{ backgroundColor: 'rgb(var(--c-surface))' }}
         >
+          {/* The notch, under the button's middle (17px in; the card 8px). */}
+          <span
+            aria-hidden="true"
+            className="absolute -top-[6px] left-[4px] w-2.5 h-2.5 rotate-45 border-l border-t border-nier-border/60"
+            style={{ backgroundColor: 'rgb(var(--c-surface))' }}
+          />
           {items.map(item => (
             <div key={item.id} className="group relative">
               {item.apart && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
@@ -218,24 +238,23 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
   )
 }
 
-// The viewing tools, down the right edge: a column of icons as the quick bar
-// is on the left, each name drawn out to its left. What `open` is says what
-// it has open (its panel), pressed.
+// The viewing tools, a row along the top in the middle, each name drawn out
+// below it. What `open` is says what it has open (its panel), pressed.
 export function ViewBar({ items }: { items: MenuItem[] }) {
   const { t } = useTranslation()
   return (
     <div
       role="toolbar"
-      aria-orientation="vertical"
+      aria-orientation="horizontal"
       aria-label={t('atrium.tools.view')}
       data-view-bar=""
       data-hud="true"
-      className="flex flex-col gap-1 p-1 border border-nier-border/40 font-mono pointer-events-auto"
+      className="flex gap-1 p-1 border border-nier-border/40 font-mono pointer-events-auto"
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
     >
       {items.map(item => (
         <div key={item.id} className="group relative">
-          {item.apart && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
+          {item.apart && <div className="absolute -left-[3px] inset-y-1 w-px bg-nier-border/30" />}
           <button
             type="button"
             data-view={item.id}
@@ -250,7 +269,7 @@ export function ViewBar({ items }: { items: MenuItem[] }) {
           >
             <MenuIcon d={item.icon} />
           </button>
-          <SlideLabel side="left" text={item.label} hint={item.hint} onPress={item.onSelect} />
+          <SlideLabel side="below-centre" text={item.label} hint={item.hint} onPress={item.onSelect} />
         </div>
       ))}
     </div>
@@ -260,7 +279,7 @@ export function ViewBar({ items }: { items: MenuItem[] }) {
 // Every control and shortcut in the atrium, each written "What : Keys" (a
 // full-width colon in Chinese and Japanese), shown as the two sides of a row.
 const CONTROLS = [
-  'atrium.controls.pan', 'atrium.controls.zoom', 'atrium.controls.zoomReset', 'atrium.controls.recenter', 'atrium.controls.fullscreen',
+  'atrium.controls.pan', 'atrium.controls.panTool', 'atrium.controls.zoom', 'atrium.controls.zoomReset', 'atrium.controls.recenter', 'atrium.controls.fullscreen',
   'atrium.controls.quickBar', 'atrium.controls.leaveTrace', 'atrium.controls.draw', 'atrium.controls.laser', 'atrium.controls.cancel', 'atrium.controls.finishPath',
   'atrium.controls.editTrace', 'atrium.controls.multiSelect', 'atrium.controls.directSelect', 'atrium.controls.groupUngroup',
   'atrium.controls.copyPaste', 'atrium.controls.copyPasteStyle', 'atrium.controls.deleteSelected', 'atrium.controls.undoRedo',
