@@ -10,7 +10,7 @@
 // live update to a trace in the customize panel, local state that becomes the
 // new trace in the create panel.
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { showToast } from '../lib/toast'
 import { BOX_SHAPES, type ArrowKind, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
@@ -189,7 +189,7 @@ function SizeInput({ label, value, onCommit }: { label: string; value: number; o
   )
 }
 
-export default function ShapeStyleControls({ value, onChange, size, onSizeChange, pathExtra, typePicker = true, note, part }: {
+export default function ShapeStyleControls({ value, onChange, size, onSizeChange, typePicker = true, note, part }: {
   value: ShapeStyle
   onChange: (patch: Partial<ShapeStyle>) => void
   /** Off in Batch Edit: shapes and paths are edited apart there, and a type picked for all of them could turn a box into a line with no points. */
@@ -199,8 +199,6 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
   /** The shape's box as drawn. Given by both panels, so both show it in the same place. */
   size?: { width: number; height: number }
   onSizeChange?: (width: number, height: number) => void
-  /** Rendered among the path options: the point editor, which needs a trace that exists. */
-  pathExtra?: ReactNode
   /** One part, for a section of the Customization panel (which titles it):
       the kind and a path's line, the size, the fill, the outline. All of
       them, each under its own heading, when not given. */
@@ -277,7 +275,6 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
           </div>
           {arrows('pathArrowStart', '◄')}
           {arrows('pathArrowEnd', '►')}
-          {pathExtra}
         </>
       )}
 

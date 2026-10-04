@@ -1418,6 +1418,13 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   const transformModeRef = useRef<TransformMode>(transformMode)
   const selectedTraceIdRef = useRef<string | null>(selectedTraceId)
   const pathCreationModeRef = useRef(pathCreationMode)
+  // Which path's points are being added (endPathPoints): its own, not the
+  // selection's, which can move on.
+  const pathIdRef = useRef<string | null>(null)
+  const addPointsTo = (id: string) => {
+    pathIdRef.current = id
+    setPathCreationMode(true)
+  }
   const onPasteRef = useRef(onPaste)
   onPasteRef.current = onPaste
   const worldOffsetRef = useRef(worldOffset)
@@ -1488,7 +1495,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     if (!trace) return
     setSelectedTraceId(trace.id)
     setEditingTrace(trace)
-    setPathCreationMode(true)
+    addPointsTo(trace.id)
   }, [newPathRequest, setSelectedTraceId])
 
   // The text equivalent: typed into straight away -- inline editing, the same
@@ -1741,7 +1748,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // registered once, can use it.
   const endPathPoints = () => {
     setPathCreationMode(false)
-    const id = selectedTraceIdRef.current
+    // The path being added to, by its own id: the selection may have moved
+    // on, and a trace selected meanwhile is no path to throw away.
+    const id = pathIdRef.current
+    pathIdRef.current = null
     if (!id) return false
     const trace = tracesRef.current.find(t => t.id === id)
     const editing = editingTraceRef.current
@@ -1752,6 +1762,12 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     knownTraceIdsRef.current?.delete(id)
     return true
   }
+  // Adding ends when the path is no longer what's selected -- picked in the
+  // Layer panel, say; a press on another trace only places a point.
+  useEffect(() => {
+    if (pathCreationMode && selectedTraceId !== pathIdRef.current) endPathPoints()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTraceId, pathCreationMode])
 
   // ESC key to deselect trace and close menus
   useEffect(() => {
@@ -3310,6 +3326,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   }
 
   const handleMouseDown = (e: React.MouseEvent, trace: Trace, mode: TransformMode, corner?: string) => {
+    // Adding a path's points: another trace pressed is only where the next
+    // point goes (handleClickOutside) -- not taken, nor selected.
+    if (pathCreationModeRef.current && trace.id !== pathIdRef.current && e.button === 0) return
     if (connectFromRef.current) {
       e.stopPropagation()
       e.preventDefault()
@@ -4421,7 +4440,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       const end = points.length < 2 ? null : index === 0 ? 'start' : index === points.length - 1 ? 'end' : null
       if (end && !(pathCreationModeRef.current && pathAddAtRef.current === end)) {
         setPathAddAt(end)
-        setPathCreationMode(true)
+        addPointsTo(activeSelectedTraceId)
       } else if (points.length >= 2) {
         setPathCreationMode(false)
       }
@@ -4570,30 +4589,37 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     if (!(thrown.length > 0 && startGlide(thrown, settle))) settle()
   }
 
-  // Whether the press now under way began on a trace (handleClickOutside).
-  // In the capture phase, ahead of anything the press might change.
-  const pressBeganOnTraceRef = useRef(false)
+  // Where the press now under way began (handleClickOutside). In the
+  // capture phase, ahead of anything the press might change.
+  const pressTargetRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    const note = (e: MouseEvent) => {
-      pressBeganOnTraceRef.current = !!(e.target as HTMLElement | null)?.closest?.('[data-trace-element="true"]')
-    }
+    const note = (e: MouseEvent) => { pressTargetRef.current = e.target as HTMLElement | null }
     window.addEventListener('mousedown', note, true)
     return () => window.removeEventListener('mousedown', note, true)
   }, [])
 
   // Click outside to deselect
   useEffect(() => {
+    // On a trace -- or, while a path's points are being added, on that path
+    // alone (its line, its handles): every other trace is only where the
+    // next point goes.
+    const onTrace = (el: HTMLElement | null) => {
+      if (!el?.closest) return false
+      if (!pathCreationMode) return !!el.closest('[data-trace-element="true"]')
+      const owner = el.closest('[data-path-of]')?.getAttribute('data-path-of') ?? el.closest('[data-trace-id]')?.getAttribute('data-trace-id')
+      return owner === pathIdRef.current
+    }
     const handleClickOutside = (e: MouseEvent) => {
       // If a trace element was clicked, don't deselect
       const target = e.target as HTMLElement
-      if (target.closest('[data-trace-element="true"]')) {
+      if (onTrace(target)) {
         return
       }
       // Nor if the press began on one. A press can put something new under
       // the pointer -- selecting a path shows its handles, one of them maybe
       // right there -- and a click that starts on one element and ends on
       // another goes to what they share, which is no trace at all.
-      if (pressBeganOnTraceRef.current) {
+      if (onTrace(pressTargetRef.current)) {
         return
       }
       
@@ -4618,8 +4644,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         const target = e.target as HTMLElement
         
         // If clicking on UI elements, just ignore the click
-        if (target.closest('[data-trace-element]') ||
-            target.closest('.layer-panel') ||
+        if (target.closest('.layer-panel') ||
             target.closest('[role="dialog"]') ||
             target.closest('.customize-menu') ||
             target.closest('button') ||
@@ -5984,6 +6009,9 @@ return (
       onMouseDown={(e) => on.handleMouseDown(e, trace, 'move')}
       onTouchStart={(e) => on.handleTouchDown(e, trace, 'move')}
       onClick={(e) => {
+        // Adding a path's points: left to go on to handleClickOutside, which
+        // puts a point here.
+        if (pathCreationModeRef.current && trace.id !== pathIdRef.current) return
         // Don't handle clicks if we're in a transform mode (e.g., dragging a point).
         // From the ref: a mode change isn't in the trace's signature, so this
         // handler can be one from before it (see TraceSlot).
@@ -7395,7 +7423,7 @@ return (
           const addFrom = addingEnd !== null && points[addingEnd] ? screenOf(points[addingEnd]) : null
 
           return (
-            <div data-trace-element="true" className="contents">
+            <div data-trace-element="true" data-path-of={trace.id} className="contents">
               <svg className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 999999 }}>
                 {from && showIn && (() => { const h = screenOf(handles!.cp1); return <line x1={from.x} y1={from.y} x2={h.x} y2={h.y} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" /> })()}
                 {from && showOut && (() => { const h = screenOf(handles!.cp2); return <line x1={from.x} y1={from.y} x2={h.x} y2={h.y} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 2" /> })()}
@@ -9208,55 +9236,7 @@ return (
 
             {shapeLike && (
             <Section id="shape" title={isPathTrace ? t('atrium.trace.shape.path') : t('atrium.customize.sectionShape')}>
-              <ShapeStyleControls
-                {...shapeProps}
-                part="shape"
-                pathExtra={
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPathCreationMode(!pathCreationMode)
-                        }}
-                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
-                          pathCreationMode
-                            ? 'bg-nier-bg text-nier-black border-nier-bg'
-                            : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
-                        }`}
-                      >
-                        {pathCreationMode ? t('atrium.controls.doneAdding') : t('atrium.controls.addPoints')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentPoints = editingTrace.shapePoints || []
-                          if (currentPoints.length > 2) {
-                            // The point selected on the path, or else the last.
-                            const index = selectedPointIndex !== null && selectedPointIndex < currentPoints.length ? selectedPointIndex : currentPoints.length - 1
-                            const newPoints = currentPoints.filter((_, i) => i !== index)
-                            setSelectedPointIndex(null)
-                            const updated = { ...editingTrace, shapePoints: newPoints }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
-                          }
-                        }}
-                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
-                      >
-                        {t('atrium.customize.remove')}
-                      </button>
-                    </div>
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      {pathCreationMode 
-                        ? t('atrium.controls.addPointsOn')
-                        : t('atrium.controls.addPointsOff')}
-                    </p>
-                  </div>
-                }
-              />
+              <ShapeStyleControls {...shapeProps} part="shape" />
             </Section>
             )}
 

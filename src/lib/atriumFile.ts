@@ -119,8 +119,11 @@ export interface ImportIntoResult { added: number; missing: number; failed: numb
 // connections, centred on `at`, on top of everything, as one step of undo
 // (lib/layerUndo) -- Ctrl+Z takes the whole import back. Its pictures and
 // sounds are saved here as any new file is. Its locations, theme and name
-// stay with it: they're the atrium's, not the traces'.
-export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number }, lobbyId: string, userId: string): Promise<ImportIntoResult> {
+// stay with it: they're the atrium's, not the traces'. How far it's got goes
+// to `onProgress`: each file saved and each trace written is one of `total`.
+// Its traces are put on the canvas together, once all are written, so it
+// arrives as the one action it is.
+export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number }, lobbyId: string, userId: string, onProgress?: (done: number, total: number) => void): Promise<ImportIntoResult> {
   // Room for it, on the web, where an atrium has a size.
   if (!isDesktop) {
     const needed = file.traces.reduce((sum, tr) => sum + dataUrlBytes(tr.media_url) + dataUrlBytes(tr.image_url), 0)
@@ -138,6 +141,10 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     const now = new Date().toISOString()
     const parsed = file.traces.map(row => ({ row, trace: mapRowToTrace({ ...row, id: row.id ?? crypto.randomUUID(), lobby_id: lobbyId, user_id: userId, created_at: now }) }))
     if (parsed.length === 0) return { added: 0, missing: 0, failed: 0 }
+    const uploads = parsed.reduce((n, { trace }) => n + [trace.mediaUrl, trace.imageUrl].filter(url => typeof url === 'string' && url.startsWith('data:')).length, 0)
+    const total = uploads + parsed.length
+    let done = 0
+    onProgress?.(done, total)
 
     // Moved so their middle is where the view is.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -221,20 +228,25 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
             placed[key] = undefined
             missing++
           }
+          onProgress?.(++done, total)
         }
       }
       rows.push(traceRow(placed))
     }
 
-    // Written a batch at a time; each batch, once in, put on the canvas.
-    let added = 0, failed = 0
+    // Written a batch at a time, then put on the canvas all at once.
+    let failed = 0
+    const written: Record<string, any>[] = []
     for (let i = 0; i < rows.length; i += 50) {
       const batch = rows.slice(i, i + 50)
       const { error } = await (db.from('traces') as any).insert(batch)
-      if (error) { failed += batch.length; continue }
-      for (const row of batch) useGameStore.getState().addTrace(mapRowToTrace(row))
-      added += batch.length
+      if (error) failed += batch.length
+      else written.push(...batch)
+      done += batch.length
+      onProgress?.(done, total)
     }
+    for (const row of written) useGameStore.getState().addTrace(mapRowToTrace(row))
+    const added = written.length
 
     // Threads, once both their traces are in.
     const linkRows = carryLinks(file.links, ids).map(l => ({ ...l, lobby_id: lobbyId }))

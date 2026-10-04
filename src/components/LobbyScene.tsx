@@ -4,7 +4,7 @@ import { themeSeenIn } from '../lib/atriumThemePresets'
 import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
-import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, useGamePick } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, unsavedActions, useGamePick } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
 import { currentTracePreset } from '../lib/tracePresets'
 import { readPackingShape } from '../lib/atriumPreferences'
@@ -482,7 +482,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // How far through a batch import we are, or null when nothing is importing.
   // Drives the panel that covers the atrium while files are being written.
-  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
+  // An .atrium file's import counts its files and traces together, so it's
+  // said as a percentage.
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; percent?: boolean } | null>(null)
 
   // Placement markers used a fixed gold, which sat somewhere between the
   // background and the foreground on a dark theme and vanished outright on a
@@ -739,10 +741,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // so it is held mounted for the length of the fade after the last state that
   // wanted it on screen has gone.
   const SAVE_FADE_MS = 1000
-  // How many changes wait for Save: re-rendered when the number changes, not
-  // on every change marked.
-  const unsaved = useGameStore(s => s.pendingChanges.size + s.deletedTraces.size + s.pendingLinks.size
-    + s.deletedLinks.size + s.pendingLocations.size + s.deletedLocations.size)
+  // How many actions wait for Save (unsavedActions): re-rendered when the
+  // number changes, not on every change marked.
+  const unsaved = useGameStore(unsavedActions)
   const saveBarActive = unsaved > 0 || saveFailed || isSavingChanges || justSaved
   const [saveBarMounted, setSaveBarMounted] = useState(false)
   const [saveBarShown, setSaveBarShown] = useState(false)
@@ -1990,8 +1991,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!canEditRef.current || !userId) return
     try {
       const parsed = parseAtriumFile(await file.text())
-      showToast(t('atrium.import.importing'))
-      const result = await importIntoAtrium(parsed, at, lobbyId, userId)
+      setImportProgress({ done: 0, total: 1, percent: true })
+      const result = await importIntoAtrium(parsed, at, lobbyId, userId, (done, total) => setImportProgress({ done, total, percent: true }))
       const said = [tCount('atrium.import.added', result.added)]
       if (result.missing > 0) said.push(t('atrium.import.missing', { count: result.missing }))
       if (result.failed > 0) said.push(t('atrium.import.refused', { count: result.failed }))
@@ -2004,6 +2005,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       } else {
         showToast(t('atrium.import.failed', { message: e?.message ?? '' }))
       }
+    } finally {
+      setImportProgress(null)
     }
   }
 
@@ -4268,6 +4271,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             as long as the import runs and resumes by itself when it ends. */}
         {importProgress && (
           <div
+            data-import-progress=""
             className="absolute inset-0 z-[9999] pointer-events-auto flex items-center justify-center cursor-wait"
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.72)' }}
             onWheel={e => e.stopPropagation()}
@@ -4292,7 +4296,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 />
               </div>
               <p className="text-nier-bg/70 text-[0.7rem] tracking-[0.15em] uppercase font-mono">
-                {t('atrium.hud.importCount', { done: importProgress.done, total: importProgress.total })}
+                {importProgress.percent
+                  ? new Intl.NumberFormat(language, { style: 'percent' }).format(importProgress.done / Math.max(1, importProgress.total))
+                  : t('atrium.hud.importCount', { done: importProgress.done, total: importProgress.total })}
               </p>
             </div>
           </div>
@@ -5468,7 +5474,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               <span className="text-nier-bg/70 mr-2">◇</span>{t('atrium.dialog.unsavedTitle')}
             </h3>
             <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
-              {t('atrium.dialog.unsavedBody', { count: useGameStore.getState().pendingChanges.size + useGameStore.getState().deletedTraces.size })}
+              {t('atrium.dialog.unsavedBody', { count: unsavedActions(useGameStore.getState()) })}
             </p>
 
             <div className="flex flex-col gap-2">

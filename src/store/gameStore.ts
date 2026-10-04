@@ -469,6 +469,54 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 }))
 
+// How many actions wait for Save -- not how many things they changed: a group
+// moved is one, an import is one. Each thing becomes unsaved with a stamp;
+// what became unsaved in the same go of the event loop shares one, as what
+// asOneAction does across its awaits. Kept until the thing is saved or
+// discarded, so a later change to it adds nothing.
+const UNSAVED = [
+  ['t', 'pendingChanges'], ['t', 'deletedTraces'],
+  ['l', 'pendingLinks'], ['l', 'deletedLinks'],
+  ['p', 'pendingLocations'], ['p', 'deletedLocations'],
+] as const
+const stamps = new Map<string, number>()
+let stamp = 0
+let stampOpen = false
+let held = 0
+const currentStamp = () => {
+  if (held || stampOpen) return stamp
+  stampOpen = true
+  setTimeout(() => { stampOpen = false })
+  return ++stamp
+}
+useGameStore.subscribe((state, prev) => {
+  if (UNSAVED.every(([, set]) => state[set] === prev[set])) return
+  const unsaved = new Set<string>()
+  for (const [kind, set] of UNSAVED) {
+    for (const id of state[set]) {
+      const key = kind + id
+      unsaved.add(key)
+      if (!stamps.has(key)) stamps.set(key, currentStamp())
+    }
+  }
+  for (const key of stamps.keys()) if (!unsaved.has(key)) stamps.delete(key)
+})
+export function unsavedActions(state: GameState): number {
+  const actions = new Set<number | string>()
+  for (const [kind, set] of UNSAVED) for (const id of state[set]) actions.add(stamps.get(kind + id) ?? kind + id)
+  return actions.size
+}
+// What fn makes unsaved, across its awaits, as one action (an import).
+export async function asOneAction<T>(fn: () => Promise<T>): Promise<T> {
+  if (!held) stamp++
+  held++
+  try {
+    return await fn()
+  } finally {
+    held--
+  }
+}
+
 // What to say when a full atrium turns something away.
 export function lobbyFullMessage(): string {
   return t('atrium.error.sizeLimit', {
