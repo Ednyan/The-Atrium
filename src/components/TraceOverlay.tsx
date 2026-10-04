@@ -30,8 +30,8 @@ import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
 import { throughRelay, toEmbedUrl } from '../lib/embedUrl'
-import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, siblingsOf, topLevel, type Ordered } from '../lib/order'
-import { createGroup, reloadLayers } from '../hooks/useLayers'
+import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, reorder, siblingsOf, topLevel, type Ordered } from '../lib/order'
+import { createGroup, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, newFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
@@ -47,7 +47,7 @@ import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
 import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, traceKindLabel } from './Customization'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
-import { changeStrokes, splitDrawing } from '../lib/drawingFiles'
+import { changeStrokes, rasterizeDrawings, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
 import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
@@ -3016,6 +3016,29 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // one trace's look, given to others -- each takes what it has of it, as one
   // step of undo. A text box fits its text again in a font or size pasted on
   // it, as when one is set; a drawing's strokes go to drawings.
+  // The drawings among `ids` made one picture, for good (lib/drawingFiles
+  // rasterizeDrawings): as sharp as they're seen now, named as the drawing --
+  // or, several of one group, as the group. Selected once made.
+  const rasterize = (ids: string[]) => {
+    const drawings = traces.filter(tr => ids.includes(tr.id) && isDrawingTrace(tr))
+    if (!canEdit || drawings.length === 0) return
+    const groupId = drawings[0].layerId
+    const group = drawings.length > 1 && groupId && drawings.every(d => d.layerId === groupId) ? useGameStore.getState().layers.find(l => l.id === groupId)?.name : null
+    const name = group || drawings[drawings.length - 1].content || t('atrium.layers.numberedDrawing', { n: 1 })
+    setEditingTrace(null)
+    setSelectedTraceId(null)
+    setMultiSelectedIds(new Set())
+    void rasterizeDrawings(drawings.map(d => d.id), Math.max(1, zoom * (window.devicePixelRatio || 1)), name)
+      .then(id => {
+        showToast(id ? t('atrium.toast.rasterized') : t('atrium.toast.rasterizeFailed'))
+        if (id) setSelectedTraceId(id)
+      })
+      .catch(err => {
+        console.error('[drawing] could not rasterize:', err)
+        showToast(t('atrium.toast.rasterizeFailed'))
+      })
+  }
+
   const copyTraceStyle = (id: string) => {
     const trace = traces.find(tr => tr.id === id)
     if (!trace) return
@@ -3116,26 +3139,6 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     await duplicateTraces(tracesToDuplicate)
   }
 
-  // Puts a trace at `index` among what it's ordered among (bottom to top):
-  // one new key, saved with the rest. Should two of them share a key there is
-  // no room between, and a group's traces are re-keyed in their order first
-  // -- rare.
-  // ponytail: in the stack a tie is left alone (groups are written apart from
-  // traces) and the trace goes to the top instead; re-key the stack's traces
-  // and groups together if that ever shows.
-  const placeInGroup = (trace: Trace, others: Ordered[], index: number) => inOneStep(() => {
-    let key = keyAt(others, index)
-    if (key === null && !others.every(o => traceById.has(o.id))) key = keysOnTop(others)[0]
-    if (key === null) {
-      const sorted = inOrder(others)
-      const fresh = keysBetween(null, null, sorted.length)
-      sorted.forEach((t, i) => updateTraceCustomization(t.id, { orderKey: fresh[i] }))
-      key = keyAt(sorted.map((t, i) => ({ ...t, orderKey: fresh[i] })), index)
-    }
-    if (key !== null) updateTraceCustomization(trace.id, { orderKey: key })
-  })
-
-
   // The ids of the traces in a trace's group, when it is in one that exists
   // and has others in it; null for a trace on its own.
   const groupMembersOf = (trace: Trace): string[] | null => {
@@ -3147,27 +3150,58 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // the press turns out to be a click (handleMouseUp).
   const groupClickRef = useRef<string | null>(null)
 
-  // To the top or bottom of its own group (or of the stack, in none) -- the
-  // right-click menu's version of dragging it to either end in the Layer panel.
-  const moveTraceToGroupEdge = (traceId: string, edge: 'top' | 'bottom') => {
+  // Traces moved in the drawing order (lib/order reorder): within their
+  // group, or the stack when in none -- a whole group selected moves as the
+  // group, in the stack. The right-click menu's Move Layer and the
+  // Customization panel's foot, as Excalidraw's layer buttons. Traces' places
+  // wait for Save as any change does, one step of undo; a group's is written
+  // now, as the Layer panel's are, its own step.
+  const moveInOrder = (ids: string[], how: 'up' | 'down' | 'top' | 'bottom') => {
     setContextMenu(null)
-    const trace = traces.find(t => t.id === traceId)
-    if (!trace) return
-    const others = siblingsOf(trace, traces, layers)
-    if (others.length > 0) placeInGroup(trace, others, edge === 'top' ? others.length : 0)
+    if (!canEdit) return
+    const chosen = traces.filter(t => ids.includes(t.id))
+    // Whole groups: all a group's traces, among several selected.
+    const whole = new Set(chosen.length > 1 ? layers.filter(l => {
+      const members = traces.filter(t => t.layerId === l.id)
+      return members.length > 0 && members.every(m => ids.includes(m.id))
+    }).map(l => l.id) : [])
+    const pools = new Map<string, Set<string>>()
+    for (const trace of chosen) {
+      const group = groupIdOf(trace, layers)
+      const [pool, id] = group && whole.has(group) ? ['', group] : [group ?? '', trace.id]
+      pools.set(pool, (pools.get(pool) ?? new Set<string>()).add(id))
+    }
+    const traceKeys = new Map<string, string>()
+    const groupKeys = new Map<string, string>()
+    for (const [group, moving] of pools) {
+      let pool: Ordered[] = group ? traces.filter(t => t.layerId === group) : topLevel(traces, layers)
+      let keys = reorder(pool, moving, how)
+      // No room between two of a group's traces: rekeyed in their order first.
+      if (!keys && group) {
+        const fresh = keysBetween(null, null, pool.length)
+        pool = inOrder(pool).map((t, i) => ({ ...t, orderKey: fresh[i] }))
+        for (const t of pool) traceKeys.set(t.id, t.orderKey!)
+        keys = reorder(pool, moving, how)
+      }
+      for (const [id, key] of keys ?? []) (layers.some(l => l.id === id) ? groupKeys : traceKeys).set(id, key)
+    }
+    if (traceKeys.size > 0) inOneStep(() => { for (const [id, orderKey] of traceKeys) updateTraceCustomization(id, { orderKey }) })
+    if (groupKeys.size > 0 && lobbyId) {
+      void queueLayerChange(() => withLayerUndo('move group', async () => {
+        for (const [id, key] of groupKeys) {
+          const layer = useGameStore.getState().layers.find(l => l.id === id)
+          if (layer) await writeGroupKey(layer, key, lobbyId)
+        }
+      }))
+    }
   }
-
-  // One step up or down its group, past the next trace that way.
-  const moveTraceOneStep = (traceId: string, direction: 'up' | 'down') => {
-    setContextMenu(null)
-    const trace = traces.find(t => t.id === traceId)
-    if (!trace) return
-    const group = inOrder([trace, ...siblingsOf(trace, traces, layers)])
-    const index = group.findIndex(t => t.id === traceId)
-    const target = direction === 'up' ? index + 1 : index - 1
-    if (index === -1 || target < 0 || target >= group.length) return
-    placeInGroup(trace, group.filter(t => t.id !== traceId), target)
-  }
+  // Its four buttons' names: to the top of a group, or of everything.
+  const orderLabels = (inGroup: boolean) => ({
+    up: t('atrium.menu.moveUp'),
+    down: t('atrium.menu.moveDown'),
+    top: inGroup ? t('atrium.menu.moveTopOfGroup') : t('atrium.menu.moveToTop'),
+    bottom: inGroup ? t('atrium.menu.moveBottomOfGroup') : t('atrium.menu.moveToBottom'),
+  })
 
   const MAX_REORGANIZE_TRACES = 100
 
@@ -8122,6 +8156,22 @@ return (
                 </button>
               )
             })()}
+            {/* A drawing -- or the selection's drawings -- one picture, for
+                good: no strokes left to edit (rasterize). */}
+            {(() => {
+              const ids = editingWholeSelection ? [...multiSelectedIds] : [contextMenu.traceId]
+              const count = traces.filter(tr => ids.includes(tr.id) && isDrawingTrace(tr)).length
+              if (!canEdit || count === 0) return null
+              return (
+                <button
+                  title={t('atrium.menu.rasterizeHint')}
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => { setContextMenu(null); rasterize(ids) }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">◇</span> {count > 1 ? t('atrium.menu.rasterizeAll', { count }) : t('atrium.menu.rasterize')}
+                </button>
+              )
+            })()}
             {/* A PDF shown a page at a time, apart into one picture a page, in
                 a group where it was (lib/pdfTraces extractPages). */}
             {(() => {
@@ -8572,27 +8622,27 @@ return (
                     >
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
-                        onClick={() => moveTraceOneStep(trace.id, 'up')}
+                        onClick={() => moveInOrder([trace.id], 'up')}
                       >
                         {t('atrium.menu.moveUp')}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
-                        onClick={() => moveTraceOneStep(trace.id, 'down')}
+                        onClick={() => moveInOrder([trace.id], 'down')}
                       >
                         {t('atrium.menu.moveDown')}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
-                        onClick={() => moveTraceToGroupEdge(trace.id, 'top')}
+                        onClick={() => moveInOrder([trace.id], 'top')}
                       >
-                        {t('atrium.menu.moveTopOfGroup')}
+                        {orderLabels(!!groupIdOf(trace, layers)).top}
                       </button>
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
-                        onClick={() => moveTraceToGroupEdge(trace.id, 'bottom')}
+                        onClick={() => moveInOrder([trace.id], 'bottom')}
                       >
-                        {t('atrium.menu.moveBottomOfGroup')}
+                        {orderLabels(!!groupIdOf(trace, layers)).bottom}
                       </button>
                     </div>
                   )}
@@ -8748,14 +8798,21 @@ return (
                 <PanelAction icon={ACTION_ICONS.duplicate} label={t('common.duplicate')} onClick={() => duplicateTrace(editingTrace.id)} />
                 <PanelAction icon={ACTION_ICONS.copyStyle} label={t('atrium.menu.copyStyle')} onClick={() => copyTraceStyle(editingTrace.id)} />
                 <PanelAction icon={ACTION_ICONS.pasteStyle} label={t('atrium.menu.pasteStyle')} onClick={() => pasteTraceStyle([editingTrace.id])} />
-                <PanelAction icon={ACTION_ICONS.forward} label={t('atrium.menu.moveUp')} onClick={() => moveTraceOneStep(editingTrace.id, 'up')} />
-                <PanelAction icon={ACTION_ICONS.backward} label={t('atrium.menu.moveDown')} onClick={() => moveTraceOneStep(editingTrace.id, 'down')} />
+                {(() => {
+                  const labels = orderLabels(!!groupIdOf(live, layers))
+                  return (['up', 'down', 'top', 'bottom'] as const).map(how => (
+                    <PanelAction key={how} icon={ACTION_ICONS[how]} label={labels[how]} onClick={() => moveInOrder([editingTrace.id], how)} />
+                  ))
+                })()}
                 <PanelAction
                   icon={ACTION_ICONS.lock}
                   label={locked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
                   active={locked}
                   onClick={() => updateTraceCustomization(editingTrace.id, locked ? UNLOCKED : { isLocked: true })}
                 />
+                {isDrawingTrace(editingTrace) && (
+                  <PanelAction icon={ACTION_ICONS.rasterize} label={t('atrium.menu.rasterize')} onClick={() => rasterize([editingTrace.id])} />
+                )}
                 <PanelAction icon={ACTION_ICONS.delete} label={t('common.delete')} danger onClick={() => { setEditingTrace(null); deleteTraces([editingTrace.id], []) }} />
               </>
             }
@@ -9626,16 +9683,30 @@ return (
           actions={(() => {
             const ids = [...multiSelectedIds]
             const allLocked = traces.filter(tr => multiSelectedIds.has(tr.id)).every(isLockedTrace)
+            const drawings = traces.filter(tr => multiSelectedIds.has(tr.id) && isDrawingTrace(tr)).length
             return (
               <>
                 <PanelAction icon={ACTION_ICONS.duplicate} label={t('common.duplicate')} onClick={() => duplicateTrace(ids[0])} />
                 <PanelAction icon={ACTION_ICONS.pasteStyle} label={t('atrium.menu.pasteStyle')} onClick={() => pasteTraceStyle(ids)} />
+                {(() => {
+                  // Of one group: to its top; else, of everything.
+                  const chosen = traces.filter(tr => multiSelectedIds.has(tr.id))
+                  const group = chosen[0] ? groupIdOf(chosen[0], layers) : null
+                  const oneGroup = !!group && chosen.every(tr => tr.layerId === group) && !wholeGroups.groups.has(group)
+                  const labels = orderLabels(oneGroup)
+                  return (['up', 'down', 'top', 'bottom'] as const).map(how => (
+                    <PanelAction key={how} icon={ACTION_ICONS[how]} label={labels[how]} onClick={() => moveInOrder(ids, how)} />
+                  ))
+                })()}
                 <PanelAction
                   icon={ACTION_ICONS.lock}
                   label={allLocked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
                   active={allLocked}
                   onClick={() => inOneStep(() => { for (const id of ids) updateTraceCustomization(id, allLocked ? UNLOCKED : { isLocked: true }) })}
                 />
+                {drawings > 0 && (
+                  <PanelAction icon={ACTION_ICONS.rasterize} label={drawings > 1 ? t('atrium.menu.rasterizeAll', { count: drawings }) : t('atrium.menu.rasterize')} onClick={() => { setShowBatchEditPanel(false); rasterize(ids) }} />
+                )}
                 <PanelAction icon={ACTION_ICONS.delete} label={t('common.delete')} danger onClick={() => { setShowBatchEditPanel(false); deleteTraces(ids, []) }} />
               </>
             )

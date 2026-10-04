@@ -308,3 +308,43 @@ export function flattenLegacyOrder(traces: Stackable[], layers: Ordered[]): { tr
   groups.forEach((g, i) => out.layers.set(g.id, keys[unkeyed.length + i]))
   return out
 }
+
+// Some of `pool` (what they're ordered among, themselves included) moved
+// together: to the top or the bottom, or one step up or down -- past the next
+// thing not moving -- keeping their order among themselves, as Excalidraw's
+// layer buttons do. The new keys of those that move, by id; nothing else is
+// rekeyed. Null when there's no room between two neighbours (they share a
+// key), for the caller to rekey the pool first.
+export function reorder(pool: Ordered[], moving: Set<string>, how: 'up' | 'down' | 'top' | 'bottom'): Map<string, string> | null {
+  const before = inOrder(pool)
+  let after: Ordered[]
+  if (how === 'top' || how === 'bottom') {
+    const staying = before.filter(item => !moving.has(item.id))
+    const going = before.filter(item => moving.has(item.id))
+    after = how === 'top' ? [...staying, ...going] : [...going, ...staying]
+  } else {
+    after = [...before]
+    const swap = (i: number) => { [after[i], after[i + 1]] = [after[i + 1], after[i]] }
+    if (how === 'up') {
+      for (let i = after.length - 2; i >= 0; i--) if (moving.has(after[i].id) && !moving.has(after[i + 1].id)) swap(i)
+    } else {
+      for (let i = 0; i < after.length - 1; i++) if (!moving.has(after[i].id) && moving.has(after[i + 1].id)) swap(i)
+    }
+  }
+  // Each run of moved things keyed between the things not moving either side.
+  const keys = new Map<string, string>()
+  for (let i = 0; i < after.length;) {
+    if (!moving.has(after[i].id)) { i++; continue }
+    let end = i
+    while (end < after.length && moving.has(after[end].id)) end++
+    const run = after.slice(i, end)
+    if (!run.every((item, j) => before[i + j] === item)) {
+      const below = i > 0 ? after[i - 1].orderKey ?? null : null
+      const above = end < after.length ? after[end].orderKey ?? null : null
+      if (below !== null && above !== null && below >= above) return null
+      keysBetween(below, above, run.length).forEach((key, j) => keys.set(run[j].id, key))
+    }
+    i = end
+  }
+  return keys
+}

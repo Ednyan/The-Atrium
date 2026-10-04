@@ -158,8 +158,13 @@ export const ACTION_ICONS = {
   duplicate: 'M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667zM4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1',
   copyStyle: 'M19 3h-14a2 2 0 0 0 -2 2v4h18v-4a2 2 0 0 0 -2 -2zM5 9h14v4h-6v8h-2v-8h-6z',
   pasteStyle: 'M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2M9 3h6v4h-6zM9 13l2 2l4 -4',
-  forward: 'M12 4l-8 4l8 4l8 -4l-8 -4M12 16l-4 -2l-4 2l8 4l8 -4l-4 -2M12 12v-8',
-  backward: 'M12 4l-8 4l8 4l8 -4l-8 -4M4 12l8 4l8 -4M12 20v-4',
+  // In the drawing order: a step up or down, to the top or bottom.
+  up: 'M12 5l0 14M18 11l-6 -6M6 11l6 -6',
+  down: 'M12 5l0 14M18 13l-6 6M6 13l6 6',
+  top: 'M12 10l0 10M12 10l4 4M12 10l-4 4M4 4l16 0',
+  bottom: 'M4 20l16 0M12 14l0 -10M12 14l4 -4M12 14l-4 -4',
   lock: 'M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2zM11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0M8 11v-4a4 4 0 1 1 8 0v4',
   delete: 'M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3',
+  // A picture: strokes made one, for good.
+  rasterize: 'M15 8h.01M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3zM3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3',
 } as const

@@ -1049,7 +1049,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // A stroke let go of: shown at once, written behind it.
   const settleStroke = (session: DrawingSession, stroke: Stroke, zoom: number) => {
-    const piece = rasterizeStroke(stroke, zoom)
+    // Its file as sharp as this screen shows it: at the zoom alone, a screen
+    // of more pixels than points (Windows at 125%, 150%) saw every drawing
+    // as too coarse, and painted each from its strokes instead -- one canvas
+    // a stroke, which hundreds of made slow to move around.
+    const piece = rasterizeStroke(stroke, zoom * (window.devicePixelRatio || 1))
     if (!piece) return
     const op: Unsettled = { kind: 'stroke', piece }
     session.unsettled.push(op)

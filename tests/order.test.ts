@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { compareOrder, drawRanks, flattenLegacyOrder, inOrder, isValidOrderKey, keyAt, keyBetween, keysBetween, keysFromNumbers, keysOnTop, newTraceOrderFields, siblingsOf, type Ordered, type Stackable } from '../src/lib/order.ts'
+import { compareOrder, drawRanks, flattenLegacyOrder, inOrder, isValidOrderKey, keyAt, keyBetween, keysBetween, keysFromNumbers, keysOnTop, newTraceOrderFields, reorder, siblingsOf, type Ordered, type Stackable } from '../src/lib/order.ts'
 
 test('keys between two others match the published algorithm', () => {
   const cases: [string | null, string | null, string][] = [
@@ -150,4 +150,26 @@ test('rows from an older export are keyed in the order of their numbers, group b
   const ordered = (group: string | null) => inOrder(rows.filter(r => r.group === group).map(r => ({ id: r.id, orderKey: keys.get(r)! }))).map(r => r.id)
   assert.deepEqual(ordered('g'), ['a', 'b'])
   assert.deepEqual(ordered(null), ['x', 'y'])
+})
+
+test('moved together: to the top, the bottom, a step up or down, keeping their own order', () => {
+  const pool: Ordered[] = ['A', 'B', 'C', 'D', 'E', 'F'].map((id, i) => ({ id, orderKey: `a${i}` }))
+  const after = (ids: string[], how: 'up' | 'down' | 'top' | 'bottom') => {
+    const keys = reorder(pool, new Set(ids), how)
+    assert.ok(keys)
+    return inOrder(pool.map(item => ({ ...item, orderKey: keys.get(item.id) ?? item.orderKey }))).map(item => item.id).join('')
+  }
+  assert.equal(after(['B'], 'top'), 'ACDEFB')
+  assert.equal(after(['B', 'D'], 'top'), 'ACEFBD')
+  assert.equal(after(['E'], 'bottom'), 'EABCDF')
+  assert.equal(after(['B'], 'up'), 'ACBDEF')
+  assert.equal(after(['B', 'C'], 'up'), 'ADBCEF')
+  assert.equal(after(['C', 'E'], 'down'), 'ACBEDF')
+  // Already there: nothing rekeyed.
+  assert.equal(reorder(pool, new Set(['F']), 'up')?.size, 0)
+  assert.equal(reorder(pool, new Set(['A', 'B']), 'bottom')?.size, 0)
+  // Only what moves gets a key.
+  assert.deepEqual([...reorder(pool, new Set(['B']), 'up')!.keys()], ['B'])
+  // Two neighbours sharing a key leave no room.
+  assert.equal(reorder([{ id: 'X', orderKey: 'a0' }, { id: 'Y', orderKey: 'a1' }, { id: 'Z', orderKey: 'a1' }], new Set(['X']), 'up'), null)
 })

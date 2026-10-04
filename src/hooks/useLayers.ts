@@ -28,6 +28,21 @@ export async function reloadLayers(lobbyId: string) {
   }
 }
 
+// A group's new place in the stack: shown at once, then written. .select() so
+// a refusal can't pass for success -- RLS doesn't raise on a forbidden UPDATE,
+// the row just isn't matched -- and on one, the groups are read back as they
+// are. Undoable when run inside withLayerUndo, as its callers do.
+export async function writeGroupKey(layer: Layer, orderKey: string, lobbyId: string) {
+  if (!supabase) return
+  useGameStore.getState().putLayer({ ...layer, orderKey })
+  const { data, error } = await (supabase.from('layers') as any)
+    .update({ order_key: orderKey }).eq('id', layer.id).select('id')
+  if (error || !Array.isArray(data) || data.length === 0) {
+    console.error('Error moving group:', error ?? 'no row updated -- gone, or write access denied')
+    await reloadLayers(lobbyId)
+  }
+}
+
 // A new group -- on top of everything, unless given its place in the stack --
 // put in the store and announced. Two people doing this at the same moment
 // may pick the same key; the tie is broken by id, the same way for everyone.

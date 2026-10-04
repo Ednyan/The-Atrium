@@ -1,7 +1,8 @@
 // A drawing's strokes as files and as rows: saved, loaded, deleted, brought
-// back, changed after they're drawn, and split apart. Drawing mode
-// (LobbyScene), a stroke's look changed afterwards (StrokeStyleField) and
-// Split into Strokes (TraceOverlay) all go through here.
+// back, changed after they're drawn, split apart, and rasterized for good.
+// Drawing mode (LobbyScene), a stroke's look changed afterwards
+// (StrokeStyleField), Split into Strokes and Rasterize (TraceOverlay) all go
+// through here.
 //
 // Everything a drawing does is written at once, as each stroke is -- a
 // stroke taken away (undone, erased entirely, cleared) is deleted then and
@@ -10,13 +11,14 @@
 import { supabase, isDesktop } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import type { Trace } from '../types/database'
-import { asStrokeData, fitBox, isDrawingTrace, localToWorldDelta, nextRev, pictureSize, renderStrokeData, splitStrokes, tintPicture, type Picture, type Piece, type Stroke, type StrokeData, type TracePlacement } from './brushes'
+import { asStrokeData, drawPlacedPicture, fitBox, isDrawingTrace, localToWorldDelta, nextRev, pictureSize, placementBounds, renderStrokeData, splitStrokes, tintPicture, type Picture, type Piece, type Stroke, type StrokeData, type TracePlacement } from './brushes'
 import { buildTraceInsertRow, traceRow } from './traceInsert'
 import { adoptTraces, withLayerUndo } from './layerUndo'
 import { queueLayerChange } from './layerQueue'
 import { recordAction } from './actionHistory'
 import { createGroup } from '../hooks/useLayers'
-import { keysAt, keysBetween } from './order'
+import { drawRanks, keysAt, keysBetween } from './order'
+import { uploadTraceFile } from './traceUpload'
 import { mapRowToTrace } from '../hooks/useTraces'
 
 // Every stroke's picture, by its file's address: painted here, or loaded.
@@ -340,5 +342,83 @@ export function splitDrawing(traceId: string, strokeName: (n: number) => string)
     useGameStore.getState().removeTrace(drawing.id)
     window.dispatchEvent(new Event('atrium:layers-changed'))
     return true
+  }))
+}
+
+// ---- Rasterized: strokes made one picture, for good ---------------------------------
+
+const RASTER_MAX_SIDE = 4096
+
+// Drawings and strokes -- one drawing, a split drawing's strokes, an older
+// drawing's one trace a stroke -- made one picture: a plain image where they
+// were, as sharp as `density` pixels to a world unit (the screen's, as it's
+// seen), in the place in the stack of the topmost of them, named `name`. The
+// strokes go: nothing of them is left to draw on, recolour or split. Refused
+// (null) when any of their pictures can't be had, rather than lose it. One
+// layer change, so one step of undo that brings the strokes back.
+export function rasterizeDrawings(traceIds: string[], density: number, name: string): Promise<string | null> {
+  return queueLayerChange(() => withLayerUndo('rasterize', async () => {
+    const { traces, layers, userId } = useGameStore.getState()
+    const ranks = drawRanks(traces, layers)
+    const chosen = traces.filter(t => traceIds.includes(t.id) && isDrawingTrace(t))
+      .sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0))
+    const top = chosen[chosen.length - 1]
+    if (!supabase || !top?.lobbyId || !userId) return null
+
+    // Each one's picture -- painted from its strokes, or its file -- and where.
+    const placed: { picture: Picture; placement: TracePlacement }[] = []
+    for (const t of chosen) {
+      const data = asStrokeData(t.strokeData)
+      const picture = data && t.width && t.height
+        ? renderStrokeData(data, t.width, t.height, Math.min(Math.max(data.ppw, density), RASTER_MAX_SIDE / Math.max(t.width, t.height)))
+        : t.mediaUrl ? await loadDrawingPicture(t.mediaUrl) : null
+      if (!picture) return null
+      placed.push({ picture, placement: placementOf(t, picture) })
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const { picture, placement } of placed) {
+      const size = pictureSize(picture)
+      const b = placementBounds(placement, size.width, size.height)
+      minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY); maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY)
+    }
+    const width = Math.max(1, maxX - minX), height = Math.max(1, maxY - minY)
+    const ppw = Math.min(density, RASTER_MAX_SIDE / Math.max(width, height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.ceil(width * ppw))
+    canvas.height = Math.max(1, Math.ceil(height * ppw))
+    const ctx = canvas.getContext('2d')!
+    ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, -minX * canvas.width / width, -minY * canvas.height / height)
+    for (const { picture, placement } of placed) drawPlacedPicture(ctx, picture, placement)
+
+    // A plain image's file: not drawing_*.png, which would make it a drawing.
+    // In the row as a data URL if it can't be saved, as a drawing's is.
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return null
+    const url = await uploadTraceFile(new File([blob], 'rasterized.png', { type: 'image/png' }), top.lobbyId, userId)
+      .catch(err => { console.error('[drawing] rasterized picture not saved, kept in the row:', err); return canvas.toDataURL('image/png') })
+    const row = {
+      ...buildTraceInsertRow({
+        ...top,
+        content: name,
+        mediaUrl: url,
+        strokeData: null,
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        width,
+        height,
+        scale: 1, scaleX: 1, scaleY: 1, rotation: 0, flipHorizontal: false, flipVertical: false,
+        cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
+      }, top.userId, top.username, top.lobbyId, 0, 0),
+      id: crypto.randomUUID(),
+    }
+    const { error } = await (supabase.from('traces') as any).insert(row)
+    if (error) throw error
+    useGameStore.getState().addTrace(mapRowToTrace(row))
+    const gone = chosen.map(t => t.id)
+    const { error: deleteError } = await (supabase.from('traces') as any).delete().in('id', gone)
+    if (deleteError) throw deleteError
+    for (const id of gone) useGameStore.getState().removeTrace(id)
+    window.dispatchEvent(new Event('atrium:layers-changed'))
+    return row.id as string
   }))
 }

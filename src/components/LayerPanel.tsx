@@ -7,7 +7,7 @@ import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, top
 import { feelSpring, feelStep } from '../lib/dragFeel'
 import { panelDrop, type PanelDropTarget } from '../lib/panelDrop'
 import { cleanTitle, nextTextName } from '../lib/traceNames'
-import { createGroup as insertGroup, mapRowToLayer, reloadLayers } from '../hooks/useLayers'
+import { createGroup as insertGroup, mapRowToLayer, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
 import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
@@ -301,19 +301,8 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
       ? writeLayerKey(item as Layer, orderKey)
       : writeTraceKey(item as Trace, orderKey)
 
-  // A group's new place: shown at once, then written. .select() so a refusal
-  // can't pass for success -- RLS doesn't raise on a forbidden UPDATE, the row
-  // just isn't matched -- and on one, the groups are read back as they are.
-  const writeLayerKey = async (layer: Layer, orderKey: string) => {
-    if (!supabase) return
-    useGameStore.getState().putLayer({ ...layer, orderKey })
-    const { data, error } = await (supabase.from('layers') as any)
-      .update({ order_key: orderKey }).eq('id', layer.id).select('id')
-    if (error || !Array.isArray(data) || data.length === 0) {
-      console.error('Error moving group:', error ?? 'no row updated -- gone, or write access denied')
-      await reloadLayers(lobbyId)
-    }
-  }
+  // A group's new place (hooks/useLayers writeGroupKey).
+  const writeLayerKey = (layer: Layer, orderKey: string) => writeGroupKey(layer, orderKey, lobbyId)
 
   // n keys for position `index` among `others` (bottom to top), in order.
   // Should the two they go between share a key there's no room, and the
