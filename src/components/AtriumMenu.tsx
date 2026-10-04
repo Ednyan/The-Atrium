@@ -54,11 +54,13 @@ export function MenuIcon({ d, size = 20 }: { d: string; size?: number }) {
 const SLIDE = {
   right: 'absolute left-full top-1/2 -translate-y-1/2 -translate-x-1 pl-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_100%_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
   left: 'absolute right-full top-1/2 -translate-y-1/2 translate-x-1 pr-2 z-10 opacity-0 pointer-events-none [clip-path:inset(0_0_0_100%)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
+  above: 'absolute bottom-full left-1/2 -translate-x-1/2 translate-y-1 pb-2 z-10 opacity-0 pointer-events-none [clip-path:inset(100%_0_0_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
   below: 'absolute top-full right-0 pt-2 z-10 opacity-0 pointer-events-none -translate-y-1 [clip-path:inset(0_0_100%_0)] transition-[clip-path,opacity,transform] duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-hover:[clip-path:inset(0_0_0_0)] peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:[clip-path:inset(0_0_0_0)]',
 }
 const SLIDE_SHOWN = {
   right: 'absolute left-full top-1/2 -translate-y-1/2 pl-2 z-10',
   left: 'absolute right-full top-1/2 -translate-y-1/2 pr-2 z-10',
+  above: 'absolute bottom-full left-1/2 -translate-x-1/2 pb-2 z-10',
   below: 'absolute top-full right-0 pt-2 z-10',
 }
 
@@ -66,7 +68,7 @@ export function SlideLabel({ text, hint, onPress, side = 'right', shown = false 
   text: string
   hint?: string
   onPress?: () => void
-  side?: 'right' | 'left' | 'below'
+  side?: 'right' | 'left' | 'above' | 'below'
   shown?: boolean
 }) {
   return (

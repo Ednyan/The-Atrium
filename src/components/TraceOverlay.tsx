@@ -44,7 +44,8 @@ import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf } from '../lib/shapeStyle'
+import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
+import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, traceKindLabel } from './Customization'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
@@ -2587,6 +2588,14 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     setColorPickerCallback(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolSwitch])
+  // A tool taken in hand puts the selection down, as Excalidraw's do: the
+  // Customization panel is then the tool's (LobbyScene).
+  useEffect(() => {
+    if (!placing) return
+    setSelectedTraceId(null)
+    setMultiSelectedIds(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placing])
   const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null)
   // Threads selected -- Shift adds and removes. Deleted with Delete or from
   // their menu: a delete button on the thread itself sat in the way of
@@ -4898,22 +4907,23 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     }
   }, [transformMode, selectedTraceId])
 
-  // The panels follow the selection, as Excalidraw's properties do. Open, one
-  // shows what's selected now: Customize for one trace, Batch Edit for
-  // several -- switching between the two as the selection does -- and goes
-  // when nothing is. So nothing has to be laid over the screen to close it: a
-  // click on the canvas deselects, and that's all. (It used to be a
-  // transparent backdrop across everything, which took the click meant for
-  // the quick bar, the HUD or the next trace.) Not on trace updates: while
-  // it's open, editingTrace is the source of truth for the trace it shows.
-  const batchOpenRef = useRef(showBatchEditPanel)
-  batchOpenRef.current = showBatchEditPanel
+  // The Customization panel follows the selection, as Excalidraw's properties
+  // do: one trace selected, its own; several, Batch Edit's -- switching as the
+  // selection does -- and gone when nothing is. So nothing has to be laid over
+  // the screen to close it: a click on the canvas deselects, and that's all.
+  // Closed with its X, it stays closed for that selection (dismissedRef) and
+  // opens again for the next. Not on trace updates: while it's open,
+  // editingTrace is the source of truth for the trace it shows.
+  const dismissedRef = useRef<string | null>(null)
+  const selectionKey = () => (multiSelectedIdsRef.current.size > 1 ? [...multiSelectedIdsRef.current].sort().join(',') : selectedTraceIdRef.current ?? '')
   useEffect(() => {
+    if (!canEdit) return
     const editing = editingTraceRef.current
-    if (!editing && !batchOpenRef.current) return
+    const key = multiSelectedIds.size > 1 ? [...multiSelectedIds].sort().join(',') : selectedTraceId ?? ''
+    if (!key) dismissedRef.current = null
     if (multiSelectedIds.size > 1) {
       if (editing) setEditingTrace(null)
-      setShowBatchEditPanel(true)
+      setShowBatchEditPanel(key !== dismissedRef.current)
       return
     }
     setShowBatchEditPanel(false)
@@ -4921,8 +4931,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       if (editing) setEditingTrace(null)
       return
     }
+    if (key === dismissedRef.current) return
     if (editing?.id !== selectedTraceId) setEditingTrace(tracesRef.current.find(t => t.id === selectedTraceId) ?? null)
-  }, [selectedTraceId, multiSelectedIds])
+  }, [selectedTraceId, multiSelectedIds, canEdit])
 
   // Disable path creation mode when selection is cleared
   // Note: We don't check editingTrace here to avoid disabling mode when updating points
@@ -8651,250 +8662,352 @@ return (
         )
       })()}
 
-      {/* Customization Dialog */}
-      {editingTrace && canEdit && (
-        <>
-          <div
-            className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto relative"
-            style={{
-              position: 'fixed',
-              right: 'var(--right-rail)',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              zIndex: MENU_PANEL_Z_INDEX
-            }}
+      {/* The Customization panel for one trace (components/Customization):
+          its sections in the one order, those it has. Closing it is Done.
+          While drawing, drawing's own is the panel there. */}
+      {editingTrace && canEdit && !isDrawingMode && (() => {
+        const live = traces.find(tr => tr.id === editingTrace.id) ?? editingTrace
+        const shapeLike = has(editingTrace, 'shape') || has(editingTrace, 'line')
+        const isPathTrace = editingTrace.shapeType === 'path'
+        const framed = has(editingTrace, 'frame')
+        const hasContent = editingTrace.type === 'text' || editingTrace.type === 'embed' || has(editingTrace, 'link') || has(editingTrace, 'captions')
+        const locked = isLockedTrace(live)
+        const done = () => {
+          // Mark as pending if there were any changes
+          markTraceChanged(editingTrace.id)
+          dismissedRef.current = selectionKey()
+          setEditingTrace(null)
+        }
+        // The shape's controls, in four parts across the sections.
+        const shapeProps = {
+          value: shapeStyleOf(editingTrace),
+          // The size as drawn. Resize handles change scale, not width, so a
+          // typed size is divided back through the scale; the column is an
+          // integer, so it is rounded on the way.
+          size: (() => {
+            const tf = localTraceTransforms[live.id] || getTraceTransform(live)
+            return {
+              width: (live.width || 200) * ((tf as any).scaleX || 1),
+              height: (live.height || 200) * ((tf as any).scaleY || 1),
+            }
+          })(),
+          onSizeChange: (w: number, h: number) => {
+            const tf = localTraceTransforms[live.id] || getTraceTransform(live)
+            const width = Math.max(1, Math.round(w / ((tf as any).scaleX || 1)))
+            const height = Math.max(1, Math.round(h / ((tf as any).scaleY || 1)))
+            setEditingTrace({ ...editingTrace, width, height })
+            updateTraceCustomization(editingTrace.id, { width, height })
+          },
+          onChange: (patch: Partial<ShapeStyle>) => {
+            setEditingTrace({ ...editingTrace, ...patch })
+            updateTraceCustomization(editingTrace.id, patch)
+            // The next shape made looks like this one now.
+            rememberShapeStyle(shapeStyleOf({ ...editingTrace, ...patch }))
+          },
+        }
+        return (
+          <CustomizationPanel
+            subtitle={traceKindLabel(editingTrace, t)}
+            onClose={done}
+            closeLabel={t('atrium.customize.done')}
+            zIndex={MENU_PANEL_Z_INDEX}
+            actions={
+              <>
+                <PanelAction icon={ACTION_ICONS.duplicate} label={t('common.duplicate')} onClick={() => duplicateTrace(editingTrace.id)} />
+                <PanelAction icon={ACTION_ICONS.copyStyle} label={t('atrium.menu.copyStyle')} onClick={() => copyTraceStyle(editingTrace.id)} />
+                <PanelAction icon={ACTION_ICONS.pasteStyle} label={t('atrium.menu.pasteStyle')} onClick={() => pasteTraceStyle([editingTrace.id])} />
+                <PanelAction icon={ACTION_ICONS.forward} label={t('atrium.menu.moveUp')} onClick={() => moveTraceOneStep(editingTrace.id, 'up')} />
+                <PanelAction icon={ACTION_ICONS.backward} label={t('atrium.menu.moveDown')} onClick={() => moveTraceOneStep(editingTrace.id, 'down')} />
+                <PanelAction
+                  icon={ACTION_ICONS.lock}
+                  label={locked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
+                  active={locked}
+                  onClick={() => updateTraceCustomization(editingTrace.id, locked ? UNLOCKED : { isLocked: true })}
+                />
+                <PanelAction icon={ACTION_ICONS.delete} label={t('common.delete')} danger onClick={() => { setEditingTrace(null); deleteTraces([editingTrace.id], []) }} />
+              </>
+            }
           >
-            {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
+            <Section id="name" title={t('atrium.customize.sectionName')}>
+              {/* The layer's name, first -- the one field that used to be called a
+                  label, a caption or a description depending on the trace. */}
+              {/* A text trace's name is its own (Text 1, ...): its content is its text. */}
+              {editingTrace.type === 'text' ? (
+                <TraceNameField
+                  label={t('atrium.customize.layerName')}
+                  value={editingTrace.layerName ?? ''}
+                  placeholder={t('atrium.layers.untitled')}
+                  maxLength={60}
+                  onChange={(value) => setEditingTrace({ ...editingTrace, layerName: value })}
+                  onCommit={(value) => { if (value.trim()) updateTraceCustomization(editingTrace.id, { layerName: value.trim() }) }}
+                />
+              ) : (
+                <TraceNameField
+                  label={t('atrium.customize.layerName')}
+                  value={editingTrace.content ?? ''}
+                  placeholder={t('atrium.layers.untitled')}
+                  // A shape's name is drawn on the shape, and was capped at 50 for that.
+                  onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
+                  onCommit={(value) => updateTraceCustomization(editingTrace.id, { content: value })}
+                />
+              )}
             
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-              <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.customize.title')}</h2>
-            </div>
+            </Section>
 
-            {/* The layer's name, first -- the one field that used to be called a
-                label, a caption or a description depending on the trace. */}
-            {/* A text trace's name is its own (Text 1, ...): its content is its text. */}
-            {editingTrace.type === 'text' ? (
-              <TraceNameField
-                label={t('atrium.customize.layerName')}
-                value={editingTrace.layerName ?? ''}
-                placeholder={t('atrium.layers.untitled')}
-                maxLength={60}
-                onChange={(value) => setEditingTrace({ ...editingTrace, layerName: value })}
-                onCommit={(value) => { if (value.trim()) updateTraceCustomization(editingTrace.id, { layerName: value.trim() }) }}
-              />
-            ) : (
-              <TraceNameField
-                label={t('atrium.customize.layerName')}
-                value={editingTrace.content ?? ''}
-                placeholder={t('atrium.layers.untitled')}
-                // A shape's name is drawn on the shape, and was capped at 50 for that.
-                onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
-                onCommit={(value) => updateTraceCustomization(editingTrace.id, { content: value })}
-              />
+            {framed && (
+            <Section id="style" title={t('atrium.customize.sectionStyle')}>
+              {/* NieR Presets */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">{t('atrium.customize.quickPresets')}</span>
+                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {TRACE_PRESETS.map(preset => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        // The font comes with the preset. A trace in the
+                        // house style should be set in the house face, and
+                        // three presets that each left the type to whatever
+                        // it happened to be were three half-presets.
+                        const patch = {
+                          borderColor: preset.border,
+                          fillColor: preset.fill,
+                          showBorder: true,
+                          showBackground: true,
+                          fontFamily: 'mono',
+                          ...(preset.text ? { textColor: preset.text } : {}),
+                        }
+                        setEditingTrace({ ...editingTrace, ...patch })
+                        updateTraceCustomization(editingTrace.id, patch)
+                        // Chosen once, in force from then on: the next
+                        // trace made in this atrium starts here.
+                        if (lobbyId) rememberTracePreset(lobbyId, preset.id)
+                      }}
+                      className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                      style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
+                    >
+                      {t(preset.labelKey as TranslationKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Section>
             )}
-            
-            <div className="space-y-5">
+
+            {(framed || shapeLike || has(editingTrace, 'strokes')) && (
+            <Section id="fill" title={t('atrium.customize.sectionFill')}>
               {/* A drawing's stroke: its colour, changed after it's drawn. */}
               {lobbyId && has(editingTrace, 'strokes') && (
                 <StrokeStyleField traceIds={[editingTrace.id]} lobbyId={lobbyId} userId={userId} />
               )}
-
-              {/* Shape controls first, directly under the name -- where the create
-                  panel has them, and the same component, so the two are one panel.
-                  The point editor is the one part only an existing trace can have,
-                  so it goes in through pathExtra. */}
-              {(has(editingTrace, 'shape') || has(editingTrace, 'line')) && (
-                <ShapeStyleControls
-                  value={shapeStyleOf(editingTrace)}
-                  // The size as drawn. Resize handles change scale, not width,
-                  // so a typed size is divided back through the scale; the
-                  // column is an integer, so it is rounded on the way.
-                  size={(() => {
-                    const live = traces.find(tr => tr.id === editingTrace.id) ?? editingTrace
-                    const tf = localTraceTransforms[live.id] || getTraceTransform(live)
-                    return {
-                      width: (live.width || 200) * ((tf as any).scaleX || 1),
-                      height: (live.height || 200) * ((tf as any).scaleY || 1),
-                    }
-                  })()}
-                  onSizeChange={(w, h) => {
-                    const live = traces.find(tr => tr.id === editingTrace.id) ?? editingTrace
-                    const tf = localTraceTransforms[live.id] || getTraceTransform(live)
-                    const width = Math.max(1, Math.round(w / ((tf as any).scaleX || 1)))
-                    const height = Math.max(1, Math.round(h / ((tf as any).scaleY || 1)))
-                    setEditingTrace({ ...editingTrace, width, height })
-                    updateTraceCustomization(editingTrace.id, { width, height })
-                  }}
-                  onChange={(patch) => {
-                    setEditingTrace({ ...editingTrace, ...patch })
-                    updateTraceCustomization(editingTrace.id, patch)
-                    // The next shape made looks like this one now.
-                    rememberShapeStyle(shapeStyleOf({ ...editingTrace, ...patch }))
-                  }}
-                  pathExtra={
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                      {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPathCreationMode(!pathCreationMode)
-                        }}
-                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
-                          pathCreationMode
-                            ? 'bg-nier-bg text-nier-black border-nier-bg'
-                            : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
-                        }`}
-                      >
-                        {pathCreationMode ? t('atrium.controls.doneAdding') : t('atrium.controls.addPoints')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentPoints = editingTrace.shapePoints || []
-                          if (currentPoints.length > 2) {
-                            // The point selected on the path, or else the last.
-                            const index = selectedPointIndex !== null && selectedPointIndex < currentPoints.length ? selectedPointIndex : currentPoints.length - 1
-                            const newPoints = currentPoints.filter((_, i) => i !== index)
-                            setSelectedPointIndex(null)
-                            const updated = { ...editingTrace, shapePoints: newPoints }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
-                          }
-                        }}
-                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
-                      >
-                        {t('atrium.customize.remove')}
-                      </button>
-                    </div>
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      {pathCreationMode 
-                        ? t('atrium.controls.addPointsOn')
-                        : t('atrium.controls.addPointsOff')}
-                    </p>
-                  </div>
-                  }
-                />
-              )}
-
-              {!isFrame(editingTrace) && (
-              <div className="flex items-baseline gap-3 pt-1">
-                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.content')}</span>
-                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              </div>
-              )}
-
-              {editingTrace.type === 'text' && (
+              {shapeLike && <ShapeStyleControls {...shapeProps} part="fill" />}
+              {framed && (
+              <>
+              <Check
+                checked={editingTrace.showBackground ?? true}
+                label={t('atrium.customize.showBackground')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showBackground: on })
+                  updateTraceCustomization(editingTrace.id, { showBackground: on })
+                }}
+              />
+              {/* Fill Color & Opacity */}
+              {(editingTrace.showBackground ?? true) && (
                 <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textContent')}</label>
-                  <textarea
-                    value={editingTrace.content ?? ''}
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
+                  <div className="flex gap-2 items-center mb-2">
+                    <input
+                      type="color"
+                      value={editingTrace.fillColor || '#1a1a2e'}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, fillColor: e.target.value };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
+                      }}
+                      className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                    />
+                    <input
+                      type="text"
+                      value={editingTrace.fillColor || '#1a1a2e'}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, fillColor: e.target.value };
+                        setEditingTrace(updated);
+                      }}
+                      onBlur={(e) => {
+                        updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
+                      }}
+                      className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      placeholder="#1a1a2e"
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = { ...editingTrace, fillColor: undefined };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { fillColor: undefined });
+                      }}
+                      className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                      title={t('atrium.customize.resetDefault')}
+                    >
+                      ↺
+                    </button>
+                  </div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
+                    {t('atrium.customize.fillOpacity', { value: Math.round((editingTrace.fillOpacity ?? 0.95) * 100) })}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}
                     onChange={(e) => {
-                      const effectiveFontSize = fontPxOf(editingTrace.fontSize)
-                      const effectiveFontFamily = resolveFontFamilyCss(editingTrace.fontFamily ?? 'sans')
-                      fitTextLive(traces.find(tr => tr.id === editingTrace.id) ?? editingTrace, e.target.value, effectiveFontSize, effectiveFontFamily)
+                      const value = parseInt(e.target.value) / 100;
+                      const updated = { ...editingTrace, fillOpacity: value };
+                      setEditingTrace(updated);
+                      updateTraceCustomization(editingTrace.id, { fillOpacity: value });
                     }}
-                    onBlur={() => endTextEdit(editingTrace.id)}
-                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    placeholder={t('atrium.customize.messagePlaceholder')}
-                    rows={4}
+                    className="w-full accent-nier-bg"
                   />
                 </div>
               )}
+              </>
+              )}
+            </Section>
+            )}
 
-              {/* Embed Content Editor */}
-              {editingTrace.type === 'embed' && (
-                <>
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.embedUrl')}</label>
-                    <textarea
-                      value={editingTrace.mediaUrl ?? ''}
+            {(framed || (shapeLike && !isPathTrace)) && (
+            <Section id="outline" title={t('atrium.customize.sectionOutline')}>
+              {shapeLike && !isPathTrace && <ShapeStyleControls {...shapeProps} part="outline" />}
+              {framed && (
+              <>
+              <Check
+                checked={editingTrace.showBorder ?? true}
+                label={t('atrium.customize.showBorder')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showBorder: on })
+                  updateTraceCustomization(editingTrace.id, { showBorder: on })
+                }}
+              />
+              {/* Border Color & Opacity */}
+              {(editingTrace.showBorder ?? true) && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.borderColour')}</label>
+                  <div className="flex gap-2 items-center mb-2">
+                    <input
+                      type="color"
+                      value={editingTrace.borderColor || borderColourOf(editingTrace.type)}
                       onChange={(e) => {
-                        const updated = { ...editingTrace, mediaUrl: e.target.value }
-                        setEditingTrace(updated)
+                        const updated = { ...editingTrace, borderColor: e.target.value };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
+                      }}
+                      className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
+                    />
+                    <input
+                      type="text"
+                      value={editingTrace.borderColor || borderColourOf(editingTrace.type)}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, borderColor: e.target.value };
+                        setEditingTrace(updated);
                       }}
                       onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
+                        updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
                       }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder={t('atrium.customize.embedUrlPlaceholder')}
-                      rows={4}
+                      className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      placeholder="#ffffff"
                     />
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      {t('atrium.customize.embedHint')}
-                    </p>
+                    <button
+                      onClick={() => {
+                        const updated = { ...editingTrace, borderColor: undefined };
+                        setEditingTrace(updated);
+                        updateTraceCustomization(editingTrace.id, { borderColor: undefined });
+                      }}
+                      className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
+                      title={t('atrium.customize.resetDefault')}
+                    >
+                      ↺
+                    </button>
                   </div>
-
-                </>
-              )}
-
-              {/* Clickable -- text, embed and shape only. Image, audio and
-                  video already do something of their own on click (open the
-                  viewer, play), and a second competing action there would be
-                  ambiguous.
-
-                  Placed above the toggle group below rather than inside it,
-                  because that group is hidden for shapes -- which are one of
-                  the three types this applies to. */}
-              {has(editingTrace, 'link') && (
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editingTrace.isClickable ?? false}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, isClickable: e.target.checked }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { isClickable: e.target.checked })
-                      }}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.clickableHint')}>{t('atrium.customize.clickable')}</span>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
+                    {t('atrium.customize.borderOpacity', { value: Math.round((editingTrace.borderOpacity ?? 1) * 100) })}
                   </label>
-
-                  {/* The destination, shown only once Clickable is on so the
-                      field can't sit there filled in and doing nothing. */}
-                  {editingTrace.isClickable && (
-                    <div>
-                      <input
-                        type="url"
-                        value={editingTrace.linkUrl ?? ''}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, linkUrl: e.target.value }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { linkUrl: e.target.value })
-                        }}
-                        placeholder="https://..."
-                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                      />
-                      {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
-                        <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
-                          {t('atrium.customize.needsFullUrl')}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((editingTrace.borderOpacity ?? 1) * 100)}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) / 100;
+                      const updated = { ...editingTrace, borderOpacity: value };
+                      setEditingTrace(updated);
+                      updateTraceCustomization(editingTrace.id, { borderOpacity: value });
+                    }}
+                    className="w-full accent-nier-bg"
+                  />
                 </div>
               )}
+              </>
+              )}
+              {/* Border thickness. Its own block above the colour controls so
+                  it also reaches PDF traces, where a frame is what separates a
+                  white page from a light background. */}
+              {has(editingTrace, 'frame') && (editingTrace.showBorder ?? true) && (
+                <div>
+                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
+                    {t('atrium.customize.borderThickness', { value: editingTrace.borderWidth ?? 2 })}
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="1"
+                    value={editingTrace.borderWidth ?? 2}
+                    onChange={(e) => {
+                      const borderWidth = parseInt(e.target.value)
+                      setEditingTrace({ ...editingTrace, borderWidth })
+                      updateTraceCustomization(editingTrace.id, { borderWidth })
+                    }}
+                    className="w-full accent-nier-bg"
+                  />
+                </div>
+              )}
+              {/* Border Radius Customization (for non-shape traces) */}
+              {has(editingTrace, 'frame') && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                    {t('atrium.customize.borderRadius', { value: editingTrace.borderRadius ?? 0 })}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    step="1"
+                    value={editingTrace.borderRadius ?? 0}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value)
+                      const updated = { ...editingTrace, borderRadius: value }
+                      setEditingTrace(updated)
+                      updateTraceCustomization(editingTrace.id, { borderRadius: value })
+                    }}
+                    className="w-full accent-nier-bg"
+                  />
+                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                    {t('atrium.customize.cornerRadiusHint')}
+                  </p>
+                </div>
+              )}
+            </Section>
+            )}
 
+            {has(editingTrace, 'font') && (
+            <Section id="text" title={t('atrium.customize.sectionText')}>
               {/* Font Settings for Text Traces */}
               {has(editingTrace, 'font') && (
                 <>
-
-                  <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.text')}</span>
-                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                  </div>
 
                   <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontFamily')}</label>
@@ -9090,295 +9203,204 @@ return (
 
                 </>
               )}
-              {/* Border & Fill Color Controls (for text and embed traces) */}
-              {has(editingTrace, 'frame') && (
-                <>
+            </Section>
+            )}
 
-                  <div className="flex items-baseline gap-3 pt-1">
-                    <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.colour')}</span>
-                    <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                  </div>
-
-                  {/* NieR Presets */}
+            {shapeLike && (
+            <Section id="shape" title={isPathTrace ? t('atrium.trace.shape.path') : t('atrium.customize.sectionShape')}>
+              <ShapeStyleControls
+                {...shapeProps}
+                part="shape"
+                pathExtra={
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-nier-bg/55 text-[0.7rem] tracking-[0.1em] uppercase">{t('atrium.customize.quickPresets')}</span>
-                      <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/20 to-transparent" />
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+                      {t('atrium.customize.pathPoints', { count: (editingTrace.shapePoints || []).length })}
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPathCreationMode(!pathCreationMode)
+                        }}
+                        className={`flex-1 px-4 py-2 font-mono text-[10px] tracking-wider uppercase transition-all border ${
+                          pathCreationMode
+                            ? 'bg-nier-bg text-nier-black border-nier-bg'
+                            : 'bg-transparent text-nier-strong border-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        {pathCreationMode ? t('atrium.controls.doneAdding') : t('atrium.controls.addPoints')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentPoints = editingTrace.shapePoints || []
+                          if (currentPoints.length > 2) {
+                            // The point selected on the path, or else the last.
+                            const index = selectedPointIndex !== null && selectedPointIndex < currentPoints.length ? selectedPointIndex : currentPoints.length - 1
+                            const newPoints = currentPoints.filter((_, i) => i !== index)
+                            setSelectedPointIndex(null)
+                            const updated = { ...editingTrace, shapePoints: newPoints }
+                            setEditingTrace(updated)
+                            updateTraceCustomization(editingTrace.id, { shapePoints: newPoints })
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600/80 text-white font-mono text-[10px] tracking-wider uppercase hover:bg-red-600 transition-all border border-red-600"
+                      >
+                        {t('atrium.customize.remove')}
+                      </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {TRACE_PRESETS.map(preset => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => {
-                            // The font comes with the preset. A trace in the
-                            // house style should be set in the house face, and
-                            // three presets that each left the type to whatever
-                            // it happened to be were three half-presets.
-                            const patch = {
-                              borderColor: preset.border,
-                              fillColor: preset.fill,
-                              showBorder: true,
-                              showBackground: true,
-                              fontFamily: 'mono',
-                              ...(preset.text ? { textColor: preset.text } : {}),
-                            }
-                            setEditingTrace({ ...editingTrace, ...patch })
-                            updateTraceCustomization(editingTrace.id, patch)
-                            // Chosen once, in force from then on: the next
-                            // trace made in this atrium starts here.
-                            if (lobbyId) rememberTracePreset(lobbyId, preset.id)
-                          }}
-                          className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                          style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
-                        >
-                          {t(preset.labelKey as TranslationKey)}
-                        </button>
-                      ))}
-                    </div>
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      {pathCreationMode 
+                        ? t('atrium.controls.addPointsOn')
+                        : t('atrium.controls.addPointsOff')}
+                    </p>
                   </div>
-                  {/* Border Color & Opacity */}
-                  {(editingTrace.showBorder ?? true) && (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.borderColour')}</label>
-                      <div className="flex gap-2 items-center mb-2">
-                        <input
-                          type="color"
-                          value={editingTrace.borderColor || borderColourOf(editingTrace.type)}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, borderColor: e.target.value };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
-                          }}
-                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                        />
-                        <input
-                          type="text"
-                          value={editingTrace.borderColor || borderColourOf(editingTrace.type)}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, borderColor: e.target.value };
-                            setEditingTrace(updated);
-                          }}
-                          onBlur={(e) => {
-                            updateTraceCustomization(editingTrace.id, { borderColor: e.target.value });
-                          }}
-                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                          placeholder="#ffffff"
-                        />
-                        <button
-                          onClick={() => {
-                            const updated = { ...editingTrace, borderColor: undefined };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { borderColor: undefined });
-                          }}
-                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title={t('atrium.customize.resetDefault')}
-                        >
-                          ↺
-                        </button>
-                      </div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                        {t('atrium.customize.borderOpacity', { value: Math.round((editingTrace.borderOpacity ?? 1) * 100) })}
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={Math.round((editingTrace.borderOpacity ?? 1) * 100)}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value) / 100;
-                          const updated = { ...editingTrace, borderOpacity: value };
-                          setEditingTrace(updated);
-                          updateTraceCustomization(editingTrace.id, { borderOpacity: value });
-                        }}
-                        className="w-full accent-nier-bg"
-                      />
-                    </div>
-                  )}
+                }
+              />
+            </Section>
+            )}
 
-                  {/* Fill Color & Opacity */}
-                  {(editingTrace.showBackground ?? true) && (
-                    <div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fillColour')}</label>
-                      <div className="flex gap-2 items-center mb-2">
-                        <input
-                          type="color"
-                          value={editingTrace.fillColor || '#1a1a2e'}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, fillColor: e.target.value };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
-                          }}
-                          className="w-10 h-10 border border-nier-border/30 cursor-pointer bg-nier-black"
-                        />
-                        <input
-                          type="text"
-                          value={editingTrace.fillColor || '#1a1a2e'}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, fillColor: e.target.value };
-                            setEditingTrace(updated);
-                          }}
-                          onBlur={(e) => {
-                            updateTraceCustomization(editingTrace.id, { fillColor: e.target.value });
-                          }}
-                          className="flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                          placeholder="#1a1a2e"
-                        />
-                        <button
-                          onClick={() => {
-                            const updated = { ...editingTrace, fillColor: undefined };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { fillColor: undefined });
-                          }}
-                          className="px-3 py-2 bg-nier-black text-nier-bg border border-nier-border/30 hover:border-nier-border/60 text-xs"
-                          title={t('atrium.customize.resetDefault')}
-                        >
-                          ↺
-                        </button>
-                      </div>
-                      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-1">
-                        {t('atrium.customize.fillOpacity', { value: Math.round((editingTrace.fillOpacity ?? 0.95) * 100) })}
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={Math.round((editingTrace.fillOpacity ?? 0.95) * 100)}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value) / 100;
-                          const updated = { ...editingTrace, fillOpacity: value };
-                          setEditingTrace(updated);
-                          updateTraceCustomization(editingTrace.id, { fillOpacity: value });
-                        }}
-                        className="w-full accent-nier-bg"
-                      />
-                    </div>
-                  )}
+            {hasContent && (
+            <Section id="content" title={t('atrium.customize.sectionContent')}>
+              {editingTrace.type === 'text' && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textContent')}</label>
+                  <textarea
+                    value={editingTrace.content ?? ''}
+                    onChange={(e) => {
+                      const effectiveFontSize = fontPxOf(editingTrace.fontSize)
+                      const effectiveFontFamily = resolveFontFamilyCss(editingTrace.fontFamily ?? 'sans')
+                      fitTextLive(traces.find(tr => tr.id === editingTrace.id) ?? editingTrace, e.target.value, effectiveFontSize, effectiveFontFamily)
+                    }}
+                    onBlur={() => endTextEdit(editingTrace.id)}
+                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                    placeholder={t('atrium.customize.messagePlaceholder')}
+                    rows={4}
+                  />
+                </div>
+              )}
+              {/* Embed Content Editor */}
+              {editingTrace.type === 'embed' && (
+                <>
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.embedUrl')}</label>
+                    <textarea
+                      value={editingTrace.mediaUrl ?? ''}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, mediaUrl: e.target.value }
+                        setEditingTrace(updated)
+                      }}
+                      onBlur={(e) => {
+                        updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
+                      }}
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      placeholder={t('atrium.customize.embedUrlPlaceholder')}
+                      rows={4}
+                    />
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      {t('atrium.customize.embedHint')}
+                    </p>
+                  </div>
+
                 </>
               )}
-              {has(editingTrace, 'frame') && (
-                <div className="flex items-baseline gap-3 pt-1">
-                  <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.customize.frame')}</span>
-                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                </div>
-              )}
+              {/* Clickable -- text, embed and shape only. Image, audio and
+                  video already do something of their own on click (open the
+                  viewer, play), and a second competing action there would be
+                  ambiguous.
 
-              {/* Toggle Options -- shapes have their own Show Outline and No
-                  Fill instead (ShapeStyleControls): these are the box's. */}
-              {has(editingTrace, 'frame') && (
-              <div className="space-y-3">
-                <Check
-                  checked={editingTrace.showBorder ?? true}
-                  label={t('atrium.customize.showBorder')}
-                  onChange={on => {
-                    setEditingTrace({ ...editingTrace, showBorder: on })
-                    updateTraceCustomization(editingTrace.id, { showBorder: on })
-                  }}
-                />
-                <Check
-                  checked={editingTrace.showBackground ?? true}
-                  label={t('atrium.customize.showBackground')}
-                  onChange={on => {
-                    setEditingTrace({ ...editingTrace, showBackground: on })
-                    updateTraceCustomization(editingTrace.id, { showBackground: on })
-                  }}
-                />
-                {has(editingTrace, 'captions') && (
-                  <>
-                <Check
-                  checked={editingTrace.showFilename ?? true}
-                  label={t('atrium.customize.showUsername')}
-                  onChange={on => {
-                    setEditingTrace({ ...editingTrace, showFilename: on })
-                    updateTraceCustomization(editingTrace.id, { showFilename: on })
-                  }}
-                />
-                <Check
-                  checked={editingTrace.showDescription ?? false}
-                  label={t('atrium.customize.showDescription')}
-                  onChange={on => {
-                    setEditingTrace({ ...editingTrace, showDescription: on })
-                    updateTraceCustomization(editingTrace.id, { showDescription: on })
-                  }}
-                />
-                  </>
-                )}
-                <Check
-                  checked={editingTrace.showShadow ?? true}
-                  label={t('atrium.customize.softShadow')}
-                  hint={t('atrium.customize.softShadowHint')}
-                  onChange={on => {
-                    setEditingTrace({ ...editingTrace, showShadow: on })
-                    updateTraceCustomization(editingTrace.id, { showShadow: on })
-                  }}
-                />
-                {/* Embed-only, but grouped with the other toggles rather than
-                    left further down in the embed section. */}
-                {editingTrace.type === 'embed' && (
-                  <Check
-                    checked={editingTrace.enableInteraction ?? false}
-                    label={t('atrium.menu.enableInteraction')}
-                    onChange={on => {
-                      setEditingTrace({ ...editingTrace, enableInteraction: on })
-                      updateTraceCustomization(editingTrace.id, { enableInteraction: on })
-                    }}
-                  />
-                )}
-              </div>
-              )}
-
-              {/* Border thickness. Its own block above the colour controls so
-                  it also reaches PDF traces, where a frame is what separates a
-                  white page from a light background. */}
-              {has(editingTrace, 'frame') && (editingTrace.showBorder ?? true) && (
-                <div>
-                  <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">
-                    {t('atrium.customize.borderThickness', { value: editingTrace.borderWidth ?? 2 })}
+                  Placed above the toggle group below rather than inside it,
+                  because that group is hidden for shapes -- which are one of
+                  the three types this applies to. */}
+              {has(editingTrace, 'link') && (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editingTrace.isClickable ?? false}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, isClickable: e.target.checked }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { isClickable: e.target.checked })
+                      }}
+                      className="hidden"
+                    />
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.clickableHint')}>{t('atrium.customize.clickable')}</span>
                   </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="20"
-                    step="1"
-                    value={editingTrace.borderWidth ?? 2}
-                    onChange={(e) => {
-                      const borderWidth = parseInt(e.target.value)
-                      setEditingTrace({ ...editingTrace, borderWidth })
-                      updateTraceCustomization(editingTrace.id, { borderWidth })
-                    }}
-                    className="w-full accent-nier-bg"
-                  />
+
+                  {/* The destination, shown only once Clickable is on so the
+                      field can't sit there filled in and doing nothing. */}
+                  {editingTrace.isClickable && (
+                    <div>
+                      <input
+                        type="url"
+                        value={editingTrace.linkUrl ?? ''}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, linkUrl: e.target.value }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { linkUrl: e.target.value })
+                        }}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+                      />
+                      {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
+                        <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
+                          {t('atrium.customize.needsFullUrl')}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
-
-              {/* Border Radius Customization (for non-shape traces) */}
-              {has(editingTrace, 'frame') && (
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-                    {t('atrium.customize.borderRadius', { value: editingTrace.borderRadius ?? 0 })}
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    step="1"
-                    value={editingTrace.borderRadius ?? 0}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value)
-                      const updated = { ...editingTrace, borderRadius: value }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { borderRadius: value })
-                    }}
-                    className="w-full accent-nier-bg"
-                  />
-                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                    {t('atrium.customize.cornerRadiusHint')}
-                  </p>
-                </div>
+              {has(editingTrace, 'captions') && (
+              <>
+              <Check
+                checked={editingTrace.showFilename ?? true}
+                label={t('atrium.customize.showUsername')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showFilename: on })
+                  updateTraceCustomization(editingTrace.id, { showFilename: on })
+                }}
+              />
+              <Check
+                checked={editingTrace.showDescription ?? false}
+                label={t('atrium.customize.showDescription')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showDescription: on })
+                  updateTraceCustomization(editingTrace.id, { showDescription: on })
+                }}
+              />
+              </>
               )}
+              {editingTrace.type === 'embed' && (
+              <Check
+                checked={editingTrace.enableInteraction ?? false}
+                label={t('atrium.menu.enableInteraction')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, enableInteraction: on })
+                  updateTraceCustomization(editingTrace.id, { enableInteraction: on })
+                }}
+              />
+              )}
+            </Section>
+            )}
 
+            {(framed || has(editingTrace, 'light')) && (
+            <Section id="effects" title={t('atrium.customize.sectionEffects')}>
+              {framed && (
+              <Check
+                checked={editingTrace.showShadow ?? true}
+                label={t('atrium.customize.softShadow')}
+                hint={t('atrium.customize.softShadowHint')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showShadow: on })
+                  updateTraceCustomization(editingTrace.id, { showShadow: on })
+                }}
+              />
+              )}
               {/* Lighting Controls -- paths get a much simpler "glow along the
                   line" version instead: a radial point-light with a
                   radius/offset doesn't make sense for an elongated line, so
@@ -9579,28 +9601,21 @@ return (
               </div>
                 )
               })()}
+            </Section>
+            )}
 
-              <button
-                onClick={() => {
-                  // Mark as pending if there were any changes
-                  if (editingTrace) {
-                    markTraceChanged(editingTrace.id);
-                  }
-                  setEditingTrace(null);
-                }}
-                className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-4"
-              >
-                {t('atrium.customize.done')}
-              </button>
-            </div>
-          </div>
-
-        </>
-      )}
+            {shapeLike && !isPathTrace && (
+            <Section id="size" title={t('atrium.customize.sectionSize')}>
+              <ShapeStyleControls {...shapeProps} part="size" />
+            </Section>
+            )}
+          </CustomizationPanel>
+        )
+      })()}
 
       {/* Batch Edit (BatchEditPanel): what the selection's traces have, each
           change to those that have it, as one step of undo. */}
-      {showBatchEditPanel && multiSelectedIds.size > 1 && canEdit && (
+      {showBatchEditPanel && multiSelectedIds.size > 1 && canEdit && !isDrawingMode && (
         <BatchEditPanel
           traces={traces.filter(tr => multiSelectedIds.has(tr.id))}
           lobbyId={lobbyId}
@@ -9620,8 +9635,27 @@ return (
           })}
           onDone={() => {
             multiSelectedIds.forEach(id => markTraceChanged(id))
+            dismissedRef.current = selectionKey()
             setShowBatchEditPanel(false)
           }}
+          // What can be done to all of them; a style is copied from one.
+          actions={(() => {
+            const ids = [...multiSelectedIds]
+            const allLocked = traces.filter(tr => multiSelectedIds.has(tr.id)).every(isLockedTrace)
+            return (
+              <>
+                <PanelAction icon={ACTION_ICONS.duplicate} label={t('common.duplicate')} onClick={() => duplicateTrace(ids[0])} />
+                <PanelAction icon={ACTION_ICONS.pasteStyle} label={t('atrium.menu.pasteStyle')} onClick={() => pasteTraceStyle(ids)} />
+                <PanelAction
+                  icon={ACTION_ICONS.lock}
+                  label={allLocked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
+                  active={allLocked}
+                  onClick={() => inOneStep(() => { for (const id of ids) updateTraceCustomization(id, allLocked ? UNLOCKED : { isLocked: true }) })}
+                />
+                <PanelAction icon={ACTION_ICONS.delete} label={t('common.delete')} danger onClick={() => { setShowBatchEditPanel(false); deleteTraces(ids, []) }} />
+              </>
+            )
+          })()}
         />
       )}
 

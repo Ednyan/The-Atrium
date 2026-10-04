@@ -38,7 +38,7 @@ import { inferFileExtension, uploadTraceFile } from '../lib/traceUpload'
 import { fileTitle, firstFreeName, nextShapeName, nextTextName, nextUntitledName } from '../lib/traceNames'
 import { insertTrace } from '../lib/traceWrites'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
-import { nextShapeStyle, previewFrameColour, shapePaint, shapeStyleColumns, textColourOn, type ShapeStyle } from '../lib/shapeStyle'
+import { nextShapeStyle, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleColumns, textColourOn, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
@@ -54,6 +54,8 @@ import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
 import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar } from './AtriumMenu'
+import { ACTION_ICONS, CustomizationPanel, PanelAction, Section } from './Customization'
+import ShapeStyleControls from './ShapeStyleControls'
 import { AtriumName, ViewReadout } from './AtriumInfo'
 import EmbedLinkBox from './EmbedLinkBox'
 import { LanguageList } from './LanguageToggle'
@@ -632,6 +634,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // The quick bar's armed tool (QuickBar): the next press on the canvas
   // places one of these, rather than panning or selecting.
   const [placeTool, setPlaceTool] = useState<PlaceTool | null>(null)
+  // A change in the tool's panel: the style is read from where it's kept.
+  const [, setToolStyleRev] = useState(0)
   // The laser pointer (LaserLayer), in hand or not, and its look -- this
   // person's own, kept on this device.
   const [laserActive, setLaserActive] = useState(false)
@@ -870,6 +874,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Freehand drawing mode
   const [isDrawingMode, setIsDrawingMode] = useState(false)
   useEffect(() => { if (isDrawingMode || placeTool) setLaserActive(false) }, [isDrawingMode, placeTool])
+  // Drawing's and a shape tool's Customization panels clear the panels around
+  // them, as a trace's does (onCustomizeOpen).
+  useEffect(() => {
+    if (isDrawingMode || (placeTool && (isBoxShape(placeTool) || placeTool === 'path'))) closeSidePanels()
+  }, [isDrawingMode, placeTool, closeSidePanels])
 
   // Watches the two activities rather than patching each of the several places
   // that start them (the HUD buttons, the T key, the canvas context menu), so
@@ -4646,6 +4655,42 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} />
       </div>
 
+      {/* The shape tool in hand's Customization panel: how what it makes
+          starts (nextShapeStyle), kept for the next one made. Its X puts the
+          tool down. */}
+      {placeTool && (isBoxShape(placeTool) || placeTool === 'path') && (() => {
+        const style = nextShapeStyle(placeTool)
+        const props = {
+          typePicker: false,
+          value: style,
+          onChange: (patch: Partial<ShapeStyle>) => {
+            rememberShapeStyle({ ...style, ...patch })
+            setToolStyleRev(n => n + 1)
+          },
+        }
+        return (
+          <CustomizationPanel
+            subtitle={t(`atrium.trace.shape.${placeTool}`)}
+            onClose={() => setPlaceTool(null)}
+            zIndex={9999}
+          >
+            <p data-for-new="" className="pt-3 text-nier-bg/55 text-[10px] tracking-[0.15em] uppercase">{t('atrium.customize.forNew')}</p>
+            <Section id="fill" title={t('atrium.customize.sectionFill')}>
+              <ShapeStyleControls {...props} part="fill" />
+            </Section>
+            {placeTool === 'path' ? (
+              <Section id="shape" title={t('atrium.trace.shape.path')}>
+                <ShapeStyleControls {...props} part="shape" />
+              </Section>
+            ) : (
+              <Section id="outline" title={t('atrium.customize.sectionOutline')}>
+                <ShapeStyleControls {...props} part="outline" />
+              </Section>
+            )}
+          </CustomizationPanel>
+        )
+      })()}
+
 
       {embedAsk && (
         <EmbedLinkBox
@@ -4673,218 +4718,190 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         <>
           {isDrawingMode && (
           <>
-          {/* Drawing's panel, down the right edge -- out of the way of the
-              Save at the top. Its way out at its top right; what drawing does
-              with the canvas said at the foot of the screen, as every tool's
-              is (QuickBar's ToolHint). */}
-          <div
-            data-ui-element="true"
-            data-draw-panel=""
-            className="panel-in-right fixed right-[var(--right-rail)] top-24 z-[9999] font-mono pointer-events-auto max-h-[calc(100vh-9rem)] overflow-y-auto"
-            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
+          {/* Drawing's panel: the Customization panel (components/Customization),
+              docked where every other is. Its X leaves drawing; what drawing
+              does with the canvas is said at the foot of the screen, as every
+              tool's is (QuickBar's ToolHint). Clearing the drawing is one
+              step: undo and redo are the buttons at the top left. */}
+          <CustomizationPanel
+            subtitle={editingDrawing ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}
+            onClose={leaveDrawing}
+            closeLabel={`${t('atrium.draw.exit')} — Esc`}
+            zIndex={9999}
+            actions={
+              <PanelAction icon={ACTION_ICONS.delete} label={t('common.clear')} danger disabled={drawingMembers.size === 0} onClick={clearDrawing} />
+            }
           >
-            <div className="relative border-2 border-nier-bg px-4 pt-3 pb-4 w-[220px]">
-              {/* Corner brackets */}
-              <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-nier-bg" />
-              <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-nier-bg" />
-              <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-nier-bg" />
-              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-nier-bg" />
-
-              <div className="flex flex-col items-stretch gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-nier-strong text-xs tracking-[0.15em] uppercase truncate">{editingDrawing ? t('atrium.draw.editingTitle') : t('atrium.draw.title')}</p>
-                  <button
-                    type="button"
-                    data-draw-exit=""
-                    onClick={leaveDrawing}
-                    title={`${t('atrium.draw.exit')} — Esc`}
-                    aria-label={t('atrium.draw.exit')}
-                    className="shrink-0 w-7 h-7 flex items-center justify-center border border-nier-bg/70 text-nier-strong hover:bg-nier-bg hover:text-nier-black transition-colors"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <path d="M6 6l12 12M18 6l-12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Draw / Eraser toggle */}
-                <div className="flex border border-nier-border/40">
-                  <button
-                    onClick={() => setIsEraserMode(false)}
-                    className={`flex-1 px-3 py-1 text-xs tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
-                  >
-                    ✎ {t('atrium.draw.brush')}
-                  </button>
-                  <button
-                    onClick={() => setIsEraserMode(true)}
-                    className={`flex-1 px-3 py-1 text-xs tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
-                  >
-                    ◻ {t('atrium.draw.eraser')}
-                  </button>
-                </div>
-
-                {/* Which brush: each a row, the picture of its mark beside its
-                    name. The name was a line of text under a grid of pictures,
-                    which read as a caption for nothing in particular. Imported
-                    brushes as their tip, and on desktop the way to import one. */}
-                {!isEraserMode && (
-                  <div role="radiogroup" aria-label={t('atrium.draw.brush')} className="flex flex-col gap-0.5">
-                    {BUILTIN_BRUSHES.map(brush => (
-                      <button
-                        key={brush}
-                        type="button"
-                        role="radio"
-                        data-brush={brush}
-                        aria-checked={drawingBrush === brush}
-                        onClick={() => setDrawingBrush(brush)}
-                        className={`flex items-center gap-2 h-8 px-1.5 border text-left transition-colors ${
-                          drawingBrush === brush
-                            ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
-                            : 'border-transparent text-nier-bg/70 hover:border-nier-border/50 hover:text-nier-strong'
-                        }`}
-                      >
-                        <span className="w-9 shrink-0 flex justify-center"><BrushGlyph brush={brush} /></span>
-                        <span className="text-[11px] tracking-[0.12em] uppercase truncate">{t(BRUSH_LABELS[brush])}</span>
-                      </button>
-                    ))}
-                    {customBrushes.map(brush => (
-                      <div key={brush.id} className="relative group">
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={drawingBrush === customBrushKey(brush.id)}
-                          onClick={() => setDrawingBrush(customBrushKey(brush.id))}
-                          className={`w-full flex items-center gap-2 h-8 px-1.5 pr-6 border text-left transition-colors ${
-                            drawingBrush === customBrushKey(brush.id)
-                              ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
-                              : 'border-transparent text-nier-bg/70 hover:border-nier-border/50 hover:text-nier-strong'
-                          }`}
-                        >
-                          {/* The tip itself, in the text colour. */}
-                          <span className="w-9 shrink-0 flex justify-center">
-                            <span
-                              className="block w-5 h-5"
-                              style={{
-                                backgroundColor: 'currentColor',
-                                WebkitMaskImage: `url("${brush.tip}")`,
-                                maskImage: `url("${brush.tip}")`,
-                                WebkitMaskSize: 'contain',
-                                maskSize: 'contain',
-                                WebkitMaskRepeat: 'no-repeat',
-                                maskRepeat: 'no-repeat',
-                                WebkitMaskPosition: 'center',
-                                maskPosition: 'center',
-                              }}
-                            />
-                          </span>
-                          <span className="text-[11px] tracking-[0.12em] uppercase truncate">{brush.name}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void removeCustomBrush(brush.id)}
-                          title={t('atrium.draw.removeBrush')}
-                          aria-label={t('atrium.draw.removeBrush')}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-within:flex w-5 h-5 items-center justify-center text-[11px] leading-none text-nier-bg/70 hover:text-nier-strong"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    {isDesktop && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => brushFileInputRef.current?.click()}
-                          title={t('atrium.draw.importBrushHint')}
-                          className="flex items-center gap-2 h-8 px-1.5 border border-dashed border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong transition-colors"
-                        >
-                          <span className="w-9 shrink-0 text-center">+</span>
-                          <span className="text-[11px] tracking-[0.12em] uppercase truncate">{t('atrium.draw.importBrush')}</span>
-                        </button>
-                        <input
-                          ref={brushFileInputRef}
-                          type="file"
-                          accept="image/png,image/webp,image/gif,image/jpeg,image/bmp"
-                          className="hidden"
-                          onChange={importBrush}
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* The colour, in one place: the atrium's own palette, and
-                    beside it any colour at all -- which shows the colour in
-                    use when that's none of the palette's. They were two
-                    groups apart, the picker above the sliders and the palette
-                    below them. */}
-                {!isEraserMode && (() => {
-                  const fromPalette = DRAW_SWATCHES.some(c => c.toLowerCase() === drawingColor.toLowerCase())
-                  return (
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-nier-bg/70 text-[11px] tracking-wider uppercase">{t('atrium.draw.colour')}</span>
-                      <div className="grid grid-cols-6 gap-1.5">
-                        {DRAW_SWATCHES.map(color => (
-                          <button
-                            key={color}
-                            type="button"
-                            data-swatch={color}
-                            onClick={() => setDrawingColor(color)}
-                            title={color}
-                            aria-label={color}
-                            aria-pressed={drawingColor.toLowerCase() === color.toLowerCase()}
-                            className={`h-6 border transition-all ${
-                              drawingColor.toLowerCase() === color.toLowerCase()
-                                ? 'border-nier-bg scale-110'
-                                : 'border-nier-border/40 hover:border-nier-border/70'
-                            }`}
-                            style={{ backgroundColor: color }}
-                          />
-                        ))}
-                        <label
-                          title={t('atrium.draw.anyColour')}
-                          className={`relative col-span-2 h-6 border cursor-pointer transition-all ${
-                            fromPalette ? 'border-nier-border/40 hover:border-nier-border/70' : 'border-nier-bg scale-105'
-                          }`}
-                          style={{ background: fromPalette ? ANY_COLOUR : drawingColor }}
-                        >
-                          {/* Filled with the colour in use, still a picker. */}
-                          {!fromPalette && (
-                            <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-black/30" style={{ background: ANY_COLOUR }} />
-                          )}
-                          <input
-                            type="color"
-                            data-any-colour=""
-                            value={drawingColor}
-                            onChange={(e) => setDrawingColor(e.target.value)}
-                            aria-label={t('atrium.draw.anyColour')}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                <DrawSlider label={isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')} value={drawingWidth} min={1} max={60} onChange={setToolSetting('width')} />
-                <DrawSlider label={t('atrium.draw.smooth')} value={drawingSmoothing} min={0} max={100} unit="%" onChange={setToolSetting('smoothing')} />
-                {/* Hardness: how sharp the edge is. The eraser has one too. */}
-                <DrawSlider label={t('atrium.draw.hardness')} value={drawingHardness} min={0} max={100} unit="%" onChange={setToolSetting('hardness')} />
-
-                {/* Every stroke of the drawing, as one step. Nothing to save
-                    here: every stroke keeps itself. Undo and redo are the
-                    buttons at the bottom left, each stroke and erasure a step. */}
-                {drawingMembers.size > 0 && (
-                  <button
-                    onClick={clearDrawing}
-                    className="bg-nier-blackLight hover:bg-gray-600 text-nier-strong px-3 py-1 text-xs tracking-wider uppercase transition-all border border-nier-border/50"
-                  >
-                    {t('common.clear')}
-                  </button>
-                )}
+            <div className="pt-3 pb-1">
+              {/* Draw / Eraser toggle */}
+              <div className="flex border border-nier-border/40">
+                <button
+                  onClick={() => setIsEraserMode(false)}
+                  className={`flex-1 px-3 py-1 text-xs tracking-wider uppercase transition-all ${!isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
+                >
+                  ✎ {t('atrium.draw.brush')}
+                </button>
+                <button
+                  onClick={() => setIsEraserMode(true)}
+                  className={`flex-1 px-3 py-1 text-xs tracking-wider uppercase transition-all ${isEraserMode ? 'bg-white text-black' : 'bg-transparent text-nier-bg/70 hover:text-nier-strong'}`}
+                >
+                  ◻ {t('atrium.draw.eraser')}
+                </button>
               </div>
             </div>
-          </div>
+            {!isEraserMode && (
+            <Section id="brush" title={t('atrium.draw.brush')}>
+              {/* Which brush: each a row, the picture of its mark beside its
+                  name. The name was a line of text under a grid of pictures,
+                  which read as a caption for nothing in particular. Imported
+                  brushes as their tip, and on desktop the way to import one. */}
+              <div role="radiogroup" aria-label={t('atrium.draw.brush')} className="flex flex-col gap-0.5">
+                {BUILTIN_BRUSHES.map(brush => (
+                  <button
+                    key={brush}
+                    type="button"
+                    role="radio"
+                    data-brush={brush}
+                    aria-checked={drawingBrush === brush}
+                    onClick={() => setDrawingBrush(brush)}
+                    className={`flex items-center gap-2 h-8 px-1.5 border text-left transition-colors ${
+                      drawingBrush === brush
+                        ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                        : 'border-transparent text-nier-bg/70 hover:border-nier-border/50 hover:text-nier-strong'
+                    }`}
+                  >
+                    <span className="w-9 shrink-0 flex justify-center"><BrushGlyph brush={brush} /></span>
+                    <span className="text-[11px] tracking-[0.12em] uppercase truncate">{t(BRUSH_LABELS[brush])}</span>
+                  </button>
+                ))}
+                {customBrushes.map(brush => (
+                  <div key={brush.id} className="relative group">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={drawingBrush === customBrushKey(brush.id)}
+                      onClick={() => setDrawingBrush(customBrushKey(brush.id))}
+                      className={`w-full flex items-center gap-2 h-8 px-1.5 pr-6 border text-left transition-colors ${
+                        drawingBrush === customBrushKey(brush.id)
+                          ? 'border-nier-bg bg-nier-bg/15 text-nier-strong'
+                          : 'border-transparent text-nier-bg/70 hover:border-nier-border/50 hover:text-nier-strong'
+                      }`}
+                    >
+                      {/* The tip itself, in the text colour. */}
+                      <span className="w-9 shrink-0 flex justify-center">
+                        <span
+                          className="block w-5 h-5"
+                          style={{
+                            backgroundColor: 'currentColor',
+                            WebkitMaskImage: `url("${brush.tip}")`,
+                            maskImage: `url("${brush.tip}")`,
+                            WebkitMaskSize: 'contain',
+                            maskSize: 'contain',
+                            WebkitMaskRepeat: 'no-repeat',
+                            maskRepeat: 'no-repeat',
+                            WebkitMaskPosition: 'center',
+                            maskPosition: 'center',
+                          }}
+                        />
+                      </span>
+                      <span className="text-[11px] tracking-[0.12em] uppercase truncate">{brush.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void removeCustomBrush(brush.id)}
+                      title={t('atrium.draw.removeBrush')}
+                      aria-label={t('atrium.draw.removeBrush')}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-within:flex w-5 h-5 items-center justify-center text-[11px] leading-none text-nier-bg/70 hover:text-nier-strong"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {isDesktop && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => brushFileInputRef.current?.click()}
+                      title={t('atrium.draw.importBrushHint')}
+                      className="flex items-center gap-2 h-8 px-1.5 border border-dashed border-nier-border/40 text-nier-bg/70 hover:border-nier-border/70 hover:text-nier-strong transition-colors"
+                    >
+                      <span className="w-9 shrink-0 text-center">+</span>
+                      <span className="text-[11px] tracking-[0.12em] uppercase truncate">{t('atrium.draw.importBrush')}</span>
+                    </button>
+                    <input
+                      ref={brushFileInputRef}
+                      type="file"
+                      accept="image/png,image/webp,image/gif,image/jpeg,image/bmp"
+                      className="hidden"
+                      onChange={importBrush}
+                    />
+                  </>
+                )}
+              </div>
+            </Section>
+            )}
+            {!isEraserMode && (
+            <Section id="colour" title={t('atrium.draw.colour')}>
+              {/* The colour, in one place: the atrium's own palette, and
+                  beside it any colour at all -- which shows the colour in
+                  use when that's none of the palette's. They were two
+                  groups apart, the picker above the sliders and the palette
+                  below them. */}
+              {(() => {
+                const fromPalette = DRAW_SWATCHES.some(c => c.toLowerCase() === drawingColor.toLowerCase())
+                return (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="grid grid-cols-6 gap-1.5">
+                      {DRAW_SWATCHES.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          data-swatch={color}
+                          onClick={() => setDrawingColor(color)}
+                          title={color}
+                          aria-label={color}
+                          aria-pressed={drawingColor.toLowerCase() === color.toLowerCase()}
+                          className={`h-6 border transition-all ${
+                            drawingColor.toLowerCase() === color.toLowerCase()
+                              ? 'border-nier-bg scale-110'
+                              : 'border-nier-border/40 hover:border-nier-border/70'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                      <label
+                        title={t('atrium.draw.anyColour')}
+                        className={`relative col-span-2 h-6 border cursor-pointer transition-all ${
+                          fromPalette ? 'border-nier-border/40 hover:border-nier-border/70' : 'border-nier-bg scale-105'
+                        }`}
+                        style={{ background: fromPalette ? ANY_COLOUR : drawingColor }}
+                      >
+                        {/* Filled with the colour in use, still a picker. */}
+                        {!fromPalette && (
+                          <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-black/30" style={{ background: ANY_COLOUR }} />
+                        )}
+                        <input
+                          type="color"
+                          data-any-colour=""
+                          value={drawingColor}
+                          onChange={(e) => setDrawingColor(e.target.value)}
+                          aria-label={t('atrium.draw.anyColour')}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )
+              })()}
+            </Section>
+            )}
+            <Section id="stroke" title={t('atrium.customize.sectionStroke')}>
+              <DrawSlider label={isEraserMode ? t('atrium.draw.size') : t('atrium.draw.width')} value={drawingWidth} min={1} max={60} onChange={setToolSetting('width')} />
+              <DrawSlider label={t('atrium.draw.smooth')} value={drawingSmoothing} min={0} max={100} unit="%" onChange={setToolSetting('smoothing')} />
+              {/* Hardness: how sharp the edge is. The eraser has one too. */}
+              <DrawSlider label={t('atrium.draw.hardness')} value={drawingHardness} min={0} max={100} unit="%" onChange={setToolSetting('hardness')} />
+            </Section>
+          </CustomizationPanel>
 
           {/* Brush/eraser size-preview circle - follows the cursor, sized to drawingWidth */}
           <div

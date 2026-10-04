@@ -189,7 +189,7 @@ function SizeInput({ label, value, onCommit }: { label: string; value: number; o
   )
 }
 
-export default function ShapeStyleControls({ value, onChange, size, onSizeChange, pathExtra, typePicker = true, note }: {
+export default function ShapeStyleControls({ value, onChange, size, onSizeChange, pathExtra, typePicker = true, note, part }: {
   value: ShapeStyle
   onChange: (patch: Partial<ShapeStyle>) => void
   /** Off in Batch Edit: shapes and paths are edited apart there, and a type picked for all of them could turn a box into a line with no points. */
@@ -201,6 +201,10 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
   onSizeChange?: (width: number, height: number) => void
   /** Rendered among the path options: the point editor, which needs a trace that exists. */
   pathExtra?: ReactNode
+  /** One part, for a section of the Customization panel (which titles it):
+      the kind and a path's line, the size, the fill, the outline. All of
+      them, each under its own heading, when not given. */
+  part?: 'shape' | 'size' | 'fill' | 'outline'
 }) {
   const { t } = useTranslation()
   const isPath = value.shapeType === 'path'
@@ -219,11 +223,12 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
     </div>
   )
 
+  const show = (p: NonNullable<typeof part>) => !part || part === p
   return (
     <div className="space-y-4">
-      <SectionRule label={isPath ? t('atrium.trace.shape.path') : t('atrium.customize.shape')} note={note} />
+      {!part && <SectionRule label={isPath ? t('atrium.trace.shape.path') : t('atrium.customize.shape')} note={note} />}
 
-      {typePicker && <div>
+      {show('shape') && typePicker && <div>
         <label className={LABEL}>{t('atrium.customize.shapeType')}</label>
         <div className="grid grid-cols-2 gap-2">
           {([...BOX_SHAPES, 'path'] as ShapeKind[]).map(kind => (
@@ -235,7 +240,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
       </div>}
 
       {/* A path is sized by the points it passes through, not by a box. */}
-      {size && onSizeChange && !isPath && (
+      {show('size') && size && onSizeChange && !isPath && (
         <div className="grid grid-cols-2 gap-4">
           <SizeInput label={t('atrium.trace.width')} value={size.width} onCommit={w => onSizeChange(w, size.height)} />
           <SizeInput label={t('atrium.trace.height')} value={size.height} onCommit={h => onSizeChange(size.width, h)} />
@@ -243,7 +248,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
       )}
 
       {/* Circles have no corners; paths are shaped by their points. */}
-      {value.shapeType !== 'circle' && !isPath && (
+      {show('outline') && value.shapeType !== 'circle' && !isPath && (
         <Slider
           label={t('atrium.customize.cornerRadiusLabel', { value: value.cornerRadius })}
           hint={t('atrium.customize.roundsCorners')}
@@ -252,7 +257,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
         />
       )}
 
-      {isPath && (
+      {show('shape') && isPath && (
         <>
           <Slider
             label={t('atrium.customize.pathThicknessLabel', { value: value.shapeOutlineWidth })}
@@ -276,28 +281,28 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
         </>
       )}
 
-      <SectionRule label={t('atrium.customize.colour')} />
+      {!part && <SectionRule label={t('atrium.customize.colour')} />}
 
       {/* A path is a line: its colour and how opaque it is (arrows and
           all), with nothing to fill. */}
-      <ColourField label={isPath ? t('atrium.customize.lineColour') : t('atrium.customize.fillColour')} value={value.shapeColor} onChange={c => onChange({ shapeColor: c })} />
+      {show('fill') && <ColourField label={isPath ? t('atrium.customize.lineColour') : t('atrium.customize.fillColour')} value={value.shapeColor} onChange={c => onChange({ shapeColor: c })} />}
 
-      <Slider
+      {show('fill') && <Slider
         label={isPath
           ? t('atrium.customize.opacity', { value: (value.shapeOpacity * 100).toFixed(0) })
           : t('atrium.customize.fillOpacity', { value: (value.shapeOpacity * 100).toFixed(0) })}
         min={0} max={1} step={0.01} value={value.shapeOpacity}
         onChange={v => onChange({ shapeOpacity: v })}
-      />
+      />}
 
-      {!isPath && (
+      {show('fill') && !isPath && (
         <div className="space-y-2">
           <Check checked={value.shapeNoFill} onChange={v => onChange({ shapeNoFill: v })} label={t('atrium.customize.noFill')} />
         </div>
       )}
 
       {/* A path is only ever its outline, so it has no switch for one. */}
-      {!isPath && (
+      {show('outline') && !isPath && (
         <div>
           <div className="mb-2">
             <Check checked={value.shapeOutlineOnly} onChange={v => onChange({ shapeOutlineOnly: v })} label={t('atrium.customize.showOutline')} />
@@ -320,7 +325,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
         </div>
       )}
 
-      {!isPath && value.shapeOutlineOnly && (
+      {show('outline') && !isPath && value.shapeOutlineOnly && (
         <ColourField
           label={t('atrium.customize.outlineColour')}
           value={value.shapeOutlineColor || value.shapeColor}

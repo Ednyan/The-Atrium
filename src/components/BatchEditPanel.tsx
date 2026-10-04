@@ -1,4 +1,5 @@
-// Batch Edit: several traces changed at once.
+// Batch Edit: several traces changed at once -- the Customization panel's
+// form for a selection (components/Customization), in its sections.
 //
 // Built from lib/traceKinds, as Excalidraw's properties are: a setting shows
 // when any trace selected has it, notes which of them it's for when that
@@ -6,38 +7,26 @@
 // shows a dash; a value shown is the first of them's. Every change is one
 // step of undo (TraceOverlay's onChange).
 
+import type { ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import type { Trace } from '../types/database'
-import { has, kindOf, settingsOf, type Setting, type TraceKind } from '../lib/traceKinds'
+import { has, kindOf, settingsOf, type Setting } from '../lib/traceKinds'
+import { CustomizationPanel, KIND_LABEL, Section, type SectionId } from './Customization'
 import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
-import { rememberShapeStyle, shapeStyleOf } from '../lib/shapeStyle'
+import { rememberShapeStyle, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
 import ShapeStyleControls, { Check, ColourField, SectionRule, Slider } from './ShapeStyleControls'
 import StrokeStyleField from './StrokeStyleField'
 
 export type BatchChange = { ids: string[]; patch: Partial<Trace> }
 
-const KIND_LABEL: Record<TraceKind, TranslationKey> = {
-  text: 'atrium.trace.type.text',
-  image: 'atrium.trace.type.image',
-  drawing: 'atrium.trace.type.drawing',
-  embed: 'atrium.trace.type.embed',
-  document: 'atrium.trace.type.document',
-  audio: 'atrium.trace.type.audio',
-  video: 'atrium.trace.type.video',
-  frame: 'atrium.trace.type.frame',
-  shape: 'atrium.trace.type.shape',
-  path: 'atrium.trace.shape.path',
-  sheet: 'atrium.trace.type.sheet',
-  chart: 'atrium.trace.type.chart',
-}
 
 const SELECT = 'w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60'
 const choice = (on: boolean) => `flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
   on ? 'bg-nier-bg text-nier-black border-nier-bg' : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
 }`
 
-export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOptions, borderColourOf, onChange, onFont, onDone }: {
+export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOptions, borderColourOf, onChange, onFont, onDone, actions }: {
   traces: Trace[]
   lobbyId?: string
   userId: string | null
@@ -50,6 +39,8 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
   // A typeface for these text traces, each fitted to its text again.
   onFont: (ids: string[], family: string) => void
   onDone: () => void
+  // The panel's foot: what can be done to all of them.
+  actions?: ReactNode
 }) {
   const { t } = useTranslation()
   const ids = (ts: Trace[]) => ts.map(tr => tr.id)
@@ -64,38 +55,32 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
     ? null
     : `${t('atrium.customize.someOf', { count: targets.length, total: traces.length })} · ${[...new Set(targets.map(kindOf))].map(kind => t(KIND_LABEL[kind])).join(', ')}`
 
-  const section = (setting: Setting, targets: Trace[]) => {
-    const note = noteFor(targets)
+  const section = (setting: Setting, targets: Trace[]): { id: SectionId; node: ReactNode }[] => {
     switch (setting) {
       case 'strokes':
-        return lobbyId ? (
-          <div className="space-y-3">
-            <SectionRule label={t('atrium.trace.type.drawing')} note={note} />
-            <StrokeStyleField key={ids(targets).join(',')} traceIds={ids(targets)} lobbyId={lobbyId} userId={userId} />
-          </div>
-        ) : null
+        return lobbyId ? [{ id: 'fill', node: <StrokeStyleField key={ids(targets).join(',')} traceIds={ids(targets)} lobbyId={lobbyId} userId={userId} /> }] : []
 
       case 'shape':
-      case 'line':
-        return (
-          <ShapeStyleControls
-            typePicker={false}
-            note={note}
-            value={shapeStyleOf(targets[0])}
-            onChange={patch => {
-              set(targets, patch)
-              rememberShapeStyle(shapeStyleOf({ ...targets[0], ...patch }))
-            }}
-          />
-        )
+      case 'line': {
+        const props = {
+          typePicker: false,
+          value: shapeStyleOf(targets[0]),
+          onChange: (patch: Partial<ShapeStyle>) => {
+            set(targets, patch)
+            rememberShapeStyle(shapeStyleOf({ ...targets[0], ...patch }))
+          },
+        }
+        return setting === 'shape'
+          ? [{ id: 'fill', node: <ShapeStyleControls {...props} part="fill" /> }, { id: 'outline', node: <ShapeStyleControls {...props} part="outline" /> }]
+          : [{ id: 'fill', node: <ShapeStyleControls {...props} part="fill" /> }, { id: 'shape', node: <ShapeStyleControls {...props} part="shape" /> }]
+      }
 
       case 'font': {
         const family = targets[0].fontFamily ?? 'sans'
         const mixedFamily = targets.some(tr => (tr.fontFamily ?? 'sans') !== family)
         const scales = switchOf(targets, tr => tr.textScaleWithBox ?? true)
-        return (
+        return [{ id: 'text', node: (
           <div className="space-y-3">
-            <SectionRule label={t('atrium.customize.text')} note={note} />
             <div>
               <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontFamily')}</label>
               <select value={mixedFamily ? '' : family} onChange={e => { if (e.target.value) onFont(ids(targets), e.target.value) }} className={SELECT}>
@@ -113,7 +98,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
               </div>
             </div>
           </div>
-        )
+        ) }]
       }
 
       case 'frame': {
@@ -121,77 +106,87 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         const border = switchOf(targets, tr => tr.showBorder ?? true)
         const background = switchOf(targets, tr => tr.showBackground ?? true)
         const shadow = switchOf(targets, tr => tr.showShadow ?? true)
-        return (
-          <div className="space-y-3">
-            <SectionRule label={t('atrium.customize.frame')} note={note} />
-            {/* The presets: the quickest way to make them look alike, and the
-                atrium's house style from then on, as on one trace. Their font
-                goes only to the text among them. */}
-            <div className="grid grid-cols-3 gap-1.5">
-              {TRACE_PRESETS.map(preset => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => {
-                    const texts = targets.filter(tr => has(tr, 'font'))
-                    onChange([
-                      { ids: ids(targets), patch: { borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true } },
-                      ...(texts.length ? [{ ids: ids(texts), patch: { fontFamily: 'mono', ...(preset.text ? { textColor: preset.text } : {}) } }] : []),
-                    ])
-                    if (lobbyId) rememberTracePreset(lobbyId, preset.id)
-                  }}
-                  className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[11px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors"
-                  style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
-                >
-                  {t(preset.labelKey as TranslationKey)}
-                </button>
-              ))}
-            </div>
-            <Check {...border} label={t('atrium.customize.showBorder')} onChange={on => set(targets, { showBorder: on })} />
-            {(border.checked || border.mixed) && (
-              <div className="ml-6 space-y-3">
-                <ColourField label={t('atrium.customize.borderColour')} value={first.borderColor || borderColourOf(first.type)} onChange={c => set(targets, { borderColor: c })} />
-                <Slider
-                  label={t('atrium.customize.borderOpacity', { value: Math.round((first.borderOpacity ?? 1) * 100) })}
-                  min={0} max={1} step={0.01} value={first.borderOpacity ?? 1}
-                  onChange={v => set(targets, { borderOpacity: v })}
-                />
-                <Slider
-                  label={t('atrium.customize.borderThickness', { value: first.borderWidth ?? 2 })}
-                  min={1} max={20} step={1} value={first.borderWidth ?? 2}
-                  onChange={v => set(targets, { borderWidth: v })}
-                />
+        return [
+          { id: 'style', node: (
+            <>
+              {/* The presets: the quickest way to make them look alike, and the
+                  atrium's house style from then on, as on one trace. Their font
+                  goes only to the text among them. */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {TRACE_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      const texts = targets.filter(tr => has(tr, 'font'))
+                      onChange([
+                        { ids: ids(targets), patch: { borderColor: preset.border, fillColor: preset.fill, showBorder: true, showBackground: true } },
+                        ...(texts.length ? [{ ids: ids(texts), patch: { fontFamily: 'mono', ...(preset.text ? { textColor: preset.text } : {}) } }] : []),
+                      ])
+                      if (lobbyId) rememberTracePreset(lobbyId, preset.id)
+                    }}
+                    className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[11px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors"
+                    style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
+                  >
+                    {t(preset.labelKey as TranslationKey)}
+                  </button>
+                ))}
               </div>
-            )}
-            <Check {...background} label={t('atrium.customize.showBackground')} onChange={on => set(targets, { showBackground: on })} />
-            {(background.checked || background.mixed) && (
-              <div className="ml-6 space-y-3">
-                <ColourField label={t('atrium.customize.fillColour')} value={first.fillColor || '#191919'} onChange={c => set(targets, { fillColor: c })} />
-                <Slider
-                  label={t('atrium.customize.fillOpacity', { value: Math.round((first.fillOpacity ?? 0.95) * 100) })}
-                  min={0} max={1} step={0.01} value={first.fillOpacity ?? 0.95}
-                  onChange={v => set(targets, { fillOpacity: v })}
-                />
-              </div>
-            )}
-            <Slider
-              label={t('atrium.customize.borderRadius', { value: first.borderRadius ?? 0 })}
-              min={0} max={50} step={1} value={first.borderRadius ?? 0}
-              onChange={v => set(targets, { borderRadius: v })}
-            />
+            </>
+          ) },
+          { id: 'fill', node: (
+            <>
+              <Check {...background} label={t('atrium.customize.showBackground')} onChange={on => set(targets, { showBackground: on })} />
+              {(background.checked || background.mixed) && (
+                <div className="ml-6 space-y-3">
+                  <ColourField label={t('atrium.customize.fillColour')} value={first.fillColor || '#191919'} onChange={c => set(targets, { fillColor: c })} />
+                  <Slider
+                    label={t('atrium.customize.fillOpacity', { value: Math.round((first.fillOpacity ?? 0.95) * 100) })}
+                    min={0} max={1} step={0.01} value={first.fillOpacity ?? 0.95}
+                    onChange={v => set(targets, { fillOpacity: v })}
+                  />
+                </div>
+              )}
+            </>
+          ) },
+          { id: 'outline', node: (
+            <>
+              <Check {...border} label={t('atrium.customize.showBorder')} onChange={on => set(targets, { showBorder: on })} />
+              {(border.checked || border.mixed) && (
+                <div className="ml-6 space-y-3">
+                  <ColourField label={t('atrium.customize.borderColour')} value={first.borderColor || borderColourOf(first.type)} onChange={c => set(targets, { borderColor: c })} />
+                  <Slider
+                    label={t('atrium.customize.borderOpacity', { value: Math.round((first.borderOpacity ?? 1) * 100) })}
+                    min={0} max={1} step={0.01} value={first.borderOpacity ?? 1}
+                    onChange={v => set(targets, { borderOpacity: v })}
+                  />
+                  <Slider
+                    label={t('atrium.customize.borderThickness', { value: first.borderWidth ?? 2 })}
+                    min={1} max={20} step={1} value={first.borderWidth ?? 2}
+                    onChange={v => set(targets, { borderWidth: v })}
+                  />
+                </div>
+              )}
+              <Slider
+                label={t('atrium.customize.borderRadius', { value: first.borderRadius ?? 0 })}
+                min={0} max={50} step={1} value={first.borderRadius ?? 0}
+                onChange={v => set(targets, { borderRadius: v })}
+              />
+            </>
+          ) },
+          { id: 'effects', node: (
             <Check {...shadow} label={t('atrium.customize.softShadow')} hint={t('atrium.customize.softShadowHint')} onChange={on => set(targets, { showShadow: on })} />
-          </div>
-        )
+          ) },
+        ]
       }
 
       case 'captions':
-        return (
+        return [{ id: 'content', node: (
           <div className="space-y-3">
-            <SectionRule label={t('atrium.customize.captions')} note={note} />
             <Check {...switchOf(targets, tr => tr.showFilename ?? true)} label={t('atrium.customize.showUsername')} onChange={on => set(targets, { showFilename: on })} />
             <Check {...switchOf(targets, tr => tr.showDescription ?? false)} label={t('atrium.customize.showDescription')} onChange={on => set(targets, { showDescription: on })} />
           </div>
-        )
+        ) }]
 
       case 'light': {
         const lit = switchOf(targets, tr => tr.illuminate ?? false)
@@ -199,9 +194,9 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         // A path's light is a glow along it, with no radius (renderPathSvg).
         const round = targets.filter(tr => kindOf(tr) !== 'path')
         const glowOnly = round.length === 0
-        return (
+        return [{ id: 'effects', node: (
           <div className="space-y-3">
-            <SectionRule label={glowOnly ? t('atrium.controls.glow') : t('atrium.controls.light')} note={note} />
+            <SectionRule label={glowOnly ? t('atrium.controls.glow') : t('atrium.controls.light')} />
             <Check {...lit} label={glowOnly ? t('atrium.controls.enableGlow') : t('atrium.controls.enableLight')} onChange={on => set(targets, { illuminate: on })} />
             {(lit.checked || lit.mixed) && (
               <div className="ml-6 space-y-3">
@@ -221,40 +216,51 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
               </div>
             )}
           </div>
-        )
+        ) }]
       }
 
       default:
-        return null
+        return []
     }
   }
 
+  // Every part of every setting, with which of the selection it's for when
+  // that isn't all of it.
+  const parts = settingsOf(traces).flatMap(({ setting, targets }) =>
+    section(setting, targets).map((part, i) => ({ ...part, key: `${setting}-${i}`, note: noteFor(targets) })))
+  const TITLE: Partial<Record<SectionId, string>> = {
+    style: t('atrium.customize.sectionStyle'),
+    fill: t('atrium.customize.sectionFill'),
+    outline: t('atrium.customize.sectionOutline'),
+    text: t('atrium.customize.sectionText'),
+    shape: t('atrium.customize.sectionShape'),
+    content: t('atrium.customize.sectionContent'),
+    effects: t('atrium.customize.sectionEffects'),
+  }
+  const ORDER: SectionId[] = ['style', 'fill', 'outline', 'text', 'shape', 'content', 'effects']
+
   return (
-    <div
-      className="customize-menu bg-nier-blackLight border border-nier-border/40 p-6 w-96 pointer-events-auto max-h-[90vh] overflow-y-auto"
-      style={{ position: 'fixed', right: 'var(--right-rail)', top: '50%', transform: 'translateY(-50%)', zIndex }}
+    <CustomizationPanel
+      subtitle={t('atrium.customize.batchEdit', { count: traces.length })}
+      onClose={onDone}
+      closeLabel={t('atrium.customize.done')}
+      zIndex={zIndex}
+      actions={actions}
     >
-      {/* Corner brackets */}
-      <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60 pointer-events-none" />
-      <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60 pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60 pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60 pointer-events-none" />
-
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-        <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t('atrium.customize.batchEdit', { count: traces.length })}</h2>
-      </div>
-
-      <div className="space-y-6">
-        {settingsOf(traces).map(({ setting, targets }) => <div key={setting}>{section(setting, targets)}</div>)}
-      </div>
-
-      <button
-        onClick={onDone}
-        className="w-full bg-nier-bg text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase py-2.5 px-4 hover:bg-nier-strong transition-all border border-nier-bg mt-6"
-      >
-        {t('atrium.customize.done')}
-      </button>
-    </div>
+      {ORDER.map(id => {
+        const here = parts.filter(part => part.id === id)
+        if (here.length === 0) return null
+        return (
+          <Section key={id} id={id} title={TITLE[id] ?? id}>
+            {here.map(part => (
+              <div key={part.key} className="space-y-3">
+                {part.note && <p className="text-nier-bg/55 text-[10px] tracking-wide">{part.note}</p>}
+                {part.node}
+              </div>
+            ))}
+          </Section>
+        )
+      })}
+    </CustomizationPanel>
   )
 }
