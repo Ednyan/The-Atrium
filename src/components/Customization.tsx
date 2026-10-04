@@ -14,6 +14,8 @@ import type { Trace } from '../types/database'
 import { MenuIcon, SlideLabel } from './AtriumMenu'
 
 export type SectionId = 'name' | 'style' | 'fill' | 'outline' | 'text' | 'shape' | 'content' | 'effects' | 'size' | 'brush' | 'colour' | 'stroke'
+  // Atrium Themes (ThemeCustomization).
+  | 'presets' | 'mine' | 'grid' | 'room' | 'particles'
 
 // Each kind of trace by its name: the panel's subtitle, and Batch Edit's
 // notes on which of a selection a setting is for.

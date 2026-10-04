@@ -15,7 +15,6 @@
 // preset.
 
 import { TRACE_PRESETS, defaultPresetFor, type TracePreset } from './tracePresets'
-import type { ThemeSettings } from '../types/database'
 
 // The room-only knobs. A bright room wants a firmer grid and darker, sparser
 // particles than a dark one, or nothing reads against the floor.
@@ -78,15 +77,4 @@ export const MARKERBOARD = byId('markerboard')
 // not a setting: every atrium's theme is editable afterwards.
 export function startingAtriumTheme(light: boolean) {
   return byId(defaultPresetFor(light).id)
-}
-
-// A room's theme as one person sees it, once they've chosen light or dark
-// inside it (LobbyScene): a preset theme -- or none, the old default -- shown
-// as the preset of their light or dark, Whiteboard or Abyss, over the rest of
-// its settings. A theme of the room's own is shown as it is. Nothing is
-// saved: everyone else sees the room as it was left.
-const sameColour = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase()
-export function themeSeenIn(theme: ThemeSettings | null | undefined, light: boolean): ThemeSettings | null | undefined {
-  const preset = !theme || ATRIUM_THEMES.some(t => sameColour(t.values.backgroundColor, theme.backgroundColor) && sameColour(t.values.gridColor, theme.gridColor))
-  return preset ? { ...theme, ...startingAtriumTheme(light) } : theme
 }

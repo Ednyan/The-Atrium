@@ -593,8 +593,17 @@ const ko: Catalogue = {
   'atrium.profile.saving': '저장 중…',
 
   // -------------------------------------------------------- atrium themes
-  'atrium.theme.title': '테마 꾸미기',
   'atrium.theme.presets': '프리셋',
+  'atrium.theme.atriumOwn': '이 아트리움의 테마',
+  'atrium.theme.forYou': '여기서 고른 테마는 나에게만 이 아트리움이 보이는 방식입니다.',
+  'atrium.theme.yours': '내 테마 · {count}/{limit}',
+  'atrium.theme.newTheme': '보이는 테마로 새 테마 만들기',
+  'atrium.theme.customName': '테마 {n}',
+  'atrium.theme.makeYourOwn': '테마를 바꾸려면 내 테마로 만드세요. 빈 칸을 누르면 보이는 테마가 복사됩니다.',
+  'atrium.theme.pickYours': '바꾸려면 내 테마 중 하나를 고르세요.',
+  'atrium.theme.saveForAtrium': '이 아트리움의 테마로 저장',
+  'atrium.theme.isAtriums': '이미 이 아트리움의 테마입니다',
+  'atrium.theme.yoursNotSaved': '내 테마를 저장하지 못했습니다',
   'atrium.theme.presetSepia': '부드러운 세피아',
   'atrium.theme.presetSepiaDesc': '따뜻하고 잔잔한, NieR 같은 분위기',
   'atrium.theme.presetAbyss': '심연',
@@ -612,10 +621,8 @@ const ko: Catalogue = {
   'atrium.theme.enableParticles': '떠다니는 입자 켜기',
   'atrium.theme.particleDensity': '입자 밀도: {value}x',
   'atrium.theme.particleDensityHint': '떠다니는 입자의 수 (0.1 = 아주 적게, 3.0 = 많이)',
-  'atrium.theme.saveTheme': '테마 저장',
   'atrium.theme.saving': '저장 중…',
   'atrium.theme.saveFailed': '저장하지 못했어요',
-  'atrium.theme.saveError': '테마를 저장하다 예상치 못한 오류가 났어요',
 
   // ----------------------------------------------------------- manage
   'atrium.manage.title': 'Atrium 관리',

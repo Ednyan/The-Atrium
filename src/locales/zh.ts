@@ -592,8 +592,17 @@ const zh: Catalogue = {
   'atrium.profile.saving': '保存中…',
 
   // -------------------------------------------------------- atrium themes
-  'atrium.theme.title': '自定义主题',
   'atrium.theme.presets': '预设',
+  'atrium.theme.atriumOwn': '此中庭的',
+  'atrium.theme.forYou': '在此选择的主题只影响你看到的此中庭，不影响其他人。',
+  'atrium.theme.yours': '你的主题 · {count}/{limit}',
+  'atrium.theme.newTheme': '以当前显示的主题新建',
+  'atrium.theme.customName': '主题 {n}',
+  'atrium.theme.makeYourOwn': '要修改主题，请先将其变为你的主题：点击空位即可复制当前显示的主题。',
+  'atrium.theme.pickYours': '选择你的一个主题进行修改。',
+  'atrium.theme.saveForAtrium': '保存为此中庭的主题',
+  'atrium.theme.isAtriums': '这已是此中庭的主题',
+  'atrium.theme.yoursNotSaved': '无法保存你的主题',
   'atrium.theme.presetSepia': '柔褐',
   'atrium.theme.presetSepiaDesc': '温暖平静，近似 NieR 的气氛',
   'atrium.theme.presetAbyss': '深渊',
@@ -611,10 +620,8 @@ const zh: Catalogue = {
   'atrium.theme.enableParticles': '开启漂浮的微粒',
   'atrium.theme.particleDensity': '微粒密度：{value}x',
   'atrium.theme.particleDensityHint': '漂浮微粒的数量（0.1 = 极少，3.0 = 很多）',
-  'atrium.theme.saveTheme': '保存主题',
   'atrium.theme.saving': '保存中…',
   'atrium.theme.saveFailed': '保存失败',
-  'atrium.theme.saveError': '保存主题时发生了意外的错误',
 
   // ----------------------------------------------------------- manage
   'atrium.manage.title': '管理 Atrium',

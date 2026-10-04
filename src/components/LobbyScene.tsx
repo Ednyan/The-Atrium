@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLandingTheme } from '../lib/useLandingTheme'
-import { themeSeenIn } from '../lib/atriumThemePresets'
+import { customThemesNow, lastThemeOf, loadCustomThemes, readView, rememberLast, themeModeOf, themeOf, useCustomThemes, writeView, type ThemeRef } from '../lib/customThemes'
 import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container } from 'pixi.js'
 import '@pixi/unsafe-eval'
@@ -39,7 +39,7 @@ import { fileTitle, firstFreeName, nextShapeName, nextTextName, nextUntitledName
 import { insertTrace } from '../lib/traceWrites'
 import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probeRemoteImageDimensions } from '../lib/binPack'
 import { nextShapeStyle, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleColumns, textColourOn, type ShapeStyle } from '../lib/shapeStyle'
-import { defaultEmbedBox } from '../lib/embedUrl'
+import { defaultEmbedBox, embedSourcesIn } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
 import { isExr, withExrAsPng } from '../lib/exr'
 import { asStrokeData, BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, eraseStrokeData, fitBox, localToWorldDelta, strokeToLocal, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type CustomBrush, type Piece, type Stroke, type StrokeData, type StrokePoint } from '../lib/brushes'
@@ -505,6 +505,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [, setOnlineUsersListTick] = useState(0)
   
   const { username, otherUsers, traces, userId, isSavingChanges, saveFailed } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'isSavingChanges', 'saveFailed')
+  useEffect(() => { if (userId) void loadCustomThemes(userId) }, [userId])
   // The usage figure reads the store as it draws; this is what redraws it
   // when the atrium has been measured again (useTraces).
   useGamePick('serverLobbySize')
@@ -562,6 +563,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const closeSidePanels = useCallback(() => {
     setShowLayerPanel(false)
     setShowLocationsPanel(false)
+    setShowThemeCustomization(false)
   }, [])
   // The atrium's locations live in the store and are saved with the rest, each change
   // a step of undo (lib/locations). Presentation mode is here, not in
@@ -577,23 +579,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
-  // The atrium's theme as you see it. Once you've chosen light or dark inside
-  // an atrium, a preset theme there is shown as Whiteboard or Abyss to match
-  // (lib/atriumThemePresets themeSeenIn) -- for you alone, remembered for
-  // that atrium on this device; a theme of the atrium's own stays as it is.
-  // Not before: a room left in Soft Sepia would otherwise never show it.
-  const { resolved: uiTheme } = useLandingTheme()
-  const followKey = `atrium.followTheme.${lobbyId}`
-  const [followTheme, setFollowTheme] = useState(() => {
-    try { return localStorage.getItem(followKey) === '1' } catch { return false }
-  })
-  const followMyTheme = () => {
-    setFollowTheme(true)
-    try { localStorage.setItem(followKey, '1') } catch { /* for this visit only */ }
+  // The atrium's theme as you see it (lib/customThemes): its own, until you
+  // pick another in Atrium Themes or press light/dark -- for you alone,
+  // remembered for this atrium on this device.
+  const { resolved: uiTheme, setTheme: setUiTheme } = useLandingTheme()
+  const customThemes = useCustomThemes()
+  const [viewRef, setViewRef] = useState<ThemeRef>(() => readView(lobbyId, uiTheme) ?? 'atrium')
+  const seeIn = (ref: ThemeRef) => {
+    setViewRef(ref)
+    writeView(lobbyId, ref)
   }
+  // A theme picked: seen in, remembered as the last of its kind, and light or
+  // dark set to match it.
+  const pickTheme = (ref: ThemeRef) => {
+    seeIn(ref)
+    const mode = themeModeOf(ref, currentLobby?.themeSettings, customThemesNow())
+    rememberLast(mode, ref)
+    if (mode !== uiTheme) setUiTheme(mode)
+  }
+  // Light or dark pressed (after it has changed): the last theme of that kind.
+  const followSwitch = () => seeIn(lastThemeOf(uiTheme === 'light' ? 'dark' : 'light'))
   const viewTheme = useMemo(
-    () => (followTheme ? themeSeenIn(currentLobby?.themeSettings, uiTheme === 'light') : currentLobby?.themeSettings),
-    [followTheme, uiTheme, currentLobby?.themeSettings],
+    () => themeOf(viewRef, currentLobby?.themeSettings, customThemes) ?? currentLobby?.themeSettings,
+    [viewRef, currentLobby?.themeSettings, customThemes],
   )
   themeSettingsRef.current = viewTheme
 
@@ -2586,9 +2594,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (ensureLobbyHasSpace()) void placeFilesAsTraces(pictures, at.x, at.y)
       return true
     }
-    const words = data.getData('text/plain').trim().split(/\s+/).filter(Boolean)
-    const links = words.map(asPasteableUrl)
-    if (words.length === 0 || links.some(link => !link)) return false
+    const text = data.getData('text/plain').trim()
+    // A site's embed code: where its frames point (lib/embedUrl).
+    const framed = /<iframe\b/i.test(text) ? embedSourcesIn(text) : null
+    const words = text.split(/\s+/).filter(Boolean)
+    const links = framed ?? words.map(asPasteableUrl)
+    if (links.length === 0 || links.some(link => !link)) return false
     if (!ensureLobbyHasSpace()) return true
     if (links.length === 1) void insertDroppedTrace('embed', links[0]!, links[0]!, at.x, at.y)
     else void handleCreateBatchEmbeds(links as string[], at)
@@ -4418,7 +4429,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 </div>
               )}
             </div>
-            <ThemeToggle variant="atrium" onToggle={followMyTheme} />
+            <ThemeToggle variant="atrium" onToggle={followSwitch} />
           </>
         )}
 
@@ -4446,13 +4457,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {!uiHidden && (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
         <ViewBar items={[
-          { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => setShowLayerPanel(open => !open) },
-          { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => setShowLocationsPanel(open => !open) },
+          { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowLayerPanel(open => !open) } },
+          { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowLocationsPanel(open => !open) } },
           { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
           { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
           { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
-          ...(isLobbyOwner || isLobbyAdmin ? [{ id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, onSelect: () => setShowThemeCustomization(true) }] : []),
-          { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), apart: !(isLobbyOwner || isLobbyAdmin), onSelect: () => setShowProfileCustomization(true) },
+          // Docked where a trace's panel and the Layer panel are: it takes
+          // their place, and lets go of the selection.
+          { id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, open: showThemeCustomization, onSelect: () => {
+            if (showThemeCustomization) { setShowThemeCustomization(false); return }
+            closeSidePanels()
+            setSelectedTraceId(null)
+            setMultiSelectRequest([])
+            setShowThemeCustomization(true)
+          } },
+          { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), onSelect: () => setShowProfileCustomization(true) },
         ]} />
       </div>
       )}
@@ -5441,6 +5460,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {showThemeCustomization && currentLobby && (
         <ThemeCustomization
           lobby={currentLobby}
+          viewRef={viewRef}
+          onPick={pickTheme}
+          canSaveForAtrium={isLobbyOwner || isLobbyAdmin}
           onClose={() => setShowThemeCustomization(false)}
           onUpdate={async () => {
             // Reload lobby info to get updated theme

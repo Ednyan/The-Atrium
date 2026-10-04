@@ -1398,6 +1398,12 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
+  // A person's own atrium themes (lib/customThemes), as JSON.
+  try {
+    await db.execute("ALTER TABLE profiles ADD COLUMN custom_themes TEXT NOT NULL DEFAULT '[]'")
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Ensure layers.lobby_id exists (for DBs created before atriums were scoped
   // per-lobby — see the cross-atrium layer leakage fix)
@@ -2084,6 +2090,9 @@ function convertRowFromSql(table: string, row: any): any {
   if (table === 'lobbies' && out.theme_settings) {
     out.theme_settings = parseJsonField(out.theme_settings)
   }
+  if (table === 'profiles' && out.custom_themes) {
+    out.custom_themes = parseJsonField(out.custom_themes)
+  }
   if (table === 'lobbies') {
     out.admin_user_ids = out.admin_user_ids ? parseJsonField(out.admin_user_ids) : []
   }
@@ -2118,6 +2127,9 @@ function convertRowToSql(table: string, row: any): any {
   }
   if (table === 'lobbies' && out.theme_settings && typeof out.theme_settings !== 'string') {
     out.theme_settings = JSON.stringify(out.theme_settings)
+  }
+  if (table === 'profiles' && out.custom_themes && typeof out.custom_themes !== 'string') {
+    out.custom_themes = JSON.stringify(out.custom_themes)
   }
   if (table === 'lobbies' && out.admin_user_ids && typeof out.admin_user_ids !== 'string') {
     out.admin_user_ids = JSON.stringify(out.admin_user_ids)

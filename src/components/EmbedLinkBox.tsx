@@ -1,26 +1,13 @@
 // Where an embed's link is asked for: a small box at the spot it will go, as
 // Excalidraw asks for an embed's. One link, or many pasted at once -- every
-// link in what's written is found, and placed in the arrangement the person
+// link in what's written is found (or, given a site's embed code, where its
+// frames point: lib/embedUrl embedSourcesIn), and placed in the arrangement the person
 // has chosen for batches (LobbyScene's handleCreateBatchEmbeds). Enter
 // places them; Esc, or a press anywhere else, lets it go.
 
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-
-// Every web link in `text`: http(s) ones as they're written, and a bare
-// address (example.com/page) given its https. In the order they appear.
-export function linksIn(text: string): string[] {
-  const found: string[] = []
-  for (const word of text.split(/\s+/)) {
-    const candidate = /^https?:\/\//i.test(word) ? word : /^[\w-]+(\.[\w-]+)*\.[a-z]{2,}(\/\S*)?$/i.test(word) ? `https://${word}` : null
-    if (!candidate) continue
-    try {
-      const url = new URL(candidate)
-      if (url.protocol === 'http:' || url.protocol === 'https:') found.push(candidate)
-    } catch { /* not a link */ }
-  }
-  return found
-}
+import { embedSourcesIn } from '../lib/embedUrl'
 
 export default function EmbedLinkBox({ at, onEmbed, onCancel }: {
   // Where on the screen it opens: the point the embed will be centred on.
@@ -31,7 +18,7 @@ export default function EmbedLinkBox({ at, onEmbed, onCancel }: {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
-  const links = linksIn(text)
+  const links = embedSourcesIn(text)
 
   useEffect(() => {
     const press = (e: PointerEvent) => { if (!rootRef.current?.contains(e.target as Node)) onCancel() }

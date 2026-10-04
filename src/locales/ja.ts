@@ -589,8 +589,17 @@ const ja: Catalogue = {
   'atrium.profile.saving': '保存中…',
 
   // -------------------------------------------------------- atrium themes
-  'atrium.theme.title': 'テーマをカスタマイズ',
   'atrium.theme.presets': 'プリセット',
+  'atrium.theme.atriumOwn': 'このアトリウムのもの',
+  'atrium.theme.forYou': 'ここで選んだテーマは、あなたにだけこのアトリウムの見え方を変えます。',
+  'atrium.theme.yours': 'あなたのテーマ · {count}/{limit}',
+  'atrium.theme.newTheme': '表示中のテーマから新規作成',
+  'atrium.theme.customName': 'テーマ {n}',
+  'atrium.theme.makeYourOwn': 'テーマを変えるには自分のテーマにします。空き枠が表示中のテーマをコピーします。',
+  'atrium.theme.pickYours': '変更するには自分のテーマを選んでください。',
+  'atrium.theme.saveForAtrium': 'このアトリウムのテーマとして保存',
+  'atrium.theme.isAtriums': 'すでにこのアトリウムのテーマです',
+  'atrium.theme.yoursNotSaved': 'テーマを保存できませんでした',
   'atrium.theme.presetSepia': 'やわらかなセピア',
   'atrium.theme.presetSepiaDesc': 'あたたかく静かな、NieR 風の空気',
   'atrium.theme.presetAbyss': '深淵',
@@ -608,10 +617,8 @@ const ja: Catalogue = {
   'atrium.theme.enableParticles': '漂う粒子を出す',
   'atrium.theme.particleDensity': '粒子の密度：{value}x',
   'atrium.theme.particleDensityHint': '漂う粒子の数（0.1 = ごく少なめ、3.0 = 多め）',
-  'atrium.theme.saveTheme': 'テーマを保存',
   'atrium.theme.saving': '保存中…',
   'atrium.theme.saveFailed': '保存できませんでした',
-  'atrium.theme.saveError': 'テーマの保存中に予期しないエラーが起きました',
 
   // ----------------------------------------------------------- manage
   'atrium.manage.title': 'Atrium を管理',

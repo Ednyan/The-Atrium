@@ -27,6 +27,11 @@ const DRIVE_ID_PARAM = /drive\.google\.com\/(?:open|uc)\?(?:[^#]*&)?id=([\w-]+)/
 const DRIVE_FOLDER = /drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([\w-]+)/
 // Docs, Sheets and Slides share a shape but not an embed path.
 const GOOGLE_DOC = /docs\.google\.com\/(document|spreadsheets|presentation|forms)\/d\/(?:e\/)?([\w-]+)/
+// A SoundCloud page -- a track, a playlist (/sets/), a profile -- refuses to
+// be framed; SoundCloud's player takes the page's address and plays it. Its
+// player (w.soundcloud.com) is left alone.
+const SOUNDCLOUD = /^https?:\/\/(?:www\.|m\.|on\.)?soundcloud\.com\/[^\s]+/i
+const SOUNDCLOUD_LIST = /soundcloud\.com(?:\/|%2F)[^\s]*(?:\/|%2F)(?:sets|playlists)(?:\/|%2F)/i
 
 export function toEmbedUrl(rawUrl: string): string {
   const url = rawUrl.trim()
@@ -34,6 +39,8 @@ export function toEmbedUrl(rawUrl: string): string {
 
   const youtube = url.match(YOUTUBE)
   if (youtube) return `https://www.youtube.com/embed/${youtube[1]}`
+
+  if (SOUNDCLOUD.test(url)) return `https://w.soundcloud.com/player/?url=${encodeURIComponent(url.split(/[?#]/)[0])}`
 
   // Already an embeddable Google URL -- leave it alone rather than risk
   // rewriting a link the user deliberately crafted.
@@ -81,6 +88,10 @@ export function defaultEmbedBox(rawUrl: string): { width: number; height: number
   // overlays cover most of the picture and the controls are crowded out.
   if (/youtube\.com|youtu\.be/.test(url)) return { width: 560, height: 315 }
 
+  // SoundCloud's player as SoundCloud sizes it: a strip for a track, taller
+  // for a playlist's list.
+  if (/soundcloud\.com/.test(url)) return { width: 560, height: SOUNDCLOUD_LIST.test(url) ? 450 : 166 }
+
   // Slides keep the 16:9 default.
   if (/presentation/.test(url)) return null
 
@@ -126,4 +137,38 @@ export function throughRelay(embedUrl: string): string {
   } catch {
     return embedUrl
   }
+}
+
+// Every web link in `text`: http(s) ones as they're written, and a bare
+// address (example.com/page) given its https. In the order they appear.
+export function linksIn(text: string): string[] {
+  const found: string[] = []
+  for (const word of text.split(/\s+/)) {
+    const candidate = /^https?:\/\//i.test(word) ? word : /^[\w-]+(\.[\w-]+)*\.[a-z]{2,}(\/\S*)?$/i.test(word) ? `https://${word}` : null
+    if (!candidate) continue
+    try {
+      const url = new URL(candidate)
+      if (url.protocol === 'http:' || url.protocol === 'https:') found.push(candidate)
+    } catch { /* not a link */ }
+  }
+  return found
+}
+
+// What can be embedded from what someone pasted. A site's embed code
+// (SoundCloud's, YouTube's: <iframe src="..."></iframe>, often with credit
+// links after it) is read for where its frames point, and only that is kept
+// -- the code itself is never run, which is what would make it dangerous: a
+// frame's address goes into the atrium's own sandboxed frame like any link.
+// Anything else: every link in it (linksIn).
+export function embedSourcesIn(text: string): string[] {
+  if (!/<iframe\b/i.test(text)) return linksIn(text)
+  const sources: string[] = []
+  for (const match of text.matchAll(/<iframe\b[^>]*?\ssrc\s*=\s*(["'])(.*?)\1/gis)) {
+    const src = match[2].trim().replace(/&amp;/g, '&')
+    try {
+      const url = new URL(src.startsWith('//') ? `https:${src}` : src)
+      if (url.protocol === 'http:' || url.protocol === 'https:') sources.push(url.href)
+    } catch { /* not an address */ }
+  }
+  return sources
 }

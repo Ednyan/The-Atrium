@@ -1,388 +1,281 @@
-import { useState, useEffect } from 'react'
+// Atrium Themes: what you see the atrium in, and themes of your own.
+//
+// Docked on the right as the Customization panel is, over no backdrop, so the
+// atrium changes behind it as a theme is picked (lib/customThemes): the
+// atrium's own theme, a preset, or one of yours -- for you alone, and light or
+// dark set to match. Your own are made from whichever theme is showing, into
+// an empty slot (three on the web, twelve on the desktop), then named, marked
+// light or dark, and changed here; each change is kept with your account. An
+// owner or admin can save what's showing as the atrium's theme, for everyone.
+
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Lobby, ThemeSettings } from '../types/database'
-import { ATRIUM_THEMES } from '../lib/atriumThemePresets'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
+import { useGameStore } from '../store/gameStore'
+import { firstFreeName } from '../lib/traceNames'
+import { CUSTOM_THEME_LIMIT, PRESETS, modeOf, rememberLast, setCustomThemes, themeModeOf, themeOf, useCustomThemes, type CustomTheme, type ThemeMode, type ThemeRef } from '../lib/customThemes'
+import { useLandingTheme } from '../lib/useLandingTheme'
+import { CustomizationPanel, Section } from './Customization'
+import { MENU_ICONS, MenuIcon } from './AtriumMenu'
+import { Check, ColourField, Slider } from './ShapeStyleControls'
 
-interface ThemeCustomizationProps {
-  lobby: Lobby
-  onClose: () => void
-  onUpdate: () => void
+// What a theme has when it doesn't say: the room's defaults (LobbyScene).
+const DEFAULTS: ThemeSettings = {
+  gridColor: '#3b82f6', gridOpacity: 0.2, gridEnabled: true, gridLineSpacing: 50, backgroundColor: '#0a0a0f',
+  particlesEnabled: true, particleColor: '#ffffff', particleOpacity: 0.6, particleDensity: 1,
 }
 
-const THEME_PRESETS: Array<{ nameKey: string; descKey: string; values: ThemeSettings }> =
-  ATRIUM_THEMES as Array<{ nameKey: string; descKey: string; values: ThemeSettings }>
+const rgba = (hex: string | undefined, alpha: number) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex ?? '').trim())
+  if (!m) return `rgba(128, 128, 128, ${alpha})`
+  const n = parseInt(m[1], 16)
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
 
-export function ThemeCustomization({ lobby, onClose, onUpdate }: ThemeCustomizationProps) {
+// A theme as a tile: its floor ruled by its grid, its name, light or dark.
+function ThemeTile({ name, about, values, mode, selected, onPick, testId }: {
+  name: string
+  about?: string
+  values: ThemeSettings
+  mode: ThemeMode
+  selected: boolean
+  onPick: () => void
+  testId: string
+}) {
+  const v = { ...DEFAULTS, ...values }
+  const line = rgba(v.gridColor, Math.min(1, (v.gridEnabled ? v.gridOpacity ?? 0.2 : 0) * 2.5))
+  return (
+    <button
+      type="button"
+      data-theme-tile={testId}
+      aria-pressed={selected}
+      onClick={onPick}
+      title={about ? `${name} — ${about}` : name}
+      className={`text-left border transition-colors ${selected ? 'border-nier-bg ring-1 ring-nier-bg' : 'border-nier-border/30 hover:border-nier-border/70'}`}
+    >
+      <span
+        className="block h-11"
+        style={{
+          backgroundColor: v.backgroundColor,
+          backgroundImage: `linear-gradient(to right, ${line} 1px, transparent 1px), linear-gradient(to bottom, ${line} 1px, transparent 1px)`,
+          backgroundSize: '11px 11px',
+        }}
+      />
+      <span className="flex items-center gap-1.5 px-2 py-1.5 text-[10px] tracking-[0.12em] uppercase text-nier-bg/85">
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        <span className="shrink-0 text-nier-bg/60" aria-label={mode}><MenuIcon d={mode === 'light' ? MENU_ICONS.sun : MENU_ICONS.moon} size={12} /></span>
+      </span>
+    </button>
+  )
+}
+
+export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, onClose, onUpdate }: {
+  lobby: Lobby
+  // What you're seeing the atrium in, and how to see it in another.
+  viewRef: ThemeRef
+  onPick: (ref: ThemeRef) => void
+  // Owners and admins: what's showing can become the atrium's theme.
+  canSaveForAtrium: boolean
+  onClose: () => void
+  onUpdate: () => void
+}) {
   const { t } = useTranslation()
-  const [settings, setSettings] = useState<ThemeSettings>({
-    gridColor: '#3b82f6',
-    gridOpacity: 0.2,
-    gridEnabled: true,
-    backgroundColor: '#0a0a0f',
-    particlesEnabled: true,
-    particleColor: '#ffffff',
-    particleOpacity: 0.6,
-    particleDensity: 1.0,
-  })
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveSuccess, setSaveSuccess] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const { setTheme: setUiTheme } = useLandingTheme()
+  const userId = useGameStore(state => state.userId)
+  const customs = useCustomThemes()
+  const atrium = lobby.themeSettings ?? null
+  const shown: ThemeSettings = { ...DEFAULTS, ...(themeOf(viewRef, atrium, customs) ?? atrium ?? {}) }
+  const mine = viewRef.startsWith('custom:') ? customs.find(c => `custom:${c.id}` === viewRef) ?? null : null
+  const [status, setStatus] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadThemeSettings()
-  }, [lobby.id])
+  const keep = (next: CustomTheme[]) => {
+    if (userId) setCustomThemes(userId, next, () => setStatus(t('atrium.theme.yoursNotSaved')))
+  }
+  const change = (patch: Partial<CustomTheme>) => {
+    if (mine) keep(customs.map(c => (c.id === mine.id ? { ...c, ...patch } : c)))
+  }
+  const setValue = (patch: Partial<ThemeSettings>) => mine && change({ values: { ...mine.values, ...patch } })
 
-  const loadThemeSettings = async () => {
-    if (!supabase) return
-
-    const { data, error } = await (supabase
-      .from('lobbies')
-      .select('theme_settings')
-      .eq('id', lobby.id)
-      .single() as any)
-
-    if (!error && data?.theme_settings) {
-      setSettings(prev => ({ ...prev, ...data.theme_settings }))
+  // One of your own, from the theme that's showing.
+  const makeTheme = () => {
+    if (!userId || customs.length >= CUSTOM_THEME_LIMIT) return
+    const theme: CustomTheme = {
+      id: crypto.randomUUID(),
+      name: firstFreeName(customs.map(c => c.name), n => t('atrium.theme.customName', { n })),
+      mode: themeModeOf(viewRef, atrium, customs),
+      values: shown,
     }
+    keep([...customs, theme])
+    onPick(`custom:${theme.id}`)
+  }
+  const deleteTheme = () => {
+    if (!mine) return
+    keep(customs.filter(c => c.id !== mine.id))
+    onPick('atrium')
   }
 
-  const saveThemeSettings = async () => {
+  const saveForAtrium = async () => {
     if (!supabase) return
-    setIsSaving(true)
-    setSaveError(null)
-
-    try {
-      // Use .select().single() to verify the update actually persisted
-      const { data, error } = await ((supabase
-        .from('lobbies') as any)
-        .update({ theme_settings: settings })
-        .eq('id', lobby.id)
-        .select('theme_settings')
-        .single())
-
-      setIsSaving(false)
-
-      if (error) {
-        console.error('Failed to save theme settings:', error)
-        setSaveError(error.message || t('atrium.theme.saveFailed'))
-        return
-      }
-
-      if (!data) {
-        setSaveError(t('atrium.theme.saveDenied'))
-        return
-      }
-
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 2000)
-      onUpdate()
-    } catch (err: any) {
-      setIsSaving(false)
-      console.error('Error saving theme settings:', err)
-      setSaveError(err.message || t('atrium.theme.saveError'))
+    setStatus(t('atrium.theme.saving'))
+    const { data, error } = await ((supabase.from('lobbies') as any).update({ theme_settings: shown }).eq('id', lobby.id).select('theme_settings').single())
+    if (error || !data) {
+      setStatus(error ? (error.message || t('atrium.theme.saveFailed')) : t('atrium.theme.saveDenied'))
+      return
     }
-  }
-
-  const applyThemePreset = (presetValues: ThemeSettings) => {
-    setSettings(prev => ({ ...prev, ...presetValues }))
-  }
-
-  const isPresetActive = (presetValues: ThemeSettings) => {
-    return (
-      (presetValues.gridColor === undefined || settings.gridColor === presetValues.gridColor) &&
-      (presetValues.backgroundColor === undefined || settings.backgroundColor === presetValues.backgroundColor) &&
-      (presetValues.particleColor === undefined || settings.particleColor === presetValues.particleColor)
-    )
+    setStatus(t('atrium.theme.saved'))
+    window.setTimeout(() => setStatus(null), 2000)
+    onUpdate()
   }
 
   return (
-    <div
-      data-ui-element="true"
-      className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] p-4"
-      style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
-      onTouchMove={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-      onClick={onClose}
+    <CustomizationPanel
+      subtitle={t('atrium.hud.theme')}
+      onClose={onClose}
+      zIndex={9999}
+      actions={(canSaveForAtrium || status) && (
+        <div className="w-full flex items-center gap-2 px-1">
+          <span className="min-w-0 flex-1 truncate text-nier-bg/70 text-[10px] tracking-wider">{status}</span>
+          {canSaveForAtrium && (
+            <button
+              type="button"
+              data-save-for-atrium=""
+              onClick={() => { void saveForAtrium() }}
+              disabled={viewRef === 'atrium'}
+              title={viewRef === 'atrium' ? t('atrium.theme.isAtriums') : undefined}
+              className="shrink-0 px-3 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-40 disabled:cursor-default"
+            >
+              {t('atrium.theme.saveForAtrium')}
+            </button>
+          )}
+        </div>
+      )}
     >
-        {/* Corner brackets live on this outer, non-scrolling wrapper (capped
-            at max-h-[90vh]) so they stay pinned to the modal's actual
-            visible edges; content scrolls in the inner div below. They used
-            to sit inside the same overflow-y-auto element as the content, so
-            once enough theme options were added to make it scroll, bottom-0
-            anchored to the bottom of the full scrollable content instead of
-            the visible box. */}
-        <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] relative flex flex-col" onClick={(e) => e.stopPropagation()}>
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-6 h-6 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-6 h-6 border-r border-b border-nier-border/60" />
+      <Section id="presets" title={t('atrium.theme.presets')}>
+        <div className="grid grid-cols-2 gap-2">
+          <ThemeTile testId="atrium" name={t('atrium.theme.atriumOwn')} values={atrium ?? {}} mode={modeOf(atrium)} selected={viewRef === 'atrium'} onPick={() => onPick('atrium')} />
+          {PRESETS.map(preset => (
+            <ThemeTile
+              key={preset.ref}
+              testId={preset.ref}
+              name={t(preset.nameKey as TranslationKey)}
+              about={t(preset.descKey as TranslationKey)}
+              values={preset.values}
+              mode={modeOf(preset.values)}
+              selected={viewRef === preset.ref}
+              onPick={() => onPick(preset.ref)}
+            />
+          ))}
+        </div>
+        <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide">{t('atrium.theme.forYou')}</p>
+      </Section>
 
-        <div className="overflow-y-auto flex-1 min-h-0" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}>
-
-        {/* Header */}
-        <div className="sticky top-0 bg-nier-blackLight border-b border-nier-border/20 px-6 py-4 flex justify-between items-center z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h2 className="text-lg text-nier-strong tracking-[0.15em] uppercase">{t('atrium.theme.title')}</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-          >
-            ×
-          </button>
+      <Section id="mine" title={t('atrium.theme.yours', { count: customs.length, limit: CUSTOM_THEME_LIMIT })}>
+        <div className="grid grid-cols-3 gap-2">
+          {customs.map(theme => (
+            <ThemeTile
+              key={theme.id}
+              testId={`custom:${theme.id}`}
+              name={theme.name}
+              values={theme.values}
+              mode={theme.mode}
+              selected={viewRef === `custom:${theme.id}`}
+              onPick={() => onPick(`custom:${theme.id}`)}
+            />
+          ))}
+          {/* The slots not made yet: crossed out, and pressed, a theme
+              from the one showing. */}
+          {Array.from({ length: CUSTOM_THEME_LIMIT - customs.length }, (_, i) => (
+            <button
+              key={`empty-${i}`}
+              type="button"
+              data-theme-slot=""
+              onClick={makeTheme}
+              disabled={!userId}
+              title={t('atrium.theme.newTheme')}
+              aria-label={t('atrium.theme.newTheme')}
+              className="group relative h-[4.6rem] border border-dashed border-nier-border/40 hover:border-nier-border/80 transition-colors"
+            >
+              <svg className="absolute inset-0 w-full h-full text-nier-border/40 group-hover:opacity-0 transition-opacity" preserveAspectRatio="none" viewBox="0 0 100 100" aria-hidden="true">
+                <line x1="0" y1="100" x2="100" y2="0" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-nier-strong text-lg opacity-0 group-hover:opacity-100 transition-opacity">+</span>
+            </button>
+          ))}
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Theme Presets */}
-          <div className="space-y-3">
-            <div className="flex items-baseline gap-3 mb-3">
-              <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.presets')}</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {THEME_PRESETS.map((preset) => {
-                const active = isPresetActive(preset.values)
-                return (
-                  <button
-                    key={preset.nameKey}
-                    type="button"
-                    onClick={() => applyThemePreset(preset.values)}
-                    className={`text-left border px-3 py-2 transition-colors ${
-                      active
-                        ? 'border-nier-bg bg-nier-bg/15 text-nier-bg'
-                        : 'border-nier-border/30 bg-nier-black text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
-                    }`}
-                  >
-                    <div className="text-xs tracking-[0.13em] uppercase">{t(preset.nameKey as TranslationKey)}</div>
-                    <div className="text-xs tracking-wide opacity-75 mt-1">{t(preset.descKey as TranslationKey)}</div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Grid Settings */}
-          <div className="space-y-3">
-            <div className="flex items-baseline gap-3 mb-3">
-              <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.theGrid')}</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                (settings.gridEnabled ?? true) ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {(settings.gridEnabled ?? true) && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                id="gridEnabled"
-                checked={settings.gridEnabled ?? true}
-                onChange={(e) => setSettings({ ...settings, gridEnabled: e.target.checked })}
-                className="hidden"
-              />
-              <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                {t('atrium.theme.showGrid')}
-              </span>
-            </label>
-
-            <div className="space-y-2">
-              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.colour')}</label>
-              <div className="flex gap-2 items-center">
-                <input
-                  type="color"
-                  value={settings.gridColor || '#3b82f6'}
-                  onChange={(e) => setSettings({ ...settings, gridColor: e.target.value })}
-                  className="w-12 h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={settings.gridColor || '#3b82f6'}
-                  onChange={(e) => setSettings({ ...settings, gridColor: e.target.value })}
-                  className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide font-mono placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                  placeholder="#3b82f6"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                {t('atrium.theme.gridOpacity', { value: ((settings.gridOpacity ?? 0.2) * 100).toFixed(0) })}
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={settings.gridOpacity ?? 0.2}
-                onChange={(e) => setSettings({ ...settings, gridOpacity: parseFloat(e.target.value) })}
-                className="w-full accent-nier-bg"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                {t('atrium.theme.gridSize', { value: settings.gridLineSpacing ?? 50 })}
-              </label>
-              <input
-                type="range"
-                min="10"
-                max="200"
-                step="5"
-                value={settings.gridLineSpacing ?? 50}
-                onChange={(e) => setSettings({ ...settings, gridLineSpacing: parseInt(e.target.value) })}
-                className="w-full accent-nier-bg"
-              />
-              <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-                {t('atrium.theme.gridSizeHint')}
-              </p>
+        {mine ? (
+          <div className="space-y-3 pt-1">
+            <input
+              data-theme-name=""
+              value={mine.name}
+              onChange={e => change({ name: e.target.value.slice(0, 40) })}
+              aria-label={t('atrium.customize.sectionName')}
+              className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+            />
+            <div className="flex gap-2">
+              {(['light', 'dark'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  data-theme-mode={mode}
+                  aria-pressed={mine.mode === mode}
+                  // Marked light or dark: the interface goes with it, and it's
+                  // the last of its kind.
+                  onClick={() => { change({ mode }); rememberLast(mode, viewRef); setUiTheme(mode) }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 text-[10px] tracking-[0.12em] uppercase border transition-colors ${
+                    mine.mode === mode ? 'bg-nier-bg text-nier-black border-nier-bg' : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60'
+                  }`}
+                >
+                  <MenuIcon d={mode === 'light' ? MENU_ICONS.sun : MENU_ICONS.moon} size={13} />
+                  {mode === 'light' ? t('theme.light') : t('theme.dark')}
+                </button>
+              ))}
+              <button
+                type="button"
+                data-theme-delete=""
+                onClick={deleteTheme}
+                aria-label={t('common.delete')}
+                title={t('common.delete')}
+                className="px-2.5 border border-nier-border/30 hover:border-red-500/60 transition-colors"
+                style={{ color: 'rgb(var(--c-danger))' }}
+              >
+                <MenuIcon d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" size={14} />
+              </button>
             </div>
           </div>
+        ) : (
+          <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide">
+            {customs.length < CUSTOM_THEME_LIMIT ? t('atrium.theme.makeYourOwn') : t('atrium.theme.pickYours')}
+          </p>
+        )}
+      </Section>
 
-          {/* Colour */}
-          <div className="space-y-3">
-            <div className="flex items-baseline gap-3 mb-3">
-              <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.theme.theRoom')}</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-            
-            <div className="space-y-2">
-              <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.colour')}</label>
-              <div className="flex gap-2 items-center">
-                <input
-                  type="color"
-                  value={settings.backgroundColor || '#0a0a0f'}
-                  onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
-                  className="w-12 h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={settings.backgroundColor || '#0a0a0f'}
-                  onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
-                  className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide font-mono placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                  placeholder="#0a0a0f"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Drifting particles */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.driftingParticles')}</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-            
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                (settings.particlesEnabled ?? true) ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-              }`}>
-                {(settings.particlesEnabled ?? true) && <span className="text-nier-bg text-xs">✓</span>}
-              </div>
-              <input
-                type="checkbox"
-                id="particlesEnabled"
-                checked={settings.particlesEnabled ?? true}
-                onChange={(e) => setSettings({ ...settings, particlesEnabled: e.target.checked })}
-                className="hidden"
-              />
-              <span className="text-nier-strong text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                {t('atrium.theme.enableParticles')}
-              </span>
-            </label>
-
-            {settings.particlesEnabled && (
-              <div className="space-y-3 ml-1">
-                <div className="space-y-2">
-                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.theme.colour')}</label>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="color"
-                      value={settings.particleColor || '#ffffff'}
-                      onChange={(e) => setSettings({ ...settings, particleColor: e.target.value })}
-                      className="w-12 h-8 border border-nier-border/30 bg-nier-black cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={settings.particleColor || '#ffffff'}
-                      onChange={(e) => setSettings({ ...settings, particleColor: e.target.value })}
-                      className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide font-mono placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                      placeholder="#ffffff"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                    {t('atrium.theme.particleOpacity', { value: ((settings.particleOpacity ?? 0.6) * 100).toFixed(0) })}
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={settings.particleOpacity ?? 0.6}
-                    onChange={(e) => setSettings({ ...settings, particleOpacity: parseFloat(e.target.value) })}
-                    className="w-full accent-nier-bg"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="block text-nier-strong text-xs tracking-[0.15em] uppercase">
-                    {t('atrium.theme.particleDensity', { value: (settings.particleDensity ?? 1.0).toFixed(1) })}
-                  </label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="3.0"
-                    step="0.1"
-                    value={settings.particleDensity ?? 1.0}
-                    onChange={(e) => setSettings({ ...settings, particleDensity: parseFloat(e.target.value) })}
-                    className="w-full accent-nier-bg"
-                  />
-                  <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">{t('atrium.theme.particleDensityHint')}</p>
-                </div>
-              </div>
+      {/* One of yours is changed here, and kept as it changes. */}
+      {mine && (
+        <>
+          <Section id="grid" title={t('atrium.theme.theGrid')}>
+            <Check checked={shown.gridEnabled ?? true} label={t('atrium.theme.showGrid')} onChange={on => setValue({ gridEnabled: on })} />
+            <ColourField label={t('atrium.theme.colour')} value={shown.gridColor!} onChange={c => setValue({ gridColor: c })} />
+            <Slider label={t('atrium.theme.gridOpacity', { value: Math.round((shown.gridOpacity ?? 0.2) * 100) })} min={0} max={1} step={0.05} value={shown.gridOpacity ?? 0.2} onChange={v => setValue({ gridOpacity: v })} />
+            <Slider label={t('atrium.theme.gridSize', { value: shown.gridLineSpacing ?? 50 })} hint={t('atrium.theme.gridSizeHint')} min={10} max={200} step={5} value={shown.gridLineSpacing ?? 50} onChange={v => setValue({ gridLineSpacing: v })} />
+          </Section>
+          <Section id="room" title={t('atrium.theme.theRoom')}>
+            <ColourField label={t('atrium.theme.colour')} value={shown.backgroundColor!} onChange={c => setValue({ backgroundColor: c })} />
+          </Section>
+          <Section id="particles" title={t('atrium.theme.driftingParticles')}>
+            <Check checked={shown.particlesEnabled ?? true} label={t('atrium.theme.enableParticles')} onChange={on => setValue({ particlesEnabled: on })} />
+            {shown.particlesEnabled && (
+              <>
+                <ColourField label={t('atrium.theme.colour')} value={shown.particleColor!} onChange={c => setValue({ particleColor: c })} />
+                <Slider label={t('atrium.theme.particleOpacity', { value: Math.round((shown.particleOpacity ?? 0.6) * 100) })} min={0} max={1} step={0.05} value={shown.particleOpacity ?? 0.6} onChange={v => setValue({ particleOpacity: v })} />
+                <Slider label={t('atrium.theme.particleDensity', { value: (shown.particleDensity ?? 1).toFixed(1) })} hint={t('atrium.theme.particleDensityHint')} min={0.1} max={3} step={0.1} value={shown.particleDensity ?? 1} onChange={v => setValue({ particleDensity: v })} />
+              </>
             )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-nier-blackLight border-t border-nier-border/20 px-6 py-4 flex justify-end gap-3 items-center z-10">
-          {saveError && (
-            <span className="text-nier-bg/80 text-xs font-mono tracking-wider mr-auto border border-nier-red/40 bg-nier-red/10 px-3 py-1">
-              ✕ {saveError}
-            </span>
-          )}
-          {saveSuccess && !saveError && (
-            <span className="text-nier-bg text-xs font-mono tracking-wider mr-auto">
-              ✓ {t('atrium.theme.saved')}
-            </span>
-          )}
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={saveThemeSettings}
-            disabled={isSaving}
-            className="px-6 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSaving ? t('atrium.theme.saving') : t('atrium.theme.saveTheme')}
-          </button>
-        </div>
-        </div>
-      </div>
-    </div>
+          </Section>
+        </>
+      )}
+    </CustomizationPanel>
   )
 }
