@@ -54,6 +54,7 @@ import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import StrokeStyleField from './StrokeStyleField'
 import StrokeCanvas from './StrokeCanvas'
+import TraceGlitch from './TraceGlitch'
 import { insertTrace } from '../lib/traceWrites'
 import { cropClip, flipInBox } from '../lib/traceFlip'
 import { WHOLE, boxFromWindow, cropOf, cropShift, dragCrop, turn, type Crop } from '../lib/traceCrop'
@@ -1343,6 +1344,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set()) // Track traces with failed image loads
   const [imageRetryCount, setImageRetryCount] = useState<Record<string, number>>({}) // Track retry attempts per trace
   const processedImageIds = React.useRef<Set<string>>(new Set()) // Track which images have been preflight-tested
+  // Sounds and videos that wouldn't load (TraceGlitch shows it).
+  const [failedMedia, setFailedMedia] = useState<Set<string>>(new Set())
   const [confirmedImageIds, setConfirmedImageIds] = useState<Set<string>>(new Set()) // Track embeds confirmed to be actual images (even without file extension)
   const [pathCreationMode, setPathCreationMode] = useState(false) // Track if we're in path creation mode
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null) // Track selected point for control handle editing
@@ -1601,6 +1604,35 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       setInlineEditText('')
     }
   }, [selectedTraceId, inlineEditingTraceId])
+
+  // What was found out about a trace's file -- it failed, it's a picture
+  // after all, it needed the proxy, how big it is -- is about that file, not
+  // the trace: its address changed (an embed's, in its panel), it's found
+  // out again. Kept by the trace, it outlived the address: an embed that had
+  // been a picture that failed stayed a broken link card whatever was put in.
+  const mediaSeenRef = useRef(new Map<string, string>())
+  useEffect(() => {
+    const changed: string[] = []
+    for (const trace of traces) {
+      const url = trace.mediaUrl || trace.imageUrl || ''
+      const was = mediaSeenRef.current.get(trace.id)
+      if (was !== undefined && was !== url) changed.push(trace.id)
+      mediaSeenRef.current.set(trace.id, url)
+    }
+    if (changed.length === 0) return
+    const without = <T,>(prev: Record<string, T>) => {
+      const next = { ...prev }
+      for (const id of changed) delete next[id]
+      return next
+    }
+    const withoutIds = (prev: Set<string>) => new Set([...prev].filter(id => !changed.includes(id)))
+    setFailedImages(withoutIds)
+    setFailedMedia(withoutIds)
+    setConfirmedImageIds(withoutIds)
+    setImageProxySources(without)
+    setImageRetryCount(without)
+    setImageDimensions(without)
+  }, [traces])
 
   // Proactively test image URLs and use proxy for blocked ones
   // Uses a ref to track processed IDs so each image is only tested once,
@@ -5798,7 +5830,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       zoom, worldOffset, atriumBackground, canEdit, language, showTraceTypeLabels, traceFloat,
       // This trace.
       zOf(trace), localTraceTransforms[id], imageDimensions[id], imageProxySources[id], imageRetryCount[id],
-      failedImages.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
+      failedImages.has(id), failedMedia.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
       playingMedia.has(id), movingIds.has(id), glidingIds.has(id),
       // The selected trace's frame, and crop mode, which only it shows.
       selected, multiSelectedIds.has(id), inWholeGroup.has(id), selected ? selectedPointIndex : null, selected && isCropMode, !!hiddenTraceIds?.has(id),
@@ -5835,13 +5867,19 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const displayTrace = (editingTrace && editingTrace.id === trace.id) ? editingTrace : trace
 const transform = getTraceTransform(trace)
 // A kept drawing is painted from what it keeps instead of shown from its
-// picture file (StrokeCanvas) when the file isn't up to it: seen closer than
-// it was painted, not made yet since the drawing last changed, or not there.
+// picture file (StrokeCanvas) when the file isn't up to it: seen at more than
+// twice the density it was painted at, not made yet since the drawing last
+// changed, or not there. Twice, not at all: the density needed rounds up to a
+// power of two, so on a screen of 1.5 pixels a point every older stroke was
+// "too coarse" at any ordinary zoom -- and hundreds of canvases, one a stroke,
+// cost the browser far more to move about than the same strokes as pictures
+// (measured: 40 ms a frame against 13). Stretched up to twice, a stroke is a
+// little soft; closer than that, there are few strokes on screen to paint.
 const keptStroke = trace.type === 'image' && trace.width && trace.height ? trace.strokeData : null
 const strokePaintDensity = keptStroke
   ? strokeDensity(zoom * Math.max(Math.abs(transform.scaleX ?? 1), Math.abs(transform.scaleY ?? 1)) * (window.devicePixelRatio || 1), trace.width!, trace.height!)
   : 0
-const paintStroke = !!keptStroke && (strokePaintDensity > keptStroke.ppw || keptStroke.rev !== keptStroke.fileRev
+const paintStroke = !!keptStroke && (strokePaintDensity > keptStroke.ppw * 2 || keptStroke.rev !== keptStroke.fileRev
   || failedImages.has(trace.id) || !!imageProxySources[trace.id]?.startsWith('local://'))
 let { screenX, screenY } = getScreenPosition(transform.x, transform.y)
 // Same staleness problem as the viewport-culling filter above: a
@@ -6393,7 +6431,14 @@ return (
       {/* A drawing stroke seen closer than its picture was drawn: painted
           from what's kept of it instead, sharp (StrokeCanvas). */}
       {paintStroke && keptStroke && (
-        <StrokeCanvas data={keptStroke} width={trace.width!} height={trace.height!} density={strokePaintDensity} style={{ clipPath: cropClip(shownCrop) }} />
+        (() => {
+          // Its file, as the picture below would show it, standing in while
+          // the first painting is made -- none from a vault file not read.
+          const raw = trace.mediaUrl || trace.imageUrl || ''
+          const resolved = imageProxySources[trace.id]
+          const standIn = raw && !failedImages.has(trace.id) && (!raw.startsWith('local://') || (resolved && !resolved.startsWith('local://'))) ? resolved || raw : undefined
+          return <StrokeCanvas data={keptStroke} width={trace.width!} height={trace.height!} density={strokePaintDensity} standIn={standIn} style={{ clipPath: cropClip(shownCrop) }} />
+        })()
       )}
 
       {/* Image Content */}
@@ -6410,7 +6455,7 @@ return (
           // it never travelled with. Said plainly rather than left as a
           // broken image, since the trace keeps its place and the user
           // needs to know why it's empty.
-          if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
+          if (isLocal && resolvedSrc.startsWith('local://')) return <TraceGlitch reason={t('atrium.controls.missingFile')} />
           return (
         <img
           src={resolvedSrc || rawUrl}
@@ -6461,14 +6506,7 @@ return (
       
       {/* Image placeholder - shown when no URL or when image failed to load */}
       {!paintStroke && trace.type === 'image' && (!trace.mediaUrl && !trace.imageUrl || failedImages.has(trace.id)) && (
-        <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none">
-          <span className="text-4xl mb-2">🖼️</span>
-          {showDescription && trace.content && (
-            <p className="text-xs text-nier-strong/60 text-center">
-              {trace.content}
-            </p>
-          )}
-        </div>
+        <TraceGlitch reason={t('atrium.error.imageFailed')} />
       )}
 
       {/* Video Content */}
@@ -6531,12 +6569,19 @@ return (
             // automatic retry, so one bad moment -- an import holding
             // the thread, say -- left the trace unplayable for the
             // rest of the visit. One retry, once, per trace.
-            if (videoRetriedRef.current.has(trace.id)) return
+            if (videoRetriedRef.current.has(trace.id)) {
+              setFailedMedia(prev => new Set(prev).add(trace.id))
+              return
+            }
             videoRetriedRef.current.add(trace.id)
             const el = e.currentTarget
             window.setTimeout(() => { try { el.load() } catch { /* gone */ } }, 500)
           }}
         />
+      )}
+
+      {(trace.type === 'video' || trace.type === 'audio') && failedMedia.has(trace.id) && (
+        <TraceGlitch reason={t('atrium.error.mediaFailed')} />
       )}
 
       {/* Still being copied into the vault. Says so, rather than
@@ -6644,6 +6689,7 @@ return (
             ? localMediaUrls[trace.id]
             : (localMediaUrls[trace.id] || trace.mediaUrl)}
             className="hidden"
+            onError={() => setFailedMedia(prev => new Set(prev).add(trace.id))}
             onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
             onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
             onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
@@ -6704,11 +6750,13 @@ return (
               className="w-full h-full object-contain pointer-events-none select-none"
             />
           ) : (
+            documentError[trace.id] ? <TraceGlitch reason={documentError[trace.id]} /> : (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-black/40 text-[10px] tracking-wider uppercase">
-                {documentError[trace.id] ?? t('atrium.controls.rendering')}
+                {t('atrium.controls.rendering')}
               </span>
             </div>
+            )
           )}
 
           {/* Page controls. Shown for everyone, not only editors --
@@ -6793,7 +6841,7 @@ return (
           if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
           // Still local:// after resolving means the file is gone --
           // see the image branch above.
-          if (isLocal && resolvedSrc.startsWith('local://')) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('atrium.controls.missingFile')}</span></div>
+          if (isLocal && resolvedSrc.startsWith('local://')) return <TraceGlitch reason={t('atrium.controls.missingFile')} />
           // Render as image, not iframe
           return (
             <img
@@ -6851,30 +6899,18 @@ return (
             hostname = ''
           }
           return (
-            <a
-              href={clickThroughUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center justify-center h-full w-full gap-2 px-3 select-none pointer-events-auto bg-nier-black/40 hover:bg-nier-black/60 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              title={clickThroughUrl}
-            >
-              {hostname && (
-                <img
-                  src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(hostname)}`}
-                  alt=""
-                  className="w-8 h-8 opacity-80"
-                  draggable={false}
-                />
-              )}
-              <p className="text-nier-strong/80 text-xs text-center line-clamp-2">
-                {trace.content || t('atrium.controls.viewSource')}
-              </p>
-              {hostname && (
-                <p className="text-nier-strong/70 text-[9px] tracking-wider uppercase">{hostname}</p>
-              )}
-            </a>
+            <TraceGlitch reason={t('atrium.error.imageFailed')}>
+              <a
+                href={clickThroughUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={clickThroughUrl}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {hostname ? `${t('atrium.error.openSource')} · ${hostname}` : t('atrium.error.openSource')} ↗
+              </a>
+            </TraceGlitch>
           )
         }
         
@@ -6882,9 +6918,7 @@ return (
         const embedUrl = extractEmbedUrl(trace.mediaUrl)
         if (!embedUrl) {
           return (
-            <div className="w-full h-full flex items-center justify-center bg-black/50">
-              <p className="text-nier-strong/60 text-sm">{t('atrium.customize.invalidEmbed')}</p>
-            </div>
+            <TraceGlitch reason={t('atrium.customize.invalidEmbed')} />
           )
         }
         return (

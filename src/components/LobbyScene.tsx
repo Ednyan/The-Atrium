@@ -1271,6 +1271,36 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
   const togglePanToolRef = useRef(togglePanTool)
   togglePanToolRef.current = togglePanTool
+  // The readout's Move the view, held: the pointer locked away (hidden, and
+  // not stopped by the screen's edge), each movement of the mouse moving the
+  // view -- the atrium follows the mouse, as when dragged -- until it's let
+  // go. Without a lock (refused), the press is held all the same.
+  const [holdPanning, setHoldPanning] = useState(false)
+  const holdToPan = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const button = event.currentTarget
+    button.setPointerCapture(event.pointerId)
+    try { void (button.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}) } catch { /* held without a lock */ }
+    cameraFlyToRef.current = null
+    setHoldPanning(true)
+    const move = (e: PointerEvent) => {
+      cameraPositionRef.current.x -= e.movementX / zoomRef.current
+      cameraPositionRef.current.y -= e.movementY / zoomRef.current
+    }
+    const end = () => {
+      button.removeEventListener('pointermove', move)
+      button.removeEventListener('pointerup', end)
+      button.removeEventListener('pointercancel', end)
+      button.removeEventListener('lostpointercapture', end)
+      if (document.pointerLockElement === button) document.exitPointerLock()
+      setHoldPanning(false)
+    }
+    button.addEventListener('pointermove', move)
+    button.addEventListener('pointerup', end)
+    button.addEventListener('pointercancel', end)
+    button.addEventListener('lostpointercapture', end)
+  }
   // The key handler is registered once; these change every render.
   const drawingKeysRef = useRef({ toggleDrawing, leaveDrawing, stepHistory })
   drawingKeysRef.current = { toggleDrawing, leaveDrawing, stepHistory }
@@ -2086,6 +2116,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const quickAction = (action: QuickAction) => {
     if (!canEdit) return
+    // Move the view: taken up and put down, as H does.
+    if (action === 'pan') {
+      setToolSwitch(n => n + 1)
+      togglePanTool()
+      return
+    }
     // The bar always wins: a tool picked here ends whatever tool or mode was
     // under way -- drawing, and, in TraceOverlay, a path's points, crop mode,
     // a connection (toolSwitch).
@@ -4267,7 +4303,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             directSelect={directSelect}
             frameRequest={frameRequest}
             isDrawingMode={isDrawingMode}
-            hideCursor={(isDrawingMode && pointerOnDrawingCanvas) || (laserActive && pointerOnLaser)}
+            hideCursor={(isDrawingMode && pointerOnDrawingCanvas) || (laserActive && pointerOnLaser) || holdPanning}
             placing={!!placeTool}
             panning={panTool}
             onEditDrawing={traceId => void startDrawing(traceId)}
@@ -4685,6 +4721,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             the menu and the readout leave -- in more columns, when that is
             short. None, for an atrium that can only be looked at. */}
         {canEdit && <QuickBar
+          panning={panTool}
           armed={placeTool}
           drawing={isDrawingMode}
           laser={laserActive}
@@ -4708,8 +4745,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             targetZoomRef.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next))
           }}
           onZoomReset={() => { cameraFlyToRef.current = null; targetZoomRef.current = 1 }}
-          panning={panTool}
-          onPanning={togglePanTool}
+          holding={holdPanning}
+          onHold={holdToPan}
         />
       </div>
 
@@ -4745,7 +4782,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                 {t('atrium.hud.tracesSelected', { count: multiSelectedTraceIds.length })}
               </p>
             )}
-        <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} />
+        <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} panning={panTool} />
       </div>
 
       {/* The shape tool in hand's Customization panel: how what it makes

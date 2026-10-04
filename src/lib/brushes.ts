@@ -840,6 +840,10 @@ export function paintStrokeData(ctx: CanvasRenderingContext2D, data: StrokeData,
   for (const op of data.ops) paintInto(ctx, op, 0, 0, ppw)
 }
 
+// One of a drawing's strokes (or erasers), as paintStrokeData paints each:
+// for painting it a few at a time (StrokeCanvas).
+export const paintStrokeOp = (ctx: CanvasRenderingContext2D, op: Stroke, ppw: number) => paintInto(ctx, op, 0, 0, ppw)
+
 export function renderStrokeData(data: StrokeData, width: number, height: number, ppw = data.ppw): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width * ppw))

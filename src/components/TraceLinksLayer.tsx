@@ -230,10 +230,15 @@ export default function TraceLinksLayer({
           <svg key={link.id} style={{ ...SHEET, zIndex: Math.min(a.z, b.z) - 2 }}>
             {isSelected && <path ref={part(link.id, 'glow')} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
             {/* Line and heads at the thread's one opacity -- as set, selected
-                or not: a selection shows in its glow and weight. */}
-            <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeOpacity={link.opacity} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
-            {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} fillOpacity={link.opacity} />}
-            {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} fillOpacity={link.opacity} />}
+                or not: a selection shows in its glow and weight. On the
+                group, not each: drawn apart, the head over the line's end
+                showed darker where the two overlapped. Together they're
+                made whole, then seen through, as a path is. */}
+            <g opacity={link.opacity}>
+              <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
+              {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} />}
+              {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} />}
+            </g>
             {/* Wider than it looks, and invisible, so a thin thread can still
                 be hovered and clicked. Where a trace above covers it, the
                 trace gets the click. */}

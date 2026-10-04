@@ -3,6 +3,7 @@
 // place in the world, at the foot of the left edge. (Your own name is shown
 // nowhere: you know it.)
 
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
 import { MenuIcon } from './AtriumMenu'
@@ -21,7 +22,9 @@ export function AtriumName({ name }: { name: string }) {
 
 // The zoom and the pointer's place, with what changes the view by hand: out
 // and in either side of the zoom (pressed, the zoom itself goes back to 100%),
-// and Move the view, which pans with a drag and does nothing else (H). A component
+// and Move the view held: while it's pressed the pointer is gone and moving
+// the mouse moves the view; let go, all is as it was. (The quick bar's Move,
+// H, is the same as a tool that stays in hand.) A component
 // of its own, subscribed on its own: the place changes with every movement of
 // the mouse, and nothing else on screen needs drawing again for it.
 // Arrows four ways (after Tabler's arrows-move, MIT): the button, and the
@@ -29,12 +32,12 @@ export function AtriumName({ name }: { name: string }) {
 export const PAN_ICON = 'M18 9l3 3l-3 3M15 12h6M6 9l-3 3l3 3M3 12h6M9 18l3 3l3 -3M12 15v6M15 6l-3 -3l-3 3M12 3v6'
 const STEP = 'w-6 h-6 flex items-center justify-center border border-transparent text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-strong transition-colors'
 
-export function ViewReadout({ zoom, onZoom, onZoomReset, panning, onPanning }: {
+export function ViewReadout({ zoom, onZoom, onZoomReset, holding, onHold }: {
   zoom: number
   onZoom: (direction: 1 | -1) => void
   onZoomReset: () => void
-  panning: boolean
-  onPanning: () => void
+  holding: boolean
+  onHold: (event: ReactPointerEvent<HTMLButtonElement>) => void
 }) {
   const { t } = useTranslation()
   const position = useGameStore(state => state.position)
@@ -65,12 +68,12 @@ export function ViewReadout({ zoom, onZoom, onZoomReset, panning, onPanning }: {
       <span className="w-px self-stretch my-2 bg-nier-border/30" />
       <button
         type="button"
-        data-pan-tool=""
-        onClick={onPanning}
-        aria-pressed={panning}
-        aria-label={t('atrium.hud.panTool')}
-        title={`${t('atrium.hud.panTool')} (H)`}
-        className={panning ? 'w-6 h-6 flex items-center justify-center border bg-nier-bg text-nier-black border-nier-bg' : STEP}
+        data-pan-hold=""
+        onPointerDown={onHold}
+        aria-pressed={holding}
+        aria-label={t('atrium.hud.panHold')}
+        title={t('atrium.hud.panHold')}
+        className={holding ? 'w-6 h-6 flex items-center justify-center border bg-nier-bg text-nier-black border-nier-bg' : STEP}
       >
         <MenuIcon d={PAN_ICON} size={15} />
       </button>

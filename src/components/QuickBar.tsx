@@ -37,6 +37,7 @@
 //     no border, background or shadow, just the words (LobbyScene colours
 //     them to stand out from the atrium's background).
 
+import { PAN_ICON } from './AtriumInfo'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useHistoryReach } from '../lib/actionHistory'
 import { BOX_SHAPES, isBoxShape, type BoxShape } from '../lib/shapeStyle'
@@ -50,13 +51,15 @@ export type PlaceTool = 'text' | BoxShape | 'path' | 'frame' | 'embed'
 export type OtherTrace = 'sound' | 'video' | 'document' | 'sheet'
 const OTHER_TRACES: OtherTrace[] = ['sound', 'video', 'document', 'sheet']
 // What the bar does: take a tool up, or act.
-export type QuickAction = 'select' | PlaceTool | 'draw' | 'image' | 'laser' | 'pinterest' | OtherTrace
+export type QuickAction = 'select' | 'pan' | PlaceTool | 'draw' | 'image' | 'laser' | 'pinterest' | OtherTrace
 // What the bar shows: a button each. Shapes and Other each hold several.
-export type QuickButton = 'select' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest'
+export type QuickButton = 'select' | 'pan' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest'
 
 // Drawn in a 24 box, stroked in the current colour.
 const ICONS: Record<QuickAction | 'other', ReactNode> = {
   select: <path d="M6 3.5 L18 12 L12.6 13.1 L15.4 19.2 L13.2 20.2 L10.4 14.2 L6 17.6 Z" strokeLinejoin="round" />,
+  // Move the view: four arrows (AtriumInfo's PAN_ICON).
+  pan: <path d={PAN_ICON} strokeLinecap="round" strokeLinejoin="round" />,
   text: <path d="M5 6 V4.5 H19 V6 M12 4.5 V19.5 M9 19.5 H15" strokeLinecap="round" strokeLinejoin="round" />,
   rectangle: <rect x="4.5" y="5.5" width="15" height="13" />,
   triangle: <path d="M12 4.5 L20 19 H4 Z" strokeLinejoin="round" />,
@@ -139,7 +142,10 @@ const BOX_TEXT_ICON = (
 
 // In the order shown; the first eight have number keys. (Locations, a way of
 // looking rather than making, is with the viewing tools on the right.)
+// The numbered tools, 1 to 9 in this order. Move sits after Select on the
+// bar with H for its key, so the numbers stayed where hands know them.
 export const QUICK_ORDER: QuickButton[] = ['select', 'text', 'shape', 'path', 'draw', 'image', 'embed', 'frame', 'other', 'laser', 'pinterest']
+const ON_THE_BAR: QuickButton[] = ['select', 'pan', ...QUICK_ORDER.slice(1)]
 
 const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
   none: 'atrium.tools.effectNone',
@@ -192,10 +198,12 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings }: {
+export default function QuickBar({ armed, drawing, laser, panning, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
+  // Move the view taken up (LobbyScene).
+  panning: boolean
   laserSettings: LaserSettings
   kinds: ToolKinds
   onAction: (action: QuickAction) => void
@@ -206,7 +214,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   onLaserSettings: (settings: LaserSettings) => void
 }) {
   const { t } = useTranslation()
-  const tools = QUICK_ORDER
+  const tools = ON_THE_BAR
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
   const [flyout, setFlyout] = useState<FlyoutTool | null>(null)
@@ -267,6 +275,7 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
   const kindOf = (tool: KindedTool) => KIND[tool][kinds[tool] ? 1 : 0]
   const label: Record<QuickButton | QuickAction, string> = {
     select: kindOf('select').name,
+    pan: t('atrium.hud.panTool'),
     text: kindOf('text').name,
     shape: t(`atrium.trace.shape.${shapeKind}` as const),
     rectangle: t('atrium.trace.shape.rectangle'),
@@ -300,13 +309,15 @@ export default function QuickBar({ armed, drawing, laser, laserSettings, kinds, 
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)', gridTemplateRows: `repeat(${rows}, 2.25rem)` }}
     >
       {tools.map((action, i) => {
-        const on = action === 'select' ? !armed && !drawing && !laser
+        const on = action === 'select' ? !armed && !drawing && !laser && !panning
+          : action === 'pan' ? panning
           : action === 'shape' ? isBoxShape(armed)
           : action === 'other' ? false
           : action === 'draw' ? drawing
           : action === 'laser' ? laser
           : armed === action
-        const key = action === 'other' ? null : i < 9 ? String(i + 1) : action === 'laser' ? 'K' : null
+        const number = QUICK_ORDER.indexOf(action)
+        const key = action === 'other' ? null : action === 'pan' ? 'H' : number >= 0 && number < 9 ? String(number + 1) : action === 'laser' ? 'K' : null
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {
@@ -523,9 +534,10 @@ function ToolName({ name, keyName }: { name: string; keyName: string | null }) {
 
 // What the tool in hand does with the canvas, at the foot of the screen in
 // the middle (LobbyScene) while it's in hand.
-export function ToolHint({ armed, laser, drawing }: { armed: PlaceTool | null; laser: boolean; drawing: boolean }) {
+export function ToolHint({ armed, laser, drawing, panning }: { armed: PlaceTool | null; laser: boolean; drawing: boolean; panning: boolean }) {
   const { t } = useTranslation()
   const text = drawing ? t('atrium.draw.hint')
+    : panning ? t('atrium.tools.hintPan')
     : laser ? t('atrium.tools.hintLaser')
     : armed === 'embed' ? t('atrium.tools.hintEmbed')
     : armed === 'text' ? t('atrium.tools.hintText')
