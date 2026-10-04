@@ -49,6 +49,12 @@ function readStored(): ResolvedTheme | null {
   }
 }
 
+/** Set from outside a component: the code history, framed over the landing
+    page, switched it (lib/codeHistory). */
+export function setLandingTheme(next: ResolvedTheme) {
+  setStored(next)
+}
+
 /** The theme in force, for code that needs it once rather than continuously. */
 export function resolveThemeNow(): ResolvedTheme {
   return current ?? readStored() ?? 'dark'

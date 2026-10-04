@@ -1,3 +1,4 @@
+import { ATRIUM_FILE_TYPE } from '../lib/atriumFile'
 import { useState, useEffect } from 'react'
 import { localClient, resolveLocalUrl } from '../lib/localDb'
 import { useTranslation } from '../lib/i18n'
@@ -135,7 +136,7 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       const sizeMB = (new Blob([jsonString]).size / (1024 * 1024)).toFixed(1)
 
       setProgress(t('desktop.export.saving', { size: sizeMB }))
-      const saved = await saveFile(new Blob([jsonString], { type: 'application/json' }), `${fileNameOf(lobby.name)}.atrium`, { name: 'Atrium', extensions: ['atrium', 'json'] })
+      const saved = await saveFile(new Blob([jsonString], { type: ATRIUM_FILE_TYPE }), `${fileNameOf(lobby.name)}.atrium`, { name: 'Atrium', extensions: ['atrium'] })
       if (!saved) {
         setStatus('select')
         setProgress('')

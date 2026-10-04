@@ -43,6 +43,8 @@ interface GameState {
   showTraceIndicators: boolean
   showTraceTypeLabels: boolean
   hideOwnNameTag: boolean
+  // A trace clicked opens its Customization panel (User Preferences).
+  autoOpenCustomization: boolean
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
@@ -76,6 +78,7 @@ interface GameState {
   setShowTraceIndicators: (show: boolean) => void
   setShowTraceTypeLabels: (show: boolean) => void
   setHideOwnNameTag: (hide: boolean) => void
+  setAutoOpenCustomization: (on: boolean) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
@@ -184,6 +187,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('hideOwnNameTag')
     return stored !== null ? stored === 'true' : false
   })(),
+  autoOpenCustomization: (() => {
+    const stored = localStorage.getItem('autoOpenCustomization')
+    return stored !== null ? stored === 'true' : true
+  })(),
   hideOtherNameTags: (() => {
     const stored = localStorage.getItem('hideOtherNameTags')
     return stored !== null ? stored === 'true' : false
@@ -235,6 +242,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setHideOwnNameTag: (hide) => {
     localStorage.setItem('hideOwnNameTag', String(hide))
     set({ hideOwnNameTag: hide })
+  },
+  setAutoOpenCustomization: (on) => {
+    localStorage.setItem('autoOpenCustomization', String(on))
+    set({ autoOpenCustomization: on })
   },
   setHideOtherNameTags: (hide) => {
     localStorage.setItem('hideOtherNameTags', String(hide))

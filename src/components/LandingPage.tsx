@@ -1,3 +1,4 @@
+import TraceTitle from './TraceTitle'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalLoop from './PortalLoop'
@@ -49,6 +50,33 @@ const SHOWCASE_POSTER_SRC = '/glass_dome.png'
 // The product, framed like a window into an atrium. Deliberately the largest
 // element in the hero: the page could describe an atrium at length but never
 // showed one, which is the single thing copy is worst at conveying.
+// Every kind of trace, in outline, running slowly past under the title -- the
+// page's pulse. Each fills in under the pointer; the run pauses while it's
+// there. Twice over, so it loops without a seam. Still for reduced motion.
+const TICKER_KINDS = [
+  'atrium.trace.type.text', 'atrium.trace.type.image', 'atrium.trace.type.video', 'atrium.trace.type.sound',
+  'atrium.trace.type.document', 'atrium.trace.type.spreadsheet', 'atrium.trace.type.embed', 'atrium.trace.type.shape',
+  'atrium.trace.shape.path', 'atrium.trace.type.drawing', 'atrium.trace.type.frame',
+] as const
+function TraceTicker() {
+  const { t } = useTranslation()
+  return (
+    <div className="trace-ticker" aria-hidden="true">
+      <div className="trace-ticker-track">
+        {[0, 1].map(copy => (
+          <div key={copy} className="trace-ticker-run">
+            {TICKER_KINDS.map((key, i) => (
+              <span key={key} className="trace-ticker-item" data-lit={i % 4 === 1 ? '' : undefined}>
+                {t(key)}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ShowcaseFrame() {
   return (
     <div className="relative mx-auto w-full">
@@ -952,42 +980,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
           {/* LEFT: type + actions */}
           <div className="text-left">
-            {/* Oversized and tightly set. The old headline was font-extralight
-                with wide tracking -- elegant, but it read as delicate at exactly
-                the moment the page needed to assert itself. Weight and leading
-                do the work now; the wide tracking stays on the small labels,
-                which is where that NieR texture actually belongs.
-
-                THE, then the name on one line, sized against the column (cqi:
-                the h1 is a size container) so it fills it at any width and
-                never breaks between the two words. */}
-            <h1 className="font-light leading-[0.86] tracking-[-0.02em] mb-7" style={{ containerType: 'inline-size' }}>
-              <span className="block text-nier-bg/70 tracking-[0.12em] font-extralight mb-3" style={{ fontSize: 'clamp(1.25rem, 6.2cqi, 3rem)' }}>
-                THE
-              </span>
-              <span className="block whitespace-nowrap" style={{ fontSize: 'clamp(2rem, 12.9cqi, 6.5rem)' }}>
-                <span
-                  className="inline-block text-nier-strong"
-                  style={{ textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' }}
-                >
-                  DIGITAL
-                </span>{' '}
-                <span
-                  className="inline-block"
-                  style={{
-                    backgroundImage: 'var(--metal-title)',
-                    WebkitBackgroundClip: 'text',
-                    backgroundClip: 'text',
-                    color: 'transparent',
-                    // On black this is the metal throwing light. On paper a dark
-                    // halo behind dark letters is just a smudge, so it goes.
-                    filter: 'drop-shadow(0 0 34px rgb(var(--c-shimmer) / 0.22))',
-                  }}
-                >
-                  ATRIUM
-                </span>
-              </span>
-            </h1>
+            {/* The name, made of traces: what the place is made of
+                (components/TraceTitle). */}
+            <TraceTitle className="mb-12" />
 
             <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-md mb-9">{t('landing.hero.sub1')}<span className="block text-nier-bg/70 text-base mt-2">{t('landing.hero.sub2')}</span>
             </p>
@@ -1116,6 +1111,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           <div className="w-px h-8 bg-gradient-to-b from-nier-border/40 to-transparent" />
         </div>
       </section>
+
+      {/* What can be put down in an atrium, running past: the page's beat
+          between the title and the rest (TraceTicker). */}
+      <TraceTicker />
 
       {/* SECTION 2: Preview -- the reel. Early, because a page about a place
           is weaker than seeing the place. */}

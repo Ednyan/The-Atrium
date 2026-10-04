@@ -4,7 +4,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
 import { AtriumFileError, fileOrderKeys, parseAtriumFile, type AtriumFile } from '../lib/atriumFormat'
-import { nameFileTraces } from '../lib/atriumFile'
+import { mediaStaysBehind, nameFileTraces } from '../lib/atriumFile'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -276,6 +276,12 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         let imageUrl = trace.image_url
         let mediaError = ''
 
+        // From the desktop, onto the web: the layout, not the files (lib/atriumFile).
+        if (mediaStaysBehind(parsed)) {
+          if (mediaUrl?.startsWith('data:')) { mediaUrl = null; mediaError = 'files from the desktop app stay on the desktop for now' }
+          if (imageUrl?.startsWith('data:')) { imageUrl = null; mediaError ||= 'files from the desktop app stay on the desktop for now' }
+        }
+
         if (mediaUrl && mediaUrl.startsWith('data:')) {
           const result = await uploadDataUrl(mediaUrl, 'media')
           if ('url' in result) mediaUrl = result.url
@@ -451,7 +457,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             <input
               ref={fileRef}
               type="file"
-              accept=".atrium,.json"
+              accept=".atrium"
               onChange={handleFileSelect}
               className="hidden"
             />

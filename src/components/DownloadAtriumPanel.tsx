@@ -23,7 +23,7 @@ const ACCESS_LABEL: Record<DownloadableAtrium['access'], TranslationKey> = {
   public: 'transfer.access.public',
 }
 
-// Picks an atrium to download as a .atrium.json for the desktop app. Sits
+// Picks an atrium to download as an .atrium file for the desktop app. Sits
 // beside Import in the browser so the two directions of the same transfer
 // are in one place, rather than the download hiding inside an atrium the
 // user has to enter first.

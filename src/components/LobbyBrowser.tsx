@@ -65,7 +65,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [isOperator, setIsOperator] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showDownload, setShowDownload] = useState(false)
-  // Desktop's export. Same .atrium.json the web's download produces, written
+  // Desktop's export. Same .atrium file the web's download produces, written
   // through a folder picker rather than the browser's download machinery.
   const [showExport, setShowExport] = useState(false)
   const [showVaultRecovery, setShowVaultRecovery] = useState(false)

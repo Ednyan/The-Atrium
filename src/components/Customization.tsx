@@ -16,6 +16,8 @@ import { MenuIcon, SlideLabel } from './AtriumMenu'
 export type SectionId = 'name' | 'style' | 'fill' | 'outline' | 'text' | 'shape' | 'content' | 'effects' | 'size' | 'brush' | 'colour' | 'stroke'
   // Atrium Themes (ThemeCustomization).
   | 'presets' | 'mine' | 'grid' | 'room' | 'particles'
+  // User Preferences (ProfileCustomization).
+  | 'you' | 'work' | 'moving' | 'see' | 'people' | 'motion'
 
 // Each kind of trace by its name: the panel's subtitle, and Batch Edit's
 // notes on which of a selection a setting is for.
@@ -170,3 +172,41 @@ export const ACTION_ICONS = {
   // A picture: strokes made one, for good.
   rasterize: 'M15 8h.01M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3zM3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3',
 } as const
+
+// A setting that is on or off: its name and what it does, and a switch --
+// a track with its knob, sliding over and filling when on. Clearer at a
+// glance than a box ticked or not, and the whole row presses it.
+export function Switch({ label, hint, on, onChange, testId }: {
+  label: string
+  hint?: string
+  on: boolean
+  onChange: (on: boolean) => void
+  testId?: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-switch={testId}
+      onClick={() => onChange(!on)}
+      className="group w-full flex items-start justify-between gap-4 text-left"
+    >
+      <span className="min-w-0">
+        <span className="block text-nier-strong text-xs tracking-[0.1em] uppercase">{label}</span>
+        {hint && <span className="block mt-1 text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide">{hint}</span>}
+      </span>
+      <span
+        aria-hidden="true"
+        className={`relative shrink-0 mt-0.5 w-9 h-5 border transition-colors duration-200 ${
+          on ? 'bg-nier-bg border-nier-bg' : 'border-nier-border/50 group-hover:border-nier-border/80'
+        }`}
+      >
+        <span
+          className="absolute top-[3px] left-[3px] w-3 h-3 transition-transform duration-200 ease-out"
+          style={{ transform: on ? 'translateX(16px)' : 'none', backgroundColor: on ? 'rgb(var(--c-ground))' : 'rgb(var(--c-fg) / 0.7)' }}
+        />
+      </span>
+    </button>
+  )
+}

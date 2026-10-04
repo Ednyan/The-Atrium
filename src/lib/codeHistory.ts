@@ -15,6 +15,7 @@
 // the frame never answers. The desktop app keeps the plain link: its policy
 // lets nothing frame its pages.
 
+import { setLandingTheme } from './useLandingTheme'
 import { isDesktop } from './supabase'
 
 const PATH = '/code-history/'
@@ -69,6 +70,8 @@ function onMessage(e: MessageEvent) {
   if (!frame || e.source !== frame.contentWindow) return
   if (e.data === 'code-history:ready') markReady()
   if (e.data === 'code-history:back') history.back()
+  // Light or dark switched over there: the landing page behind follows.
+  if (e.data === 'code-history:theme:light' || e.data === 'code-history:theme:dark') setLandingTheme(e.data.slice('code-history:theme:'.length) as 'light' | 'dark')
 }
 
 async function sync() {

@@ -564,6 +564,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setShowLayerPanel(false)
     setShowLocationsPanel(false)
     setShowThemeCustomization(false)
+    setShowProfileCustomization(false)
   }, [])
   // The atrium's locations live in the store and are saved with the rest, each change
   // a step of undo (lib/locations). Presentation mode is here, not in
@@ -3956,7 +3957,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const droppedFiles = Array.from(e.dataTransfer.files)
 
     // An .atrium file's traces, added to this atrium where it's dropped.
-    const project = droppedFiles.find(f => /\.atrium(\.json)?$/i.test(f.name))
+    const project = droppedFiles.find(f => /\.atrium$/i.test(f.name))
     if (project) {
       void importAtriumHere(project, { x: worldX, y: worldY })
       return
@@ -4493,8 +4494,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {!uiHidden && (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
         <ViewBar items={[
-          { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowLayerPanel(open => !open) } },
-          { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowLocationsPanel(open => !open) } },
+          { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLayerPanel(open => !open) } },
+          { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLocationsPanel(open => !open) } },
           { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
           { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
           { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
@@ -4502,12 +4503,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           // their place, and lets go of the selection.
           { id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, open: showThemeCustomization, onSelect: () => {
             if (showThemeCustomization) { setShowThemeCustomization(false); return }
+            setShowProfileCustomization(false)
             closeSidePanels()
             setSelectedTraceId(null)
             setMultiSelectRequest([])
             setShowThemeCustomization(true)
           } },
-          { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), onSelect: () => setShowProfileCustomization(true) },
+          { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), open: showProfileCustomization, onSelect: () => {
+            if (showProfileCustomization) { setShowProfileCustomization(false); return }
+            closeSidePanels()
+            setSelectedTraceId(null)
+            setMultiSelectRequest([])
+            setShowProfileCustomization(true)
+          } },
         ]} />
       </div>
       )}
@@ -4563,7 +4571,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         onOpenChange={setMenuOpen}
         items={[
           ...(currentLobby ? [{
-            id: 'save', icon: MENU_ICONS.save, label: t('atrium.hud.saveAtrium'),
+            id: 'save', icon: MENU_ICONS.exportFile, label: t('atrium.hud.saveAtrium'),
             onSelect: fromMenu(() => setExportOf({ ids: selectionRef.current, format: 'atrium' })),
           }] : []),
           ...(currentLobby && canEdit ? [{
@@ -5334,7 +5342,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       <input
         ref={atriumFileInputRef}
         type="file"
-        accept=".atrium,.json"
+        accept=".atrium"
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0]

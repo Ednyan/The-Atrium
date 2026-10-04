@@ -512,6 +512,14 @@ function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair, pan }: {
           <circle cx="12" cy="12" r="1" fill={playerColor} />
         </svg>
       )
+    } else if (cursorState === 'grabbing') {
+      // Held -- a trace being dragged: the same four arrows, edged orange.
+      body = (
+        <svg {...at('translate(-12px, -12px) scale(0.95)')}>
+          <path d={PAN_ICON} fill="none" stroke="#ff8a3d" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={PAN_ICON} fill="none" stroke={playerColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
     } else if (cursorState === 'pointer' || (pan && overCanvas)) {
       // Four arrows, centred on the point: over a trace, that it can be
       // moved; with Move the view, that the view will be (the readout's
@@ -526,11 +534,9 @@ function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair, pan }: {
           <path d={PAN_ICON} fill="none" stroke={playerColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )
-    } else if (cursorState === 'grab' || cursorState === 'grabbing' || cursorState === 'not-allowed') {
-      // Open hand (draggable), closed (dragging), or a red edge (not allowed).
-      const look = cursorState === 'grab' ? { edge: '#90EE90', scale: 1.1 }
-        : cursorState === 'grabbing' ? { edge: '#FFD700', scale: 0.95 }
-        : { edge: '#FF4444', scale: 1 }
+    } else if (cursorState === 'grab' || cursorState === 'not-allowed') {
+      // Draggable, or a red edge (not allowed).
+      const look = cursorState === 'grab' ? { edge: '#90EE90', scale: 1.1 } : { edge: '#FF4444', scale: 1 }
       body = (
         <svg {...at(`translate(-2px, -2px) scale(${look.scale})`)}>
           <path d={ARROW} fill={playerColor} stroke={look.edge} strokeWidth="2" />
@@ -1470,6 +1476,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const present = customizeRequest.filter(id => tracesRef.current.some(t => t.id === id))
     if (present.length === 0) return
 
+    requestedRef.current = present.length === 1 ? present[0] : [...present].sort().join(',')
     if (present.length === 1) {
       const trace = tracesRef.current.find(t => t.id === present[0])!
       setShowBatchEditPanel(false)
@@ -4658,13 +4665,29 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     if (!(thrown.length > 0 && startGlide(thrown, settle))) settle()
   }
 
+  // A press held that began on a trace, and each letting go of one: the
+  // Customization panel opens on the release (below).
+  const pressHeldRef = useRef(false)
+  const [releaseTick, setReleaseTick] = useState(0)
   // Where the press now under way began (handleClickOutside). In the
   // capture phase, ahead of anything the press might change.
   const pressTargetRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    const note = (e: MouseEvent) => { pressTargetRef.current = e.target as HTMLElement | null }
+    const note = (e: MouseEvent) => {
+      pressTargetRef.current = e.target as HTMLElement | null
+      if (e.button === 0) pressHeldRef.current = !!(e.target as HTMLElement | null)?.closest?.('[data-trace-element="true"]')
+    }
+    const letGo = () => {
+      if (!pressHeldRef.current) return
+      pressHeldRef.current = false
+      setReleaseTick(n => n + 1)
+    }
     window.addEventListener('mousedown', note, true)
-    return () => window.removeEventListener('mousedown', note, true)
+    window.addEventListener('mouseup', letGo, true)
+    return () => {
+      window.removeEventListener('mousedown', note, true)
+      window.removeEventListener('mouseup', letGo, true)
+    }
   }, [])
 
   // Click outside to deselect
@@ -5008,16 +5031,24 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // Closed with its X, it stays closed for that selection (dismissedRef) and
   // opens again for the next. Not on trace updates: while it's open,
   // editingTrace is the source of truth for the trace it shows.
+  //
+  // Opened when the press that selected is let go, not while it's held -- a
+  // drag isn't a request for the panel (pressHeldRef, releaseTick). And only
+  // with the preference on (User Preferences); off, Customize in the menu
+  // opens it (requestedRef: what was asked for stays open).
   const dismissedRef = useRef<string | null>(null)
+  const requestedRef = useRef<string | null>(null)
+  const autoOpenCustomization = useGameStore(state => state.autoOpenCustomization)
   const selectionKey = () => (multiSelectedIdsRef.current.size > 1 ? [...multiSelectedIdsRef.current].sort().join(',') : selectedTraceIdRef.current ?? '')
   useEffect(() => {
-    if (!canEdit) return
+    if (!canEdit || pressHeldRef.current) return
     const editing = editingTraceRef.current
     const key = multiSelectedIds.size > 1 ? [...multiSelectedIds].sort().join(',') : selectedTraceId ?? ''
     if (!key) dismissedRef.current = null
+    const wanted = autoOpenCustomization || key === requestedRef.current
     if (multiSelectedIds.size > 1) {
       if (editing) setEditingTrace(null)
-      setShowBatchEditPanel(key !== dismissedRef.current)
+      setShowBatchEditPanel(wanted && key !== dismissedRef.current)
       return
     }
     setShowBatchEditPanel(false)
@@ -5026,8 +5057,12 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       return
     }
     if (key === dismissedRef.current) return
+    if (!wanted) {
+      if (editing && editing.id !== selectedTraceId) setEditingTrace(null)
+      return
+    }
     if (editing?.id !== selectedTraceId) setEditingTrace(tracesRef.current.find(t => t.id === selectedTraceId) ?? null)
-  }, [selectedTraceId, multiSelectedIds, canEdit])
+  }, [selectedTraceId, multiSelectedIds, canEdit, releaseTick, autoOpenCustomization])
 
   // Disable path creation mode when selection is cleared
   // Note: We don't check editingTrace here to avoid disabling mode when updating points

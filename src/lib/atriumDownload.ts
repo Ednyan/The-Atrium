@@ -1,3 +1,4 @@
+import { ATRIUM_FILE_TYPE } from './atriumFile'
 import { supabase } from './supabase'
 import { fetchAllLobbyTraces } from '../hooks/useTraces'
 import { drawRanks, inOrder } from './order'
@@ -152,7 +153,7 @@ export async function downloadAtrium(
   )
 
   const jsonString = JSON.stringify(exportData)
-  const blob = new Blob([jsonString], { type: 'application/json' })
+  const blob = new Blob([jsonString], { type: ATRIUM_FILE_TYPE })
   const sizeMB = (blob.size / (1024 * 1024)).toFixed(1)
 
   onProgress?.(`Saving file (${sizeMB} MB)...`)

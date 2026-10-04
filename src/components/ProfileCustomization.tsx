@@ -3,6 +3,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { useGamePick } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
 import { Slider } from './ShapeStyleControls'
+import { CustomizationPanel, Section, Switch } from './Customization'
 import {
   DEFAULT_ZOOM_SENSITIVITY,
   MIN_ZOOM_SENSITIVITY,
@@ -19,6 +20,10 @@ import {
   writePackingShape,
 } from '../lib/atriumPreferences'
 
+// User Preferences, docked on the right as the Customization panel is: you
+// (name and cursor colour, the account's, written on Save), then how you
+// work, move around, what you see, the people in the room and animations --
+// each this device's and taking effect at once, on/off ones as switches.
 interface ProfileCustomizationProps {
   onClose: () => void
   lobbyId?: string
@@ -42,7 +47,7 @@ const PRESET_COLORS = [
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce')
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization')
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -114,8 +119,9 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
       if (!isDesktop) {
         const lastChanged = new Date(data.display_name_last_changed)
         const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
-        
-        if (daysSinceChange >= 15) {
+
+        // Never changed (no date): free to.
+        if (!Number.isFinite(daysSinceChange) || daysSinceChange >= 15) {
           setCanChangeName(true)
         } else {
           setCanChangeName(false)
@@ -125,8 +131,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     }
   }
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSave = async () => {
     setError('')
     setSuccess(false)
     setLoading(true)
@@ -194,395 +199,138 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     }
   }
 
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        data-ui-element="true"
-        className="fixed inset-0 z-[10000100] bg-nier-black/80 flex items-center justify-center p-4"
-        onClick={onClose}
-        style={{ touchAction: 'auto', overscrollBehavior: 'contain' }}
-        onTouchMove={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-      >
-      
-      {/* Modal -- corner brackets live on this outer, non-scrolling wrapper
-          (capped at max-h-[90vh]) so they stay pinned to the modal's actual
-          visible edges; the content scrolls in the inner div below instead.
-          Previously the brackets were absolutely positioned inside the same
-          overflow-y-auto element as the content, so once enough fields were
-          added to make it scroll, bottom-0 anchored to the bottom of the
-          full scrollable content instead of the visible box. */}
-      <div
-        className="z-[10000] bg-nier-blackLight border border-nier-border/40 w-[min(30rem,92vw)] max-h-[90vh] pointer-events-auto relative flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-5 h-5 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-5 h-5 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-nier-border/60" />
+  // Name and colour are the account's, written on Save; everything else is
+  // this device's and takes effect at once.
+  const unsaved = displayName !== username || selectedColor !== playerColor
+  const choice = (on: boolean) => `flex-1 py-2 border text-[10px] tracking-[0.15em] uppercase transition-colors ${
+    on ? 'bg-nier-bg text-nier-black border-nier-bg' : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/70'
+  }`
 
-        <div
-          className="p-6 overflow-y-auto flex-1 min-h-0"
-          style={{
-            touchAction: 'pan-y',
-            overscrollBehavior: 'contain',
-          }}
-        >
-        <div className="flex justify-between items-center mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <h3 className="text-lg text-nier-strong tracking-[0.15em] uppercase">{t('atrium.profile.title')}</h3>
-          </div>
+  return (
+    <CustomizationPanel
+      subtitle={t('atrium.hud.profile')}
+      onClose={onClose}
+      zIndex={9999}
+      actions={(
+        <div className="w-full flex items-center gap-2 px-1">
+          <span className={`min-w-0 flex-1 truncate text-[10px] tracking-wider ${error ? '' : 'text-nier-bg/70'}`} style={error ? { color: 'rgb(var(--c-danger))' } : undefined}>
+            {error || (success ? `✓ ${t('atrium.profile.updated')}` : '')}
+          </span>
           <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
+            type="button"
+            data-save-profile=""
+            onClick={() => { void handleSave() }}
+            disabled={loading || !unsaved}
+            className="shrink-0 px-4 py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-35 disabled:cursor-default"
           >
-            ×
+            {loading ? t('atrium.profile.saving') : t('atrium.profile.saveChanges')}
           </button>
         </div>
-
-        <form onSubmit={handleSave} className="space-y-5">
-          {/* Display Name */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">
-                {isDesktop ? t('atrium.profile.username') : t('atrium.profile.displayName')}
-              </span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-              placeholder={isDesktop ? t('atrium.profile.yourUsername') : t('atrium.profile.yourDisplayName')}
-              maxLength={30}
-              disabled={!isDesktop && !canChangeName}
-            />
-            
-            {!isDesktop && !canChangeName && (
-              <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-                ◇ {t('atrium.profile.canChangeIn', { days: daysUntilChange })}
-              </p>
-            )}
-          </div>
-
-          {/* How you work */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.howYouWork')}</span>
-            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
-          {/* Undo History Depth */}
-          <div>
-            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              {t('atrium.profile.undoDepth', { count: undoDepth })}
-            </label>
-            <input
-              type="range"
-              min="1"
-              max={MAX_UNDO_DEPTH}
-              step="1"
-              value={undoDepth}
-              onChange={(e) => handleUndoDepthChange(parseInt(e.target.value, 10))}
-              className="w-full accent-nier-bg"
-            />
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.undoDepthHint')}
+      )}
+    >
+      <Section id="you" title={t('atrium.profile.title')}>
+        <div>
+          <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
+            {isDesktop ? t('atrium.profile.username') : t('atrium.profile.displayName')}
+          </label>
+          <input
+            type="text"
+            data-profile-name=""
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors disabled:opacity-60"
+            placeholder={isDesktop ? t('atrium.profile.yourUsername') : t('atrium.profile.yourDisplayName')}
+            maxLength={30}
+            disabled={!isDesktop && !canChangeName}
+          />
+          {!isDesktop && !canChangeName && (
+            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+              {t('atrium.profile.canChangeIn', { days: daysUntilChange })}
             </p>
-          </div>
-
-          {/* Shape for batch placement */}
-          <div>
-            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              {t('atrium.profile.batchShape')}
-            </label>
-            <div className="flex gap-2">
-              {(['square', 'circle'] as const).map(shape => (
-                <button
-                  key={shape === 'square' ? t('atrium.profile.shapeSquare') : t('atrium.profile.shapeCircle')}
-                  type="button"
-                  onClick={() => handlePackingShapeChange(shape)}
-                  className={`flex-1 py-2 border text-xs tracking-[0.15em] uppercase transition-colors ${
-                    packingShape === shape
-                      ? 'border-nier-bg bg-nier-bg/10 text-nier-bg'
-                      : 'border-nier-border/40 text-nier-bg/80 hover:border-nier-border/60'
-                  }`}
-                >
-                  {shape === 'square' ? t('atrium.profile.shapeSquare') : t('atrium.profile.shapeCircle')}
-                </button>
-              ))}
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.batchShapeHint')}
-            </p>
-          </div>
-
-          {/* Color Picker */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-nier-strong text-xs tracking-[0.15em] uppercase">{t('atrium.profile.yourCursor')}</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-            <div className="grid grid-cols-6 gap-2 mb-2">
-              {PRESET_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setSelectedColor(color)}
-                  className={`w-10 h-10 border-2 transition-all ${
-                    selectedColor === color 
-                      ? 'border-nier-bg scale-110' 
-                      : 'border-nier-border/30 hover:border-nier-border/60'
-                  }`}
-                  style={{ 
-                    backgroundColor: color,
-                    boxShadow: selectedColor === color ? `0 0 12px ${color}40` : 'none'
-                  }}
-                />
-              ))}
+          )}
+        </div>
+        <div>
+          <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.profile.yourCursor')}</label>
+          <div className="grid grid-cols-6 gap-2">
+            {PRESET_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                data-cursor-colour={color}
+                aria-label={color}
+                aria-pressed={selectedColor.toLowerCase() === color.toLowerCase()}
+                onClick={() => setSelectedColor(color)}
+                className={`h-9 border-2 transition-all ${
+                  selectedColor.toLowerCase() === color.toLowerCase() ? 'border-nier-bg scale-105' : 'border-transparent hover:border-nier-border/60'
+                }`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+            <label
+              title={t('atrium.profile.anyOtherColour')}
+              className={`relative h-9 border-2 cursor-pointer ${PRESET_COLORS.some(c => c.toLowerCase() === selectedColor.toLowerCase()) ? 'border-nier-border/30' : 'border-nier-bg'}`}
+              style={{ background: PRESET_COLORS.some(c => c.toLowerCase() === selectedColor.toLowerCase()) ? 'conic-gradient(from 90deg, #ff6161, #e8c15a, #9ad4c4, #a8b6d9, #c77dff, #ff6161)' : selectedColor }}
+            >
               <input
                 type="color"
                 value={selectedColor}
                 onChange={(e) => setSelectedColor(e.target.value)}
-                title={t('atrium.profile.anyOtherColour')}
-                className="w-full h-10 border-2 border-nier-border/30 hover:border-nier-border/60 bg-nier-black cursor-pointer"
+                aria-label={t('atrium.profile.anyOtherColour')}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case">
-              {t('atrium.profile.cursorHint')}
-            </p>
-          </div>
-
-          {/* Moving around */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.movingAround')}</span>
-            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
-          {/* Zoom Sensitivity */}
-          <div>
-            <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">
-              {t('atrium.profile.zoomSpeed', { value: zoomSensitivity.toFixed(2) })}
             </label>
-            <input
-              type="range"
-              min={MIN_ZOOM_SENSITIVITY}
-              max={MAX_ZOOM_SENSITIVITY}
-              step="0.01"
-              value={zoomSensitivity}
-              onChange={(e) => handleZoomSensitivityChange(parseFloat(e.target.value))}
-              className="w-full accent-nier-bg"
-            />
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.zoomHint')}
-            </p>
           </div>
-
-          {/* What you see */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">03</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.whatYouSee')}</span>
-            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
-          {/* Trace Point to off-screen traces Toggle */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                {t('atrium.profile.pointOffscreen')}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  showTraceIndicators ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {showTraceIndicators && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={showTraceIndicators}
-                  onChange={() => setShowTraceIndicators(!showTraceIndicators)}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.pointOffscreenHint')}
-            </p>
-          </div>
-
-          {/* Label each trace's type Toggle */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                {t('atrium.profile.labelTraceType')}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  showTraceTypeLabels ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {showTraceTypeLabels && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={showTraceTypeLabels}
-                  onChange={() => setShowTraceTypeLabels(!showTraceTypeLabels)}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.labelTraceTypeHint')}
-            </p>
-          </div>
-
-          {/* Fade traces near the edge Toggle */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                {t('atrium.profile.fadeEdge')}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  traceFadeEnabled ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {traceFadeEnabled && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={traceFadeEnabled}
-                  onChange={() => setTraceFadeEnabled(!traceFadeEnabled)}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.fadeEdgeHint')}
-            </p>
-          </div>
-
-          {/* People in the room */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">04</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.peopleInRoom')}</span>
-            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
-          {/* Hide my name Toggle */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                {t('atrium.profile.hideMyNameTag')}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  hideOwnNameTag ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {hideOwnNameTag && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={hideOwnNameTag}
-                  onChange={() => setHideOwnNameTag(!hideOwnNameTag)}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.hideMyNameTagHint')}
-            </p>
-          </div>
-
-          {/* Hide other names Toggle */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                {t('atrium.profile.hideOtherNameTags')}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  hideOtherNameTags ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {hideOtherNameTags && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={hideOtherNameTags}
-                  onChange={() => setHideOtherNameTags(!hideOtherNameTags)}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.hideOtherNameTagsHint')}
-            </p>
-          </div>
-
-          {/* Hide other cursors Toggle */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-nier-strong text-xs tracking-[0.1em] uppercase">
-                {t('atrium.profile.hideOtherCursors')}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  hideOtherCursors ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {hideOtherCursors && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={hideOtherCursors}
-                  onChange={() => setHideOtherCursors(!hideOtherCursors)}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5">
-              {t('atrium.profile.hideOtherCursorsHint')}
-            </p>
-          </div>
-
-          {/* Animations */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">05</span>
-            <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('atrium.profile.animations')}</span>
-            <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
-          <Slider min={0} max={100} step={1} label={t('atrium.profile.dragBounce', { value: dragBounce })} hint={t('atrium.profile.dragBounceHint')} value={dragBounce} onChange={setDragBounce} />
-          <Slider min={0} max={100} step={1} label={t('atrium.profile.floating', { value: traceFloat })} hint={t('atrium.profile.floatingHint')} value={traceFloat} onChange={setTraceFloat} />
-          <Slider min={0} max={100} step={1} label={t('atrium.profile.momentum', { value: traceMomentum })} hint={t('atrium.profile.momentumHint')} value={traceMomentum} onChange={setTraceMomentum} />
-
-          {/* Error/Success Messages */}
-          {error && (
-            <div className="border border-nier-red/40 bg-nier-red/10 px-3 py-2 text-nier-bg/80 text-xs tracking-wider">
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="border border-nier-border/40 bg-nier-border/10 px-3 py-2 text-nier-bg text-xs tracking-wider">
-              ✓ {t('atrium.profile.updated')}
-            </div>
-          )}
-
-          {/* Save Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {loading ? t('atrium.profile.saving') : t('atrium.profile.saveChanges')}
-          </button>
-        </form>
+          <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">{t('atrium.profile.cursorHint')}</p>
         </div>
-      </div>
-      </div>
-    </>
+      </Section>
+
+      <Section id="work" title={t('atrium.profile.howYouWork')}>
+        <Switch testId="auto-customize" label={t('atrium.profile.autoCustomize')} hint={t('atrium.profile.autoCustomizeHint')} on={autoOpenCustomization} onChange={setAutoOpenCustomization} />
+        <Slider
+          label={t('atrium.profile.undoDepth', { count: undoDepth })}
+          hint={t('atrium.profile.undoDepthHint')}
+          min={1} max={MAX_UNDO_DEPTH} step={1} value={undoDepth}
+          onChange={v => handleUndoDepthChange(Math.round(v))}
+        />
+        <div>
+          <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.profile.batchShape')}</label>
+          <div className="flex gap-2">
+            {(['square', 'circle'] as const).map(shape => (
+              <button key={shape} type="button" data-packing={shape} aria-pressed={packingShape === shape} onClick={() => handlePackingShapeChange(shape)} className={choice(packingShape === shape)}>
+                {shape === 'square' ? t('atrium.profile.shapeSquare') : t('atrium.profile.shapeCircle')}
+              </button>
+            ))}
+          </div>
+          <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">{t('atrium.profile.batchShapeHint')}</p>
+        </div>
+      </Section>
+
+      <Section id="moving" title={t('atrium.profile.movingAround')}>
+        <Slider
+          label={t('atrium.profile.zoomSpeed', { value: zoomSensitivity.toFixed(2) })}
+          hint={t('atrium.profile.zoomHint')}
+          min={MIN_ZOOM_SENSITIVITY} max={MAX_ZOOM_SENSITIVITY} step={0.01} value={zoomSensitivity}
+          onChange={handleZoomSensitivityChange}
+        />
+      </Section>
+
+      <Section id="see" title={t('atrium.profile.whatYouSee')}>
+        <Switch testId="offscreen" label={t('atrium.profile.pointOffscreen')} hint={t('atrium.profile.pointOffscreenHint')} on={showTraceIndicators} onChange={setShowTraceIndicators} />
+        <Switch testId="type-labels" label={t('atrium.profile.labelTraceType')} hint={t('atrium.profile.labelTraceTypeHint')} on={showTraceTypeLabels} onChange={setShowTraceTypeLabels} />
+        <Switch testId="fade" label={t('atrium.profile.fadeEdge')} hint={t('atrium.profile.fadeEdgeHint')} on={traceFadeEnabled} onChange={setTraceFadeEnabled} />
+      </Section>
+
+      <Section id="people" title={t('atrium.profile.peopleInRoom')}>
+        <Switch testId="my-name" label={t('atrium.profile.hideMyNameTag')} hint={t('atrium.profile.hideMyNameTagHint')} on={hideOwnNameTag} onChange={setHideOwnNameTag} />
+        <Switch testId="their-names" label={t('atrium.profile.hideOtherNameTags')} hint={t('atrium.profile.hideOtherNameTagsHint')} on={hideOtherNameTags} onChange={setHideOtherNameTags} />
+        <Switch testId="their-cursors" label={t('atrium.profile.hideOtherCursors')} hint={t('atrium.profile.hideOtherCursorsHint')} on={hideOtherCursors} onChange={setHideOtherCursors} />
+      </Section>
+
+      <Section id="motion" title={t('atrium.profile.animations')}>
+        <Slider min={0} max={100} step={1} label={t('atrium.profile.dragBounce', { value: dragBounce })} hint={t('atrium.profile.dragBounceHint')} value={dragBounce} onChange={setDragBounce} />
+        <Slider min={0} max={100} step={1} label={t('atrium.profile.floating', { value: traceFloat })} hint={t('atrium.profile.floatingHint')} value={traceFloat} onChange={setTraceFloat} />
+        <Slider min={0} max={100} step={1} label={t('atrium.profile.momentum', { value: traceMomentum })} hint={t('atrium.profile.momentumHint')} value={traceMomentum} onChange={setTraceMomentum} />
+      </Section>
+    </CustomizationPanel>
   )
 }

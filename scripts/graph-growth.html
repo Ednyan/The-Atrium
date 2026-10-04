@@ -6,22 +6,28 @@
 <title>Code History · The Digital Atrium</title>
 <!-- Template for scripts/graph-growth.py, which fills in the data. -->
 <style>
-  :root { --bg: #07070b; --fg: #dcdce4; --dim: #8b8b98; --line: #262631; --accent: #ff8a3d; --pregit: #8b7cf0; }
+  :root { --bg: #07070b; --fg: #dcdce4; --dim: #8b8b98; --line: #262631; --accent: #ff8a3d; --pregit: #8b7cf0;
+          --panel: #13131a; --strong: #fff; --metal: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%); --lead: rgb(220 220 228 / .86); }
+  /* Light, as the landing page's is: paper, ink, the metal darkened. */
+  :root[data-theme='light'] { --bg: #f2efe8; --fg: #2e2a25; --dim: #6e685f; --line: #d6d0c4; --pregit: #6b5bd6;
+          --panel: #fbfaf6; --strong: #161412; --metal: linear-gradient(100deg, #1A1714 0%, #55504A 100%); --lead: rgb(46 42 37 / .82); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
   canvas.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 62px; top: 14px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
-  /* Back to the landing page: a tab down the whole left edge, the way the
-     landing page's own link sits on its right one -- this page is to the right
-     of that one, and the two slide into each other (see @view-transition). */
-  #back { position: fixed; left: 0; top: 0; bottom: 0; width: 44px; z-index: 3; display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 14px; background: #0d0d13; border-right: 1px solid var(--line); color: var(--fg); text-decoration: none;
-          transition: background .25s ease, border-color .25s ease, width .25s ease; }
-  #back:hover { background: #15151d; border-right-color: var(--accent); width: 50px; }
-  #back span { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .3em; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+  #hud { position: fixed; left: 18px; top: 64px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* The way back, top left, and light or dark, top right: the site's own
+     buttons -- bordered, a corner cut -- not a tab down an edge. */
+  .chrome { position: fixed; top: 14px; z-index: 3; height: 34px; display: inline-flex; align-items: center; gap: 10px;
+            background: var(--panel); color: var(--fg); border: 1px solid var(--line); font: inherit; text-decoration: none; cursor: pointer;
+            clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+            transition: border-color .25s ease, color .25s ease, background .25s ease; }
+  .chrome:hover { border-color: var(--accent); color: var(--strong); }
+  #back { left: 18px; padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
   #back b { font-weight: normal; transition: transform .25s ease; }
   #back:hover b { transform: translateX(-3px); }
+  #mode { right: 18px; width: 34px; justify-content: center; padding: 0; }
+  #mode svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
   /* The landing page and this one slide past each other, as neighbours: it
      goes off to the left as this comes in from the right. From the landing
@@ -35,48 +41,53 @@
   #date { font-size: 30px; letter-spacing: .06em; }
   #stats { color: var(--dim); margin-top: 2px; }
   #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
-  #legend { position: fixed; right: 18px; top: 16px; color: var(--dim); text-align: right; pointer-events: none; }
+  #legend { position: fixed; right: 18px; top: 62px; color: var(--dim); text-align: right; pointer-events: none; }
   #legend b { font-weight: normal; }
-  #bar { position: fixed; left: 62px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
-  #bar button, #bar select { background: #13131a; color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
+  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  #bar button, #bar select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
   #bar button:hover, #bar select:hover { border-color: var(--accent); }
   #track { flex: 1; position: relative; }
   #era { position: absolute; left: 0; top: -14px; height: 3px; background: var(--pregit); }
   #eraLabel { position: absolute; left: 0; top: -30px; color: var(--pregit); font-size: 11px; white-space: nowrap; }
   #slider { width: 100%; accent-color: var(--accent); }
-  #tip { position: fixed; pointer-events: none; background: #13131af0; border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
+  #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
   #tip small { color: var(--dim); display: block; }
   #hud, #legend, #bar { transition: opacity 1.2s ease; }
   body.intro #hud, body.intro #legend, body.intro #bar { opacity: 0; pointer-events: none; }
+  :root[data-theme='light'] body.intro canvas { filter: brightness(1.05) saturate(0.35) blur(1.5px); }
   /* Behind the title the graph is texture, not content: darker, greyer and a
      little soft, so the name stands clear of it. The canvas is empty by the
      time the filter comes off, so the switch never shows. */
   body.intro canvas { filter: brightness(0.6) saturate(0.35) blur(1.5px); }
-  #intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-           gap: 22px; padding: 0 24px; text-align: center; pointer-events: none; opacity: 0; }
+  #intro { position: fixed; inset: 0; pointer-events: none; }
+  /* Two moments, one over the other: the name; then, once it has gone, what
+     follows. */
+  #intro > div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                 gap: 22px; padding: 0 24px; text-align: center; opacity: 0; }
   /* The line before the name, and what follows it: large and light enough to
      read over the graph, which is what they're there for. */
-  #intro small { color: rgb(220 220 228 / .86); font-size: clamp(14px, 1.45vw, 19px); letter-spacing: .2em; text-transform: uppercase; }
-  #intro #explain { max-width: 36em; margin: 6px 0 0; color: rgb(220 220 228 / .8); font-size: clamp(13px, 1.2vw, 16px);
+  #intro small { color: var(--lead); font-size: clamp(14px, 1.45vw, 19px); letter-spacing: .2em; text-transform: uppercase; }
+  #intro #explain { max-width: 32em; margin: 0; color: var(--lead); font-size: clamp(16px, 1.7vw, 23px);
                     line-height: 1.65; letter-spacing: .02em; }
   /* The one way past the opening: clicks and keys no longer skip it. */
-  #skip { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 2; background: #13131a; color: var(--fg);
+  #skip { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 2; background: var(--panel); color: var(--fg);
           border: 1px solid var(--line); padding: 8px 18px; font: inherit; letter-spacing: .12em; cursor: pointer; }
   #skip:hover { border-color: var(--accent); }
   /* The name as the landing page sets it: the same face, weights, sizes and
      the metal on ATRIUM, in its dark theme. */
   #intro h1 { margin: 0; font: 300 1em/0.86 Consolas, Monaco, 'Lucida Console', 'Liberation Mono', monospace; letter-spacing: -0.02em; }
   #intro h1 { white-space: nowrap; font-size: clamp(2rem, 6.4vw, 5.6rem); }
-  #intro .the { font-weight: 200; letter-spacing: .12em; color: rgb(203 203 203 / .7); }
-  #intro .digital { color: #fff; text-shadow: 0 0 60px rgb(255 255 255 / .14); }
-  #intro .atrium { background-image: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%); -webkit-background-clip: text;
+  #intro .the { font-weight: 200; letter-spacing: .12em; color: var(--lead); opacity: .85; }
+  #intro .digital { color: var(--strong); text-shadow: 0 0 60px rgb(255 255 255 / .14); }
+  #intro .atrium { background-image: var(--metal); -webkit-background-clip: text;
                    background-clip: text; color: transparent; filter: drop-shadow(0 0 34px rgb(255 255 255 / .22)); }
 </style>
 </head>
 <body class="intro">
 <canvas id="c"></canvas>
-<a id="back" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
-<div id="intro"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1><p id="explain" data-t="explain"></p></div>
+<a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
+<button id="mode" class="chrome" type="button"></button>
+<div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div><div id="introNext"><p id="explain" data-t="explain"></p></div></div>
 <button id="skip" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
 <div id="legend"></div>
@@ -146,11 +157,40 @@ const lang = (() => {
 })()
 const tr = T[lang]
 document.documentElement.lang = lang
-for (const el of document.querySelectorAll('[data-t]')) el.textContent = tr[el.dataset.t]
-{
-  const [fresh, removed, glow, folder, other, zoom, move, follow, pause] = tr.legend.map(w => w.replace(/[<&>]/g, ''))
-  document.getElementById('legend').innerHTML = `<b style="color:#fff">■</b> ${fresh} &nbsp;·&nbsp; <b style="color:#ff5a4f">■</b> ${removed} &nbsp;·&nbsp; ${glow} &nbsp;·&nbsp; □ ${folder} &nbsp;·&nbsp; <b style="color:#9a9aab">●</b> ${other}<br>${zoom} · ${move} · ${follow} · ${pause}`
+
+// ---- Light or dark ---------------------------------------------------------------
+// As the landing page has it -- its key, in this tab -- and switched here too,
+// telling the landing page behind (framed over it) so the two stay one.
+const THEMES = {
+  dark: { bg: '#07070b', tree: 'rgba(190,190,215,0.09)', blend: 'lighter', fresh: '255,255,255', removed: '255,90,79', folder: '#cfcfe0', other: '#9a9aab', ring: '#fff', label: '#e8e8f0' },
+  light: { bg: '#f2efe8', tree: 'rgba(70,64,55,0.16)', blend: 'multiply', fresh: '40,35,30', removed: '200,50,40', folder: '#6e685f', other: '#8a847a', ring: '#2e2a25', label: '#2e2a25' },
 }
+const THEME_KEY = 'atrium_landing_theme'
+const ICONS = {
+  // Pressed, it goes to the other: the icon is where it goes.
+  dark: '<svg viewBox="0 0 24 24"><path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M3 12h1M12 3v1M20 12h1M12 20v1M5.6 5.6l.7 .7M18.4 5.6l-.7 .7M17.7 17.7l.7 .7M6.3 17.7l-.7 .7"/></svg>',
+  light: '<svg viewBox="0 0 24 24"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/></svg>',
+}
+let theme = (() => { try { return sessionStorage.getItem(THEME_KEY) || localStorage.getItem(THEME_KEY) } catch { return null } })() === 'light' ? 'light' : 'dark'
+let P = THEMES[theme]
+function setTheme(next, tell) {
+  theme = next; P = THEMES[next]
+  document.documentElement.dataset.theme = next
+  const mode = document.getElementById('mode')
+  mode.innerHTML = ICONS[next]
+  mode.setAttribute('aria-label', next === 'dark' ? 'Light' : 'Dark')
+  try { sessionStorage.setItem(THEME_KEY, next) } catch {}
+  if (tell && window.parent !== window) parent.postMessage('code-history:theme:' + next, location.origin)
+  if (typeof drawLegend === 'function') drawLegend()
+}
+setTheme(theme, false)
+document.getElementById('mode').onclick = () => setTheme(theme === 'dark' ? 'light' : 'dark', true)
+for (const el of document.querySelectorAll('[data-t]')) el.textContent = tr[el.dataset.t]
+function drawLegend() {
+  const [fresh, removed, glow, folder, other, zoom, move, follow, pause] = tr.legend.map(w => w.replace(/[<&>]/g, ''))
+  document.getElementById('legend').innerHTML = `<b style="color:rgb(${P.fresh})">■</b> ${fresh} &nbsp;·&nbsp; <b style="color:rgb(${P.removed})">■</b> ${removed} &nbsp;·&nbsp; ${glow} &nbsp;·&nbsp; □ ${folder} &nbsp;·&nbsp; <b style="color:${P.other}">●</b> ${other}<br>${zoom} · ${move} · ${follow} · ${pause}`
+}
+drawLegend()
 
 const S = D.stages.length, last = S - 1
 const nodes = D.nodes, edges = D.edges, N = nodes.length
@@ -365,12 +405,12 @@ function draw() {
   const s = Math.floor(pos), t = ease(pos - s), z = zoom()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.globalCompositeOperation = 'source-over'
-  ctx.fillStyle = '#07070b'; ctx.fillRect(0, 0, W, H)
+  ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H)
 
   // The file and folder tree first, faint, beneath the code.
   const width = 0.6 * z
   ctx.lineWidth = 0.5 * z
-  ctx.strokeStyle = 'rgba(190,190,215,0.09)'
+  ctx.strokeStyle = P.tree
   ctx.beginPath()
   const batches = new Map(), changing = []
   for (let e = 0; e < edges.length; e++) {
@@ -385,8 +425,9 @@ function draw() {
   ctx.stroke()
 
   // The code's own connections, added together ('lighter') so a bundle glows
-  // where many run side by side. Batched by colour; changing ones go alone.
-  ctx.globalCompositeOperation = 'lighter'
+  // where many run side by side (on paper, multiplied, so it darkens). Batched
+  // by colour; changing ones go alone.
+  ctx.globalCompositeOperation = P.blend
   ctx.lineWidth = width
   for (const [c, list] of batches) {
     ctx.strokeStyle = `rgba(${rgb(c)},0.3)`
@@ -398,7 +439,7 @@ function draw() {
   for (const [e, alpha, state] of changing) {
     const [a, b] = edges[e]
     const k = edges[e][2] ? 0.45 : 1
-    ctx.strokeStyle = state > 0 ? `rgba(255,255,255,${0.85 * alpha * k})` : `rgba(255,90,79,${0.8 * alpha * k})`
+    ctx.strokeStyle = state > 0 ? `rgba(${P.fresh},${0.85 * alpha * k})` : `rgba(${P.removed},${0.8 * alpha * k})`
     ctx.beginPath(); curve(a, b); ctx.stroke()
   }
 
@@ -417,26 +458,26 @@ function draw() {
     if (kind === 2) {
       // Folders: small open squares, pale, so they read as the frame the
       // code hangs from rather than as code.
-      ctx.strokeStyle = state < 0 ? '#ff5a4f' : '#cfcfe0'; ctx.lineWidth = 0.9
+      ctx.strokeStyle = state < 0 ? `rgb(${P.removed})` : P.folder; ctx.lineWidth = 0.9
       ctx.strokeRect(x - r, y - r, r * 2, r * 2)
     } else {
-      ctx.fillStyle = state < 0 ? '#ff5a4f' : kind === 1 ? '#9a9aab' : colourOf[i]
+      ctx.fillStyle = state < 0 ? `rgb(${P.removed})` : kind === 1 ? P.other : colourOf[i]
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
     }
     if (k && state === 0) {
-      ctx.globalCompositeOperation = 'lighter'
+      ctx.globalCompositeOperation = P.blend
       ctx.globalAlpha = 0.45 * swell
-      ctx.fillStyle = kind === 2 ? '#cfcfe0' : colourOf[i]
+      ctx.fillStyle = kind === 2 ? P.folder : colourOf[i]
       ctx.beginPath(); ctx.arc(x, y, r + 4 * swell * z, 0, Math.PI * 2); ctx.fill()
       ctx.globalAlpha = 0.8 * swell
-      ctx.fillStyle = '#fff'
+      ctx.fillStyle = P.ring
       ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.fill()
       ctx.globalCompositeOperation = 'source-over'
     }
     if (state > 0) {
       arriving.push(i)
       ctx.globalAlpha = 1 - t
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4
+      ctx.strokeStyle = P.ring; ctx.lineWidth = 1.4
       ctx.beginPath(); ctx.arc(x, y, r + 1.5 + t * 9, 0, Math.PI * 2); ctx.stroke()
     }
   }
@@ -445,13 +486,13 @@ function draw() {
   if (arriving.length && arriving.length <= 30) {
     ctx.font = '11px ui-monospace, Consolas, monospace'
     ctx.globalAlpha = Math.min(1, 1.6 * (1 - t))
-    ctx.fillStyle = '#e8e8f0'
+    ctx.fillStyle = P.label
     for (const i of arriving) if (nodes[i][4]) ctx.fillText(nodes[i][4], sx(i) + 6, sy(i) - 6)
   }
   ctx.globalAlpha = 1
 
   // Over the opening, the canvas is dimmed toward the background.
-  if (veil) { ctx.globalAlpha = veil; ctx.fillStyle = '#07070b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1 }
+  if (veil) { ctx.globalAlpha = veil; ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1 }
 
   const shown = Math.round(pos), stage = D.stages[shown]
   dateEl.textContent = new Date(stage.t * 1000).toISOString().slice(0, 16).replace('T', '  ')
@@ -518,13 +559,17 @@ if (window.parent !== window) {
   parent.postMessage('code-history:ready', location.origin)
 } else start()
 
-// The opening: the finished graph -- today's -- dimmed under the title and a
-// line on what's to come. They fade in, hold long enough to read, then fade out
-// together to an empty canvas, and from there the history grows, with the
-// controls fading in. Only the Skip button cuts it short: a click anywhere, or
+// The opening: the finished graph -- today's -- dimmed under two moments. First
+// the name ("You're about to see the code history of THE DIGITAL ATRIUM"),
+// in, held, out; then what follows, the same way; then an empty canvas, and
+// from there the history grows, with the controls fading in. Only the Skip button cuts it short: a click anywhere, or
 // a key, used to, which ended it for anyone who so much as touched the page.
 const intro = document.getElementById('intro')
-const OPEN_IN = 1600, OPEN_HOLD = 7000, OPEN_OUT = 1800
+const introName = document.getElementById('introName'), introNext = document.getElementById('introNext')
+// Each moment: in, held, out (ms).
+const NAME = [1400, 3600, 1100], NEXT = [1100, 5200, 1500]
+const NAME_END = NAME[0] + NAME[1] + NAME[2], OPEN_END = NAME_END + NEXT[0] + NEXT[1] + NEXT[2]
+const shownAt = (t, [inn, hold, out]) => t < 0 ? 0 : t < inn ? ease(t / inn) : t < inn + hold ? 1 : ease(Math.max(0, 1 - (t - inn - hold) / out))
 let introDone = false, openedAt = null, veil = 0
 
 function opening(now) {
@@ -535,13 +580,13 @@ function opening(now) {
     frameCamera(true)
   }
   const t = now - openedAt
-  const shown = t < OPEN_IN ? ease(t / OPEN_IN)
-    : t < OPEN_IN + OPEN_HOLD ? 1
-    : ease(Math.max(0, 1 - (t - OPEN_IN - OPEN_HOLD) / OPEN_OUT))
-  intro.style.opacity = shown
-  // The graph stays a little dim behind the name, so the name reads.
-  veil = 1 - 0.55 * shown
-  if (t >= OPEN_IN + OPEN_HOLD + OPEN_OUT) endIntro()
+  const name = shownAt(t, NAME), next = shownAt(t - NAME_END, NEXT)
+  introName.style.opacity = name
+  introNext.style.opacity = next
+  // The graph stays a little dim behind the words, so they read, and sinks
+  // back between the two moments as one goes and the other comes.
+  veil = 1 - 0.55 * Math.max(name, next)
+  if (t >= OPEN_END) endIntro()
 }
 
 function endIntro() {

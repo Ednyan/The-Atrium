@@ -97,7 +97,7 @@ export async function atriumFileBlob(
     rows,
     links,
   )
-  return new Blob([JSON.stringify(envelope)], { type: 'application/json' })
+  return new Blob([JSON.stringify(envelope)], { type: ATRIUM_FILE_TYPE })
 }
 
 // The bytes a data URL holds, near enough.
@@ -115,6 +115,16 @@ export class ImportTooLargeError extends Error {
 
 export interface ImportIntoResult { added: number; missing: number; failed: number }
 
+// A file the desktop made, brought onto the web: its layout comes, its
+// pictures and files stay behind for now -- the web atrium's storage is small
+// and a desktop vault's needn't be. (Uploading from the desktop to the web has
+// always worked this way.) Read from the file's own app name.
+export const mediaStaysBehind = (file: Pick<AtriumFile, 'app'>) => !isDesktop && /desktop/i.test(file.app ?? '')
+
+// What an .atrium file is, to a browser: its own type, so none of them adds
+// .json to its name on the way down (it's JSON inside, but an .atrium file).
+export const ATRIUM_FILE_TYPE = 'application/vnd.digital-atrium+json'
+
 // A file's traces added to the atrium that's open: as its own groups and
 // connections, centred on `at`, on top of everything, as one step of undo
 // (lib/layerUndo) -- Ctrl+Z takes the whole import back. Its pictures and
@@ -124,8 +134,9 @@ export interface ImportIntoResult { added: number; missing: number; failed: numb
 // Its traces are put on the canvas together, once all are written, so it
 // arrives as the one action it is.
 export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number }, lobbyId: string, userId: string, onProgress?: (done: number, total: number) => void): Promise<ImportIntoResult> {
+  const behind = mediaStaysBehind(file)
   // Room for it, on the web, where an atrium has a size.
-  if (!isDesktop) {
+  if (!isDesktop && !behind) {
     const needed = file.traces.reduce((sum, tr) => sum + dataUrlBytes(tr.media_url) + dataUrlBytes(tr.image_url), 0)
     const free = Math.max(0, LOBBY_SIZE_LIMIT - useGameStore.getState().getLobbySizeBytes())
     if (needed > free) return Promise.reject(new ImportTooLargeError(needed, free))
@@ -141,7 +152,7 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     const now = new Date().toISOString()
     const parsed = file.traces.map(row => ({ row, trace: mapRowToTrace({ ...row, id: row.id ?? crypto.randomUUID(), lobby_id: lobbyId, user_id: userId, created_at: now }) }))
     if (parsed.length === 0) return { added: 0, missing: 0, failed: 0 }
-    const uploads = parsed.reduce((n, { trace }) => n + [trace.mediaUrl, trace.imageUrl].filter(url => typeof url === 'string' && url.startsWith('data:')).length, 0)
+    const uploads = behind ? 0 : parsed.reduce((n, { trace }) => n + [trace.mediaUrl, trace.imageUrl].filter(url => typeof url === 'string' && url.startsWith('data:')).length, 0)
     const total = uploads + parsed.length
     let done = 0
     onProgress?.(done, total)
@@ -216,7 +227,7 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
       for (const key of ['mediaUrl', 'imageUrl'] as const) {
         const url = placed[key]
         if (typeof url !== 'string' || !url) continue
-        if (url.startsWith('local://')) {
+        if (url.startsWith('local://') || (behind && url.startsWith('data:'))) {
           placed[key] = undefined
           missing++
         } else if (url.startsWith('data:')) {
