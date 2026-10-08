@@ -247,6 +247,13 @@ export interface ThemeSettings {
   groundPattern?: 'random' | 'grid'
   groundSpacing?: number
   groundRotation?: number
+  // A picture under the grid (LobbyScene's backdrop): repeated, as faint as
+  // its opacity, its size a share of its own, following the view by a share
+  // of how the world moves (0 fixed to the screen, 1 with the canvas).
+  backgroundImage?: string
+  backgroundImageOpacity?: number
+  backgroundImageScale?: number
+  backgroundParallax?: number
 }
 
 export interface Lobby {

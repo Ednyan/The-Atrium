@@ -14,13 +14,8 @@ import { showToast } from '../lib/toast'
 import { useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
 
-// Lazy import for Tauri-only modules (avoids importing Tauri plugins in web mode)
-// Video and audio stream from the vault rather than being read into memory --
-// see resolveLocalStreamUrl.
-async function resolveLocalStreamUrl(url: string): Promise<string> {
-  const mod = await import('../lib/localDb')
-  return mod.resolveLocalStreamUrl(url)
-}
+// Video and audio stream from the vault rather than being read into memory.
+import { resolveLocalStreamUrl } from '../lib/localMedia'
 
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
@@ -319,11 +314,22 @@ function hexToRgb(hex: string) {
 // the colour to draw plainly where screen can't reach the ground (see
 // [data-blends-with-ground] in index.css). The same at any opacity -- a colour
 // at alpha a over the ground is (1 - a) * ground + a * colour, blend or none.
+// As the channels "r g b", for rgb(var(...) / alpha).
 function screenOver(ground: string | undefined, light: string) {
   const g = hexToRgb(ground || '#0a0a0f'), l = hexToRgb(light)
   const screen = (a: number, b: number) => Math.round(255 - ((255 - a) * (255 - b)) / 255)
-  return `rgb(${screen(g.r, l.r)}, ${screen(g.g, l.g)}, ${screen(g.b, l.b)})`
+  return `${screen(g.r, l.r)} ${screen(g.g, l.g)} ${screen(g.b, l.b)}`
 }
+const rgbChannels = (hex: string) => { const c = hexToRgb(hex); return `${c.r} ${c.g} ${c.b}` }
+
+// A light's falloff from its middle: a disc blurred by a third of its radius,
+// as the CSS blur used to draw it -- here as a gradient, painted with the
+// rest of the layer rather than a filter the compositor applies. A filter
+// went with the view's moves on the web but vanished for their whole length
+// in the desktop app's webview. Stops are the blurred disc's own values
+// (out to 1.6 radii, where it's next to nothing), in --light-rgb.
+const LIGHT_FALLOFF = [[0, 1], [31, 0.95], [44, 0.84], [62.5, 0.5], [81, 0.16], [90, 0.05], [100, 0]]
+  .map(([at, a]) => `rgb(var(--light-rgb) / ${a}) ${at}%`).join(', ')
 
 // A cursor's outline, which is what separates it from the atrium: near-black
 // on a light one, white on a dark one.
@@ -6151,11 +6157,14 @@ return (
       // Where it comes from (lightEmit): a point at the trace's middle, as it
       // always has -- or all of its shape, or its border, each glowing out
       // around it as far as its radius, in the trace's own shape and turn.
+      // Drawn without filters (LIGHT_FALLOFF); its colour in --light-rgb, which
+      // the moving camera swaps for how it looks over the ground (index.css).
       const emit = trace.lightEmit ?? 'center'
       const reach = (trace.lightRadius ?? 200) * zoom
       const pulse = trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : ''
       const common: React.CSSProperties = {
-        ['--over-ground' as any]: screenOver(atriumBackground, trace.lightColor ?? '#ffffff'),
+        ['--light-rgb' as any]: rgbChannels(trace.lightColor ?? '#ffffff'),
+        ['--over-ground-rgb' as any]: screenOver(atriumBackground, trace.lightColor ?? '#ffffff'),
         ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8,
         zIndex: zOf(trace) - 1,
         opacity: (trace.lightIntensity ?? 1.0) * 0.8,
@@ -6166,6 +6175,7 @@ return (
         ...(floats ? { ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px` } : {}),
       }
       if (emit === 'center') {
+        const outer = reach * 1.6
         return (
           <div
             data-blends-with-ground=""
@@ -6175,21 +6185,20 @@ return (
               ...common,
               left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
               top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
-              width: `${reach * 2}px`,
-              height: `${reach * 2}px`,
-              borderRadius: '50%',
-              background: trace.lightColor ?? '#ffffff',
-              filter: `blur(${reach * 0.3}px)`,
+              width: `${outer * 2}px`,
+              height: `${outer * 2}px`,
+              background: `radial-gradient(circle closest-side, ${LIGHT_FALLOFF})`,
               transformOrigin: 'center center',
-              marginLeft: `${-reach}px`,
-              marginTop: `${-reach}px`,
+              marginLeft: `${-outer}px`,
+              marginTop: `${-outer}px`,
             }}
           />
         )
       }
-      // The shape's own outline: rounded as the trace is, an ellipse for a circle.
+      // The shape's own outline: rounded as the trace is, an ellipse for a
+      // circle. Its glow a painted shadow: as far out as the old blur reached.
       const round = trace.type === 'shape' && trace.shapeType === 'circle' ? '50%' : `${(displayTrace.borderRadius ?? 0) * zoom}px`
-      const spread = reach * 0.25
+      const glow = `0 0 ${reach * 0.6}px ${reach * 0.25}px rgb(var(--light-rgb))`
       return (
         <div
           data-blends-with-ground=""
@@ -6200,15 +6209,14 @@ return (
             ...common,
             left: `${screenX + boxOffset.x}px`,
             top: `${screenY + boxOffset.y}px`,
-            width: `${borderWidth + spread * 2}px`,
-            height: `${borderHeight + spread * 2}px`,
+            width: `${borderWidth}px`,
+            height: `${borderHeight}px`,
             transform: `translate(-50%, -50%) rotate(${transform.rotation}deg)`,
             borderRadius: round,
             ...(emit === 'shape'
-              ? { background: trace.lightColor ?? '#ffffff' }
-              // The border: a ring as thick as its spread, nothing inside.
-              : { border: `${Math.max(2, spread)}px solid var(--light-colour)`, ['--light-colour' as any]: trace.lightColor ?? '#ffffff' }),
-            filter: `blur(${reach * 0.3}px)`,
+              ? { background: 'rgb(var(--light-rgb))', boxShadow: glow }
+              // The border: glowing out from it and in from it, nothing filled.
+              : { boxShadow: `${glow}, inset ${glow}` }),
           }}
         />
       )

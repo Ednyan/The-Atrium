@@ -436,11 +436,20 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
           : action === 'laser' ? laser
           : armed === action
         const key = keyOf(action)
+        // Where its options open: beside it on the bar, at the foot beside More's panel.
+        const side = inPanel ? 'bottom-0' : 'top-0'
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {
           // A tool with kinds (or options) pressed while it's already in
           // hand opens them -- the way to them without hovering (touch).
+          // Kept under More: taken up, with its options open beside the
+          // panel -- not over the tools next to it in there.
+          if (inPanel && withFlyout) {
+            if (!on && action !== 'other') onAction(action === 'shape' ? shapeKind : action)
+            setFlyout(open => (open === action ? null : action))
+            return
+          }
           if ((withFlyout && on) || action === 'other') {
             setFlyout(open => (open === action ? null : action))
             return
@@ -451,9 +460,12 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
         return (
           <div
             key={action}
-            className="group relative"
-            onMouseEnter={withFlyout ? () => keepFlyout(action) : undefined}
-            onMouseLeave={withFlyout ? letFlyoutGo : undefined}
+            // Under More, not the anchor for its options: they open beside
+            // the panel (the next one positioned), at its foot -- on a click,
+            // as hovering on the way to them would cross the other tools.
+            className={inPanel ? 'group' : 'group relative'}
+            onMouseEnter={withFlyout && !inPanel ? () => keepFlyout(action) : undefined}
+            onMouseLeave={withFlyout && !inPanel ? letFlyoutGo : undefined}
           >
             {/* In the gap above, so every tool keeps its row's height -- and
                 only with a tool above it to set it apart from. */}
@@ -488,7 +500,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout={action}
-                className="slide-in absolute left-full top-0 ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10"
+                className={`slide-in absolute left-full ${side} ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={label[action]} keyName={key} />
@@ -504,6 +516,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
                       // Picking a kind takes the tool up, in that kind.
                       if (!on) onAction(action)
                       setFlyout(null)
+                      setMoreOpen(false)
                     }}
                     className={`w-9 h-9 flex items-center justify-center border transition-colors ${
                       kinds[action] === !!second
@@ -523,7 +536,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout="shape"
-                className="slide-in absolute left-full top-0 ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10"
+                className={`slide-in absolute left-full ${side} ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={t('atrium.tools.shapes')} keyName={key} />
@@ -539,6 +552,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
                       onShapeKind(kind)
                       if (armed !== kind) onAction(kind)
                       setFlyout(null)
+                      setMoreOpen(false)
                     }}
                     className={`w-9 h-9 flex items-center justify-center border transition-colors ${
                       shapeKind === kind
@@ -556,7 +570,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout="other"
-                className="slide-in absolute left-full top-0 ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10"
+                className={`slide-in absolute left-full ${side} ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={label.other} keyName={null} />
@@ -570,6 +584,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
                     onClick={() => {
                       onAction(kind)
                       setFlyout(null)
+                      setMoreOpen(false)
                     }}
                     className="w-9 h-9 flex items-center justify-center border border-transparent text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
@@ -582,7 +597,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout="laser"
-                className="slide-in absolute left-full top-0 ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono"
+                className={`slide-in absolute left-full ${side} ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={label.laser} keyName="K" />

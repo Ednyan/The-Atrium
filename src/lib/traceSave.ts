@@ -161,15 +161,14 @@ export function saveAllChanges(): Promise<boolean> {
 // Fired on window once changes are discarded: TraceOverlay's history goes with
 // them, its steps being from a state that is no longer there.
 // Auto-save (User Preferences; off unless turned on -- Save is pressed by
-// default): what's waiting is written a second after the last change, at most
-// ten while changes keep coming, never in the middle of a drag, and at once
-// when the window is hidden or the atrium left. A save that fails is tried
-// again, further apart each time, until one gets through or Save is pressed.
-const QUIET_MS = 1000
-const MAX_WAIT_MS = 10_000
+// default): what's waiting is written `everyMs` after the first change made
+// since the last save (the preference's interval), never in the middle of a
+// drag, and at once when the window is hidden or the atrium left. A save that
+// fails is tried again, further apart each time, until one gets through or
+// Save is pressed.
 const RETRY_MS = [5_000, 15_000, 30_000, 60_000]
 
-export function startAutosave(): () => void {
+export function startAutosave(everyMs: number): () => void {
   let timer: number | undefined
   let dirtySince: number | null = null
   let failures = 0
@@ -178,7 +177,7 @@ export function startAutosave(): () => void {
   const schedule = () => {
     window.clearTimeout(timer)
     if (dirtySince === null) dirtySince = Date.now()
-    timer = window.setTimeout(run, Math.max(0, Math.min(QUIET_MS, dirtySince + MAX_WAIT_MS - Date.now())))
+    timer = window.setTimeout(run, Math.max(0, dirtySince + everyMs - Date.now()))
   }
   const retry = () => {
     window.clearTimeout(timer)

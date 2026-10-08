@@ -56,6 +56,8 @@ interface GameState {
   spatialSound: boolean
   // Changes saved as they're made (lib/traceSave startAutosave); off, Save is pressed.
   autoSave: boolean
+  // How long after a change auto-save writes it, in seconds.
+  autoSaveSeconds: number
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
@@ -94,6 +96,7 @@ interface GameState {
   setQuickBarOrder: (order: string[] | null) => void
   setSpatialSound: (on: boolean) => void
   setAutoSave: (on: boolean) => void
+  setAutoSaveSeconds: (seconds: number) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
@@ -209,6 +212,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   confirmDelete: localStorage.getItem('dontAskDeleteTrace') !== 'true',
   spatialSound: localStorage.getItem('spatialSound') === 'true',
   autoSave: localStorage.getItem('autoSave') === 'true',
+  autoSaveSeconds: (() => {
+    const stored = Number(localStorage.getItem('autoSaveSeconds'))
+    return Number.isFinite(stored) && stored >= 1 ? Math.min(300, stored) : 2
+  })(),
   quickBarOrder: (() => {
     try {
       const stored = JSON.parse(localStorage.getItem('atrium.quickBar.order') || 'null')
@@ -276,6 +283,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setConfirmDelete: (on) => {
     localStorage.setItem('dontAskDeleteTrace', String(!on))
     set({ confirmDelete: on })
+  },
+  setAutoSaveSeconds: (seconds) => {
+    localStorage.setItem('autoSaveSeconds', String(seconds))
+    set({ autoSaveSeconds: seconds })
   },
   setAutoSave: (on) => {
     localStorage.setItem('autoSave', String(on))

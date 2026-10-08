@@ -81,17 +81,13 @@
    with the atrium behind it. A trace's light, screened onto the ground, came
    out at full strength on a light atrium for as long as the view moved, and
    went back when it stopped. So what blends with the ground carries what it
-   would look like over it, --over-ground, and is drawn plainly in that colour
-   while the layer moves -- over the ground, the very same pixels. */
+   would look like over it, --over-ground-rgb, and takes that as its colour
+   (--light-rgb) while the layer moves -- drawn plainly, over the ground the
+   very same pixels. Lights draw no filter (TraceOverlay LIGHT_FALLOFF): one
+   vanished for every move in the desktop app's webview. */
 [data-camera-moving] [data-blends-with-ground] {
   mix-blend-mode: normal !important;
-  background: var(--over-ground) !important;
-}
-/* A light from a trace's border is a ring: its border takes the colour, and
-   nothing fills it. */
-[data-camera-moving] [data-blends-with-ground][data-light-emit='border'] {
-  background: transparent !important;
-  border-color: var(--over-ground) !important;
+  --light-rgb: var(--over-ground-rgb) !important;
 }
 
 /* Nier:Automata Inspired Theme */

@@ -47,7 +47,7 @@ const PRESET_COLORS = [
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization, confirmDelete, setConfirmDelete, spatialSound, setSpatialSound, autoSave, setAutoSave } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization', 'confirmDelete', 'setConfirmDelete', 'spatialSound', 'setSpatialSound', 'autoSave', 'setAutoSave')
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization, confirmDelete, setConfirmDelete, spatialSound, setSpatialSound, autoSave, setAutoSave, autoSaveSeconds, setAutoSaveSeconds } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization', 'confirmDelete', 'setConfirmDelete', 'spatialSound', 'setSpatialSound', 'autoSave', 'setAutoSave', 'autoSaveSeconds', 'setAutoSaveSeconds')
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -287,6 +287,14 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
       <Section id="work" title={t('atrium.profile.howYouWork')}>
         <Switch testId="auto-customize" label={t('atrium.profile.autoCustomize')} hint={t('atrium.profile.autoCustomizeHint')} on={autoOpenCustomization} onChange={setAutoOpenCustomization} />
         <Switch testId="auto-save" label={t('atrium.profile.autoSave')} hint={t('atrium.profile.autoSaveHint')} on={autoSave} onChange={setAutoSave} />
+        {autoSave && (
+          <Slider
+            label={t('atrium.profile.autoSaveEvery', { value: autoSaveSeconds })}
+            hint={t('atrium.profile.autoSaveEveryHint')}
+            min={1} max={120} step={1} value={autoSaveSeconds}
+            onChange={setAutoSaveSeconds}
+          />
+        )}
         <Switch testId="confirm-delete" label={t('atrium.profile.confirmDelete')} hint={t('atrium.profile.confirmDeleteHint')} on={confirmDelete} onChange={setConfirmDelete} />
         <Slider
           label={t('atrium.profile.undoDepth', { count: undoDepth })}

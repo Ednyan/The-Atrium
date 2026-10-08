@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
 import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
 import { useLandingTheme } from '../lib/useLandingTheme'
@@ -439,6 +440,43 @@ function refreshGround(theme: ThemeSettings | null | undefined) {
     ground.texture = canvas ? Texture.from(canvas) : Texture.EMPTY
     ground.visible = !!canvas
     if (old !== Texture.EMPTY) old.destroy(true)
+  })
+}
+
+// The room's picture (a theme's backgroundImage), under the grid: a page
+// element behind the canvas -- so a GIF moves -- with the canvas made see-
+// through while there is one (the room's colour is the element behind both).
+// Repeated, and moved with the view by its parallax share of the world's
+// movement; placed in drawGrid, which `version` tells to place it again.
+const backdrop = { el: null as HTMLDivElement | null, url: '', w: 0, h: 0, scale: 1, parallax: 0.3, version: 0 }
+function refreshBackdrop(theme: ThemeSettings | null | undefined, app: Application | null, placeAgain: () => void) {
+  const url = theme?.backgroundImage ?? ''
+  backdrop.scale = theme?.backgroundImageScale ?? 1
+  backdrop.parallax = theme?.backgroundParallax ?? 0.3
+  backdrop.version++
+  const el = backdrop.el
+  if (app) app.renderer.background.alpha = url ? 0 : 1
+  if (!el) return
+  el.style.opacity = String(theme?.backgroundImageOpacity ?? 1)
+  if (!url) {
+    backdrop.url = ''
+    el.style.display = 'none'
+    return
+  }
+  if (url === backdrop.url) { placeAgain(); return }
+  backdrop.url = url
+  void resolveLocalStreamUrl(url).then(src => {
+    const img = new Image()
+    img.onload = () => {
+      if (backdrop.url !== url) return
+      backdrop.w = img.naturalWidth || 1
+      backdrop.h = img.naturalHeight || 1
+      backdrop.version++
+      el.style.backgroundImage = `url("${src}")`
+      el.style.display = 'block'
+      placeAgain()
+    }
+    img.src = src
   })
 }
 
@@ -1752,8 +1790,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => { canEditRef.current = canEdit }, [canEdit])
 
   // Auto-save, while the preference is on (lib/traceSave startAutosave).
-  const { autoSave } = useGamePick('autoSave')
-  useEffect(() => (autoSave && canEdit ? startAutosave() : undefined), [autoSave, canEdit])
+  const { autoSave, autoSaveSeconds } = useGamePick('autoSave', 'autoSaveSeconds')
+  useEffect(() => (autoSave && canEdit ? startAutosave(autoSaveSeconds * 1000) : undefined), [autoSave, autoSaveSeconds, canEdit])
 
   // Check the Pinterest connection once per atrium visit, to decide whether to
   // show the import button. Asked on both platforms now: on desktop the answer
@@ -2968,6 +3006,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       width: viewportWidth,
       height: viewportHeight,
       backgroundColor: bgColor,
+      // Under 1, so the canvas can be see-through -- PIXI decides that once,
+      // as it's made -- for a room with a picture behind it (refreshBackdrop);
+      // set back to opaque at once, so a room without one draws as it did.
+      backgroundAlpha: 0.999,
       antialias: true,
       // Deliberately left at the default resolution of 1.
       //
@@ -2985,6 +3027,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       canvas.ondragstart = () => false
       canvasRef.current.appendChild(canvas)
       appRef.current = app
+      app.renderer.background.alpha = 1
 
       // Create world container that will move (camera effect)
       const worldContainer = new Container()
@@ -3003,6 +3046,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       app.stage.addChildAt(ground, 0)
       groundRef.current = ground
       refreshGround(themeSettingsRef.current)
+      refreshBackdrop(themeSettingsRef.current, app, () => updateGridRef.current?.())
       
       // Create lighting layer (drawn above grid but below entities)
       const lightingLayer = new Graphics()
@@ -3030,7 +3074,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const theme = themeSettingsRef.current
         const width = app.screen.width, height = app.screen.height
         const key = [worldContainer.x, worldContainer.y, zoomRef.current, width, height,
-          gridStyleOf(theme), theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing].join('|')
+          gridStyleOf(theme), theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing, backdrop.version].join('|')
         if (key === drawnFor) return
         drawnFor = key
         // The ground's tile, where the world is: its origin at the world's.
@@ -3038,6 +3082,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ground.height = height
         ground.tilePosition.set(worldContainer.x, worldContainer.y)
         ground.tileScale.set(zoomRef.current / GROUND_PX)
+        // The room's picture, by its share of the view's moves and zoom.
+        if (backdrop.el && backdrop.url && backdrop.w) {
+          const k = backdrop.scale * Math.pow(zoomRef.current, backdrop.parallax)
+          backdrop.el.style.backgroundSize = `${backdrop.w * k}px ${backdrop.h * k}px`
+          backdrop.el.style.backgroundPosition = `${worldContainer.x * backdrop.parallax}px ${worldContainer.y * backdrop.parallax}px`
+        }
         grid.clear()
         const style = gridStyleOf(theme)
         if (style === 'none') return
@@ -3780,6 +3830,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // The next atrium draws its own (destroyed with the stage).
       groundRef.current = null
       groundDrawnFor = null
+      backdrop.url = ''
       tracesDataRef.current = []
       
       // Destroy indicator pool objects to free GPU memory
@@ -3802,6 +3853,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!appRef.current || !updateGridRef.current || !currentLobby) return
 
     refreshGround(viewTheme)
+    refreshBackdrop(viewTheme, appRef.current, () => updateGridRef.current?.())
 
     // Update background color
     const bgColor = viewTheme?.backgroundColor ? parseInt(viewTheme.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
@@ -4414,6 +4466,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     >
       {/* Canvas Container with Overlay - Full Viewport */}
       <div className="w-full h-full relative">
+        {/* The room's picture, under the canvas (refreshBackdrop). */}
+        <div
+          ref={el => { backdrop.el = el }}
+          data-backdrop=""
+          className="absolute inset-0 pointer-events-none"
+          style={{ display: 'none', backgroundRepeat: 'repeat' }}
+        />
         {/* Pixi Canvas */}
         <div
           ref={canvasRef}

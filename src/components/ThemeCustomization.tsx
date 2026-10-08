@@ -8,8 +8,10 @@
 // light or dark, and changed here; each change is kept with your account. An
 // owner or admin can save what's showing as the atrium's theme, for everyone.
 
-import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useEffect, useRef, useState } from 'react'
+import { isDesktop, supabase } from '../lib/supabase'
+import { uploadTraceFile } from '../lib/traceUpload'
+import { resolveLocalStreamUrl } from '../lib/localMedia'
 import type { Lobby, ThemeSettings } from '../types/database'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
@@ -27,6 +29,72 @@ const DEFAULTS: ThemeSettings = {
   gridColor: '#3b82f6', gridOpacity: 0.2, gridEnabled: true, gridLineSpacing: 50, backgroundColor: '#0a0a0f',
   particlesEnabled: true, particleColor: '#ffffff', particleOpacity: 0.6, particleDensity: 1,
   groundEnabled: false, ...GROUND_DEFAULTS,
+}
+
+// The room's picture, under the grid: a link, or on the desktop a file of
+// one's own (kept in the vault, as a dropped picture is). Shown small, with a
+// way off.
+function BackdropPicker({ lobbyId, value, onChange }: { lobbyId: string; value: string | undefined; onChange: (url: string | undefined) => void }) {
+  const { t } = useTranslation()
+  const userId = useGameStore(state => state.userId)
+  const [link, setLink] = useState('')
+  const [preview, setPreview] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    let live = true
+    if (!value) { setPreview(null); return }
+    void resolveLocalStreamUrl(value).then(url => { if (live) setPreview(url) })
+    return () => { live = false }
+  }, [value])
+  const add = () => {
+    const url = link.trim()
+    if (!/^https?:/i.test(url)) return
+    onChange(url)
+    setLink('')
+  }
+  return (
+    <div className="space-y-2">
+      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase">{t('atrium.theme.backdrop')}</label>
+      {value && (
+        <div className="flex items-center gap-2">
+          {preview && <span aria-hidden="true" className="w-14 h-9 shrink-0 border border-nier-border/30 bg-center bg-cover" style={{ backgroundImage: `url("${preview}")` }} />}
+          <span className="flex-1 min-w-0 truncate text-[11px] text-nier-bg/70" title={value}>{value.split('/').pop()}</span>
+          <button type="button" data-backdrop-remove="" onClick={() => onChange(undefined)} aria-label={t('atrium.theme.groundRemove')} className="shrink-0 w-6 h-6 border border-nier-border/30 hover:border-nier-border/60">✕</button>
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <input
+          type="url"
+          data-backdrop-link=""
+          value={link}
+          onChange={e => setLink(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') add() }}
+          placeholder={t('atrium.theme.groundLink')}
+          className="flex-1 min-w-0 bg-nier-black text-nier-bg border border-nier-border/30 px-2 py-1.5 font-mono text-xs focus:outline-none focus:border-nier-border/60"
+        />
+        <button type="button" onClick={add} className="shrink-0 px-3 border border-nier-border/40 text-nier-strong text-[10px] tracking-[0.12em] uppercase hover:border-nier-bg">{t('atrium.theme.groundAdd')}</button>
+      </div>
+      {/* The web can't take files from the computer yet. */}
+      {isDesktop && userId && (
+        <>
+          <button type="button" onClick={() => fileRef.current?.click()} className="w-full py-1.5 border border-nier-border/40 text-nier-strong text-[10px] tracking-[0.12em] uppercase hover:border-nier-bg">
+            {t('atrium.theme.backdropFile')}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async e => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) onChange(await uploadTraceFile(file, lobbyId, userId))
+            }}
+          />
+        </>
+      )}
+    </div>
+  )
 }
 
 // What's on the ground: each built-in element, shown in the panel's own ink
@@ -345,6 +413,18 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
           </Section>
           <Section id="room" title={t('atrium.theme.theRoom')}>
             <ColourField label={t('atrium.theme.colour')} value={shown.backgroundColor!} onChange={c => setValue({ backgroundColor: c })} />
+            <BackdropPicker
+              lobbyId={lobby.id}
+              value={shown.backgroundImage}
+              onChange={backgroundImage => setValue({ backgroundImage })}
+            />
+            {shown.backgroundImage && (
+              <>
+                <Slider label={t('atrium.theme.backdropOpacity', { value: Math.round((shown.backgroundImageOpacity ?? 1) * 100) })} min={0.05} max={1} step={0.05} value={shown.backgroundImageOpacity ?? 1} onChange={v => setValue({ backgroundImageOpacity: v })} />
+                <Slider label={t('atrium.theme.backdropSize', { value: Math.round((shown.backgroundImageScale ?? 1) * 100) })} min={0.1} max={4} step={0.05} value={shown.backgroundImageScale ?? 1} onChange={v => setValue({ backgroundImageScale: v })} />
+                <Slider label={t('atrium.theme.backdropParallax', { value: Math.round((shown.backgroundParallax ?? 0.3) * 100) })} hint={t('atrium.theme.backdropParallaxHint')} min={0} max={1} step={0.05} value={shown.backgroundParallax ?? 0.3} onChange={v => setValue({ backgroundParallax: v })} />
+              </>
+            )}
           </Section>
           <Section id="particles" title={t('atrium.theme.driftingParticles')}>
             <Check checked={shown.particlesEnabled ?? true} label={t('atrium.theme.enableParticles')} onChange={on => setValue({ particlesEnabled: on })} />
