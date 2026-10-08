@@ -13,7 +13,12 @@
 // being placed, text being typed -- ends when another tool is picked here.
 // Nothing is lost by it: a drawing's strokes are saved as they're drawn.
 //
-// Keys 1 to 9 pick the first nine, in the order shown; K the laser pointer.
+// One column, as tall as the room it's in allows; what doesn't fit is under
+// More (the three dots at its foot), with Customize quick bar, where the tools
+// are put in an order of one's own (QuickBarEditor) -- kept on this device.
+//
+// Keys 1 to 9 pick the first nine, in the order they come in, wherever they're
+// put; K the laser pointer.
 // Each tool's name slides out beside it under the pointer, as the atrium
 // menu's do (SlideLabel) -- or, for a tool with a flyout, at the flyout's
 // start. What the tool in hand does is said at the foot of the screen
@@ -42,6 +47,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { useHistoryReach } from '../lib/actionHistory'
 import { BOX_SHAPES, isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { SlideLabel } from './AtriumMenu'
+import { CustomizationPanel } from './Customization'
+import { useGamePick } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
 import { LASER_EFFECTS, TRAIL_MAX_MS, TRAIL_MIN_MS, type LaserEffect, type LaserSettings } from '../lib/laser'
 import type { TranslationKey } from '../locales/en'
@@ -147,6 +154,28 @@ const BOX_TEXT_ICON = (
 export const QUICK_ORDER: QuickButton[] = ['select', 'text', 'shape', 'path', 'draw', 'image', 'embed', 'frame', 'other', 'laser', 'pinterest']
 const ON_THE_BAR: QuickButton[] = ['select', 'pan', ...QUICK_ORDER.slice(1)]
 
+// The bar's order: as chosen (Customize), with any tool the choice predates
+// at the end -- or as it comes, with none chosen.
+export function barOrder(chosen: string[] | null): QuickButton[] {
+  const known = (chosen ?? []).filter((tool, i, all): tool is QuickButton => (ON_THE_BAR as string[]).includes(tool) && all.indexOf(tool) === i)
+  return [...known, ...ON_THE_BAR.filter(tool => !known.includes(tool))]
+}
+
+// A tool's key: its place in the order it comes in, not where it's been put.
+const keyOf = (action: QuickButton): string | null => {
+  if (action === 'other') return null
+  if (action === 'pan') return 'H'
+  if (action === 'laser') return 'K'
+  const number = QUICK_ORDER.indexOf(action)
+  return number >= 0 && number < 9 ? String(number + 1) : null
+}
+
+// More: three dots. Customize: the bar's tools, one being moved.
+const MORE_ICON = <path d="M5.5 12h.01M12 12h.01M18.5 12h.01" strokeWidth="3" strokeLinecap="round" />
+const CUSTOMIZE_ICON = <path d="M4 6h9M4 12h5M4 18h9M17 4v6M14.5 7.5L17 10l2.5-2.5M17 20v-6M14.5 16.5L17 14l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+// Hold here to move a row: six dots.
+const GRIP_ICON = <path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" strokeWidth="2.5" strokeLinecap="round" />
+
 const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
   none: 'atrium.tools.effectNone',
   sparks: 'atrium.tools.effectSparks',
@@ -198,7 +227,7 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, panning, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings }: {
+export default function QuickBar({ armed, drawing, laser, panning, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, onCustomize }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
@@ -212,29 +241,51 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
   shapeKind: BoxShape
   onShapeKind: (kind: BoxShape) => void
   onLaserSettings: (settings: LaserSettings) => void
+  // Customize quick bar, from More: its editor opened (LobbyScene).
+  onCustomize: () => void
 }) {
   const { t } = useTranslation()
-  const tools = ON_THE_BAR
+  const { quickBarOrder } = useGamePick('quickBarOrder')
+  const tools = barOrder(quickBarOrder)
   // The open flyout: while the pointer is over it or its button, with a
   // moment's grace for the gap between them.
   const [flyout, setFlyout] = useState<FlyoutTool | null>(null)
 
-  // As many tools down as the room it's in is tall, and the rest in more
-  // columns beside them. Counted here rather than left to the grid's
-  // auto-fill, which sizes the bar's width as though every tool were in one
-  // row.
+  // As many tools down as the room it's in is tall, More taking the last
+  // place; the rest are under More. It used to go on in more columns, which
+  // on a short screen climbed up beside Save.
   const barRef = useRef<HTMLDivElement>(null)
-  const [rows, setRows] = useState(tools.length)
+  const [rows, setRows] = useState(tools.length + 1)
   useLayoutEffect(() => {
     const room = barRef.current?.parentElement
     if (!room) return
     // A tool is 36px with 4 between; the bar adds 10 (padding and border).
-    const fit = () => setRows(Math.max(1, Math.min(tools.length, Math.floor((room.clientHeight - 6) / 40))))
+    const fit = () => {
+      const style = getComputedStyle(room)
+      const height = room.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+      setRows(Math.max(1, Math.floor((height - 6) / 40)))
+    }
     fit()
     const observer = new ResizeObserver(fit)
     observer.observe(room)
     return () => observer.disconnect()
-  }, [tools.length])
+  }, [])
+  const shown = tools.length + 1 <= rows ? tools : tools.slice(0, Math.max(0, rows - 1))
+  const hidden = tools.slice(shown.length)
+  // More's panel, open: apart from `flyout`, so a tool in it can open its own.
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreTimer = useRef<number | null>(null)
+  const keepMore = () => {
+    if (moreTimer.current) window.clearTimeout(moreTimer.current)
+    moreTimer.current = null
+    setMoreOpen(true)
+  }
+  const letMoreGo = () => {
+    if (moreTimer.current) window.clearTimeout(moreTimer.current)
+    moreTimer.current = window.setTimeout(() => {
+      if (!flyoutRef.current?.contains(document.activeElement)) setMoreOpen(false)
+    }, 250)
+  }
   const closeTimer = useRef<number | null>(null)
   const keepFlyout = (tool: FlyoutTool) => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
@@ -254,11 +305,15 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
   }
   // A press anywhere off the bar puts it away, in use or not.
   useEffect(() => {
-    if (!flyout) return
-    const press = (e: PointerEvent) => { if (!barRef.current?.contains(e.target as Node)) setFlyout(null) }
+    if (!flyout && !moreOpen) return
+    const press = (e: PointerEvent) => {
+      if (barRef.current?.contains(e.target as Node)) return
+      setFlyout(null)
+      setMoreOpen(false)
+    }
     window.addEventListener('pointerdown', press, true)
     return () => window.removeEventListener('pointerdown', press, true)
-  }, [flyout])
+  }, [flyout, moreOpen])
   // Each kinded tool's two kinds: icon, name, and what it does.
   const KIND: Record<KindedTool, { icon: ReactNode; name: string; hint: string; attr: string }[]> = {
     select: [
@@ -305,10 +360,57 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
       aria-label={t('atrium.tools.title')}
       aria-orientation="vertical"
       ref={barRef}
-      className="pointer-events-auto grid grid-flow-col gap-1 p-1 border border-nier-border/40"
-      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)', gridTemplateRows: `repeat(${rows}, 2.25rem)` }}
+      className="pointer-events-auto flex flex-col gap-1 p-1 border border-nier-border/40"
+      style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
     >
-      {tools.map((action, i) => {
+      {shown.map((action, i) => renderTool(action, i))}
+      {/* More: what didn't fit, and Customize quick bar. */}
+      <div className="group relative" onMouseEnter={keepMore} onMouseLeave={letMoreGo}>
+        <button
+          type="button"
+          data-quick="more"
+          aria-haspopup="true"
+          aria-expanded={moreOpen}
+          aria-label={t('atrium.tools.more')}
+          onClick={() => setMoreOpen(open => !open)}
+          className={`peer relative w-9 h-9 flex items-center justify-center border transition-colors ${
+            moreOpen ? 'border-nier-border/60 text-nier-bg' : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg'
+          }`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">{MORE_ICON}</svg>
+        </button>
+        {!moreOpen && <SlideLabel text={t('atrium.tools.more')} onPress={() => setMoreOpen(true)} />}
+        {moreOpen && (
+          <div
+            data-quick-more=""
+            className="slide-in absolute left-full bottom-0 ml-2 flex flex-col gap-1 p-1 border border-nier-border/40 z-10"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
+          >
+            <ToolName name={t('atrium.tools.more')} keyName={null} />
+            {hidden.length > 0 && (
+              <div className="grid grid-cols-4 gap-1 pb-1 border-b border-nier-border/25">
+                {hidden.map((action, i) => renderTool(action, i, true))}
+              </div>
+            )}
+            <button
+              type="button"
+              data-quick-customize=""
+              onClick={() => { setMoreOpen(false); onCustomize() }}
+              className="flex items-center gap-2 h-9 px-2 border border-transparent text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg transition-colors whitespace-nowrap text-[11px] tracking-[0.12em] uppercase"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">{CUSTOMIZE_ICON}</svg>
+              {t('atrium.tools.customizeBar')}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // A tool's button, with its name sliding out beside it and its flyout --
+  // on the bar, or in More's panel (inPanel: named by its title there, a
+  // sliding name crossing the tools beside it).
+  function renderTool(action: QuickButton, i: number, inPanel = false) {
         const on = action === 'select' ? !armed && !drawing && !laser && !panning
           : action === 'pan' ? panning
           : action === 'shape' ? isBoxShape(armed)
@@ -316,8 +418,7 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
           : action === 'draw' ? drawing
           : action === 'laser' ? laser
           : armed === action
-        const number = QUICK_ORDER.indexOf(action)
-        const key = action === 'other' ? null : action === 'pan' ? 'H' : number >= 0 && number < 9 ? String(number + 1) : action === 'laser' ? 'K' : null
+        const key = keyOf(action)
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {
@@ -327,6 +428,7 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
             setFlyout(open => (open === action ? null : action))
             return
           }
+          if (inPanel) setMoreOpen(false)
           onAction(action === 'shape' ? shapeKind : action)
         }
         return (
@@ -338,7 +440,7 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
           >
             {/* In the gap above, so every tool keeps its row's height -- and
                 only with a tool above it to set it apart from. */}
-            {action === 'pinterest' && i % rows !== 0 && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
+            {action === 'pinterest' && i !== 0 && !inPanel && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
             <button
               type="button"
               data-quick={action}
@@ -347,6 +449,7 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
               aria-expanded={withFlyout ? flyout === action : undefined}
               aria-label={label[action]}
               aria-keyshortcuts={key ?? undefined}
+              title={inPanel ? label[action] : undefined}
               onClick={press}
               className={`peer relative w-9 h-9 flex items-center justify-center border transition-colors ${
                 on
@@ -363,7 +466,7 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
                 <span aria-hidden="true" className="absolute right-0.5 top-0.5 w-0 h-0 opacity-60" style={{ borderTop: '4px solid currentColor', borderLeft: '4px solid transparent' }} />
               )}
             </button>
-            {flyout !== action && <SlideLabel text={label[action]} hint={key ?? undefined} onPress={press} />}
+            {flyout !== action && !inPanel && <SlideLabel text={label[action]} hint={key ?? undefined} onPress={press} />}
             {withKinds && flyout === action && (
               <div
                 ref={flyoutRef}
@@ -517,9 +620,7 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
             )}
           </div>
         )
-      })}
-    </div>
-  )
+  }
 }
 
 // A tool's name at the start of its flyout, where the sliding name would be.
@@ -529,6 +630,98 @@ function ToolName({ name, keyName }: { name: string; keyName: string | null }) {
       {name}
       {keyName && <span className="ml-2 text-nier-bg/50 normal-case tracking-normal">{keyName}</span>}
     </span>
+  )
+}
+
+// Each tool by its own name, whichever kind of it is in hand.
+const TOOL_NAME: Record<QuickButton, TranslationKey> = {
+  select: 'atrium.tools.select',
+  pan: 'atrium.hud.panTool',
+  text: 'atrium.tools.textBox',
+  shape: 'atrium.tools.shapes',
+  path: 'atrium.trace.shape.path',
+  draw: 'atrium.draw.button',
+  image: 'atrium.trace.type.image',
+  embed: 'atrium.trace.type.embed',
+  frame: 'atrium.trace.type.frame',
+  other: 'atrium.tools.other',
+  laser: 'atrium.tools.laser',
+  pinterest: 'atrium.canvas.pinterestBoards',
+}
+
+// Customize quick bar: the tools in the bar's order, each dragged by its row
+// to where it's wanted, as the Layer panel's are -- the bar following at
+// once. Reset puts them back as they come. Docked where the other panels are.
+export function QuickBarEditor({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation()
+  const { quickBarOrder, setQuickBarOrder } = useGamePick('quickBarOrder', 'setQuickBarOrder')
+  const order = barOrder(quickBarOrder)
+  // The row held, and the order as it would be let go of now.
+  const [held, setHeld] = useState<{ tool: QuickButton; order: QuickButton[] } | null>(null)
+  const rowRefs = useRef(new Map<QuickButton, HTMLLIElement>())
+  const list = held?.order ?? order
+  const move = (y: number) => {
+    if (!held) return
+    // Before the first row whose middle is below the pointer.
+    const others = list.filter(tool => tool !== held.tool)
+    let at = others.findIndex(tool => {
+      const r = rowRefs.current.get(tool)?.getBoundingClientRect()
+      return !!r && y < r.top + r.height / 2
+    })
+    if (at < 0) at = others.length
+    const next = [...others.slice(0, at), held.tool, ...others.slice(at)]
+    if (next.join() !== list.join()) setHeld({ tool: held.tool, order: next })
+  }
+  const letGo = () => {
+    if (held && held.order.join() !== order.join()) setQuickBarOrder(held.order)
+    setHeld(null)
+  }
+  return (
+    <CustomizationPanel
+      subtitle={t('atrium.tools.customizeBar')}
+      onClose={onClose}
+      zIndex={9999}
+      actions={(
+        <button
+          type="button"
+          data-quick-reset=""
+          disabled={!quickBarOrder}
+          onClick={() => setQuickBarOrder(null)}
+          className="w-full py-2 border border-nier-border/40 text-nier-strong text-[10px] tracking-[0.15em] uppercase hover:border-nier-bg transition-colors disabled:opacity-40 disabled:pointer-events-none"
+        >
+          {t('atrium.tools.resetBar')}
+        </button>
+      )}
+    >
+      <div className="px-4 py-3">
+        <p className="text-nier-bg/60 text-[0.7rem] leading-relaxed tracking-wide mb-3">{t('atrium.tools.customizeBarHint')}</p>
+        <ul className="flex flex-col gap-1" data-quick-editor="">
+          {list.map(tool => (
+            <li
+              key={tool}
+              ref={el => { if (el) rowRefs.current.set(tool, el); else rowRefs.current.delete(tool) }}
+              data-quick-row={tool}
+              onPointerDown={e => {
+                if (e.button !== 0) return
+                e.currentTarget.setPointerCapture(e.pointerId)
+                setHeld({ tool, order: list })
+              }}
+              onPointerMove={e => move(e.clientY)}
+              onPointerUp={letGo}
+              onPointerCancel={() => setHeld(null)}
+              className={`flex items-center gap-3 h-10 px-2 border select-none touch-none transition-colors ${
+                held?.tool === tool ? 'border-nier-bg bg-nier-bg/10 cursor-grabbing' : 'border-nier-border/30 hover:border-nier-border/60 cursor-grab'
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-nier-bg/50 shrink-0" aria-hidden="true">{GRIP_ICON}</svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-nier-bg shrink-0" aria-hidden="true">{tool === 'shape' ? ICONS.rectangle : ICONS[tool]}</svg>
+              <span className="flex-1 min-w-0 truncate text-nier-strong text-[11px] tracking-[0.12em] uppercase">{t(TOOL_NAME[tool])}</span>
+              {keyOf(tool) && <span className="text-nier-bg/50 text-[10px] font-mono">{keyOf(tool)}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </CustomizationPanel>
   )
 }
 

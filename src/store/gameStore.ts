@@ -48,6 +48,10 @@ interface GameState {
   // Deleting asks first (User Preferences); its dialog's Don't ask again
   // turns it off, under the key that has always kept that.
   confirmDelete: boolean
+  // The quick bar's tools in the order chosen (QuickBar's Customize), on this
+  // device; null for the order they come in. Checked against the tools there
+  // are where it's read (QuickBar barOrder).
+  quickBarOrder: string[] | null
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
@@ -83,6 +87,7 @@ interface GameState {
   setHideOwnNameTag: (hide: boolean) => void
   setAutoOpenCustomization: (on: boolean) => void
   setConfirmDelete: (on: boolean) => void
+  setQuickBarOrder: (order: string[] | null) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
@@ -196,6 +201,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     return stored !== null ? stored === 'true' : true
   })(),
   confirmDelete: localStorage.getItem('dontAskDeleteTrace') !== 'true',
+  quickBarOrder: (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('atrium.quickBar.order') || 'null')
+      return Array.isArray(stored) ? stored.filter((tool: unknown): tool is string => typeof tool === 'string') : null
+    } catch {
+      return null
+    }
+  })(),
   hideOtherNameTags: (() => {
     const stored = localStorage.getItem('hideOtherNameTags')
     return stored !== null ? stored === 'true' : false
@@ -255,6 +268,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   setConfirmDelete: (on) => {
     localStorage.setItem('dontAskDeleteTrace', String(!on))
     set({ confirmDelete: on })
+  },
+  setQuickBarOrder: (order) => {
+    if (order) localStorage.setItem('atrium.quickBar.order', JSON.stringify(order))
+    else localStorage.removeItem('atrium.quickBar.order')
+    set({ quickBarOrder: order })
   },
   setHideOtherNameTags: (hide) => {
     localStorage.setItem('hideOtherNameTags', String(hide))

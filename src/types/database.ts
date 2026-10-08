@@ -226,6 +226,17 @@ export interface ThemeSettings {
   particleColor?: string
   particleOpacity?: number
   particleDensity?: number
+  // Things on the ground (lib/ground): built-in elements by name, and
+  // pictures of one's own by link; tinted, faded, scattered or in rows.
+  groundEnabled?: boolean
+  groundElements?: string[]
+  groundColor?: string
+  groundOpacity?: number
+  groundDensity?: number
+  groundScale?: number
+  groundScaleRange?: number
+  groundPattern?: 'random' | 'grid'
+  groundSpacing?: number
 }
 
 export interface Lobby {

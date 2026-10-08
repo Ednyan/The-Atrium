@@ -20,11 +20,71 @@ import { useLandingTheme } from '../lib/useLandingTheme'
 import { CustomizationPanel, Section } from './Customization'
 import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { Check, ColourField, Slider } from './ShapeStyleControls'
+import { GROUND_DEFAULTS, GROUND_ELEMENTS, groundSrc, isBuiltIn } from '../lib/ground'
 
 // What a theme has when it doesn't say: the room's defaults (LobbyScene).
 const DEFAULTS: ThemeSettings = {
   gridColor: '#3b82f6', gridOpacity: 0.2, gridEnabled: true, gridLineSpacing: 50, backgroundColor: '#0a0a0f',
   particlesEnabled: true, particleColor: '#ffffff', particleOpacity: 0.6, particleDensity: 1,
+  groundEnabled: false, ...GROUND_DEFAULTS,
+}
+
+// What's on the ground: each built-in element, shown in the panel's own ink
+// (masked, as the elements are white), on or off; pictures of one's own by
+// link, each with a way off.
+function GroundPicker({ chosen, onChange }: { chosen: string[]; onChange: (chosen: string[]) => void }) {
+  const { t } = useTranslation()
+  const [link, setLink] = useState('')
+  const toggle = (item: string) => onChange(chosen.includes(item) ? chosen.filter(c => c !== item) : [...chosen, item])
+  const add = () => {
+    const url = link.trim()
+    if (!/^(https?:|local:)/i.test(url) || chosen.includes(url)) return
+    onChange([...chosen, url])
+    setLink('')
+  }
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-5 gap-1.5">
+        {GROUND_ELEMENTS.map(id => {
+          const mask = `url(${groundSrc(id)}) center / contain no-repeat`
+          return (
+            <button
+              key={id}
+              type="button"
+              data-ground={id}
+              aria-pressed={chosen.includes(id)}
+              aria-label={t(`atrium.theme.ground.${id}` as TranslationKey)}
+              title={t(`atrium.theme.ground.${id}` as TranslationKey)}
+              onClick={() => toggle(id)}
+              className={`aspect-square flex items-center justify-center border transition-colors ${
+                chosen.includes(id) ? 'border-nier-bg bg-nier-bg/10 text-nier-strong' : 'border-nier-border/30 text-nier-bg/50 hover:border-nier-border/60'
+              }`}
+            >
+              <span aria-hidden="true" className="w-3/4 h-3/4" style={{ backgroundColor: 'currentColor', mask, WebkitMask: mask }} />
+            </button>
+          )
+        })}
+      </div>
+      {chosen.filter(item => !isBuiltIn(item)).map(url => (
+        <div key={url} className="flex items-center gap-2 text-[11px] text-nier-bg/80">
+          <span className="flex-1 min-w-0 truncate" title={url}>{url}</span>
+          <button type="button" data-ground-remove="" onClick={() => toggle(url)} aria-label={t('atrium.theme.groundRemove')} className="shrink-0 w-6 h-6 border border-nier-border/30 hover:border-nier-border/60">✕</button>
+        </div>
+      ))}
+      <div className="flex gap-1.5">
+        <input
+          type="url"
+          data-ground-link=""
+          value={link}
+          onChange={e => setLink(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') add() }}
+          placeholder={t('atrium.theme.groundLink')}
+          className="flex-1 min-w-0 bg-nier-black text-nier-bg border border-nier-border/30 px-2 py-1.5 font-mono text-xs focus:outline-none focus:border-nier-border/60"
+        />
+        <button type="button" onClick={add} className="shrink-0 px-3 border border-nier-border/40 text-nier-strong text-[10px] tracking-[0.12em] uppercase hover:border-nier-bg">{t('atrium.theme.groundAdd')}</button>
+      </div>
+    </div>
+  )
 }
 
 const rgba = (hex: string | undefined, alpha: number) => {
@@ -271,6 +331,49 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
                 <ColourField label={t('atrium.theme.colour')} value={shown.particleColor!} onChange={c => setValue({ particleColor: c })} />
                 <Slider label={t('atrium.theme.particleOpacity', { value: Math.round((shown.particleOpacity ?? 0.6) * 100) })} min={0} max={1} step={0.05} value={shown.particleOpacity ?? 0.6} onChange={v => setValue({ particleOpacity: v })} />
                 <Slider label={t('atrium.theme.particleDensity', { value: (shown.particleDensity ?? 1).toFixed(1) })} hint={t('atrium.theme.particleDensityHint')} min={0.1} max={3} step={0.1} value={shown.particleDensity ?? 1} onChange={v => setValue({ particleDensity: v })} />
+              </>
+            )}
+          </Section>
+          <Section id="ground" title={t('atrium.theme.ground')}>
+            {/* Turned on with a few to start from, so it shows at once. */}
+            <Check
+              checked={shown.groundEnabled ?? false}
+              label={t('atrium.theme.groundOn')}
+              hint={t('atrium.theme.groundOnHint')}
+              onChange={on => setValue({ groundEnabled: on, ...(on && !shown.groundElements?.length ? { groundElements: ['pebbles', 'grass', 'moss'] } : {}) })}
+            />
+            {shown.groundEnabled && (
+              <>
+                <GroundPicker chosen={shown.groundElements ?? []} onChange={groundElements => setValue({ groundElements })} />
+                <ColourField label={t('atrium.theme.colour')} value={shown.groundColor!} onChange={c => setValue({ groundColor: c })} />
+                <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide -mt-1">{t('atrium.theme.groundColourHint')}</p>
+                <Slider label={t('atrium.theme.groundOpacity', { value: Math.round(shown.groundOpacity! * 100) })} min={0.05} max={1} step={0.05} value={shown.groundOpacity!} onChange={v => setValue({ groundOpacity: v })} />
+                <Slider label={t('atrium.theme.groundSize', { value: Math.round(shown.groundScale! * 100) })} min={0.3} max={4} step={0.1} value={shown.groundScale!} onChange={v => setValue({ groundScale: v })} />
+                <Slider label={t('atrium.theme.groundVariation', { value: Math.round(shown.groundScaleRange! * 100) })} min={0} max={0.9} step={0.05} value={shown.groundScaleRange!} onChange={v => setValue({ groundScaleRange: v })} />
+                <div className="flex gap-2">
+                  {(['random', 'grid'] as const).map(pattern => (
+                    <button
+                      key={pattern}
+                      type="button"
+                      data-ground-pattern={pattern}
+                      aria-pressed={shown.groundPattern === pattern}
+                      onClick={() => setValue({ groundPattern: pattern })}
+                      className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                        shown.groundPattern === pattern ? 'bg-nier-bg text-nier-black border-nier-bg' : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                      }`}
+                    >
+                      {t(pattern === 'random' ? 'atrium.theme.groundScattered' : 'atrium.theme.groundRows')}
+                    </button>
+                  ))}
+                </div>
+                <Slider
+                  label={t('atrium.theme.groundDensity', { value: Math.round(shown.groundDensity! * 100) })}
+                  min={0.1} max={shown.groundPattern === 'grid' ? 1 : 4} step={0.1} value={shown.groundDensity!}
+                  onChange={v => setValue({ groundDensity: v })}
+                />
+                {shown.groundPattern === 'grid' && (
+                  <Slider label={t('atrium.theme.groundSpacing', { value: shown.groundSpacing! })} min={60} max={600} step={10} value={shown.groundSpacing!} onChange={v => setValue({ groundSpacing: v })} />
+                )}
               </>
             )}
           </Section>

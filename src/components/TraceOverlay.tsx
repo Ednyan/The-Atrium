@@ -4704,8 +4704,12 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   }
 
   // A press held that began on a trace, and each letting go of one: the
-  // Customization panel opens on the release (below).
+  // Customization panel opens on the release (below) -- of a click only. A
+  // press that moved was a drag, and the panel stays as it was for that
+  // selection (draggedKeyRef) until a click on it.
   const pressHeldRef = useRef(false)
+  const pressAtRef = useRef<{ x: number; y: number } | null>(null)
+  const draggedKeyRef = useRef<string | null>(null)
   const [releaseTick, setReleaseTick] = useState(0)
   // Where the press now under way began (handleClickOutside). In the
   // capture phase, ahead of anything the press might change.
@@ -4713,11 +4717,16 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   useEffect(() => {
     const note = (e: MouseEvent) => {
       pressTargetRef.current = e.target as HTMLElement | null
-      if (e.button === 0) pressHeldRef.current = !!(e.target as HTMLElement | null)?.closest?.('[data-trace-element="true"]')
+      if (e.button === 0) {
+        pressHeldRef.current = !!(e.target as HTMLElement | null)?.closest?.('[data-trace-element="true"]')
+        pressAtRef.current = { x: e.clientX, y: e.clientY }
+      }
     }
-    const letGo = () => {
+    const letGo = (e: MouseEvent) => {
       if (!pressHeldRef.current) return
       pressHeldRef.current = false
+      const from = pressAtRef.current
+      draggedKeyRef.current = from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4 ? selectionKey() : null
       setReleaseTick(n => n + 1)
     }
     window.addEventListener('mousedown', note, true)
@@ -5084,6 +5093,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const key = multiSelectedIds.size > 1 ? [...multiSelectedIds].sort().join(',') : selectedTraceId ?? ''
     if (!key) dismissedRef.current = null
     const wanted = autoOpenCustomization || key === requestedRef.current
+    // Let go after a drag: the panel left as it was, one trace or several.
+    if (key && key === draggedKeyRef.current) return
     if (multiSelectedIds.size > 1) {
       if (editing) setEditingTrace(null)
       setShowBatchEditPanel(wanted && key !== dismissedRef.current)
@@ -9100,7 +9111,7 @@ return (
             
             </Section>
 
-            {framed && (
+            {(framed || shapeLike) && (
             <Section id="style" title={t('atrium.customize.sectionStyle')}>
               {/* NieR Presets */}
               <div>
@@ -9114,6 +9125,15 @@ return (
                       key={preset.id}
                       type="button"
                       onClick={() => {
+                        // A shape takes it as its fill and outline -- a path,
+                        // only a line, as its colour -- and the next shape made
+                        // looks like it (shapeProps.onChange).
+                        if (shapeLike) {
+                          shapeProps.onChange(isPathTrace
+                            ? { shapeColor: preset.border, shapeOutlineColor: preset.border }
+                            : { shapeColor: preset.fill, shapeOutlineColor: preset.border, shapeOutlineOnly: true, shapeNoFill: false })
+                          return
+                        }
                         // The font comes with the preset. A trace in the
                         // house style should be set in the house face, and
                         // three presets that each left the type to whatever

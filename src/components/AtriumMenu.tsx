@@ -301,19 +301,27 @@ export function ControlsPanel() {
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.97)' }}
     >
       <h3 className="text-nier-strong text-xs tracking-[0.2em] uppercase mb-3"><span className="text-nier-bg/60 mr-2">◇</span>{t('atrium.controls.title')}</h3>
-      <dl className="space-y-1.5">
-        {CONTROLS.map(key => {
-          const text = t(key)
-          const at = text.search(/ : |：/)
-          const [what, keys] = at < 0 ? [text, ''] : [text.slice(0, at), text.slice(at).replace(/^ : |^：/, '')]
-          return (
-            <div key={key} className="flex items-baseline justify-between gap-4 text-xs tracking-wider">
-              <dt className="text-nier-bg/80">{what}</dt>
-              <dd className="text-nier-strong text-right shrink-0 max-w-[55%]">{keys}</dd>
-            </div>
-          )
-        })}
-      </dl>
+      <ControlsList />
     </div>
+  )
+}
+
+// Each control and its keys -- here, and on the desktop app's About page.
+export function ControlsList() {
+  const { t } = useTranslation()
+  return (
+    <dl className="space-y-1.5">
+      {CONTROLS.map(key => {
+        const text = t(key)
+        const at = text.search(/ : |：/)
+        const [what, keys] = at < 0 ? [text, ''] : [text.slice(0, at), text.slice(at).replace(/^ : |^：/, '')]
+        return (
+          <div key={key} className="flex items-baseline justify-between gap-4 text-xs tracking-wider">
+            <dt className="text-nier-bg/80">{what}</dt>
+            <dd className="text-nier-strong text-right shrink-0 max-w-[55%]">{keys}</dd>
+          </div>
+        )
+      })}
+    </dl>
   )
 }

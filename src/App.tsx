@@ -13,6 +13,7 @@ import { contributorsReturnPath, rememberContributorsReturn } from './lib/contri
 import { showToast } from './lib/toast'
 import PinterestDesktopLink from './components/PinterestDesktopLink'
 import LandingPage from './components/LandingPage'
+import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { readRecentThanksName } from './lib/pendingContribution'
@@ -735,6 +736,9 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
     // over the welcome screen would have been the wrong shape for that.
     case '/contributors':
       return { page: 'contributors' }
+    // The desktop app's About: the app itself, not the website.
+    case '/about':
+      return { page: 'about' }
     // The landing page, opened at one of its sections. Reached from the
     // atrium's "local files not supported" panel, in a new tab, so somebody
     // mid-canvas is shown the desktop app without their own page moving.
@@ -2044,8 +2048,12 @@ function AppInner() {
     )
   }
   
+  if (currentPage === 'about') {
+    return <AboutPage onBack={() => navigate('/welcome')} />
+  }
+
   if (currentPage === 'welcome') {
-    return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} />
+    return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} />
   }
 
   

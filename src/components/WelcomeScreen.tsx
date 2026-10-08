@@ -27,9 +27,11 @@ import { goTo } from '../lib/route'
 interface WelcomeScreenProps {
   onEnter: () => void
   onBackToLanding?: () => void
+  // The desktop app's About page (AboutPage).
+  onAbout?: () => void
 }
 
-export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showPinterest, setShowPinterest] = useState(false)
   const theme = useLandingTheme()
@@ -588,9 +590,9 @@ export default function WelcomeScreen({ onEnter, onBackToLanding }: WelcomeScree
             </button>
 
             {/* About button (desktop only) */}
-            {isDesktop && onBackToLanding && (
+            {isDesktop && onAbout && (
               <button
-                onClick={onBackToLanding}
+                onClick={onAbout}
                 onMouseEnter={() => setIsHovered('about')}
                 onMouseLeave={() => setIsHovered(null)}
                 className="menu-row"

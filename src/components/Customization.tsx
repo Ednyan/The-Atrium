@@ -16,7 +16,7 @@ import { MenuIcon, SlideLabel } from './AtriumMenu'
 
 export type SectionId = 'name' | 'style' | 'fill' | 'outline' | 'text' | 'shape' | 'content' | 'effects' | 'size' | 'brush' | 'colour' | 'stroke'
   // Atrium Themes (ThemeCustomization).
-  | 'presets' | 'mine' | 'grid' | 'room' | 'particles'
+  | 'presets' | 'mine' | 'grid' | 'room' | 'particles' | 'ground'
   // User Preferences (ProfileCustomization).
   | 'you' | 'work' | 'moving' | 'see' | 'people' | 'motion'
 

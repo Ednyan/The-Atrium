@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { customThemesNow, lastThemeOf, loadCustomThemes, readView, rememberLast, themeModeOf, themeOf, useCustomThemes, writeView, type ThemeRef } from '../lib/customThemes'
 import { flushSync } from 'react-dom'
-import { Application, Graphics, Text, Container } from 'pixi.js'
+import { Application, Graphics, Text, Container, TilingSprite, Texture } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, unsavedActions, useGamePick } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
@@ -16,7 +17,7 @@ import { boundsOf, traceBox } from '../lib/traceGeometry'
 import { type Box } from '../lib/traceLinks'
 import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
-import type { LobbyLocation } from '../types/database'
+import type { LobbyLocation, ThemeSettings } from '../types/database'
 import { LobbyManagement } from './LobbyManagement'
 import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
@@ -49,7 +50,7 @@ import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
-import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction } from './QuickBar'
+import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction, QuickBarEditor } from './QuickBar'
 import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
@@ -414,6 +415,32 @@ interface LobbySceneProps {
   onKicked: (blacklisted: boolean) => void
 }
 
+// What's on the ground (lib/ground), as the theme has it: its colour and
+// opacity at once, and its tile drawn again only when what it's drawn from
+// has changed -- the last one asked for winning, if two are under way.
+const groundRef = { current: null as TilingSprite | null }
+let groundDrawnFor: string | null = null
+function refreshGround(theme: ThemeSettings | null | undefined) {
+  const ground = groundRef.current
+  if (!ground) return
+  ground.tint = parseInt((theme?.groundColor ?? GROUND_DEFAULTS.groundColor).replace('#', ''), 16)
+  ground.alpha = theme?.groundOpacity ?? GROUND_DEFAULTS.groundOpacity
+  const key = groundKey(theme)
+  if (key === groundDrawnFor) return
+  groundDrawnFor = key
+  if (!key || !theme) {
+    ground.visible = false
+    return
+  }
+  void groundTile(theme).then(canvas => {
+    if (groundDrawnFor !== key || groundRef.current !== ground) return
+    const old = ground.texture
+    ground.texture = canvas ? Texture.from(canvas) : Texture.EMPTY
+    ground.visible = !!canvas
+    if (old !== Texture.EMPTY) old.destroy(true)
+  })
+}
+
 // The drifting particles' part of a theme, for the manager when it's made and
 // whenever the theme changes.
 function particleConfig(theme: { particleColor?: string; particlesEnabled?: boolean; particleOpacity?: number; particleDensity?: number } | null | undefined, backgroundColor: number) {
@@ -577,6 +604,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setShowLocationsPanel(false)
     setShowThemeCustomization(false)
     setShowProfileCustomization(false)
+    setShowQuickBarEditor(false)
   }, [])
   // The atrium's locations live in the store and are saved with the rest, each change
   // a step of undo (lib/locations). Presentation mode is here, not in
@@ -591,6 +619,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
+  // Customize quick bar (QuickBarEditor), from the bar's More.
+  const [showQuickBarEditor, setShowQuickBarEditor] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
   // The atrium's theme as you see it (lib/customThemes): its own, until you
   // pick another in Atrium Themes or press light/dark -- for you alone,
@@ -2930,6 +2960,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       const grid = new Graphics()
       app.stage.addChildAt(grid, 0)
       gridRef.current = grid
+      // What's on the ground (lib/ground), under the grid: a tile repeated
+      // over the screen, moved and scaled with the view in drawGrid.
+      const ground = new TilingSprite(Texture.EMPTY, app.screen.width, app.screen.height)
+      ground.visible = false
+      app.stage.addChildAt(ground, 0)
+      groundRef.current = ground
+      refreshGround(themeSettingsRef.current)
       
       // Create lighting layer (drawn above grid but below entities)
       const lightingLayer = new Graphics()
@@ -2960,6 +2997,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           theme?.gridEnabled, theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing].join('|')
         if (key === drawnFor) return
         drawnFor = key
+        // The ground's tile, where the world is: its origin at the world's.
+        ground.width = width
+        ground.height = height
+        ground.tilePosition.set(worldContainer.x, worldContainer.y)
+        ground.tileScale.set(zoomRef.current / GROUND_PX)
         grid.clear()
         if (theme?.gridEnabled === false) return
         const color = theme?.gridColor ? parseInt(theme.gridColor.replace('#', ''), 16) : 0x3b82f6
@@ -3655,6 +3697,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       lightingLayerRef.current = null
       gridRef.current = null
       updateGridRef.current = null
+      // The next atrium draws its own (destroyed with the stage).
+      groundRef.current = null
+      groundDrawnFor = null
       tracesDataRef.current = []
       
       // Destroy indicator pool objects to free GPU memory
@@ -3675,6 +3720,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Update theme when lobby theme settings change
   useEffect(() => {
     if (!appRef.current || !updateGridRef.current || !currentLobby) return
+
+    refreshGround(viewTheme)
 
     // Update background color
     const bgColor = viewTheme?.backgroundColor ? parseInt(viewTheme.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
@@ -4734,8 +4781,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       )}
       </div>
       {/* Never less than a row of tools: Controls gives way first. */}
-      {/* Dimmed while the menu is open over it: they are two things. */}
-      <div className="flex-1 min-h-[2.875rem] flex items-center transition-opacity duration-200" style={{ opacity: menuOpen ? 0.35 : 1 }}>
+      {/* Dimmed while the menu is open over it: they are two things. Its room
+          starts below where Save drops down (pt), which takes no room of its
+          own: on a short screen the bar's top -- and the flyouts beside it --
+          reached up over Save. */}
+      <div className="flex-1 min-h-[5.625rem] pt-[2.75rem] flex items-center transition-opacity duration-200" style={{ opacity: menuOpen ? 0.35 : 1 }}>
         {/* The quick bar: a tool for each kind of trace, in the middle of what
             the menu and the readout leave -- in more columns, when that is
             short. None, for an atrium that can only be looked at. */}
@@ -4751,6 +4801,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           onAction={quickAction}
           onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
           onLaserSettings={changeLaserSettings}
+          onCustomize={() => {
+            closeSidePanels()
+            setSelectedTraceId(null)
+            setMultiSelectRequest([])
+            setShowQuickBarEditor(true)
+          }}
         />}
       </div>
         {/* At the foot of the column: the zoom and the pointer's place. */}
@@ -5611,6 +5667,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       )}
 
       {/* Profile Customization Modal */}
+      {showQuickBarEditor && <QuickBarEditor onClose={() => setShowQuickBarEditor(false)} />}
+
       {showProfileCustomization && (
         <ProfileCustomization
           onClose={() => setShowProfileCustomization(false)}
