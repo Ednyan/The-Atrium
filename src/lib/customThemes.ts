@@ -30,6 +30,11 @@ export interface CustomTheme {
 export const CUSTOM_THEME_LIMIT = isDesktop ? 12 : 3
 
 // Light or dark by its floor.
+// A theme's grid: as it says, or -- from before there was a choice -- lines,
+// unless it was turned off.
+export const gridStyleOf = (theme: ThemeSettings | null | undefined): 'none' | 'lines' | 'dots' =>
+  theme?.gridStyle ?? (theme?.gridEnabled === false ? 'none' : 'lines')
+
 export function modeOf(values: ThemeSettings | null | undefined): ThemeMode {
   const match = /^#?([0-9a-f]{6})$/i.exec((values?.backgroundColor ?? '#0a0a0f').trim())
   if (!match) return 'dark'

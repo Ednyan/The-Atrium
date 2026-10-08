@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { gridStyleOf } from '../lib/customThemes'
 import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { customThemesNow, lastThemeOf, loadCustomThemes, readView, rememberLast, themeModeOf, themeOf, useCustomThemes, writeView, type ThemeRef } from '../lib/customThemes'
@@ -31,7 +32,7 @@ import { recordAction } from '../lib/actionHistory'
 import { adoptTraces } from '../lib/layerUndo'
 import { cachedPicture, dropStrokes, holdDrawingFiles, loadDrawingPicture, paintedDrawing, pictureFieldsOf, pictureRow, pieceFields, placementOf, releaseDrawingFiles, restoreStrokes, saveDrawingPicture, writeDrawing, writePicture, type PictureFields } from '../lib/drawingFiles'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
-import { discardAllChanges, saveAllChanges } from '../lib/traceSave'
+import { discardAllChanges, saveAllChanges, startAutosave } from '../lib/traceSave'
 import { changeLocations, mapLocationRow, receiveLocations } from '../lib/locations'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { groupIdOf, inOrder, keyAt, keysOnTopOfGroup, newTraceOrderFields, topLevel } from '../lib/order'
@@ -489,6 +490,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // panning; areaSelectRectRef is the visual box, mutated directly on
   // mousemove (like brushCursorRef) to avoid re-rendering on every pixel.
   const isAreaSelectingRef = useRef(false)
+  // The quick bar's Selection (QuickBar): in hand, a drag on empty canvas
+  // selects -- an area, as Shift+drag does, or a lasso. The lasso's points
+  // as drawn (screen), and the outline showing them.
+  const [selectTool, setSelectTool] = useState(false)
+  const selectToolRef = useRef(false)
+  selectToolRef.current = selectTool
+  const [selectLasso, setSelectLasso] = useState(false)
+  const selectLassoRef = useRef(false)
+  selectLassoRef.current = selectLasso
+  const lassoPointsRef = useRef<{ x: number; y: number }[] | null>(null)
+  const lassoSvgRef = useRef<SVGSVGElement>(null)
   const areaSelectRectRef = useRef<HTMLDivElement>(null)
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
@@ -674,6 +686,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [multiSelectRequest, setMultiSelectRequest] = useState<string[] | null>(null)
   // A shift+drag area, in world units, for TraceOverlay to select from.
   const [areaSelectRequest, setAreaSelectRequest] = useState<Box | null>(null)
+  const [lassoSelectRequest, setLassoSelectRequest] = useState<{ x: number; y: number }[] | null>(null)
   // Same one-shot shape as multiSelectRequest: a fresh array every time, so
   // asking to customize the same traces twice fires the effect twice.
   const [customizeRequest, setCustomizeRequest] = useState<string[] | null>(null)
@@ -1306,6 +1319,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Taking up Move the view puts down whatever tool was in hand.
   const togglePanTool = () => {
     if (!panToolRef.current) {
+      setSelectTool(false)
       setPlaceTool(null)
       setLaserActive(false)
       if (isDrawingModeRef.current) leaveDrawing()
@@ -1737,6 +1751,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const canEditRef = useRef(canEdit)
   useEffect(() => { canEditRef.current = canEdit }, [canEdit])
 
+  // Auto-save, while the preference is on (lib/traceSave startAutosave).
+  const { autoSave } = useGamePick('autoSave')
+  useEffect(() => (autoSave && canEdit ? startAutosave() : undefined), [autoSave, canEdit])
+
   // Check the Pinterest connection once per atrium visit, to decide whether to
   // show the import button. Asked on both platforms now: on desktop the answer
   // comes from whether this install is linked to a web account that has one.
@@ -1880,6 +1898,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         return
       }
       if (e.key === 'Escape' && panToolRef.current) setPanTool(false)
+      // Selection: M takes it up and puts it down, Escape puts it down.
+      if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isDrawingModeRef.current) {
+        e.preventDefault()
+        quickActionRef.current('marquee')
+        return
+      }
+      if (e.key === 'Escape' && selectToolRef.current) setSelectTool(false)
       
       // Keyboard zoom, for anyone without a wheel and as a precise alternative
       // to one. Deliberately +/-/0 rather than the arrow keys: left and right
@@ -2169,6 +2194,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       togglePanTool()
       return
     }
+    // Selection: taken up and put down, as M does.
+    if (action === 'marquee') {
+      setToolSwitch(n => n + 1)
+      setPanTool(false)
+      setLaserActive(false)
+      setPlaceTool(null)
+      if (isDrawingModeRef.current) leaveDrawing()
+      setSelectTool(on => !on)
+      return
+    }
+    setSelectTool(false)
     // The bar always wins: a tool picked here ends whatever tool or mode was
     // under way -- drawing, and, in TraceOverlay, a path's points, crop mode,
     // a connection (toolSwitch).
@@ -2994,7 +3030,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         const theme = themeSettingsRef.current
         const width = app.screen.width, height = app.screen.height
         const key = [worldContainer.x, worldContainer.y, zoomRef.current, width, height,
-          theme?.gridEnabled, theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing].join('|')
+          gridStyleOf(theme), theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing].join('|')
         if (key === drawnFor) return
         drawnFor = key
         // The ground's tile, where the world is: its origin at the world's.
@@ -3003,7 +3039,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ground.tilePosition.set(worldContainer.x, worldContainer.y)
         ground.tileScale.set(zoomRef.current / GROUND_PX)
         grid.clear()
-        if (theme?.gridEnabled === false) return
+        const style = gridStyleOf(theme)
+        if (style === 'none') return
         const color = theme?.gridColor ? parseInt(theme.gridColor.replace('#', ''), 16) : 0x3b82f6
         // From the atrium's own settings, so the lines are the ones the user
         // asked for -- and the ones Shift-dragging snaps onto, which reads
@@ -3014,6 +3051,20 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         // than that is a haze, and hundreds of lines to draw every frame.
         const fade = Math.min(1, (step - 12) / 20)
         if (fade <= 0) return
+        // Dots: one where the lines would cross, a little stronger than a line
+        // to read as much, and gone sooner as they close up (a haze of them
+        // is thousands to draw).
+        if (style === 'dots') {
+          const dotFade = Math.min(1, (step - 14) / 16)
+          if (dotFade <= 0) return
+          grid.beginFill(color, Math.min(1, (theme?.gridOpacity ?? 0.2) * 2) * dotFade)
+          const at = (offset: number) => ((offset % step) + step) % step
+          for (let x = at(worldContainer.x); x <= width; x += step) {
+            for (let y = at(worldContainer.y); y <= height; y += step) grid.drawRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2)
+          }
+          grid.endFill()
+          return
+        }
         grid.lineStyle(1, color, (theme?.gridOpacity ?? 0.2) * fade)
         const at = (offset: number) => ((offset % step) + step) % step
         // +0.5: a 1px line centred on a pixel covers it exactly.
@@ -3125,7 +3176,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           if (!isClickingTrace && !isClickingUI) {
             // Don't start panning if in drawing mode
             if (isDrawingModeRef.current) return
-            if (e.shiftKey) {
+            if (selectToolRef.current && selectLassoRef.current && !e.shiftKey) {
+              lassoPointsRef.current = [{ x: e.clientX, y: e.clientY }]
+              const svg = lassoSvgRef.current
+              if (svg) { svg.style.display = 'block'; svg.querySelector('path')!.setAttribute('d', '') }
+            } else if (e.shiftKey || selectToolRef.current) {
               // Shift+drag on empty canvas draws a selection rectangle instead of panning
               isAreaSelectingRef.current = true
               if (areaSelectRectRef.current) {
@@ -3184,6 +3239,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           lastPanPositionRef.current = { x: e.clientX, y: e.clientY }
         }
 
+        // A lasso: a point wherever the pointer has gone a little way.
+        const lasso = lassoPointsRef.current
+        if (lasso) {
+          const last = lasso[lasso.length - 1]
+          if (Math.hypot(e.clientX - last.x, e.clientY - last.y) > 3) {
+            lasso.push({ x: e.clientX, y: e.clientY })
+            lassoSvgRef.current?.querySelector('path')?.setAttribute('d', `M ${lasso.map(pt => `${pt.x} ${pt.y}`).join(' L ')} Z`)
+          }
+        }
         if (isAreaSelectingRef.current && mouseDownScreenPosRef.current && areaSelectRectRef.current) {
           const startX = mouseDownScreenPosRef.current.x
           const startY = mouseDownScreenPosRef.current.y
@@ -3199,6 +3263,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         if (e.button === 0) {
           isPanningRef.current = false
 
+          // A lasso let go: what it went round, worked out by TraceOverlay
+          // (lassoSelectRequest), as an area is.
+          const lasso = lassoPointsRef.current
+          if (lasso) {
+            lassoPointsRef.current = null
+            if (lassoSvgRef.current) lassoSvgRef.current.style.display = 'none'
+            const xs = lasso.map(pt => pt.x), ys = lasso.map(pt => pt.y)
+            const c = worldContainerRef.current
+            if (c && lasso.length >= 3 && Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys) >= 10) {
+              setLassoSelectRequest(lasso.map(pt => ({ x: (pt.x - c.x) / zoomRef.current, y: (pt.y - c.y) / zoomRef.current })))
+              // As after an area: the click this release makes isn't a deselect.
+              window.addEventListener('click', ce => { ce.stopPropagation(); ce.preventDefault() }, { capture: true, once: true })
+            }
+            mouseDownScreenPosRef.current = null
+            return
+          }
           if (isAreaSelectingRef.current) {
             isAreaSelectingRef.current = false
             if (areaSelectRectRef.current) areaSelectRectRef.current.style.display = 'none'
@@ -4356,6 +4436,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             setSelectedTraceId={setSelectedTraceId}
             multiSelectRequest={multiSelectRequest}
             areaSelectRequest={areaSelectRequest}
+            lassoSelectRequest={lassoSelectRequest}
+            selecting={selectTool}
             customizeRequest={customizeRequest}
             newPathRequest={newPathTraceId}
             newTextRequest={newTextTraceId}
@@ -4394,6 +4476,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           className="fixed border border-dashed border-nier-bg/70 bg-white/10 pointer-events-none"
           style={{ display: 'none', zIndex: 1_500_000 }}
         />
+
+        {/* A lasso being drawn (the quick bar's Selection, Lasso). */}
+        <svg ref={lassoSvgRef} data-lasso="" className="fixed inset-0 w-full h-full pointer-events-none" style={{ display: 'none', zIndex: 1_500_000 }}>
+          <path fill="rgb(255 255 255 / 0.08)" strokeWidth="1" strokeDasharray="5 4" style={{ stroke: 'rgb(var(--c-fg) / 0.7)' }} />
+        </svg>
 
         {/* What an armed quick-bar tool is dragging out (drawPlacePreview).
             Over the traces, as the area select is. */}
@@ -4795,11 +4882,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           drawing={isDrawingMode}
           laser={laserActive}
           laserSettings={laserSettings}
-          kinds={{ select: directSelect, text: plainText }}
+          kinds={{ select: directSelect, text: plainText, marquee: selectLasso }}
+          selecting={selectTool}
           shapeKind={shapeKind}
           onShapeKind={setShapeKind}
           onAction={quickAction}
-          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : setPlainText(second))}
+          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : tool === 'marquee' ? setSelectLasso(second) : setPlainText(second))}
           onLaserSettings={changeLaserSettings}
           onCustomize={() => {
             closeSidePanels()
@@ -4879,7 +4967,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             </div>
           </div>
         )}
-        <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} panning={panTool} />
+        <ToolHint armed={placeTool} laser={laserActive} drawing={isDrawingMode} panning={panTool} selecting={selectTool ? (selectLasso ? 'lasso' : 'area') : null} />
       </div>
 
       {/* The shape tool in hand's Customization panel: how what it makes

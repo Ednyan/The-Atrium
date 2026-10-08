@@ -15,7 +15,7 @@ import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import { useGameStore } from '../store/gameStore'
 import { firstFreeName } from '../lib/traceNames'
-import { CUSTOM_THEME_LIMIT, PRESETS, modeOf, rememberLast, setCustomThemes, themeModeOf, themeOf, useCustomThemes, type CustomTheme, type ThemeMode, type ThemeRef } from '../lib/customThemes'
+import { CUSTOM_THEME_LIMIT, PRESETS, gridStyleOf, modeOf, rememberLast, setCustomThemes, themeModeOf, themeOf, useCustomThemes, type CustomTheme, type ThemeMode, type ThemeRef } from '../lib/customThemes'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { CustomizationPanel, Section } from './Customization'
 import { MENU_ICONS, MenuIcon } from './AtriumMenu'
@@ -105,7 +105,8 @@ function ThemeTile({ name, about, values, mode, selected, onPick, testId }: {
   testId: string
 }) {
   const v = { ...DEFAULTS, ...values }
-  const line = rgba(v.gridColor, Math.min(1, (v.gridEnabled ? v.gridOpacity ?? 0.2 : 0) * 2.5))
+  const gridStyle = gridStyleOf(values)
+  const line = rgba(v.gridColor, Math.min(1, (gridStyle !== 'none' ? v.gridOpacity ?? 0.2 : 0) * (gridStyle === 'dots' ? 4 : 2.5)))
   return (
     <button
       type="button"
@@ -119,7 +120,9 @@ function ThemeTile({ name, about, values, mode, selected, onPick, testId }: {
         className="block h-11"
         style={{
           backgroundColor: v.backgroundColor,
-          backgroundImage: `linear-gradient(to right, ${line} 1px, transparent 1px), linear-gradient(to bottom, ${line} 1px, transparent 1px)`,
+          backgroundImage: gridStyle === 'dots'
+            ? `radial-gradient(circle, ${line} 1px, transparent 1.2px)`
+            : `linear-gradient(to right, ${line} 1px, transparent 1px), linear-gradient(to bottom, ${line} 1px, transparent 1px)`,
           backgroundSize: '11px 11px',
         }}
       />
@@ -316,7 +319,26 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
       {mine && (
         <>
           <Section id="grid" title={t('atrium.theme.theGrid')}>
-            <Check checked={shown.gridEnabled ?? true} label={t('atrium.theme.showGrid')} onChange={on => setValue({ gridEnabled: on })} />
+            {/* None, lines or dots; gridEnabled kept in step, for what reads it. */}
+            <div>
+              <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.theme.gridType')}</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['none', 'lines', 'dots'] as const).map(style => (
+                  <button
+                    key={style}
+                    type="button"
+                    data-grid-style={style}
+                    aria-pressed={gridStyleOf(shown) === style}
+                    onClick={() => setValue({ gridStyle: style, gridEnabled: style !== 'none' })}
+                    className={`px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                      gridStyleOf(shown) === style ? 'bg-nier-bg text-nier-black border-nier-bg' : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                    }`}
+                  >
+                    {t(style === 'none' ? 'atrium.theme.gridNone' : style === 'lines' ? 'atrium.theme.gridLines' : 'atrium.theme.gridDots')}
+                  </button>
+                ))}
+              </div>
+            </div>
             <ColourField label={t('atrium.theme.colour')} value={shown.gridColor!} onChange={c => setValue({ gridColor: c })} />
             <Slider label={t('atrium.theme.gridOpacity', { value: Math.round((shown.gridOpacity ?? 0.2) * 100) })} min={0} max={1} step={0.05} value={shown.gridOpacity ?? 0.2} onChange={v => setValue({ gridOpacity: v })} />
             <Slider label={t('atrium.theme.gridSize', { value: shown.gridLineSpacing ?? 50 })} hint={t('atrium.theme.gridSizeHint')} min={10} max={200} step={5} value={shown.gridLineSpacing ?? 50} onChange={v => setValue({ gridLineSpacing: v })} />
@@ -367,12 +389,13 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
                   ))}
                 </div>
                 <Slider
-                  label={t('atrium.theme.groundDensity', { value: Math.round(shown.groundDensity! * 100) })}
-                  min={0.1} max={shown.groundPattern === 'grid' ? 1 : 4} step={0.1} value={shown.groundDensity!}
+                  label={t('atrium.theme.groundDensity', { value: Math.round(Math.min(1, shown.groundDensity!) * 100) })}
+                  min={0.05} max={1} step={0.05} value={Math.min(1, shown.groundDensity!)}
                   onChange={v => setValue({ groundDensity: v })}
                 />
-                {shown.groundPattern === 'grid' && (
-                  <Slider label={t('atrium.theme.groundSpacing', { value: shown.groundSpacing! })} min={60} max={600} step={10} value={shown.groundSpacing!} onChange={v => setValue({ groundSpacing: v })} />
+                <Slider label={t('atrium.theme.groundSpacing', { value: shown.groundSpacing! })} min={60} max={600} step={10} value={shown.groundSpacing!} onChange={v => setValue({ groundSpacing: v })} />
+                {shown.groundPattern !== 'grid' && (
+                  <Slider label={t('atrium.theme.groundRotation', { value: Math.round(shown.groundRotation! * 100) })} min={0} max={1} step={0.05} value={shown.groundRotation!} onChange={v => setValue({ groundRotation: v })} />
                 )}
               </>
             )}

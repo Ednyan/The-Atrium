@@ -160,6 +160,85 @@ export function saveAllChanges(): Promise<boolean> {
 
 // Fired on window once changes are discarded: TraceOverlay's history goes with
 // them, its steps being from a state that is no longer there.
+// Auto-save (User Preferences; off unless turned on -- Save is pressed by
+// default): what's waiting is written a second after the last change, at most
+// ten while changes keep coming, never in the middle of a drag, and at once
+// when the window is hidden or the atrium left. A save that fails is tried
+// again, further apart each time, until one gets through or Save is pressed.
+const QUIET_MS = 1000
+const MAX_WAIT_MS = 10_000
+const RETRY_MS = [5_000, 15_000, 30_000, 60_000]
+
+export function startAutosave(): () => void {
+  let timer: number | undefined
+  let dirtySince: number | null = null
+  let failures = 0
+  let held = false
+
+  const schedule = () => {
+    window.clearTimeout(timer)
+    if (dirtySince === null) dirtySince = Date.now()
+    timer = window.setTimeout(run, Math.max(0, Math.min(QUIET_MS, dirtySince + MAX_WAIT_MS - Date.now())))
+  }
+  const retry = () => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(run, RETRY_MS[Math.min(failures, RETRY_MS.length) - 1])
+  }
+  const run = async () => {
+    if (!useGameStore.getState().hasPendingChanges()) { dirtySince = null; return }
+    if (held) return // the release saves
+    dirtySince = null
+    const ok = await saveAllChanges()
+    failures = ok ? 0 : failures + 1
+    if (!ok) retry()
+    else if (useGameStore.getState().hasPendingChanges()) schedule()
+  }
+
+  const stopWatching = useGameStore.subscribe((state, prev) => {
+    // Saved after all -- Save pressed, or Ctrl+S: back to saving as it goes.
+    if (prev.saveFailed && !state.saveFailed) failures = 0
+    if (failures > 0) return // the retry has it
+    if (state.pendingChanges !== prev.pendingChanges || state.deletedTraces !== prev.deletedTraces
+      || state.pendingLinks !== prev.pendingLinks || state.deletedLinks !== prev.deletedLinks
+      || state.pendingLocations !== prev.pendingLocations || state.deletedLocations !== prev.deletedLocations) {
+      if (state.hasPendingChanges()) schedule()
+    }
+  })
+  const press = () => { held = true }
+  const release = () => {
+    if (!held) return
+    held = false
+    if (useGameStore.getState().hasPendingChanges() && failures === 0) schedule()
+  }
+  // The window hidden: now, not after the quiet.
+  const hidden = () => {
+    if (document.visibilityState !== 'hidden') return
+    window.clearTimeout(timer)
+    held = false
+    void run()
+  }
+  window.addEventListener('pointerdown', press, true)
+  window.addEventListener('pointerup', release, true)
+  window.addEventListener('pointercancel', release, true)
+  // A release outside the window may never arrive.
+  window.addEventListener('blur', release)
+  document.addEventListener('visibilitychange', hidden)
+  if (useGameStore.getState().hasPendingChanges()) schedule()
+
+  // Turned off, or the atrium left some other way than its Leave button
+  // (which saves first): what's waiting is written all the same.
+  return () => {
+    window.clearTimeout(timer)
+    if (useGameStore.getState().hasPendingChanges()) void saveAllChanges()
+    stopWatching()
+    window.removeEventListener('pointerdown', press, true)
+    window.removeEventListener('pointerup', release, true)
+    window.removeEventListener('pointercancel', release, true)
+    window.removeEventListener('blur', release)
+    document.removeEventListener('visibilitychange', hidden)
+  }
+}
+
 export const TRACE_DISCARD_COMPLETED_EVENT = 'trace-discard-completed'
 
 // Back to what was last saved: what's waiting to be written is dropped, and

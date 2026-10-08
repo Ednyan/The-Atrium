@@ -1222,6 +1222,7 @@ export async function initLocalDb(): Promise<void> {
       light_offset_y REAL DEFAULT 0,
       light_pulse INTEGER DEFAULT 0,
       light_pulse_speed REAL DEFAULT 2.0,
+      light_emit TEXT,
       enable_interaction INTEGER DEFAULT 0,
       ignore_clicks INTEGER DEFAULT 0,
       layer_id TEXT,
@@ -1531,6 +1532,12 @@ export async function initLocalDb(): Promise<void> {
   try {
     // The frame a trace is in (lib/frames).
     await db.execute('ALTER TABLE traces ADD COLUMN frame_id TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  // Where a light comes from (add_light_emit.sql).
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN light_emit TEXT')
   } catch {
     // Column already exists — ignore
   }

@@ -210,16 +210,52 @@ export interface Box { left: number; top: number; right: number; bottom: number 
 // of them (a long thread's length / 64) can slip through; intersect the curve
 // with the area's edges if that ever matters.
 export function threadCrosses(a: Box, b: Box, area: Box, straight = false): boolean {
+  return threadReaches(a, b, (x, y) => within(area, x, y), straight)
+}
+
+// The same for a lasso: a thread it takes in anywhere it shows.
+export const threadInLasso = (a: Box, b: Box, lasso: Point[], straight = false): boolean =>
+  threadReaches(a, b, (x, y) => insidePolygon(x, y, lasso), straight)
+
+const within = (box: Box, x: number, y: number) => x > box.left && x < box.right && y > box.top && y < box.bottom
+function threadReaches(a: Box, b: Box, inside: (x: number, y: number) => boolean, straight: boolean): boolean {
   const ax = (a.left + a.right) / 2, ay = (a.top + a.bottom) / 2
   const bx = (b.left + b.right) / 2, by = (b.top + b.bottom) / 2
   const c = restOf(straight, ax, ay, bx, by)
-  const within = (box: Box, x: number, y: number) => x > box.left && x < box.right && y > box.top && y < box.bottom
   for (let i = 0; i <= 64; i++) {
     const t = i / 64, u = 1 - t
     const x = u * u * ax + 2 * u * t * c.x + t * t * bx, y = u * u * ay + 2 * u * t * c.y + t * t * by
-    if (within(area, x, y) && !within(a, x, y) && !within(b, x, y)) return true
+    if (inside(x, y) && !within(a, x, y) && !within(b, x, y)) return true
   }
   return false
+}
+
+type Point = { x: number; y: number }
+
+// Whether (x, y) is inside a lasso -- the closed shape through `points` --
+// by counting the edges a ray from it crosses.
+export function insidePolygon(x: number, y: number, points: Point[]): boolean {
+  let inside = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j]
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
+
+// A trace's turned box, as its four corners.
+function cornersOf(cx: number, cy: number, hw: number, hh: number, turn: number): Point[] {
+  const c = Math.cos(turn), s = Math.sin(turn)
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([u, v]) => ({ x: cx + u * c - v * s, y: cy + u * s + v * c }))
+}
+
+// Whether a lasso takes a trace: its middle or a corner inside the lasso, or
+// the lasso drawn inside it. `whole`: all of it inside -- a frame, which a
+// lasso drawn among what it holds shouldn't take too.
+export function boxInLasso(cx: number, cy: number, hw: number, hh: number, turn: number, lasso: Point[], whole = false): boolean {
+  const corners = cornersOf(cx, cy, hw, hh, turn)
+  if (whole) return corners.every(p => insidePolygon(p.x, p.y, lasso))
+  return insidePolygon(cx, cy, lasso) || corners.some(p => insidePolygon(p.x, p.y, lasso)) || lasso.some(p => insidePolygon(p.x, p.y, corners))
 }
 
 // Whether a trace's box -- centre, half-size and turn (radians) -- reaches

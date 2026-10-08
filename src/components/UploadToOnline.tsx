@@ -190,6 +190,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             light_offset_y: trace.light_offset_y,
             light_pulse: trace.light_pulse,
             light_pulse_speed: trace.light_pulse_speed,
+            light_emit: trace.light_emit ?? undefined,
             enable_interaction: trace.enable_interaction,
             ignore_clicks: trace.ignore_clicks,
             layer_id: trace.layer_id ? layerIdMap[trace.layer_id] || null : null,

@@ -21,8 +21,6 @@ export const GROUND_TILE = 1024
 export const GROUND_PX = 1.5
 // An element at size 100%, in world units.
 const BASE_SIZE = 56
-// Scattered, at density 1: so many to a tile -- about one in every 200 x 200.
-const PER_TILE = 24
 // What has an up, and only leans a little: turned any way, a tuft of grass
 // reads as an arrow. A picture of one's own may have one too.
 const UPRIGHT = new Set<string>(['grass'])
@@ -36,6 +34,8 @@ export const GROUND_DEFAULTS = {
   groundScaleRange: 0.4,
   groundPattern: 'random' as const,
   groundSpacing: 200,
+  // How far a scattered element may turn: 0 not at all, 1 any way.
+  groundRotation: 1,
 }
 
 // What the tile is drawn from, as one string -- null for no ground. Colour and
@@ -43,7 +43,7 @@ export const GROUND_DEFAULTS = {
 // drawing anything again.
 export function groundKey(theme: ThemeSettings | null | undefined): string | null {
   if (!theme?.groundEnabled || !theme.groundElements?.length) return null
-  return JSON.stringify([theme.groundElements, theme.groundDensity, theme.groundScale, theme.groundScaleRange, theme.groundPattern, theme.groundSpacing])
+  return JSON.stringify([theme.groundElements, theme.groundDensity, theme.groundScale, theme.groundScaleRange, theme.groundPattern, theme.groundSpacing, theme.groundRotation])
 }
 
 // The same scatter for the same settings, every visit and for everyone.
@@ -92,8 +92,8 @@ export async function groundTile(theme: ThemeSettings): Promise<HTMLCanvasElemen
   if (pictures.length === 0) return null
   const grid = theme.groundPattern === 'grid'
   const spacing = Math.max(40, theme.groundSpacing ?? GROUND_DEFAULTS.groundSpacing)
-  // In rows, a whole number of them across, so the rows meet at the seams.
-  const size = grid ? spacing * Math.max(1, Math.round(GROUND_TILE / spacing)) : GROUND_TILE
+  // A whole number of places across, so the tile meets itself at the seams.
+  const size = spacing * Math.max(1, Math.round(GROUND_TILE / spacing))
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = Math.round(size * GROUND_PX)
   const ctx = canvas.getContext('2d')
@@ -103,15 +103,17 @@ export async function groundTile(theme: ThemeSettings): Promise<HTMLCanvasElemen
   const density = theme.groundDensity ?? GROUND_DEFAULTS.groundDensity
   const scale = theme.groundScale ?? GROUND_DEFAULTS.groundScale
   const range = theme.groundScaleRange ?? GROUND_DEFAULTS.groundScaleRange
+  const rotation = theme.groundRotation ?? GROUND_DEFAULTS.groundRotation
+  // A place every `spacing`, density the share of them taken. In rows, each
+  // at its place, square on; scattered, anywhere in its own cell (so they're
+  // spaced, not clumped), turned as far as Rotation lets it.
   const spots: { x: number; y: number; turn: number }[] = []
-  if (grid) {
-    // Density is how many of the places are taken.
-    const across = size / spacing
-    for (let i = 0; i < across; i++) for (let j = 0; j < across; j++) {
-      if (random() < density) spots.push({ x: (i + 0.5) * spacing, y: (j + 0.5) * spacing, turn: 0 })
-    }
-  } else {
-    for (let n = Math.round(density * PER_TILE); n > 0; n--) spots.push({ x: random() * size, y: random() * size, turn: random() * Math.PI * 2 })
+  const across = size / spacing
+  for (let i = 0; i < across; i++) for (let j = 0; j < across; j++) {
+    if (random() >= density) continue
+    spots.push(grid
+      ? { x: (i + 0.5) * spacing, y: (j + 0.5) * spacing, turn: 0 }
+      : { x: (i + 0.1 + random() * 0.8) * spacing, y: (j + 0.1 + random() * 0.8) * spacing, turn: (random() - 0.5) * Math.PI * 2 * rotation })
   }
   for (const spot of spots) {
     const { img: pic, upright } = pictures[Math.floor(random() * pictures.length)]

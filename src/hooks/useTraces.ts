@@ -107,6 +107,7 @@ export function mapRowToTrace(row: any): Trace {
     lightOffsetY: row.light_offset_y ?? 0,
     lightPulse: row.light_pulse ?? false,
     lightPulseSpeed: row.light_pulse_speed ?? 2.0,
+    lightEmit: row.light_emit === 'shape' || row.light_emit === 'border' || row.light_emit === 'center' ? row.light_emit : undefined,
     enableInteraction: row.enable_interaction ?? false,
     ignoreClicks: row.ignore_clicks ?? false,
     layerId: row.layer_id ?? null,

@@ -134,3 +134,23 @@ test('an area takes a trace it reaches into, as the trace is turned', () => {
   // The same box turned the other way lies along the diagonal, into the area.
   assert.equal(boxCrosses(60, 60, 80, 4, Math.PI / 4, area), true)
 })
+
+test('a lasso takes what it goes round, its middle or a corner; a frame only whole', async () => {
+  const { insidePolygon, boxInLasso, threadInLasso } = await import('../src/lib/traceLinks.ts')
+  const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+  assert.equal(insidePolygon(50, 50, square), true)
+  assert.equal(insidePolygon(150, 50, square), false)
+  // An L: its notch is outside.
+  const ell = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 40 }, { x: 40, y: 40 }, { x: 40, y: 100 }, { x: 0, y: 100 }]
+  assert.equal(insidePolygon(70, 70, ell), false)
+  assert.equal(insidePolygon(20, 70, ell), true)
+  assert.equal(boxInLasso(70, 70, 10, 10, 0, ell), false)
+  assert.equal(boxInLasso(95, 45, 10, 10, 0, ell), true) // a corner in
+  assert.equal(boxInLasso(50, 50, 500, 500, 0, square), true) // drawn inside it
+  assert.equal(boxInLasso(50, 50, 80, 80, 0, square, true), false)
+  assert.equal(boxInLasso(50, 50, 20, 20, 0.3, square, true), true)
+  // A thread from outside the lasso to outside it, through it.
+  const box = (x: number, y: number) => ({ left: x - 5, top: y - 5, right: x + 5, bottom: y + 5 })
+  assert.equal(threadInLasso(box(-50, 50), box(150, 50), square, true), true)
+  assert.equal(threadInLasso(box(-50, 150), box(150, 150), square, true), false)
+})

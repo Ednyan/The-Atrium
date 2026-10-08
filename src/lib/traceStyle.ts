@@ -28,7 +28,7 @@ const DEFAULTS: Partial<Record<keyof Trace, unknown>> = {
   showFilename: true, showDescription: false,
   fontFamily: 'sans', fontSize: 16, textColor: '#ffffff', textBold: false, textItalic: false,
   textUnderline: false, textAlign: 'center', textScaleWithBox: true,
-  illuminate: false, lightColor: '#ffffff', lightIntensity: 1, lightRadius: 200, lightPulse: false, lightPulseSpeed: 2,
+  illuminate: false, lightColor: '#ffffff', lightIntensity: 1, lightRadius: 200, lightPulse: false, lightPulseSpeed: 2, lightEmit: 'center',
 }
 
 // What a trace shows for a field: its value, or the default drawn in its

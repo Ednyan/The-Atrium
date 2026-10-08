@@ -54,6 +54,8 @@ interface GameState {
   quickBarOrder: string[] | null
   // A playing trace heard from where it is (lib/spatialSound); off by default.
   spatialSound: boolean
+  // Changes saved as they're made (lib/traceSave startAutosave); off, Save is pressed.
+  autoSave: boolean
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
@@ -91,6 +93,7 @@ interface GameState {
   setConfirmDelete: (on: boolean) => void
   setQuickBarOrder: (order: string[] | null) => void
   setSpatialSound: (on: boolean) => void
+  setAutoSave: (on: boolean) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
@@ -205,6 +208,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   })(),
   confirmDelete: localStorage.getItem('dontAskDeleteTrace') !== 'true',
   spatialSound: localStorage.getItem('spatialSound') === 'true',
+  autoSave: localStorage.getItem('autoSave') === 'true',
   quickBarOrder: (() => {
     try {
       const stored = JSON.parse(localStorage.getItem('atrium.quickBar.order') || 'null')
@@ -272,6 +276,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setConfirmDelete: (on) => {
     localStorage.setItem('dontAskDeleteTrace', String(!on))
     set({ confirmDelete: on })
+  },
+  setAutoSave: (on) => {
+    localStorage.setItem('autoSave', String(on))
+    set({ autoSave: on })
   },
   setSpatialSound: (on) => {
     localStorage.setItem('spatialSound', String(on))

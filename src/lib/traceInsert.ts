@@ -69,6 +69,7 @@ export function buildTraceInsertRow(
   if (trace.isClickable) newTrace.is_clickable = true
   if (trace.lightPulse !== undefined) newTrace.light_pulse = trace.lightPulse
   if (trace.lightPulseSpeed !== undefined) newTrace.light_pulse_speed = trace.lightPulseSpeed
+  if (trace.lightEmit) newTrace.light_emit = trace.lightEmit
   if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
   if (trace.layerId) newTrace.layer_id = trace.layerId
   if (trace.frameId) newTrace.frame_id = trace.frameId
@@ -162,6 +163,8 @@ export function traceColumns(trace: Trace): Record<string, any> {
     light_offset_y: trace.lightOffsetY ?? 0,
     light_pulse: trace.lightPulse ?? false,
     light_pulse_speed: trace.lightPulseSpeed ?? 2,
+    // Left out when none, so a database without the column still takes it.
+    light_emit: trace.lightEmit,
     enable_interaction: trace.enableInteraction,
     ignore_clicks: trace.ignoreClicks,
     order_key: trace.orderKey ?? null,

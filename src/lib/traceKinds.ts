@@ -63,7 +63,7 @@ export const SETTING_FIELDS: Record<Exclude<Setting, 'link' | 'strokes'>, readon
   font: ['fontFamily', 'fontSize', 'textColor', 'textBold', 'textItalic', 'textUnderline', 'textAlign', 'textScaleWithBox'],
   shape: ['shapeColor', 'shapeOpacity', 'shapeNoFill', 'shapeOutlineOnly', 'shapeOutlineColor', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'cornerRadius'],
   line: ['shapeColor', 'shapeOpacity', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'pathCurveType', 'pathArrowStart', 'pathArrowEnd'],
-  light: ['illuminate', 'lightColor', 'lightIntensity', 'lightRadius', 'lightPulse', 'lightPulseSpeed'],
+  light: ['illuminate', 'lightColor', 'lightIntensity', 'lightRadius', 'lightPulse', 'lightPulseSpeed', 'lightEmit'],
 }
 
 // Every field of a trace's look, by its settings.

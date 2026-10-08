@@ -41,6 +41,9 @@
 //   Text -- text in a box, as a text trace has always been, or plain text:
 //     no border, background or shadow, just the words (LobbyScene colours
 //     them to stand out from the atrium's background).
+//   Selection -- a drag on the canvas selects what its box reaches, as
+//     Shift+drag does, or (Lasso) what's drawn round; added to what's
+//     already selected. M takes it up and puts it down.
 
 import { PAN_ICON } from './AtriumInfo'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -58,13 +61,15 @@ export type PlaceTool = 'text' | BoxShape | 'path' | 'frame' | 'embed'
 export type OtherTrace = 'sound' | 'video' | 'document' | 'sheet'
 const OTHER_TRACES: OtherTrace[] = ['sound', 'video', 'document', 'sheet']
 // What the bar does: take a tool up, or act.
-export type QuickAction = 'select' | 'pan' | PlaceTool | 'draw' | 'image' | 'laser' | 'pinterest' | OtherTrace
+export type QuickAction = 'select' | 'marquee' | 'pan' | PlaceTool | 'draw' | 'image' | 'laser' | 'pinterest' | OtherTrace
 // What the bar shows: a button each. Shapes and Other each hold several.
-export type QuickButton = 'select' | 'pan' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest'
+export type QuickButton = 'select' | 'marquee' | 'pan' | 'text' | 'shape' | 'path' | 'draw' | 'image' | 'embed' | 'frame' | 'other' | 'laser' | 'pinterest'
 
 // Drawn in a 24 box, stroked in the current colour.
 const ICONS: Record<QuickAction | 'other', ReactNode> = {
   select: <path d="M6 3.5 L18 12 L12.6 13.1 L15.4 19.2 L13.2 20.2 L10.4 14.2 L6 17.6 Z" strokeLinejoin="round" />,
+  // Selection: a dashed box, its corners marked.
+  marquee: <path d="M4 4h3M10 4h4M17 4h3v3M20 10v4M20 17v3h-3M14 20h-4M7 20h-3v-3M4 14v-4M4 7v-3" strokeLinecap="round" strokeLinejoin="round" />,
   // Move the view: four arrows (AtriumInfo's PAN_ICON).
   pan: <path d={PAN_ICON} strokeLinecap="round" strokeLinejoin="round" />,
   text: <path d="M5 6 V4.5 H19 V6 M12 4.5 V19.5 M9 19.5 H15" strokeLinecap="round" strokeLinejoin="round" />,
@@ -132,6 +137,9 @@ const ICONS: Record<QuickAction | 'other', ReactNode> = {
   ),
 }
 
+// Lasso: a loop drawn round, its tail hanging.
+const LASSO_ICON = <path d="M12 4c4.7 0 8 2.4 8 5.5s-3.3 5.5-8 5.5-8-2.4-8-5.5S7.3 4 12 4zM8.5 14.4c-.8 1.2-.4 2.6.9 3.2 1.1.5 1.4 1.6.7 2.9" strokeLinecap="round" strokeLinejoin="round" />
+
 // Direct select: the pointer, into a dashed box.
 const DIRECT_ICON = (
   <>
@@ -152,7 +160,7 @@ const BOX_TEXT_ICON = (
 // The numbered tools, 1 to 9 in this order. Move sits after Select on the
 // bar with H for its key, so the numbers stayed where hands know them.
 export const QUICK_ORDER: QuickButton[] = ['select', 'text', 'shape', 'path', 'draw', 'image', 'embed', 'frame', 'other', 'laser', 'pinterest']
-const ON_THE_BAR: QuickButton[] = ['select', 'pan', ...QUICK_ORDER.slice(1)]
+const ON_THE_BAR: QuickButton[] = ['select', 'marquee', 'pan', ...QUICK_ORDER.slice(1)]
 
 // The bar's order: as chosen (Customize), with any tool the choice predates
 // at the end -- or as it comes, with none chosen.
@@ -165,6 +173,7 @@ export function barOrder(chosen: string[] | null): QuickButton[] {
 const keyOf = (action: QuickButton): string | null => {
   if (action === 'other') return null
   if (action === 'pan') return 'H'
+  if (action === 'marquee') return 'M'
   if (action === 'laser') return 'K'
   const number = QUICK_ORDER.indexOf(action)
   return number >= 0 && number < 9 ? String(number + 1) : null
@@ -184,8 +193,8 @@ const EFFECT_LABEL: Record<LaserEffect, TranslationKey> = {
 }
 
 // The tools with kinds, and which kind is in use: Select's direct, Text's
-// plain -- both false for the first kind.
-export type ToolKinds = { select: boolean; text: boolean }
+// plain, Selection's lasso -- each false for the first kind.
+export type ToolKinds = { select: boolean; text: boolean; marquee: boolean }
 type KindedTool = keyof ToolKinds
 // The buttons with a flyout at their side.
 type FlyoutTool = KindedTool | 'shape' | 'other' | 'laser'
@@ -227,12 +236,14 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, panning, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, onCustomize }: {
+export default function QuickBar({ armed, drawing, laser, panning, selecting, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, onCustomize }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
   // Move the view taken up (LobbyScene).
   panning: boolean
+  // Selection taken up (LobbyScene).
+  selecting: boolean
   laserSettings: LaserSettings
   kinds: ToolKinds
   onAction: (action: QuickAction) => void
@@ -324,12 +335,17 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
       { icon: BOX_TEXT_ICON, name: t('atrium.tools.textBox'), hint: t('atrium.tools.textBoxHint'), attr: 'box' },
       { icon: ICONS.text, name: t('atrium.tools.textPlain'), hint: t('atrium.tools.textPlainHint'), attr: 'plain' },
     ],
+    marquee: [
+      { icon: ICONS.marquee, name: t('atrium.tools.areaSelect'), hint: t('atrium.tools.areaSelectHint'), attr: 'area' },
+      { icon: LASSO_ICON, name: t('atrium.tools.lassoSelect'), hint: t('atrium.tools.lassoSelectHint'), attr: 'lasso' },
+    ],
   }
-  const kinded = (action: QuickButton): action is KindedTool => action === 'select' || action === 'text'
+  const kinded = (action: QuickButton): action is KindedTool => action === 'select' || action === 'text' || action === 'marquee'
   const hasFlyout = (action: QuickButton): action is FlyoutTool => kinded(action) || action === 'shape' || action === 'other' || action === 'laser'
   const kindOf = (tool: KindedTool) => KIND[tool][kinds[tool] ? 1 : 0]
   const label: Record<QuickButton | QuickAction, string> = {
     select: kindOf('select').name,
+    marquee: kindOf('marquee').name,
     pan: t('atrium.hud.panTool'),
     text: kindOf('text').name,
     shape: t(`atrium.trace.shape.${shapeKind}` as const),
@@ -411,7 +427,8 @@ export default function QuickBar({ armed, drawing, laser, panning, laserSettings
   // on the bar, or in More's panel (inPanel: named by its title there, a
   // sliding name crossing the tools beside it).
   function renderTool(action: QuickButton, i: number, inPanel = false) {
-        const on = action === 'select' ? !armed && !drawing && !laser && !panning
+        const on = action === 'select' ? !armed && !drawing && !laser && !panning && !selecting
+          : action === 'marquee' ? selecting
           : action === 'pan' ? panning
           : action === 'shape' ? isBoxShape(armed)
           : action === 'other' ? false
@@ -636,6 +653,7 @@ function ToolName({ name, keyName }: { name: string; keyName: string | null }) {
 // Each tool by its own name, whichever kind of it is in hand.
 const TOOL_NAME: Record<QuickButton, TranslationKey> = {
   select: 'atrium.tools.select',
+  marquee: 'atrium.tools.selection',
   pan: 'atrium.hud.panTool',
   text: 'atrium.tools.textBox',
   shape: 'atrium.tools.shapes',
@@ -727,10 +745,12 @@ export function QuickBarEditor({ onClose }: { onClose: () => void }) {
 
 // What the tool in hand does with the canvas, at the foot of the screen in
 // the middle (LobbyScene) while it's in hand.
-export function ToolHint({ armed, laser, drawing, panning }: { armed: PlaceTool | null; laser: boolean; drawing: boolean; panning: boolean }) {
+export function ToolHint({ armed, laser, drawing, panning, selecting }: { armed: PlaceTool | null; laser: boolean; drawing: boolean; panning: boolean; selecting?: 'area' | 'lasso' | null }) {
   const { t } = useTranslation()
   const text = drawing ? t('atrium.draw.hint')
     : panning ? t('atrium.tools.hintPan')
+    : selecting === 'lasso' ? t('atrium.tools.hintLasso')
+    : selecting ? t('atrium.tools.hintArea')
     : laser ? t('atrium.tools.hintLaser')
     : armed === 'embed' ? t('atrium.tools.hintEmbed')
     : armed === 'text' ? t('atrium.tools.hintText')

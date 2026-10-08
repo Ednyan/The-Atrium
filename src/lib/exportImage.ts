@@ -717,7 +717,15 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       // Its light, just under it.
       if (trace.illuminate && !isPathTrace(trace)) {
         const t = storedTransformOf(trace)
-        p.light(t.x + (trace.lightOffsetX ?? 0), t.y + (trace.lightOffsetY ?? 0), trace.lightRadius ?? 200, trace.lightColor ?? '#ffffff', (trace.lightIntensity ?? 1) * 0.8)
+        const radius = trace.lightRadius ?? 200
+        // From its shape or border: a glow over all of it, as near as a
+        // round light comes -- reaching past its box as the canvas's does.
+        const end = ends.get(trace.id)
+        if ((trace.lightEmit === 'shape' || trace.lightEmit === 'border') && end) {
+          p.light(end.x, end.y, Math.max(end.hw, end.hh) + radius * 0.5, trace.lightColor ?? '#ffffff', (trace.lightIntensity ?? 1) * 0.8)
+        } else {
+          p.light(t.x + (trace.lightOffsetX ?? 0), t.y + (trace.lightOffsetY ?? 0), radius, trace.lightColor ?? '#ffffff', (trace.lightIntensity ?? 1) * 0.8)
+        }
       }
       if (isPathTrace(trace)) drawPath(p, trace)
       else if (trace.type === 'shape') drawShape(p, trace)

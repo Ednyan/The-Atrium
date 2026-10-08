@@ -52,7 +52,7 @@ import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, traceKindLabel 
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, rasterizeDrawings, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
-import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink } from '../lib/traceLinks'
+import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink, boxInLasso, threadInLasso } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import StrokeStyleField from './StrokeStyleField'
@@ -191,6 +191,10 @@ interface TraceOverlayProps {
   // traces it reaches into and the threads it crosses are selected here,
   // where each trace's real size is known. A new object each time.
   areaSelectRequest?: Box | null
+  // A lasso let go (the quick bar's Selection), in world points.
+  lassoSelectRequest?: { x: number; y: number }[] | null
+  // The Selection tool in hand: the cursor is a crosshair over the canvas.
+  selecting?: boolean
   // A tool is in hand that the next press on the canvas places with (the
   // quick bar's): the cursor's a crosshair.
   placing?: boolean
@@ -678,7 +682,7 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, panning = false, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, lassoSelectRequest, selecting = false, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, panning = false, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
@@ -2634,6 +2638,20 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         b.el.style.translate = `${dx - (dx * cos - dy * sin) + ox + sx}px ${dy - (dx * sin + dy * cos) + oy + sy}px`
         b.el.style.rotate = `${lean}rad`
         moved.add(b.el)
+        // Its light, carried along: wherever its middle is, moved as that
+        // point of the body is, and turned with it.
+        const light = document.querySelector<HTMLElement>(`[data-light-for="${CSS.escape(b.id)}"]`)
+        if (light) {
+          const lx = parseFloat(light.style.left) - gx, ly = parseFloat(light.style.top) - gy
+          // A light drawn back half its size (translate(-50%, -50%): from a
+          // shape or border) turns about its box's centre, as a trace does;
+          // the same extra translate undoes it. A light from the middle is
+          // centred by its margins, and turns about its own middle already.
+          const hx = light.style.transform ? -light.offsetWidth / 2 : 0, hy = light.style.transform ? -light.offsetHeight / 2 : 0
+          light.style.translate = `${hx - (hx * cos - hy * sin) + lx * cos - ly * sin - lx + ox}px ${hy - (hx * sin + hy * cos) + lx * sin + ly * cos - ly + oy}px`
+          light.style.rotate = `${lean}rad`
+          moved.add(light)
+        }
         dragOffsetsRef.current.set(b.id, { x: ox + sx, y: oy + sy })
       }
       wakeLinksRef.current()
@@ -2755,6 +2773,37 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     setSelectedLinks(prev => new Set([...prev, ...crossed]))
     setLinkMenuAt(null)
   }, [areaSelectRequest])
+
+  // A lasso: every trace it goes round any of (its middle or a corner -- a
+  // frame only whole), and every thread it takes in where the thread shows;
+  // added to the selection, as an area is.
+  useEffect(() => {
+    if (!lassoSelectRequest) return
+    const lasso = lassoSelectRequest
+    const { traces: all, links: threads } = useGameStore.getState()
+    const boxes = new Map(all.map(t => [t.id, traceBoxFor(t)]))
+    const picked = all.filter(t => {
+      const b = boxes.get(t.id)!
+      const turn = isPathTrace(t) ? 0 : ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
+      return boxInLasso(b.cx, b.cy, b.halfW, b.halfH, turn, lasso, isFrame(t))
+    }).map(t => t.id)
+    const edges = (id: string) => {
+      const b = boxes.get(id)
+      return b && { left: b.cx - b.halfW, top: b.cy - b.halfH, right: b.cx + b.halfW, bottom: b.cy + b.halfH }
+    }
+    const crossed = threads.filter(l => {
+      const a = edges(l.from), b = edges(l.to)
+      return !!a && !!b && threadInLasso(a, b, lasso, l.straight)
+    }).map(l => l.id)
+    setMultiSelectedIds(prev => {
+      const next = new Set([...prev, ...picked])
+      if (selectedTraceId) next.add(selectedTraceId)
+      return next
+    })
+    setSelectedTraceId(selectedTraceId ?? picked[0] ?? null)
+    setSelectedLinks(prev => new Set([...prev, ...crossed]))
+    setLinkMenuAt(null)
+  }, [lassoSelectRequest])
 
   const deleteLinks = (ids: Iterable<string>) => {
     const gone = useGameStore.getState().links.filter(l => new Set(ids).has(l.id))
@@ -5099,7 +5148,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const key = multiSelectedIds.size > 1 ? [...multiSelectedIds].sort().join(',') : selectedTraceId ?? ''
     if (!key) dismissedRef.current = null
     const wanted = autoOpenCustomization || key === requestedRef.current
-    // Let go after a drag: the panel left as it was, one trace or several.
+    // Let go after a drag: the panel left as it was, one trace or several --
+    // for as long as that's what's selected, not for good.
+    if (key !== draggedKeyRef.current) draggedKeyRef.current = null
     if (key && key === draggedKeyRef.current) return
     if (multiSelectedIds.size > 1) {
       if (editing) setEditingTrace(null)
@@ -5942,7 +5993,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           hidden={!!hideCursor}
           zIndex={item.zIndex}
           pointerInWindow={pointerInWindow}
-          crosshair={placing || pathCreationMode || !!colorPickerCallback}
+          crosshair={placing || selecting || pathCreationMode || !!colorPickerCallback}
           pan={panning}
         />
       )
@@ -6039,6 +6090,13 @@ const borderWidth = (trace.type === 'shape' ? shapeWidth : width * cropWidth) * 
 const borderHeight = (trace.type === 'shape' ? shapeHeight : height * cropHeight) * (transform as any).scaleY * zoom
 // A trace sits centred on its crop window; its whole box sits back from
 // that by the crop. A shape crops in place, in a box that doesn't move.
+// Floating (Profile > Animations): a slow drift of a few pixels -- the trace
+// and its light together. Held still while selected, pressed, edited in
+// place, gliding, or in use as an interactive embed.
+const floats = traceFloat > 0 && !isInSelection && !isPressed
+  && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
+  && !(trace.type === 'embed' && trace.enableInteraction)
+const floatAnimation = `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`
 const boxOffset = isCropping && trace.type !== 'shape'
   ? (() => {
       const b = boxFromWindow(cropOf(trace))
@@ -6089,31 +6147,72 @@ return (
         One below its own trace puts it above everything the trace is
         above, and below the trace itself: trace z-indexes go up in threes
         (zOf), leaving that level free. */}
-    {trace.illuminate && (
-      <div
-        data-blends-with-ground=""
-        className="absolute pointer-events-none"
-        style={{
-          ['--over-ground' as any]: screenOver(atriumBackground, trace.lightColor ?? '#ffffff'),
-          zIndex: zOf(trace) - 1,
-          left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
-          top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
-          width: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-          height: `${(trace.lightRadius ?? 200) * zoom * 2}px`,
-          borderRadius: '50%',
-          background: trace.lightColor ?? '#ffffff',
-          opacity: (trace.lightIntensity ?? 1.0) * 0.8,
-          mixBlendMode: 'screen',
-          filter: `blur(${(trace.lightRadius ?? 200) * zoom * 0.3}px)`,
-          animation: trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : 'none',
-          transformOrigin: 'center center',
-          marginLeft: `${-(trace.lightRadius ?? 200) * zoom}px`,
-          marginTop: `${-(trace.lightRadius ?? 200) * zoom}px`,
-          willChange: 'transform, opacity',
-          ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8,
-        }}
-      />
-    )}
+    {trace.illuminate && (() => {
+      // Where it comes from (lightEmit): a point at the trace's middle, as it
+      // always has -- or all of its shape, or its border, each glowing out
+      // around it as far as its radius, in the trace's own shape and turn.
+      const emit = trace.lightEmit ?? 'center'
+      const reach = (trace.lightRadius ?? 200) * zoom
+      const pulse = trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : ''
+      const common: React.CSSProperties = {
+        ['--over-ground' as any]: screenOver(atriumBackground, trace.lightColor ?? '#ffffff'),
+        ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8,
+        zIndex: zOf(trace) - 1,
+        opacity: (trace.lightIntensity ?? 1.0) * 0.8,
+        mixBlendMode: 'screen',
+        willChange: 'transform, opacity',
+        // Floating with its trace, and pulsing if it pulses.
+        animation: [pulse, floats ? floatAnimation : ''].filter(Boolean).join(', ') || 'none',
+        ...(floats ? { ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px` } : {}),
+      }
+      if (emit === 'center') {
+        return (
+          <div
+            data-blends-with-ground=""
+            data-light-for={trace.id}
+            className="absolute pointer-events-none"
+            style={{
+              ...common,
+              left: `${screenX + (trace.lightOffsetX ?? 0) * zoom}px`,
+              top: `${screenY + (trace.lightOffsetY ?? 0) * zoom}px`,
+              width: `${reach * 2}px`,
+              height: `${reach * 2}px`,
+              borderRadius: '50%',
+              background: trace.lightColor ?? '#ffffff',
+              filter: `blur(${reach * 0.3}px)`,
+              transformOrigin: 'center center',
+              marginLeft: `${-reach}px`,
+              marginTop: `${-reach}px`,
+            }}
+          />
+        )
+      }
+      // The shape's own outline: rounded as the trace is, an ellipse for a circle.
+      const round = trace.type === 'shape' && trace.shapeType === 'circle' ? '50%' : `${(displayTrace.borderRadius ?? 0) * zoom}px`
+      const spread = reach * 0.25
+      return (
+        <div
+          data-blends-with-ground=""
+          data-light-for={trace.id}
+          data-light-emit={emit}
+          className="absolute pointer-events-none"
+          style={{
+            ...common,
+            left: `${screenX + boxOffset.x}px`,
+            top: `${screenY + boxOffset.y}px`,
+            width: `${borderWidth + spread * 2}px`,
+            height: `${borderHeight + spread * 2}px`,
+            transform: `translate(-50%, -50%) rotate(${transform.rotation}deg)`,
+            borderRadius: round,
+            ...(emit === 'shape'
+              ? { background: trace.lightColor ?? '#ffffff' }
+              // The border: a ring as thick as its spread, nothing inside.
+              : { border: `${Math.max(2, spread)}px solid var(--light-colour)`, ['--light-colour' as any]: trace.lightColor ?? '#ffffff' }),
+            filter: `blur(${reach * 0.3}px)`,
+          }}
+        />
+      )
+    })()}
     
     {/* The trace itself */}
     {/* position+zIndex here too (not just the inner container), so this
@@ -6167,10 +6266,8 @@ return (
         // grip and caret around it stay where they are, and something
         // being worked with shouldn't drift out from under the pointer.
         // Not the shape being placed: it would drift while being sized.
-        ...(traceFloat > 0 && !isInSelection && !isPressed
-          && inlineEditingTraceId !== trace.id && !glidingIds.has(trace.id)
-          && !(trace.type === 'embed' && trace.enableInteraction) ? {
-          animation: `trace-float ${floatTiming(trace.id).duration}s ease-in-out ${floatTiming(trace.id).delay}s infinite`,
+        ...(floats ? {
+          animation: floatAnimation,
           ['--float-amp' as any]: `${(traceFloat / 100) * FLOAT_MAX_PX}px`,
         } : {}),
         cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
@@ -9674,6 +9771,35 @@ return (
                         />
                       </div>
                     </div>
+
+                    {/* Where it comes from: a point at the middle, all of the
+                        trace, or its border. A path glows along its line. */}
+                    {!isPathTrace && (
+                      <div>
+                        <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.lightEmit')}</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['center', 'shape', 'border'] as const).map(emit => (
+                            <button
+                              key={emit}
+                              type="button"
+                              data-light-emit-choice={emit}
+                              aria-pressed={(editingTrace.lightEmit ?? 'center') === emit}
+                              onClick={() => {
+                                setEditingTrace({ ...editingTrace, lightEmit: emit })
+                                updateTraceCustomization(editingTrace.id, { lightEmit: emit })
+                              }}
+                              className={`px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
+                                (editingTrace.lightEmit ?? 'center') === emit
+                                  ? 'bg-nier-bg text-nier-black border-nier-bg'
+                                  : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                              }`}
+                            >
+                              {t(emit === 'center' ? 'atrium.customize.lightEmitCenter' : emit === 'shape' ? 'atrium.customize.lightEmitShape' : 'atrium.customize.lightEmitBorder')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">

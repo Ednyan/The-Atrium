@@ -159,6 +159,9 @@ export interface Trace {
   lightOffsetY?: number
   lightPulse?: boolean
   lightPulseSpeed?: number // 0.1 to 5.0, seconds per pulse cycle
+  // Where its light comes from: a point at its middle (as it always has), all
+  // of its shape, or its border. None is the middle.
+  lightEmit?: 'center' | 'shape' | 'border'
   // Embed interaction
   enableInteraction?: boolean // Allow iframe to be interacted with (for embeds)
   // Click interaction
@@ -221,6 +224,9 @@ export interface ThemeSettings {
   gridColor?: string
   gridOpacity?: number
   gridEnabled?: boolean
+  // Lines, dots, or none (lib/customThemes gridStyleOf: a theme from before
+  // has gridEnabled alone). gridEnabled is kept in step, for what reads it.
+  gridStyle?: 'none' | 'lines' | 'dots'
   // Distance between the grid lines, in world units. Also what
   // Shift-dragging a trace snaps onto.
   gridLineSpacing?: number
@@ -240,6 +246,7 @@ export interface ThemeSettings {
   groundScaleRange?: number
   groundPattern?: 'random' | 'grid'
   groundSpacing?: number
+  groundRotation?: number
 }
 
 export interface Lobby {

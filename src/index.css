@@ -87,6 +87,12 @@
   mix-blend-mode: normal !important;
   background: var(--over-ground) !important;
 }
+/* A light from a trace's border is a ring: its border takes the colour, and
+   nothing fills it. */
+[data-camera-moving] [data-blends-with-ground][data-light-emit='border'] {
+  background: transparent !important;
+  border-color: var(--over-ground) !important;
+}
 
 /* Nier:Automata Inspired Theme */
 /* Colour as roles rather than as names.
