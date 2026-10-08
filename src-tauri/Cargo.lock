@@ -4980,7 +4980,7 @@ dependencies = [
 
 [[package]]
 name = "the-digital-atrium"
-version = "1.10.10"
+version = "1.10.11"
 dependencies = [
  "reqwest",
  "serde",
